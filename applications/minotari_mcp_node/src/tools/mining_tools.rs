@@ -12,7 +12,7 @@ use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
     NewBlockTemplateRequest, NewBlockTemplate, GetNewBlockWithCoinbasesRequest,
-    GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, pow_algo::PowAlgos,
+    GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, pow_algo::PowAlgos, PowAlgo,
 };
 
 /// Tool for getting a new block template (existing implementation, enhanced)
@@ -54,7 +54,7 @@ impl McpTool for GetNewBlockTemplateTool {
         };
         
         let request = Request::new(NewBlockTemplateRequest {
-            algo: Some(pow_algo),
+            algo: Some(PowAlgo { pow_algo }),
             max_weight,
         });
         
@@ -83,10 +83,10 @@ impl McpTool for GetNewBlockTemplateTool {
             },
             "initial_sync_achieved": response.initial_sync_achieved,
             "miner_data": response.miner_data.as_ref().map(|md| json!({
-                "algo": match md.pow_algo {
-                    Some(0) => "SHA3X",
-                    Some(1) => "MONERO", 
-                    Some(2) => "TARI",
+                "algo": match md.algo.as_ref().map(|a| a.pow_algo) {
+                    Some(PowAlgos::PowAlgosRandomxm) => "RANDOMX_M",
+                    Some(PowAlgos::PowAlgosSha3x) => "SHA3X",
+                    Some(PowAlgos::PowAlgosRandomxt) => "RANDOMX_T",
                     _ => "UNKNOWN",
                 },
                 "target_difficulty": md.target_difficulty,
@@ -246,10 +246,10 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             "merge_mining_hash": hex::encode(&response.merge_mining_hash),
             "tari_unique_id": hex::encode(&response.tari_unique_id),
             "miner_data": response.miner_data.as_ref().map(|md| json!({
-                "algo": match md.pow_algo {
-                    Some(0) => "SHA3X",
-                    Some(1) => "MONERO",
-                    Some(2) => "TARI", 
+                "algo": match md.algo.as_ref().map(|a| a.pow_algo) {
+                    Some(PowAlgos::PowAlgosRandomxm) => "RANDOMX_M",
+                    Some(PowAlgos::PowAlgosSha3x) => "SHA3X",
+                    Some(PowAlgos::PowAlgosRandomxt) => "RANDOMX_T",
                     _ => "UNKNOWN",
                 },
                 "target_difficulty": md.target_difficulty,

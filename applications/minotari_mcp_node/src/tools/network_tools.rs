@@ -326,11 +326,11 @@ impl McpTool for GetNodeIdentityTool {
         Ok(json!({
             "public_key": hex::encode(&response.public_key),
             "node_id": hex::encode(&response.node_id),
-            "public_address": response.public_address,
+            "public_address": response.public_addresses,
             "identity_info": {
                 "public_key_length": response.public_key.len(),
                 "node_id_length": response.node_id.len(),
-                "has_public_address": !response.public_address.is_empty(),
+                "has_public_address": !response.public_addresses.is_empty(),
             }
         }))
     }
@@ -436,7 +436,7 @@ impl McpTool for NetworkDiagnosticsTool {
             "node_identity": {
                 "public_key": hex::encode(&node_identity.public_key),
                 "node_id": hex::encode(&node_identity.node_id),
-                "public_address": node_identity.public_address,
+                "public_address": node_identity.public_addresses,
             },
             "peer_diversity": {
                 "unique_user_agents": connected_peers.connected_peers.iter()
