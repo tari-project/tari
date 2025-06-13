@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
+use minotari_mcp_common::{CliConfigExtractor, LaunchCliConfig, CliConfigBuilder, NodeArgumentBuilder};
 
 use std::path::PathBuf;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
@@ -215,5 +216,75 @@ impl Cli {
         }
         
         args
+    }
+}
+
+impl CliConfigExtractor for Cli {
+    fn extract_launch_config(&self) -> LaunchCliConfig {
+        let mut builder = CliConfigBuilder::new()
+            .with_base_path(self.common.base_path.clone())
+            .with_config_path(self.common.config.clone());
+
+        if let Some(ref network) = self.common.network {
+            builder = builder.with_network(network.to_string());
+        }
+
+        if let Some(ref log_config) = self.common.log_config {
+            builder = builder.with_log_config(log_config.clone());
+        }
+
+        // Add property overrides
+        for (key, value) in &self.common.config_property_overrides {
+            builder = builder.with_property_override(key.clone(), value.clone());
+        }
+
+        builder.build()
+    }
+
+    fn extract_node_args(&self) -> Vec<String> {
+        let config = self.extract_launch_config();
+        let mut builder = NodeArgumentBuilder::new(config);
+
+        // Add node-specific flags based on CLI arguments
+        if self.node_grpc_enabled {
+            builder = builder.enable_grpc();
+        }
+
+        if self.node_mining_enabled {
+            builder = builder.enable_mining();
+        }
+
+        if self.node_second_layer_grpc_enabled {
+            builder = builder.enable_second_layer_grpc();
+        }
+
+        if self.node_non_interactive {
+            builder = builder.non_interactive();
+        }
+
+        if self.node_disable_splash_screen {
+            builder = builder.disable_splash();
+        }
+
+        if let Some(ref libtor_dir) = self.node_libtor_data_dir {
+            builder = builder.with_libtor_data_dir(libtor_dir.clone());
+        }
+
+        // Add init flag if specified
+        if self.node_init {
+            builder = builder.with_custom_arg("--init".to_string());
+        }
+
+        // Add rebuild-db flag if specified
+        if self.node_rebuild_db {
+            builder = builder.with_custom_arg("--rebuild-db".to_string());
+        }
+
+        builder.build()
+    }
+
+    fn extract_wallet_args(&self) -> Vec<String> {
+        // Not applicable for node CLI, return empty
+        Vec::new()
     }
 }

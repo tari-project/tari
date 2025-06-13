@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
+use minotari_mcp_common::{CliConfigExtractor, LaunchCliConfig, CliConfigBuilder, WalletArgumentBuilder};
 
 use std::path::PathBuf;
 use tari_common::configuration::{ConfigOverrideProvider, Network};
@@ -213,5 +214,67 @@ impl Cli {
         }
         
         args
+    }
+}
+
+impl CliConfigExtractor for Cli {
+    fn extract_launch_config(&self) -> LaunchCliConfig {
+        let mut builder = CliConfigBuilder::new()
+            .with_base_path(self.common.base_path.clone())
+            .with_config_path(self.common.config.clone());
+
+        if let Some(ref network) = self.common.network {
+            builder = builder.with_network(network.to_string());
+        }
+
+        if let Some(ref log_config) = self.common.log_config {
+            builder = builder.with_log_config(log_config.clone());
+        }
+
+        // Add property overrides
+        for (key, value) in &self.common.config_property_overrides {
+            builder = builder.with_property_override(key.clone(), value.clone());
+        }
+
+        builder.build()
+    }
+
+    fn extract_node_args(&self) -> Vec<String> {
+        // Not applicable for wallet CLI, return empty
+        Vec::new()
+    }
+
+    fn extract_wallet_args(&self) -> Vec<String> {
+        let config = self.extract_launch_config();
+        let mut builder = WalletArgumentBuilder::new(config);
+
+        // Add wallet-specific flags based on CLI arguments
+        if self.wallet_grpc_enabled {
+            builder = builder.enable_grpc();
+        }
+
+        if let Some(ref alt_addr) = self.wallet_alt_grpc_address {
+            builder = builder.with_grpc_address(alt_addr.clone());
+        }
+
+        if self.wallet_non_interactive {
+            builder = builder.non_interactive();
+        }
+
+        if let Some(ref password) = self.wallet_password {
+            // Convert SafePassword to String (be careful with this in production)
+            let password_str = String::from_utf8_lossy(password.reveal()).to_string();
+            builder = builder.with_password(password_str);
+        }
+
+        if self.wallet_recovery {
+            builder = builder.force_recovery();
+        }
+
+        if let Some(ref libtor_dir) = self.wallet_libtor_data_dir {
+            builder = builder.with_libtor_data_dir(libtor_dir.clone());
+        }
+
+        builder.build()
     }
 }
