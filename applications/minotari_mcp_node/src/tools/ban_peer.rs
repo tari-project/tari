@@ -2,7 +2,7 @@
 
 use minotari_mcp_common::{
     McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_string_param, get_required_number_param
+    json_schema, get_required_string_param, get_required_number_param, impl_mcp_tool, tool_schema
 };
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::{BanPeerRequest, UnbanPeerRequest}};
 use async_trait::async_trait;
@@ -21,6 +21,26 @@ impl BanPeerTool {
     }
 }
 
+impl_mcp_tool!(BanPeerTool, privileged, {
+    "type": "object",
+    "properties": {
+        "peer_public_key": {
+            "type": "string",
+            "description": "Public key of the peer to ban (hex encoded)"
+        },
+        "duration_hours": {
+            "type": "number",
+            "description": "Duration of the ban in hours (0 for permanent)",
+            "minimum": 0
+        },
+        "reason": {
+            "type": "string",
+            "description": "Reason for banning the peer"
+        }
+    },
+    "required": ["peer_public_key", "duration_hours", "reason"]
+});
+
 #[async_trait]
 impl McpTool for BanPeerTool {
     fn name(&self) -> &str {
@@ -29,28 +49,6 @@ impl McpTool for BanPeerTool {
 
     fn description(&self) -> &str {
         "Ban a peer from connecting to this node. This is a control operation that affects network connectivity."
-    }
-
-    fn permission_level(&self) -> PermissionLevel {
-        PermissionLevel::Control
-    }
-
-    fn input_schema(&self) -> Value {
-        json_schema! {
-            "peer_public_key" => serde_json::json!({
-                "type": "string",
-                "description": "Public key of the peer to ban (hex encoded)"
-            }),
-            "duration_hours" => serde_json::json!({
-                "type": "number",
-                "description": "Duration of the ban in hours (0 for permanent)",
-                "minimum": 0
-            }),
-            "reason" => serde_json::json!({
-                "type": "string",
-                "description": "Reason for banning the peer"
-            })
-        }
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
@@ -126,6 +124,17 @@ impl UnbanPeerTool {
     }
 }
 
+impl_mcp_tool!(UnbanPeerTool, privileged, {
+    "type": "object",
+    "properties": {
+        "peer_public_key": {
+            "type": "string",
+            "description": "Public key of the peer to unban (hex encoded)"
+        }
+    },
+    "required": ["peer_public_key"]
+});
+
 #[async_trait]
 impl McpTool for UnbanPeerTool {
     fn name(&self) -> &str {
@@ -134,19 +143,6 @@ impl McpTool for UnbanPeerTool {
 
     fn description(&self) -> &str {
         "Remove a ban from a peer, allowing them to connect again. This is a control operation."
-    }
-
-    fn permission_level(&self) -> PermissionLevel {
-        PermissionLevel::Control
-    }
-
-    fn input_schema(&self) -> Value {
-        json_schema! {
-            "peer_public_key" => serde_json::json!({
-                "type": "string",
-                "description": "Public key of the peer to unban (hex encoded)"
-            })
-        }
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {

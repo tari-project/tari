@@ -3,7 +3,7 @@
 //! This module provides tools for querying mempool state, transactions,
 //! and transaction validation status.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_string_param};
+use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_string_param, impl_mcp_tool, tool_schema};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
@@ -24,6 +24,8 @@ impl GetMempoolStatsTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetMempoolStatsTool, readonly, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for GetMempoolStatsTool {
@@ -62,6 +64,8 @@ impl GetMempoolTransactionsTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetMempoolTransactionsTool, readonly, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for GetMempoolTransactionsTool {
@@ -150,6 +154,8 @@ impl GetTransactionStateTool {
     }
 }
 
+impl_mcp_tool!(GetTransactionStateTool, readonly, tool_schema!(string_param("excess_signature", "Transaction excess signature (hex)")));
+
 #[async_trait::async_trait]
 impl McpTool for GetTransactionStateTool {
     fn name(&self) -> &str {
@@ -217,6 +223,8 @@ impl AnalyzeMempoolTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(AnalyzeMempoolTool, readonly, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for AnalyzeMempoolTool {

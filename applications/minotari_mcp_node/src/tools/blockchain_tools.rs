@@ -3,7 +3,7 @@
 //! This module provides comprehensive access to blockchain data including headers,
 //! blocks, network status, and synchronization information.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param, get_required_string_param};
+use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param, get_required_string_param, impl_mcp_tool, tool_schema};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
@@ -27,6 +27,8 @@ impl ListHeadersTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(ListHeadersTool, readonly, tool_schema!(height_range));
 
 #[async_trait::async_trait]
 impl McpTool for ListHeadersTool {
@@ -105,6 +107,8 @@ impl GetHeaderByHashTool {
     }
 }
 
+impl_mcp_tool!(GetHeaderByHashTool, readonly, tool_schema!(hash_lookup("Block hash to query")));
+
 #[async_trait::async_trait]
 impl McpTool for GetHeaderByHashTool {
     fn name(&self) -> &str {
@@ -160,6 +164,8 @@ impl GetBlocksTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetBlocksTool, readonly, tool_schema!(height_range));
 
 #[async_trait::async_trait]
 impl McpTool for GetBlocksTool {
@@ -230,6 +236,8 @@ impl GetTipInfoTool {
     }
 }
 
+impl_mcp_tool!(GetTipInfoTool, readonly, tool_schema!(empty));
+
 #[async_trait::async_trait]
 impl McpTool for GetTipInfoTool {
     fn name(&self) -> &str {
@@ -287,6 +295,8 @@ impl GetSyncInfoTool {
     }
 }
 
+impl_mcp_tool!(GetSyncInfoTool, readonly, tool_schema!(empty));
+
 #[async_trait::async_trait]
 impl McpTool for GetSyncInfoTool {
     fn name(&self) -> &str {
@@ -336,6 +346,8 @@ impl GetNetworkDifficultyTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetNetworkDifficultyTool, readonly, tool_schema!(height_range));
 
 #[async_trait::async_trait]
 impl McpTool for GetNetworkDifficultyTool {
@@ -402,6 +414,8 @@ impl GetTokensInCirculationTool {
     }
 }
 
+impl_mcp_tool!(GetTokensInCirculationTool, readonly, tool_schema!(height_range));
+
 #[async_trait::async_trait]
 impl McpTool for GetTokensInCirculationTool {
     fn name(&self) -> &str {
@@ -462,6 +476,8 @@ impl GetNetworkStateTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetNetworkStateTool, readonly, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for GetNetworkStateTool {

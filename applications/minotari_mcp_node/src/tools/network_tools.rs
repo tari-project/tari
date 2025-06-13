@@ -3,7 +3,7 @@
 //! This module provides tools for querying network status, peer information,
 //! connectivity, and node identity.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult};
+use minotari_mcp_common::{McpTool, McpError, McpResult, impl_mcp_tool, tool_schema};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
@@ -24,6 +24,8 @@ impl GetNetworkStatusTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetNetworkStatusTool, readonly, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for GetNetworkStatusTool {
@@ -90,6 +92,8 @@ impl ListConnectedPeersTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(ListConnectedPeersTool, readonly, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for ListConnectedPeersTool {
@@ -192,6 +196,8 @@ impl GetAllPeersTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetAllPeersTool, readonly, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for GetAllPeersTool {
@@ -306,6 +312,8 @@ impl GetNodeIdentityTool {
     }
 }
 
+impl_mcp_tool!(GetNodeIdentityTool, readonly, tool_schema!(empty));
+
 #[async_trait::async_trait]
 impl McpTool for GetNodeIdentityTool {
     fn name(&self) -> &str {
@@ -347,6 +355,8 @@ impl NetworkDiagnosticsTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(NetworkDiagnosticsTool, privileged, tool_schema!(empty));
 
 #[async_trait::async_trait]
 impl McpTool for NetworkDiagnosticsTool {

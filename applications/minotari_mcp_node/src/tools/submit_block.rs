@@ -2,7 +2,7 @@
 
 use minotari_mcp_common::{
     McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_string_param
+    json_schema, get_required_string_param, impl_mcp_tool, tool_schema
 };
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Block};
 use async_trait::async_trait;
@@ -21,6 +21,17 @@ impl SubmitBlockTool {
     }
 }
 
+impl_mcp_tool!(SubmitBlockTool, control, {
+    "type": "object",
+    "properties": {
+        "block_hex": {
+            "type": "string",
+            "description": "Hexadecimal representation of the block to submit"
+        }
+    },
+    "required": ["block_hex"]
+});
+
 #[async_trait]
 impl McpTool for SubmitBlockTool {
     fn name(&self) -> &str {
@@ -29,19 +40,6 @@ impl McpTool for SubmitBlockTool {
 
     fn description(&self) -> &str {
         "Submit a new block to the Tari blockchain. This is a control operation that modifies blockchain state."
-    }
-
-    fn permission_level(&self) -> PermissionLevel {
-        PermissionLevel::Control
-    }
-
-    fn input_schema(&self) -> Value {
-        json_schema! {
-            "block_hex" => serde_json::json!({
-                "type": "string",
-                "description": "Hexadecimal representation of the block to submit"
-            })
-        }
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {

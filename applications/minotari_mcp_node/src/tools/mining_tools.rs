@@ -4,7 +4,7 @@
 //! block construction, and mining data retrieval. Updated to include the existing
 //! GetNewBlockTemplateTool and expand mining capabilities.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param};
+use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param, impl_mcp_tool, tool_schema};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
@@ -27,6 +27,8 @@ impl GetNewBlockTemplateTool {
     }
 }
 
+impl_mcp_tool!(GetNewBlockTemplateTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
+
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockTemplateTool {
     fn name(&self) -> &str {
@@ -46,15 +48,15 @@ impl McpTool for GetNewBlockTemplateTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(19500); // Default max weight for blocks
         
-        let pow_algo = match algo {
-            0 => PowAlgos::Sha3x,
-            1 => PowAlgos::Randomxm,
-            2 => PowAlgos::Randomxt,
-            _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string())),
+        let pow_algo_val = match algo {
+            0 => 0i32, // RANDOMXM
+            1 => 1i32, // SHA3X  
+            2 => 2i32, // RANDOMXT
+            _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string())),
         };
         
         let request = Request::new(NewBlockTemplateRequest {
-            algo: Some(PowAlgo { pow_algo }),
+            algo: Some(PowAlgo { pow_algo: pow_algo_val }),
             max_weight,
         });
         
@@ -84,9 +86,9 @@ impl McpTool for GetNewBlockTemplateTool {
             "initial_sync_achieved": response.initial_sync_achieved,
             "miner_data": response.miner_data.as_ref().map(|md| json!({
                 "algo": match md.algo.as_ref().map(|a| a.pow_algo) {
-                    Some(PowAlgos::PowAlgosRandomxm) => "RANDOMX_M",
-                    Some(PowAlgos::PowAlgosSha3x) => "SHA3X",
-                    Some(PowAlgos::PowAlgosRandomxt) => "RANDOMX_T",
+                    Some(0) => "RANDOMX_M",
+                    Some(1) => "SHA3X",
+                    Some(2) => "RANDOMX_T",
                     _ => "UNKNOWN",
                 },
                 "target_difficulty": md.target_difficulty,
@@ -112,6 +114,8 @@ impl GetNewBlockTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetNewBlockTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
 
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockTool {
@@ -148,6 +152,8 @@ impl GetNewBlockTemplateWithCoinbasesTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetNewBlockTemplateWithCoinbasesTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
 
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
@@ -247,9 +253,9 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             "tari_unique_id": hex::encode(&response.tari_unique_id),
             "miner_data": response.miner_data.as_ref().map(|md| json!({
                 "algo": match md.algo.as_ref().map(|a| a.pow_algo) {
-                    Some(PowAlgos::PowAlgosRandomxm) => "RANDOMX_M",
-                    Some(PowAlgos::PowAlgosSha3x) => "SHA3X",
-                    Some(PowAlgos::PowAlgosRandomxt) => "RANDOMX_T",
+                    Some(0) => "RANDOMX_M",
+                    Some(1) => "SHA3X",
+                    Some(2) => "RANDOMX_T",
                     _ => "UNKNOWN",
                 },
                 "target_difficulty": md.target_difficulty,
@@ -271,6 +277,8 @@ impl GetNewBlockWithCoinbasesTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(GetNewBlockWithCoinbasesTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
 
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockWithCoinbasesTool {
@@ -302,6 +310,8 @@ impl MiningAnalysisTool {
         Self { grpc_client }
     }
 }
+
+impl_mcp_tool!(MiningAnalysisTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
 
 #[async_trait::async_trait]
 impl McpTool for MiningAnalysisTool {
