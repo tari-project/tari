@@ -23,7 +23,9 @@ chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 regex = "1.10"
 unicode-normalization = "0.1"
-tonic = { version = "0.9", default-features = false, features = ["transport", "tls"] }
+tonic = { version = "0.13.1", default-features = false, features = ["transport", "tls-ring"] }
+prost = "0.13.3"
+prost-types = "0.13.3"
 minotari_node_grpc_client = { workspace = true }
 minotari_wallet_grpc_client = { workspace = true }
 which = "5.0"
