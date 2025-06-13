@@ -25,6 +25,8 @@ pub mod schema_generator;
 pub mod tool_metadata;
 pub mod grpc_error_mapper;
 pub mod auto_registry;
+pub mod grpc_executor;
+pub mod grpc_client_implementations;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -46,3 +48,5 @@ pub use schema_generator::{SchemaGenerator, SchemaError};
 pub use tool_metadata::{ToolMetadata, ToolMetadataRegistry, ToolCategory, ToolRiskLevel, ToolExample, ParameterDoc, RateLimit, DeprecationInfo};
 pub use grpc_error_mapper::{GrpcErrorMapper, ErrorContext, ErrorCategory, ErrorSeverity};
 pub use auto_registry::{AutoDiscoveryRegistry, AutoDiscoveryConfig, ServerType, ToolOverride, RegistryStatistics};
+pub use grpc_executor::{GrpcExecutor, NodeGrpcClient, WalletGrpcClient, ExecutorStatus};
+pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};

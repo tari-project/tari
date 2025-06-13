@@ -8,6 +8,7 @@ use crate::{
     tool_metadata::{ToolMetadata, ToolMetadataRegistry, ToolCategory, ToolRiskLevel},
     grpc_error_mapper::GrpcErrorMapper,
     schema_generator::SchemaGenerator,
+    grpc_executor::GrpcExecutor,
     McpTool, McpResult,
 };
 use serde_json::json;
@@ -83,6 +84,8 @@ pub struct AutoDiscoveryRegistry {
     schema_generator: Arc<SchemaGenerator>,
     /// Error mapper
     error_mapper: Arc<GrpcErrorMapper>,
+    /// gRPC executor for real method execution
+    grpc_executor: Option<Arc<GrpcExecutor>>,
     /// Generated tools cache
     tools_cache: Arc<RwLock<HashMap<String, Arc<dyn McpTool>>>>,
     /// Tool status tracking
@@ -120,6 +123,27 @@ impl AutoDiscoveryRegistry {
             metadata_registry: Arc::new(RwLock::new(ToolMetadataRegistry::new())),
             schema_generator,
             error_mapper,
+            grpc_executor: None,
+            tools_cache: Arc::new(RwLock::new(HashMap::new())),
+            tool_status: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+    
+    /// Create a new auto-discovery registry with gRPC executor
+    pub fn new_with_executor(
+        config: AutoDiscoveryConfig,
+        service_discovery: Arc<ServiceDiscovery>,
+        schema_generator: Arc<SchemaGenerator>,
+        error_mapper: Arc<GrpcErrorMapper>,
+        grpc_executor: Arc<GrpcExecutor>,
+    ) -> Self {
+        Self {
+            config,
+            service_discovery,
+            metadata_registry: Arc::new(RwLock::new(ToolMetadataRegistry::new())),
+            schema_generator,
+            error_mapper,
+            grpc_executor: Some(grpc_executor),
             tools_cache: Arc::new(RwLock::new(HashMap::new())),
             tool_status: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -292,6 +316,7 @@ impl AutoDiscoveryRegistry {
             method.clone(),
             metadata.clone(),
             self.error_mapper.clone(),
+            self.grpc_executor.clone(),
         )))
     }
 
@@ -477,8 +502,8 @@ pub struct RegistryStatistics {
 pub struct DynamicGrpcTool {
     method_info: GrpcMethodInfo,
     metadata: ToolMetadata,
-    #[allow(dead_code)]
     error_mapper: Arc<GrpcErrorMapper>,
+    grpc_executor: Option<Arc<GrpcExecutor>>,
 }
 
 impl DynamicGrpcTool {
@@ -486,11 +511,13 @@ impl DynamicGrpcTool {
         method_info: GrpcMethodInfo,
         metadata: ToolMetadata,
         error_mapper: Arc<GrpcErrorMapper>,
+        grpc_executor: Option<Arc<GrpcExecutor>>,
     ) -> Self {
         Self {
             method_info,
             metadata,
             error_mapper,
+            grpc_executor,
         }
     }
 }
@@ -518,15 +545,40 @@ impl McpTool for DynamicGrpcTool {
     }
 
     async fn execute(&self, args: serde_json::Value) -> McpResult<serde_json::Value> {
-        // This would need to be implemented with actual gRPC client calls
-        // For now, return a placeholder response
-        Ok(json!({
-            "tool": self.metadata.name,
-            "method": self.method_info.name,
-            "status": "success",
-            "note": "This is a dynamically generated tool placeholder",
-            "parameters": args,
-        }))
+        log::debug!("Executing dynamic gRPC tool: {} with args: {}", self.metadata.name, args);
+        
+        match &self.grpc_executor {
+            Some(executor) => {
+                // Use real gRPC execution
+                if executor.can_execute(&self.method_info) {
+                    let result = executor.execute_method(&self.method_info, args).await;
+                    
+                    // Record usage statistics
+                    match &result {
+                        Ok(_) => log::debug!("Successfully executed gRPC method: {}", self.method_info.name),
+                        Err(e) => log::warn!("Failed to execute gRPC method {}: {}", self.method_info.name, e),
+                    }
+                    
+                    result
+                } else {
+                    Err(crate::McpError::server_error(format!(
+                        "Executor cannot handle method: {} (category: {:?})",
+                        self.method_info.name, self.method_info.category
+                    )))
+                }
+            }
+            None => {
+                // Fallback to placeholder response when no executor is available
+                log::warn!("No gRPC executor available for tool: {}, returning placeholder", self.metadata.name);
+                Ok(json!({
+                    "tool": self.metadata.name,
+                    "method": self.method_info.name,
+                    "status": "success",
+                    "note": "This is a dynamically generated tool placeholder - no gRPC executor configured",
+                    "parameters": args,
+                }))
+            }
+        }
     }
 }
 

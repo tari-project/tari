@@ -24,4 +24,6 @@ hex = "0.4"
 regex = "1.10"
 unicode-normalization = "0.1"
 tonic = { version = "0.9", default-features = false, features = ["transport", "tls"] }
+minotari_node_grpc_client = { workspace = true }
+minotari_wallet_grpc_client = { workspace = true }
 which = "5.0"

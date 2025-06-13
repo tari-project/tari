@@ -4284,6 +4284,8 @@ dependencies = [
  "hex",
  "log",
  "minotari_app_utilities",
+ "minotari_node_grpc_client",
+ "minotari_wallet_grpc_client",
  "regex",
  "serde",
  "serde_json",
