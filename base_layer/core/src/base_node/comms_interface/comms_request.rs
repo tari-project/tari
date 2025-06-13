@@ -144,7 +144,7 @@ impl Display for NodeCommsRequest {
                 write!(f, "FetchOutputByPayRef ({})", payref.to_hex())
             },
             CheckOutputSpentStatus(output_hash) => {
-                write!(f, "CheckOutputSpentStatus ({})", output_hash.to_hex())
+                write!(f, "CheckOutputSpentStatus ({})", output_hash)
             },
         }
     }

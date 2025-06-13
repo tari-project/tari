@@ -23,7 +23,10 @@
 use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{BulletRangeProof, CompressedCommitment, CompressedPublicKey, RangeProof};
+use tari_common_types::{
+    payment_reference::generate_payment_reference,
+    types::{BlockHash, BulletRangeProof, CompressedCommitment, CompressedPublicKey, RangeProof},
+};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
@@ -83,39 +86,42 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     }
 }
 
-impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
-    type Error = String;
-
-    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
-        let hash = output.hash().to_vec();
-        let mut covenant = Vec::new();
-        BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
-        let range_proof = output.proof.map(|proof| grpc::RangeProof {
-            proof_bytes: proof.to_vec(),
-        });
-        Ok(grpc::TransactionOutput {
-            hash,
-            features: Some(output.features.into()),
-            commitment: Vec::from(output.commitment.as_bytes()),
-            range_proof,
-            script: output.script.to_bytes(),
-            sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
-            metadata_signature: Some(grpc::ComAndPubSignature {
-                ephemeral_commitment: Vec::from(output.metadata_signature.ephemeral_commitment().as_bytes()),
-                ephemeral_pubkey: Vec::from(output.metadata_signature.ephemeral_pubkey().as_bytes()),
-                u_a: Vec::from(output.metadata_signature.u_a().as_bytes()),
-                u_x: Vec::from(output.metadata_signature.u_x().as_bytes()),
-                u_y: Vec::from(output.metadata_signature.u_y().as_bytes()),
-            }),
-            covenant,
-            version: output.version as u32,
-            encrypted_data: output.encrypted_data.to_byte_vec(),
-            minimum_value_promise: output.minimum_value_promise.into(),
-            // Payment reference will be populated when the output is included in a block
-            // and the block hash is available
-            payment_reference: vec![],
-        })
-    }
+pub fn grpc_output_with_payref(
+    output: TransactionOutput,
+    block_hash: Option<BlockHash>,
+) -> Result<grpc::TransactionOutput, String> {
+    let output_hash = output.hash();
+    let mut covenant = Vec::new();
+    BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
+    let range_proof = output.proof.map(|proof| grpc::RangeProof {
+        proof_bytes: proof.to_vec(),
+    });
+    Ok(grpc::TransactionOutput {
+        hash: output_hash.to_vec(),
+        features: Some(output.features.into()),
+        commitment: Vec::from(output.commitment.as_bytes()),
+        range_proof,
+        script: output.script.to_bytes(),
+        sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
+        metadata_signature: Some(grpc::ComAndPubSignature {
+            ephemeral_commitment: Vec::from(output.metadata_signature.ephemeral_commitment().as_bytes()),
+            ephemeral_pubkey: Vec::from(output.metadata_signature.ephemeral_pubkey().as_bytes()),
+            u_a: Vec::from(output.metadata_signature.u_a().as_bytes()),
+            u_x: Vec::from(output.metadata_signature.u_x().as_bytes()),
+            u_y: Vec::from(output.metadata_signature.u_y().as_bytes()),
+        }),
+        covenant,
+        version: output.version as u32,
+        encrypted_data: output.encrypted_data.to_byte_vec(),
+        minimum_value_promise: output.minimum_value_promise.into(),
+        // Payment reference will be populated when the output is included in a block
+        // and the block hash is available
+        payment_reference: if let Some(hash) = block_hash {
+            generate_payment_reference(&hash, &output_hash).to_vec()
+        } else {
+            vec![]
+        },
+    })
 }
 
 impl From<RangeProof> for GrpcRangeProof {

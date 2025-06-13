@@ -25,6 +25,7 @@ use futures::stream::StreamExt;
 use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
+    conversions::transaction_output::grpc_output_with_payref,
     tari_rpc::{
         base_node_client::BaseNodeClient,
         pow_algo::PowAlgos,
@@ -34,7 +35,6 @@ use minotari_app_grpc::{
         PowAlgo,
         SubmitBlockRequest,
         SubmitBlockResponse,
-        TransactionOutput as GrpcTransactionOutput,
     },
 };
 use minotari_app_utilities::parse_miner_input::{
@@ -461,7 +461,8 @@ async fn get_new_block_base_node(
         .body
         .as_mut()
         .ok_or_else(|| err_empty("new_block_template.body"))?;
-    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output.clone()).map_err(MinerError::Conversion)?;
+    let grpc_output =
+        grpc_output_with_payref(coinbase_output.clone(), None).map_err(|e| MinerError::Conversion(e.to_string()))?;
 
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());

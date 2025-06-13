@@ -24,14 +24,14 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_core::blocks::Block;
 
-use crate::tari_rpc as grpc;
+use crate::{conversions::aggregate_body::grpc_aggregate_body_with_payrefs, tari_rpc as grpc};
 
 impl TryFrom<tari_core::blocks::Block> for grpc::Block {
     type Error = String;
 
     fn try_from(block: Block) -> Result<Self, Self::Error> {
         Ok(Self {
-            body: Some(block.body.try_into()?),
+            body: Some(grpc_aggregate_body_with_payrefs(block.body, Some(block.header.hash()))?),
             header: Some(block.header.into()),
         })
     }
