@@ -97,19 +97,11 @@ impl WalletStateTool {
 
     /// Get wallet information via gRPC
     async fn get_wallet_info(&self) -> McpResult<Value> {
-        // This is a simplified implementation
-        // In reality, this would use the actual gRPC client methods
-        // For now, we'll simulate the wallet info
-        
-        // Try to make a basic connection test
-        // For now, simulate a successful connection since the actual gRPC methods
-        // may have different signatures. In a real implementation, this would use
-        // the actual wallet gRPC client methods for health checking.
-        
-        // Simulate checking if the client can connect
-        match std::net::TcpStream::connect("127.0.0.1:18143") {
+        // Try to check connectivity using the gRPC client
+        match self.grpc_client.check_connectivity().await {
             Ok(_) => {
-                // Connection successful, simulate wallet info response
+                // Wallet is responding, simulate wallet info response for now
+                // TODO: Replace with actual wallet version and sync info calls when available
                 Ok(json!({
                     "version": "1.0.0",
                     "is_ready": true,

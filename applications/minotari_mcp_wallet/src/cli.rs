@@ -163,6 +163,7 @@ impl Cli {
     }
     
     /// Generate command line arguments for launching the console wallet
+    #[allow(dead_code)]  // Will be used by auto-launch functionality in future versions
     pub fn generate_wallet_args(&self) -> Vec<String> {
         let mut args = Vec::new();
         

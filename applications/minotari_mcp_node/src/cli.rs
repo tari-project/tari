@@ -161,6 +161,7 @@ impl Cli {
     }
     
     /// Generate command line arguments for launching the base node
+    #[allow(dead_code)]  // Will be used by auto-launch functionality in future versions
     pub fn generate_node_args(&self) -> Vec<String> {
         let mut args = Vec::new();
         

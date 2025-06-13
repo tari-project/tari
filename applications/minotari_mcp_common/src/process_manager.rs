@@ -64,6 +64,11 @@ impl ProcessSupervisor {
         ))
     }
 
+    /// Get the unique process supervisor ID
+    pub fn id(&self) -> Uuid {
+        self.process_id
+    }
+
     /// Start supervising the process
     pub async fn start(&self) -> McpResult<()> {
         let mut restart_attempts = 0;
@@ -71,11 +76,12 @@ impl ProcessSupervisor {
             .ok_or_else(|| McpError::server_error("Supervisor already started"))?;
 
         log::info!(
-            "Starting {} process supervisor on port {}",
+            "Starting {} process supervisor {} on port {}",
             match self.process_type {
                 ProcessType::BaseNode => "base node",
                 ProcessType::Wallet => "wallet",
             },
+            self.process_id,
             self.port
         );
 

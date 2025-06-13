@@ -1,7 +1,7 @@
 //! Wallet-specific MCP prompts
 
 use minotari_mcp_common::{
-    PromptRegistry, McpPrompt, PromptContent, McpResult, simple_prompt, text_message, resource_message,
+    PromptRegistry, simple_prompt, text_message, resource_message,
     prompts::{MessageRole, PromptMessage}
 };
 
