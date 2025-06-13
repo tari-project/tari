@@ -6,7 +6,7 @@
 use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_string_param};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
@@ -16,11 +16,11 @@ use minotari_app_grpc::tari_rpc::{
 /// Tool for getting mempool statistics
 #[derive(Clone)]
 pub struct GetMempoolStatsTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetMempoolStatsTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -38,7 +38,7 @@ impl McpTool for GetMempoolStatsTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
         
-        let response = self.grpc_client.get_mempool_stats(request).await
+        let response = self.grpc_client.clone().get_mempool_stats(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {}", e)))?
             .into_inner();
         
@@ -54,11 +54,11 @@ impl McpTool for GetMempoolStatsTool {
 /// Tool for getting all mempool transactions
 #[derive(Clone)]
 pub struct GetMempoolTransactionsTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetMempoolTransactionsTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -80,7 +80,7 @@ impl McpTool for GetMempoolTransactionsTool {
         
         let request = Request::new(GetMempoolTransactionsRequest {});
         
-        let mut response_stream = self.grpc_client.get_mempool_transactions(request).await
+        let mut response_stream = self.grpc_client.clone().get_mempool_transactions(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {}", e)))?
             .into_inner();
         
@@ -143,11 +143,11 @@ impl McpTool for GetMempoolTransactionsTool {
 /// Tool for checking transaction state
 #[derive(Clone)]
 pub struct GetTransactionStateTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetTransactionStateTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -181,7 +181,7 @@ impl McpTool for GetTransactionStateTool {
             excess_sig: Some(signature),
         });
         
-        let response = self.grpc_client.transaction_state(request).await
+        let response = self.grpc_client.clone().transaction_state(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction state: {}", e)))?
             .into_inner();
         
@@ -211,11 +211,11 @@ impl McpTool for GetTransactionStateTool {
 /// Tool for analyzing mempool transaction patterns
 #[derive(Clone)]
 pub struct AnalyzeMempoolTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl AnalyzeMempoolTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -233,13 +233,13 @@ impl McpTool for AnalyzeMempoolTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         // First get mempool stats
         let stats_request = Request::new(Empty {});
-        let stats_response = self.grpc_client.get_mempool_stats(stats_request).await
+        let stats_response = self.grpc_client.clone().get_mempool_stats(stats_request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {}", e)))?
             .into_inner();
         
         // Then get transaction details
         let tx_request = Request::new(GetMempoolTransactionsRequest {});
-        let mut tx_stream = self.grpc_client.get_mempool_transactions(tx_request).await
+        let mut tx_stream = self.grpc_client.clone().get_mempool_transactions(tx_request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {}", e)))?
             .into_inner();
         

@@ -7,16 +7,16 @@ use minotari_mcp_common::{
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::{BanPeerRequest, UnbanPeerRequest}};
 use async_trait::async_trait;
 use serde_json::Value;
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 
 /// Tool for banning peers
 pub struct BanPeerTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl BanPeerTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -96,7 +96,7 @@ impl McpTool for BanPeerTool {
         };
 
         // Submit ban request
-        let mut client = self.grpc_client.as_ref().clone();
+        let mut client = self.grpc_client.clone().as_ref().clone();
         let response = client
             .ban_peer(request)
             .await
@@ -117,11 +117,11 @@ impl McpTool for BanPeerTool {
 
 /// Tool for unbanning peers
 pub struct UnbanPeerTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl UnbanPeerTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -171,7 +171,7 @@ impl McpTool for UnbanPeerTool {
         };
 
         // Submit unban request
-        let mut client = self.grpc_client.as_ref().clone();
+        let mut client = self.grpc_client.clone().as_ref().clone();
         let response = client
             .unban_peer(request)
             .await

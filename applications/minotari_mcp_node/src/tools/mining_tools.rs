@@ -7,7 +7,7 @@
 use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
@@ -18,11 +18,11 @@ use minotari_app_grpc::tari_rpc::{
 /// Tool for getting a new block template (existing implementation, enhanced)
 #[derive(Clone)]
 pub struct GetNewBlockTemplateTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNewBlockTemplateTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -58,7 +58,7 @@ impl McpTool for GetNewBlockTemplateTool {
             max_weight,
         });
         
-        let response = self.grpc_client.get_new_block_template(request).await
+        let response = self.grpc_client.clone().get_new_block_template(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template: {}", e)))?
             .into_inner();
         
@@ -105,11 +105,11 @@ impl McpTool for GetNewBlockTemplateTool {
 /// Tool for constructing a new block from a template
 #[derive(Clone)]
 pub struct GetNewBlockTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNewBlockTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -134,18 +134,18 @@ impl McpTool for GetNewBlockTool {
         // TODO: Implement proper template parsing when needed
         // let template = parse_block_template(&params)?;
         // let request = Request::new(template);
-        // let response = self.grpc_client.get_new_block(request).await?;
+        // let response = self.grpc_client.clone().get_new_block(request).await?;
     }
 }
 
 /// Tool for getting block template with custom coinbase outputs
 #[derive(Clone)]
 pub struct GetNewBlockTemplateWithCoinbasesTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNewBlockTemplateWithCoinbasesTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -223,7 +223,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             coinbases,
         });
         
-        let response = self.grpc_client.get_new_block_template_with_coinbases(request).await
+        let response = self.grpc_client.clone().get_new_block_template_with_coinbases(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template with coinbases: {}", e)))?
             .into_inner();
         
@@ -271,11 +271,11 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
 /// Tool for getting a block with custom coinbase from template
 #[derive(Clone)]
 pub struct GetNewBlockWithCoinbasesTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNewBlockWithCoinbasesTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -302,11 +302,11 @@ impl McpTool for GetNewBlockWithCoinbasesTool {
 /// Tool for mining operation analysis and recommendations
 #[derive(Clone)]
 pub struct MiningAnalysisTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl MiningAnalysisTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -341,7 +341,7 @@ impl McpTool for MiningAnalysisTool {
                 _ => continue,
             };
             
-            match self.grpc_client.get_new_block_template(Request::new(NewBlockTemplateRequest {
+            match self.grpc_client.clone().get_new_block_template(Request::new(NewBlockTemplateRequest {
                 algo: pow_algo as i32,
                 max_weight: 19500,
             })).await {

@@ -7,16 +7,16 @@ use minotari_mcp_common::{
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Block};
 use async_trait::async_trait;
 use serde_json::Value;
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 
 /// Tool for submitting blocks to the base node
 pub struct SubmitBlockTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl SubmitBlockTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -78,7 +78,7 @@ impl McpTool for SubmitBlockTool {
         };
 
         // Submit block to node
-        let mut client = self.grpc_client.as_ref().clone();
+        let mut client = self.grpc_client.clone().as_ref().clone();
         let response = client
             .submit_block(block)  // Submit the block directly
             .await

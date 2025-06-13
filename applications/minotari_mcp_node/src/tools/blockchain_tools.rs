@@ -6,7 +6,7 @@
 use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param, get_required_string_param};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
@@ -19,11 +19,11 @@ use minotari_app_grpc::tari_rpc::{
 /// Tool for listing blockchain headers
 #[derive(Clone)]
 pub struct ListHeadersTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl ListHeadersTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -57,7 +57,7 @@ impl McpTool for ListHeadersTool {
             sorting,
         });
         
-        let mut response_stream = self.grpc_client.list_headers(request).await
+        let mut response_stream = self.grpc_client.clone().list_headers(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to list headers: {}", e)))?
             .into_inner();
         
@@ -97,11 +97,11 @@ impl McpTool for ListHeadersTool {
 /// Tool for getting a specific block header by hash
 #[derive(Clone)]
 pub struct GetHeaderByHashTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetHeaderByHashTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -126,7 +126,7 @@ impl McpTool for GetHeaderByHashTool {
             hash: hash_bytes,
         });
         
-        let response = self.grpc_client.get_header_by_hash(request).await
+        let response = self.grpc_client.clone().get_header_by_hash(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get header: {}", e)))?
             .into_inner();
         
@@ -155,11 +155,11 @@ impl McpTool for GetHeaderByHashTool {
 /// Tool for getting blocks by height
 #[derive(Clone)]
 pub struct GetBlocksTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetBlocksTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -188,7 +188,7 @@ impl McpTool for GetBlocksTool {
         
         let request = Request::new(GetBlocksRequest { heights });
         
-        let mut response_stream = self.grpc_client.get_blocks(request).await
+        let mut response_stream = self.grpc_client.clone().get_blocks(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get blocks: {}", e)))?
             .into_inner();
         
@@ -226,11 +226,11 @@ impl McpTool for GetBlocksTool {
 /// Tool for getting tip information
 #[derive(Clone)]
 pub struct GetTipInfoTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetTipInfoTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -248,7 +248,7 @@ impl McpTool for GetTipInfoTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
         
-        let response = self.grpc_client.get_tip_info(request).await
+        let response = self.grpc_client.clone().get_tip_info(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get tip info: {}", e)))?
             .into_inner();
         
@@ -285,11 +285,11 @@ impl McpTool for GetTipInfoTool {
 /// Tool for getting sync information
 #[derive(Clone)]
 pub struct GetSyncInfoTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetSyncInfoTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -307,7 +307,7 @@ impl McpTool for GetSyncInfoTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
         
-        let response = self.grpc_client.get_sync_info(request).await
+        let response = self.grpc_client.clone().get_sync_info(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get sync info: {}", e)))?
             .into_inner();
         
@@ -335,11 +335,11 @@ impl McpTool for GetSyncInfoTool {
 /// Tool for getting network difficulty over time
 #[derive(Clone)]
 pub struct GetNetworkDifficultyTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNetworkDifficultyTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -365,7 +365,7 @@ impl McpTool for GetNetworkDifficultyTool {
             end_height,
         });
         
-        let mut response_stream = self.grpc_client.get_network_difficulty(request).await
+        let mut response_stream = self.grpc_client.clone().get_network_difficulty(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network difficulty: {}", e)))?
             .into_inner();
         
@@ -400,11 +400,11 @@ impl McpTool for GetNetworkDifficultyTool {
 /// Tool for getting tokens in circulation
 #[derive(Clone)]
 pub struct GetTokensInCirculationTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetTokensInCirculationTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -433,7 +433,7 @@ impl McpTool for GetTokensInCirculationTool {
         
         let request = Request::new(GetBlocksRequest { heights: heights.clone() });
         
-        let mut response_stream = self.grpc_client.get_tokens_in_circulation(request).await
+        let mut response_stream = self.grpc_client.clone().get_tokens_in_circulation(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get tokens in circulation: {}", e)))?
             .into_inner();
         
@@ -461,11 +461,11 @@ impl McpTool for GetTokensInCirculationTool {
 /// Tool for getting network state
 #[derive(Clone)]
 pub struct GetNetworkStateTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNetworkStateTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -483,7 +483,7 @@ impl McpTool for GetNetworkStateTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(GetNetworkStateRequest {});
         
-        let response = self.grpc_client.get_network_state(request).await
+        let response = self.grpc_client.clone().get_network_state(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network state: {}", e)))?
             .into_inner();
         

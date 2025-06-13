@@ -7,16 +7,16 @@ use minotari_mcp_common::{
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::{SubmitTransactionRequest, Transaction}};
 use async_trait::async_trait;
 use serde_json::Value;
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 
 /// Tool for submitting transactions to the mempool
 pub struct SubmitTransactionTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl SubmitTransactionTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -92,7 +92,7 @@ impl McpTool for SubmitTransactionTool {
         };
 
         // Submit transaction to mempool
-        let mut client = self.grpc_client.as_ref().clone();
+        let mut client = self.grpc_client.clone().as_ref().clone();
         let response = client
             .submit_transaction(request)
             .await

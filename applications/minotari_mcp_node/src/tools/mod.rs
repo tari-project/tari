@@ -10,7 +10,7 @@ mod network_tools;
 
 use minotari_mcp_common::ToolRegistry;
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 
 pub use submit_block::SubmitBlockTool;
@@ -49,7 +49,7 @@ impl NodeToolRegistry {
     /// Create a new node tool registry with all available tools
     #[allow(clippy::new_ret_no_self)]  // Factory method for registry
     pub fn new(
-        grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+        grpc_client: BaseNodeGrpcClient<Channel>,
         control_enabled: bool
     ) -> ToolRegistry {
         let mut registry = ToolRegistry::new();

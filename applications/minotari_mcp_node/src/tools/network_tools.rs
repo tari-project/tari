@@ -6,7 +6,7 @@
 use minotari_mcp_common::{McpTool, McpError, McpResult};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
 use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
@@ -16,11 +16,11 @@ use minotari_app_grpc::tari_rpc::{
 /// Tool for getting network status
 #[derive(Clone)]
 pub struct GetNetworkStatusTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNetworkStatusTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -38,7 +38,7 @@ impl McpTool for GetNetworkStatusTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
         
-        let response = self.grpc_client.get_network_status(request).await
+        let response = self.grpc_client.clone().get_network_status(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
             .into_inner();
         
@@ -82,11 +82,11 @@ impl McpTool for GetNetworkStatusTool {
 /// Tool for listing connected peers
 #[derive(Clone)]
 pub struct ListConnectedPeersTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl ListConnectedPeersTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -104,7 +104,7 @@ impl McpTool for ListConnectedPeersTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
         
-        let response = self.grpc_client.list_connected_peers(request).await
+        let response = self.grpc_client.clone().list_connected_peers(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to list connected peers: {}", e)))?
             .into_inner();
         
@@ -184,11 +184,11 @@ impl McpTool for ListConnectedPeersTool {
 /// Tool for getting all peers (including disconnected)
 #[derive(Clone)]
 pub struct GetAllPeersTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetAllPeersTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -210,7 +210,7 @@ impl McpTool for GetAllPeersTool {
         
         let request = Request::new(GetPeersRequest {});
         
-        let mut response_stream = self.grpc_client.get_peers(request).await
+        let mut response_stream = self.grpc_client.clone().get_peers(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get peers: {}", e)))?
             .into_inner();
         
@@ -297,11 +297,11 @@ impl McpTool for GetAllPeersTool {
 /// Tool for getting node identity
 #[derive(Clone)]
 pub struct GetNodeIdentityTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNodeIdentityTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -319,7 +319,7 @@ impl McpTool for GetNodeIdentityTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
         
-        let response = self.grpc_client.identify(request).await
+        let response = self.grpc_client.clone().identify(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
             .into_inner();
         
@@ -339,11 +339,11 @@ impl McpTool for GetNodeIdentityTool {
 /// Tool for network diagnostics
 #[derive(Clone)]
 pub struct NetworkDiagnosticsTool {
-    grpc_client: Arc<BaseNodeGrpcClient<Channel>>,
+    grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl NetworkDiagnosticsTool {
-    pub fn new(grpc_client: Arc<BaseNodeGrpcClient<Channel>>) -> Self {
+    pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
         Self { grpc_client }
     }
 }
@@ -361,19 +361,19 @@ impl McpTool for NetworkDiagnosticsTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         // Get network status
         let status_request = Request::new(Empty {});
-        let network_status = self.grpc_client.get_network_status(status_request).await
+        let network_status = self.grpc_client.clone().get_network_status(status_request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
             .into_inner();
         
         // Get connected peers
         let peers_request = Request::new(Empty {});
-        let connected_peers = self.grpc_client.list_connected_peers(peers_request).await
+        let connected_peers = self.grpc_client.clone().list_connected_peers(peers_request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get connected peers: {}", e)))?
             .into_inner();
         
         // Get node identity
         let identity_request = Request::new(Empty {});
-        let node_identity = self.grpc_client.identify(identity_request).await
+        let node_identity = self.grpc_client.clone().identify(identity_request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
             .into_inner();
         
