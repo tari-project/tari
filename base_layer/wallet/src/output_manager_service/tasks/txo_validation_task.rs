@@ -30,11 +30,7 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::{BlockHash, FixedHash};
 use tari_comms::protocol::rpc::RpcError::RequestFailed;
-use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcClient,
-    blocks::BlockHeader,
-    proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
-};
+use tari_core::blocks::BlockHeader;
 use tari_utilities::hex::Hex;
 use tokio::sync::watch;
 

@@ -27,20 +27,19 @@ use std::{
 };
 
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::{BlockHash, Signature},
 };
 use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
-        rpc::BaseNodeWalletRpcClient,
-    },
+    self,
+    base_node::rpc::models::TxLocation,
     blocks::BlockHeader,
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -95,12 +94,7 @@ where
     }
 
     pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
-        let mut base_node_wallet_client = self
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .ok_or(TransactionServiceError::Shutdown)
-            .for_protocol(self.operation_id)?;
+        let mut base_node_wallet_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
         self.check_for_reorgs(&mut base_node_wallet_client).await?;
         debug!(
@@ -184,7 +178,7 @@ where
 
     async fn check_for_reorgs(
         &mut self,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         debug!(
             target: LOG_TARGET,
@@ -250,7 +244,7 @@ where
     async fn query_base_node_for_transactions(
         &self,
         batch: &[UnconfirmedTransactionInfo],
-        base_node_client: &mut BaseNodeWalletRpcClient,
+        base_node_client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<
         (
             Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64, u64)>,
@@ -285,60 +279,56 @@ where
             self.operation_id
         );
 
-        let batch_response = base_node_client
-            .transaction_batch_query(SignaturesProto {
-                sigs: batch_signatures
-                    .keys()
-                    .map(|s| SignatureProto::from(s.clone()))
-                    .collect(),
-            })
-            .await?;
-
-        for response_proto in batch_response.responses {
-            let response = TxQueryBatchResponse::try_from(response_proto)
-                .map_err(TransactionServiceError::ProtobufConversionError)?;
-            let sig = response.signature;
-            if let Some(unconfirmed_tx) = batch_signatures.get(&sig) {
-                if response.location == TxLocation::Mined &&
-                    response.best_block_hash.is_some() &&
-                    response.mined_timestamp.is_some()
-                {
-                    mined.push((
-                        (*unconfirmed_tx).clone(),
-                        response.best_block_height,
-                        response.best_block_hash.unwrap(),
-                        response.confirmations,
-                        response.mined_timestamp.unwrap(),
-                    ));
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Transaction {} is unmined (Operation ID: {})",
-                        &unconfirmed_tx.tx_id,
-                        self.operation_id,
-                    );
-                    unmined.push((*unconfirmed_tx).clone());
-                }
+        let mut best_block_height = 0;
+        let mut best_block_hash = BlockHash::default();
+        let mut tip_mined_timestamp = 0;
+        for (sig, unconfirmed_tx) in batch_signatures {
+            let response = base_node_client
+                .transaction_query(
+                    sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                    sig.get_signature().as_bytes().to_vec(),
+                )
+                .await
+                .map_err(|e| TransactionServiceError::Other(e.to_string()))?;
+            best_block_hash = response
+                .best_block_hash
+                .clone()
+                .try_into()
+                .map_err(|e| TransactionServiceError::Other(format!("Could not convert best block hash: {}", e)))?;
+            best_block_height = response.best_block_height;
+            tip_mined_timestamp = response.mined_timestamp;
+            if response.location == TxLocation::Mined {
+                mined.push((
+                    (*unconfirmed_tx).clone(),
+                    response.best_block_height,
+                    response.best_block_hash.try_into().map_err(|e| {
+                        TransactionServiceError::Other(format!("Could not convert best block hash: {}", e))
+                    })?,
+                    response.confirmations,
+                    response.mined_timestamp,
+                ));
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Transaction {} is unmined (Operation ID: {})",
+                    &unconfirmed_tx.tx_id,
+                    self.operation_id,
+                );
+                unmined.push((*unconfirmed_tx).clone());
             }
         }
-
-        let tip = batch_response.best_block_hash.try_into()?;
 
         Ok((
             mined,
             unmined,
-            Some((
-                batch_response.best_block_height,
-                tip,
-                batch_response.tip_mined_timestamp,
-            )),
+            Some((best_block_height, best_block_hash, tip_mined_timestamp)),
         ))
     }
 
     async fn get_base_node_block_at_height(
         &mut self,
         height: u64,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<Option<BlockHash>, TransactionServiceError> {
         let result = match client.get_header_by_height(height).await {
             Ok(r) => r,
@@ -347,25 +337,14 @@ where
                     target: LOG_TARGET,
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
-                match &rpc_error {
-                    RequestFailed(status) => {
-                        if status.as_status_code() == NotFound {
-                            return Ok(None);
-                        } else {
-                            return Err(rpc_error.into());
-                        }
-                    },
-                    _ => {
-                        return Err(rpc_error.into());
-                    },
-                }
+                return Err(TransactionServiceError::Other(format!(
+                    "Error asking base node for header at height {}: {}",
+                    height, rpc_error
+                )));
             },
         };
 
-        let block_header: BlockHeader = result.try_into().map_err(|s| {
-            TransactionServiceError::InvalidMessageError(format!("Could not convert block header: {}", s))
-        })?;
-        Ok(Some(block_header.hash()))
+        Ok(result.map(|x| x.hash))
     }
 
     #[allow(clippy::ptr_arg)]

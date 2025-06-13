@@ -25,7 +25,7 @@ use tari_comms::{
     protocol::rpc::RpcClientLease,
     types::CommsPublicKey,
 };
-use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
+use tari_core::base_node::sync::rpc::BaseNodeSyncRpcClient;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::{
@@ -42,8 +42,6 @@ pub enum OnlineStatus {
 }
 
 pub enum WalletConnectivityRequest {
-    ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
-    ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
     DisconnectBaseNode(NodeId),
 }
 

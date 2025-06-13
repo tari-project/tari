@@ -3181,22 +3181,3 @@ fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, Com
     let file = File::open(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     serde_json::from_reader(file).map_err(|e| CommandError::JsonFile(e.to_string()))
 }
-
-#[allow(dead_code)]
-async fn get_tip_height(wallet: &WalletSqlite) -> Option<u64> {
-    let client = wallet
-        .wallet_connectivity
-        .clone()
-        .obtain_base_node_wallet_rpc_client_timeout(Duration::from_secs(10))
-        .await;
-
-    match client {
-        Some(mut client) => client
-            .get_tip_info()
-            .await
-            .ok()
-            .and_then(|t| t.metadata)
-            .map(|m| m.best_block_height),
-        None => None,
-    }
-}

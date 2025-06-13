@@ -28,10 +28,7 @@ use tari_comms::{
     protocol::rpc::RpcClientLease,
     types::CommsPublicKey,
 };
-use tari_core::{
-    base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient},
-    transactions::transaction_components::Transaction,
-};
+use tari_core::transactions::transaction_components::Transaction;
 use tokio::sync::watch;
 
 use crate::connectivity_service::{handle::OnlineStatus, BaseNodePeerManager};

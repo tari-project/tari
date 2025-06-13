@@ -35,3 +35,4 @@ pub use interface::WalletConnectivityInterface;
 
 mod base_node_peer_manager;
 pub use base_node_peer_manager::BaseNodePeerManager;
+pub use handle::OnlineStatus;

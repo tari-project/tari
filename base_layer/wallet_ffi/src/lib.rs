@@ -255,7 +255,7 @@ pub struct TariContacts(Vec<TariContact>);
 pub type TariContact = Contact;
 pub type TariCompletedTransaction = CompletedTransaction;
 pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
-pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
+// pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
 pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
@@ -10482,7 +10482,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
     wallet: *mut TariWallet,
     count: c_uint,
     error_out: *mut c_int,
-) -> *mut TariFeePerGramStats {
+) -> *mut TariFeePerGramStat {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -10497,7 +10497,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
         (*wallet)
             .wallet
             .transaction_service
-            .get_fee_per_gram_stats_per_block(count as usize),
+            .get_fee_per_gram_stats_per_block(count as u64),
     ) {
         Ok(estimates) => Box::into_raw(Box::new(estimates)),
         Err(e) => {

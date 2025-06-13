@@ -31,7 +31,10 @@ use minotari_wallet::{
         service::Balance,
     },
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
-    utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
+    utxo_scanner_service::{
+        handle::{UtxoScannerEvent, UtxoScannerHandle},
+        service::DefaultHttpClientFactory,
+    },
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::Mutex;
@@ -51,7 +54,7 @@ pub struct WalletDebouncer {
     refresh_needed: Arc<Mutex<bool>>,
     output_manager_service: OutputManagerHandle,
     transaction_service: TransactionServiceHandle,
-    wallet_connectivity: WalletConnectivityHandle,
+    wallet_connectivity: WalletConnectivityHandle<DefaultHttpClientFactory>,
     utxo_scanner_handle: UtxoScannerHandle,
     shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<Mutex<bool>>,
@@ -62,7 +65,7 @@ impl WalletDebouncer {
     pub fn new(
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
-        wallet_connectivity: WalletConnectivityHandle,
+        wallet_connectivity: WalletConnectivityHandle<DefaultHttpClientFactory>,
         utxo_scanner_handle: UtxoScannerHandle,
         shutdown_signal: ShutdownSignal,
     ) -> Self {

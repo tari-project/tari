@@ -128,7 +128,12 @@ use crate::{
         TransactionServiceInitializer,
     },
     util::wallet_identity::WalletIdentity,
-    utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
+    utxo_scanner_service::{
+        handle::UtxoScannerHandle,
+        initializer::UtxoScannerServiceInitializer,
+        service::{DefaultHttpClientFactory, HttpClientFactory},
+        RECOVERY_KEY,
+    },
 };
 
 const LOG_TARGET: &str = "wallet";
@@ -145,14 +150,16 @@ hash_domain!(
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
+pub struct Wallet<T, U, V, W, TKeyManagerInterface, THttpClientFactory>
+where THttpClientFactory: HttpClientFactory
+{
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub output_manager_service: OutputManagerHandle,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
-    pub wallet_connectivity: WalletConnectivityHandle,
+    pub wallet_connectivity: WalletConnectivityHandle<THttpClientFactory>,
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
@@ -167,13 +174,14 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     _w: PhantomData<W>,
 }
 
-impl<T, U, V, W, TKeyManagerInterface> Wallet<T, U, V, W, TKeyManagerInterface>
+impl<T, U, V, W, TKeyManagerInterface, THttpClientFactory> Wallet<T, U, V, W, TKeyManagerInterface, THttpClientFactory>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
     TKeyManagerInterface: SecretTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn start<TKeyManagerBackend: TransactionKeyManagerBackend + 'static>(
@@ -252,12 +260,14 @@ where
                 config.contacts_auto_ping_interval,
                 config.contacts_online_ping_window,
             ))
-            .add_initializer(BaseNodeServiceInitializer::new(
-                config.base_node_service_config.clone(),
-                wallet_database.clone(),
-            ))
+            .add_initializer(BaseNodeServiceInitializer::new(wallet_database.clone()))
             .add_initializer(WalletConnectivityInitializer::new(
-                config.base_node_service_config.clone(),
+                config
+                    .http_client_url
+                    .as_ref()
+                    .ok_or_else(|| WalletError::InvalidHttpNodeUrl("Not set".to_string()))?
+                    .parse()
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
             ))
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
@@ -339,7 +349,7 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
-        let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+        let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
         let updater_handle = if auto_update.is_update_enabled() {
             Some(handles.expect_handle::<SoftwareUpdaterHandle>())
         } else {

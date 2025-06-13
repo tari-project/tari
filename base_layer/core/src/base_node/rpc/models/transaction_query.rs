@@ -5,7 +5,7 @@ use tari_common_types::types;
 use tari_crypto::{compressed_key::CompressedKey, ristretto::RistrettoSecretKey};
 use tari_utilities::{ByteArray, ByteArrayError};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum TxLocation {
     None = 0,
     NotStored = 1,

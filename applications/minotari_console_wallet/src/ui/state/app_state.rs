@@ -38,7 +38,7 @@ use minotari_wallet::{
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
     util::wallet_identity::WalletIdentity,
-    utxo_scanner_service::handle::UtxoScannerHandle,
+    utxo_scanner_service::{handle::UtxoScannerHandle, service::DefaultHttpClientFactory},
     WalletConfig,
     WalletSqlite,
 };
@@ -102,7 +102,7 @@ pub struct AppState {
     completed_tx_filter: TransactionFilter,
     config: AppStateConfig,
     wallet_config: WalletConfig,
-    wallet_connectivity: WalletConnectivityHandle,
+    wallet_connectivity: WalletConnectivityHandle<DefaultHttpClientFactory>,
     balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
 
@@ -561,7 +561,7 @@ impl AppState {
         self.cached_data.wallet_scanned_height
     }
 
-    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
+    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle<DefaultHttpClientFactory> {
         self.wallet_connectivity.clone()
     }
 
@@ -1119,7 +1119,7 @@ impl AppStateInner {
         self.wallet.comms.connectivity().get_event_subscription()
     }
 
-    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle {
+    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle<DefaultHttpClientFactory> {
         self.wallet.wallet_connectivity.clone()
     }
 

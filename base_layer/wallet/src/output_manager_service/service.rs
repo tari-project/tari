@@ -51,7 +51,6 @@ use tari_core::{
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
     },
-    proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
         tari_amount::MicroMinotari,

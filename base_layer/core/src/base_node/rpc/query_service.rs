@@ -9,17 +9,20 @@ use thiserror::Error;
 
 use crate::{
     base_node::{
-        rpc::models::{
-            self,
-            BlockUtxoInfo,
-            GetUtxosByBlockRequest,
-            GetUtxosByBlockResponse,
-            MinimalUtxoSyncInfo,
-            SyncUtxosByBlockRequest,
-            SyncUtxosByBlockResponse,
-            TipInfoResponse,
-            TxLocation,
-            TxQueryResponse,
+        rpc::{
+            models::{
+                self,
+                BlockUtxoInfo,
+                GetUtxosByBlockRequest,
+                GetUtxosByBlockResponse,
+                MinimalUtxoSyncInfo,
+                SyncUtxosByBlockRequest,
+                SyncUtxosByBlockResponse,
+                TipInfoResponse,
+                TxLocation,
+                TxQueryResponse,
+            },
+            BaseNodeWalletQueryService,
         },
         state_machine_service::states::StateInfo,
         StateMachineHandle,

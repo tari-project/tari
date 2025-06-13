@@ -44,6 +44,7 @@ use crate::{
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{sqlite_db::wallet::WalletSqliteDatabase, sqlite_utilities::WalletDbConnection},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
+    utxo_scanner_service::service::DefaultHttpClientFactory,
 };
 
 mod consts {
@@ -57,6 +58,7 @@ pub type WalletSqlite = Wallet<
     OutputManagerSqliteDatabase,
     ContactsServiceSqliteDatabase<WalletDbConnection>,
     WalletKeyManager,
+    DefaultHttpClientFactory,
 >;
 
 pub type WalletKeyManager = TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>;

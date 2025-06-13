@@ -200,6 +200,8 @@ pub enum TransactionServiceError {
     ScriptError(#[from] ScriptError),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Other error: `{0}`")]
+    Other(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

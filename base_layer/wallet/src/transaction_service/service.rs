@@ -31,6 +31,7 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common::configuration::Network;
@@ -60,7 +61,7 @@ use tari_core::{
     covenants::Covenant,
     mempool::FeePerGramStat,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-    proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
+    proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
@@ -1041,32 +1042,18 @@ where
 
     fn handle_get_fee_per_gram_stats_per_block_request(
         &self,
-        count: usize,
+        count: u64,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) {
         let mut connectivity = self.resources.connectivity.clone();
 
         let query_base_node_fut = async move {
-            let mut client = connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .ok_or(TransactionServiceError::Shutdown)?;
+            let mut client = connectivity.obtain_base_node_wallet_rpc_client().await;
 
             let resp = client
-                .get_mempool_fee_per_gram_stats(base_node_proto::GetMempoolFeePerGramStatsRequest {
-                    count: count as u64,
-                })
-                .await?;
-            let mut resp = FeePerGramStatsResponse::from(resp);
-            // If there are no transactions in the mempool, populate with a minimal fee per gram.
-            if resp.stats.is_empty() {
-                resp.stats = vec![FeePerGramStat {
-                    order: 0,
-                    min_fee_per_gram: 1.into(),
-                    avg_fee_per_gram: 1.into(),
-                    max_fee_per_gram: 1.into(),
-                }]
-            }
+                .get_mempool_fee_per_gram_stats(count)
+                .await
+                .map_err(|e| TransactionServiceError::Other(e.to_string()))?;
             Ok(TransactionServiceResponse::FeePerGramStatsPerBlock(resp))
         };
 
@@ -1282,25 +1269,23 @@ where
         &mut self,
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionOutput>, TransactionServiceError> {
-        // lets get the output from the blockchain
-        let req = FetchMatchingUtxos {
-            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
-        };
-        let results: Vec<TransactionOutput> = self
-            .resources
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .ok_or_else(|| {
-                TransactionServiceError::ServiceError("Could not connect to base node rpc client".to_string())
-            })?
-            .fetch_matching_utxos(req)
-            .await?
-            .outputs
-            .into_iter()
-            .filter_map(|o| o.try_into().ok())
-            .collect();
-        Ok(results)
+        let mut res = vec![];
+        for hash in hashes {
+            match self
+                .resources
+                .connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .fetch_utxo(hash.to_vec())
+                .await
+                .map_err(|e| TransactionServiceError::Other(e.to_string()))?
+            {
+                Some(output) => res.push(output),
+                None => warn!(target: LOG_TARGET, "UTXO not found for hash: {}", hash),
+            }
+        }
+
+        Ok(res)
     }
 
     /// Creates an encumbered uninitialized transaction

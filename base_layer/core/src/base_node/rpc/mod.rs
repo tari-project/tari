@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 #[cfg(feature = "base_node")]
-mod service;
-#[cfg(feature = "base_node")]
 pub mod sync_utxos_by_block_task;
 
 pub mod models;
@@ -13,8 +11,6 @@ pub mod query_service;
 
 use std::{error::Error, fmt::Debug};
 
-#[cfg(feature = "base_node")]
-pub use service::BaseNodeWalletRpcService;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 #[cfg(feature = "base_node")]
@@ -31,22 +27,12 @@ use crate::{
     proto,
     proto::{
         base_node::{
-            FetchMatchingUtxos,
-            FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
             GetWalletQueryHttpServiceAddressResponse,
-            QueryDeletedRequest,
-            QueryDeletedResponse,
             Signatures,
             SyncUtxosByBlockRequest,
             SyncUtxosByBlockResponse,
-            TipInfoResponse,
-            TxQueryBatchResponses,
-            TxQueryResponse,
-            TxSubmissionResponse,
-            UtxoQueryRequest,
-            UtxoQueryResponses,
         },
         types::{Signature, Transaction},
     },

@@ -24,7 +24,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{create_wallet_connectivity_mock, BaseNodePeerManager, WalletConnectivityMock},
+    connectivity_service::{BaseNodePeerManager, WalletConnectivityHandle},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -57,11 +57,9 @@ use tari_comms::{
     test_utils::node_identity::build_node_identity,
 };
 use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     borsh::SerializedSize,
     covenants::Covenant,
-    proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroMinotari, T},
@@ -89,6 +87,7 @@ use tokio::{
 };
 
 use crate::support::{
+    base_node_http_service_mock::MockHttpClientFactory,
     base_node_service_mock::MockBaseNodeService,
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     data::get_temp_sqlite_database_connection,
@@ -102,10 +101,9 @@ fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
 
 struct TestOmsService {
     pub output_manager_handle: OutputManagerHandle,
-    pub wallet_connectivity_mock: WalletConnectivityMock,
+    pub wallet_connectivity_mock: WalletConnectivityHandle<MockHttpClientFactory>,
     pub _shutdown: Shutdown,
     pub _transaction_service_handle: TransactionServiceHandle,
-    pub mock_rpc_service: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     pub node_id: Arc<NodeIdentity>,
     pub base_node_wallet_rpc_mock_state: BaseNodeWalletRpcMockState,
     pub _node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
@@ -137,7 +135,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
-    let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
+    let mut wallet_connectivity_mock = todo!();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     wallet_connectivity_mock

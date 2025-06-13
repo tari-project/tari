@@ -206,7 +206,7 @@ pub enum TransactionServiceRequest {
     ReValidateTransactions,
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
-        count: usize,
+        count: u64,
     },
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
     GetPaymentByReference(FixedHash),
@@ -451,7 +451,7 @@ pub enum TransactionServiceResponse {
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, CompressedPublicKey, TransactionOutput)>),
-    FeePerGramStatsPerBlock(FeePerGramStatsResponse),
+    FeePerGramStatsPerBlock(FeePerGramStat),
     /// Response containing PayRefs for a transaction
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
@@ -1254,8 +1254,8 @@ impl TransactionServiceHandle {
     /// Query the base node for the fee per gram stats of the next {count} blocks.
     pub async fn get_fee_per_gram_stats_per_block(
         &mut self,
-        count: usize,
-    ) -> Result<FeePerGramStatsResponse, TransactionServiceError> {
+        count: u64,
+    ) -> Result<FeePerGramStat, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetFeePerGramStatsPerBlock { count })

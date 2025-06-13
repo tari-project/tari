@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
@@ -34,13 +33,10 @@ use tari_common_types::{
     types::Signature,
 };
 use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
-        rpc::BaseNodeWalletRpcClient,
-    },
+    base_node::rpc::models::{TxLocation, TxSubmissionRejectionReason, TxSubmissionResponse},
     transactions::{transaction_components::Transaction, transaction_key_manager::TransactionKeyManagerInterface},
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
 
 use crate::{
@@ -308,22 +304,19 @@ where
         signature: Signature,
         client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-        let response = match client.transaction_query(signature.into()).await {
-            Ok(r) => match TxQueryResponse::try_from(r) {
-                Ok(r) => r,
-                Err(_) => {
-                    trace!(target: LOG_TARGET, "Could not convert proto TxQueryResponse");
-                    return Ok(false);
-                },
-            },
-            Err(e) => {
+        let response = client
+            .transaction_query(
+                signature.get_compressed_public_nonce().as_bytes().to_vec(),
+                signature.get_signature().as_bytes().to_vec(),
+            )
+            .await
+            .map_err(|e| {
                 info!(
                     target: LOG_TARGET,
                     "Transaction Query RPC Call to Base Node failed: {}", e
                 );
-                return Ok(false);
-            },
-        };
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Other(e.to_string()))
+            })?;
 
         if !(response.is_synced ||
             (response.location == TxLocation::Mined &&

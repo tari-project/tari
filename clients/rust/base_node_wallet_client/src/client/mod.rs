@@ -4,14 +4,17 @@ pub mod http;
 
 use anyhow::Error;
 use tari_core::{
-    base_node::{
-        proto::wallet_rpc::TxSubmissionResponse,
-        rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse},
+    base_node::rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse},
+    mempool::FeePerGramStat,
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{Transaction, TransactionOutput},
     },
-    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
+
+use crate::client::models::TxSubmissionResponse;
 
 /// Trait that a base node wallet client must implement.
 #[async_trait::async_trait]
@@ -47,8 +50,11 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 
     async fn transaction_query(
         &self,
-        transaction_hash: Vec<u8>,
-    ) -> Result<Option<models::TransactionQueryResponse>, Error>;
+        excess_sig_nonce: Vec<u8>,
+        excess_sig_sig: Vec<u8>,
+    ) -> Result<models::TxQueryResponse, Error>;
+
+    async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, Error>;
 }
 
 pub struct DeletedUtxoInfo {

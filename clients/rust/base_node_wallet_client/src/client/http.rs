@@ -5,12 +5,16 @@ use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
 use tari_core::{
-    base_node::{
-        proto::wallet_rpc::TxSubmissionResponse,
-        rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse, TipInfoResponse},
+    base_node::rpc::models::{
+        self,
+        BlockHeader,
+        SyncUtxosByBlockResponse,
+        TipInfoResponse,
+        TxQueryResponse,
+        TxSubmissionResponse,
     },
-    proto::base_node::FetchMatchingUtxos,
-    transactions::transaction_components::TransactionOutput,
+    mempool::FeePerGramStat,
+    transactions::{tari_amount::MicroMinotari, transaction_components::TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -252,6 +256,18 @@ impl BaseNodeWalletClient for Client {
         &self,
         transaction: tari_core::transactions::transaction_components::Transaction,
     ) -> Result<TxSubmissionResponse, anyhow::Error> {
+        todo!()
+    }
+
+    async fn transaction_query(
+        &self,
+        excess_sig_nonce: Vec<u8>,
+        excess_sig_sig: Vec<u8>,
+    ) -> Result<TxQueryResponse, anyhow::Error> {
+        todo!()
+    }
+
+    async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, anyhow::Error> {
         todo!()
     }
 }
