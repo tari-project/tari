@@ -9,6 +9,7 @@ mod server;
 mod tools;
 mod resources;
 mod prompts;
+mod grpc_config_parser;
 
 use crate::cli::Cli;
 use crate::config::NodeMcpConfig;
