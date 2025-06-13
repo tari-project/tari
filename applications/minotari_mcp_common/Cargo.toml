@@ -29,3 +29,6 @@ prost-types = "0.13.3"
 minotari_node_grpc_client = { workspace = true }
 minotari_wallet_grpc_client = { workspace = true }
 which = "5.0"
+
+[dev-dependencies]
+tokio-test = "0.4"

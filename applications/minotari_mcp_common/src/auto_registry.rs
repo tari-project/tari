@@ -603,7 +603,7 @@ mod tests {
     async fn test_auto_discovery_registry() {
         let config = AutoDiscoveryConfig::default();
         let service_discovery = Arc::new(ServiceDiscovery::new());
-        let schema_generator = Arc::new(SchemaGenerator::new());
+        let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
         let error_mapper = Arc::new(GrpcErrorMapper::new());
         
         let registry = AutoDiscoveryRegistry::new(
@@ -622,7 +622,7 @@ mod tests {
     fn test_risk_level_determination() {
         let config = AutoDiscoveryConfig::default();
         let service_discovery = Arc::new(ServiceDiscovery::new());
-        let schema_generator = Arc::new(SchemaGenerator::new());
+        let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
         let error_mapper = Arc::new(GrpcErrorMapper::new());
         
         let registry = AutoDiscoveryRegistry::new(
@@ -634,6 +634,8 @@ mod tests {
         
         let safe_method = GrpcMethodInfo {
             name: "get_balance".to_string(),
+            service: "Wallet".to_string(),
+            full_name: "tari.rpc.Wallet/GetBalance".to_string(),
             description: "Get balance".to_string(),
             category: GrpcMethodCategory::Balance,
             is_control_operation: false,

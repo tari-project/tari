@@ -27,6 +27,8 @@ pub mod grpc_error_mapper;
 pub mod auto_registry;
 pub mod grpc_executor;
 pub mod grpc_client_implementations;
+pub mod parameter_converter;
+pub mod method_implementations;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -50,3 +52,5 @@ pub use grpc_error_mapper::{GrpcErrorMapper, ErrorContext, ErrorCategory, ErrorS
 pub use auto_registry::{AutoDiscoveryRegistry, AutoDiscoveryConfig, ServerType, ToolOverride, RegistryStatistics};
 pub use grpc_executor::{GrpcExecutor, NodeGrpcClient, WalletGrpcClient, ExecutorStatus};
 pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
+pub use parameter_converter::{ParameterConverter, ConversionRegistry, ConversionError, JsonParameterExtractor};
+pub use method_implementations::{create_node_converters, create_wallet_converters};

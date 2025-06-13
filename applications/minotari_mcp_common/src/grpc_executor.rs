@@ -7,6 +7,7 @@ use crate::{
     grpc_discovery::{GrpcMethodInfo, GrpcMethodCategory},
     grpc_error_mapper::GrpcErrorMapper,
     auto_registry::ServerType,
+    parameter_converter::ConversionRegistry,
     McpResult, McpError,
 };
 use serde_json::{Value, json};
@@ -23,6 +24,8 @@ pub struct GrpcExecutor {
     pub error_mapper: Arc<GrpcErrorMapper>,
     /// Server type this executor is configured for
     pub server_type: ServerType,
+    /// Parameter conversion registry for JSON to protobuf conversion
+    pub conversion_registry: Arc<ConversionRegistry>,
 }
 
 /// Trait for node gRPC client operations
@@ -104,12 +107,14 @@ impl GrpcExecutor {
     pub fn new_node(
         client: Arc<dyn NodeGrpcClient>,
         error_mapper: Arc<GrpcErrorMapper>,
+        conversion_registry: Arc<ConversionRegistry>,
     ) -> Self {
         Self {
             node_client: Some(client),
             wallet_client: None,
             error_mapper,
             server_type: ServerType::Node,
+            conversion_registry,
         }
     }
     
@@ -117,12 +122,14 @@ impl GrpcExecutor {
     pub fn new_wallet(
         client: Arc<dyn WalletGrpcClient>,
         error_mapper: Arc<GrpcErrorMapper>,
+        conversion_registry: Arc<ConversionRegistry>,
     ) -> Self {
         Self {
             node_client: None,
             wallet_client: Some(client),
             error_mapper,
             server_type: ServerType::Wallet,
+            conversion_registry,
         }
     }
     
@@ -432,7 +439,8 @@ mod tests {
     async fn test_node_executor_creation() {
         let client = Arc::new(MockNodeClient);
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let executor = GrpcExecutor::new_node(client, error_mapper);
+        let conversion_registry = Arc::new(ConversionRegistry::new());
+        let executor = GrpcExecutor::new_node(client, error_mapper, conversion_registry);
         
         assert!(executor.node_client.is_some());
         assert!(executor.wallet_client.is_none());
@@ -443,7 +451,8 @@ mod tests {
     async fn test_executor_status() {
         let client = Arc::new(MockNodeClient);
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let executor = GrpcExecutor::new_node(client, error_mapper);
+        let conversion_registry = Arc::new(ConversionRegistry::new());
+        let executor = GrpcExecutor::new_node(client, error_mapper, conversion_registry);
         let status = executor.get_status();
         
         assert!(status.is_ready());
