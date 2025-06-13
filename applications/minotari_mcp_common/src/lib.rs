@@ -17,7 +17,7 @@ pub mod process_manager;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
-pub use tools::{McpTool, ToolRegistry, get_required_string_param, get_required_number_param, get_required_bool_param, get_required_u64_param};
+pub use tools::{McpTool, ToolRegistry, get_required_string_param, get_optional_string_param, get_required_number_param, get_required_bool_param, get_required_u64_param};
 pub use resources::{McpResource, ResourceRegistry};
 pub use prompts::{McpPrompt, PromptRegistry, MessageRole, PromptMessage, PromptContent, text_message, resource_message};
 pub use security::{SecurityContext, PermissionLevel};
