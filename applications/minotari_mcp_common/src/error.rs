@@ -1,6 +1,7 @@
 //! Error types for MCP operations
 
 use thiserror::Error;
+use serde_json::{json, Value};
 
 pub type McpResult<T> = Result<T, McpError>;
 
@@ -90,5 +91,99 @@ impl McpError {
             self,
             Self::ToolNotFound(_) | Self::ResourceNotFound(_) | Self::PromptNotFound(_)
         )
+    }
+
+    /// Get JSON-RPC 2.0 error code for this error
+    pub fn error_code(&self) -> i32 {
+        match self {
+            Self::SerializationError(_) => -32700,  // Parse error
+            Self::InvalidRequest(_) => -32600,      // Invalid Request
+            Self::ToolNotFound(_) | Self::ResourceNotFound(_) | Self::PromptNotFound(_) => -32601, // Method not found
+            Self::PermissionDenied(_) | Self::AuthenticationFailed(_) => -32603, // Internal error (authorization)
+            Self::RateLimitExceeded => -32603,      // Internal error (rate limit)
+            Self::ServerError(_) | Self::TransportError(_) => -32603, // Internal error
+            Self::ToolExecutionFailed(_) | Self::ResourceAccessFailed(_) => -32603, // Internal error
+            Self::ConfigError(_) => -32603,         // Internal error
+            Self::IoError(_) => -32603,            // Internal error
+            Self::Other(_) => -32603,              // Internal error
+        }
+    }
+
+    /// Convert error to JSON-RPC 2.0 error object
+    pub fn to_json_rpc_error(&self, id: Option<Value>) -> Value {
+        let code = self.error_code();
+        let message = self.to_string();
+        
+        // Create detailed error data
+        let mut data = json!({
+            "error_type": self.error_type_name(),
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+
+        // Add context-specific data
+        match self {
+            Self::PermissionDenied(msg) => {
+                data["details"] = json!({
+                    "permission_required": msg,
+                    "help": "Check that you have the required permissions for this operation"
+                });
+            }
+            Self::ToolNotFound(tool) => {
+                data["details"] = json!({
+                    "tool_name": tool,
+                    "help": "Use 'tools/list' to see available tools"
+                });
+            }
+            Self::ResourceNotFound(resource) => {
+                data["details"] = json!({
+                    "resource_uri": resource,
+                    "help": "Use 'resources/list' to see available resources"
+                });
+            }
+            Self::RateLimitExceeded => {
+                data["details"] = json!({
+                    "retry_after": 60,
+                    "help": "Wait before making more requests"
+                });
+            }
+            Self::ToolExecutionFailed(msg) => {
+                data["details"] = json!({
+                    "execution_error": msg,
+                    "help": "Check tool parameters and try again"
+                });
+            }
+            _ => {}
+        }
+
+        json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": code,
+                "message": message,
+                "data": data
+            }
+        })
+    }
+
+    /// Get a human-readable error type name
+    pub fn error_type_name(&self) -> &'static str {
+        match self {
+            Self::PermissionDenied(_) => "permission_denied",
+            Self::InvalidRequest(_) => "invalid_request",
+            Self::ToolNotFound(_) => "tool_not_found",
+            Self::ResourceNotFound(_) => "resource_not_found",
+            Self::PromptNotFound(_) => "prompt_not_found",
+            Self::ToolExecutionFailed(_) => "tool_execution_failed",
+            Self::ResourceAccessFailed(_) => "resource_access_failed",
+            Self::ConfigError(_) => "config_error",
+            Self::TransportError(_) => "transport_error",
+            Self::AuthenticationFailed(_) => "authentication_failed",
+            Self::RateLimitExceeded => "rate_limit_exceeded",
+            Self::ServerError(_) => "server_error",
+            Self::SerializationError(_) => "serialization_error",
+            Self::IoError(_) => "io_error",
+            Self::Other(_) => "other_error",
+        }
     }
 }

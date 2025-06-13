@@ -11,6 +11,7 @@ use crate::transport::{
     ToolCallParams, ResourceReadParams, PromptGetParams, InitializeParams,
 };
 use crate::stdio_transport::StdioTransport;
+use crate::input_sanitizer::sanitize_tool_input;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -76,7 +77,7 @@ impl McpServerBuilder {
         let security_context = Arc::new(RwLock::new(SecurityContext::new(
             self.config.are_control_operations_enabled(),
             self.config.rate_limit_per_minute,
-            self.config.audit_log_path.clone(),
+            self.config.get_audit_log_path().map(|p| p.to_string_lossy().to_string()),
         )));
 
         Ok(McpServerImpl {
@@ -93,7 +94,7 @@ impl McpServerBuilder {
 #[async_trait]
 impl McpServer for McpServerImpl {
     async fn start(&self) -> McpResult<()> {
-        if !self.config.should_accept_connections() {
+        if !self.config.should_start_server() {
             log::info!("MCP server disabled in configuration");
             return Ok(());
         }
@@ -143,7 +144,7 @@ impl McpServer for McpServerImpl {
     fn is_running(&self) -> bool {
         // This is a simplified check - in a real implementation,
         // we'd need to track the actual transport state
-        self.config.should_accept_connections()
+        self.config.should_start_server()
     }
 
     fn config(&self) -> &McpConfig {
@@ -231,11 +232,18 @@ impl ServerMessageHandler {
         // Get client IP - in a real implementation, this would come from the connection context
         let client_ip = "127.0.0.1".parse().unwrap();
         
+        // Sanitize tool arguments before processing
+        let sanitized_arguments = if let Some(args) = params.arguments {
+            Some(sanitize_tool_input(&args)?)
+        } else {
+            None
+        };
+        
         // Check permissions
         let permission_level = self.tool_registry.get_permission_level(&params.name)?;
         let request_data = json!({
             "tool": params.name,
-            "arguments": params.arguments
+            "arguments": sanitized_arguments
         });
 
         let mut security_context = self.security_context.write().await;
@@ -247,10 +255,10 @@ impl ServerMessageHandler {
         )?;
         drop(security_context);
 
-        // Execute the tool
+        // Execute the tool with sanitized arguments
         let result = self.tool_registry.execute_tool(
             &params.name,
-            params.arguments.unwrap_or(Value::Null),
+            sanitized_arguments.unwrap_or(Value::Null),
         ).await?;
 
         Ok(McpResponse {

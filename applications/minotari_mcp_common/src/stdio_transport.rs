@@ -115,8 +115,59 @@ impl StdioTransport {
         Ok(())
     }
 
+    /// Extract request ID from JSON line, even if malformed
+    fn extract_request_id(&self, line: &str) -> Option<Value> {
+        // Simple string-based extraction of ID field
+        if let Some(start) = line.find(r#""id""#) {
+            let after_id = &line[start + 4..];
+            if let Some(colon_pos) = after_id.find(':') {
+                let after_colon = &after_id[colon_pos + 1..].trim_start();
+                
+                // Find end of value (comma, closing brace, or end of line)
+                let mut end_pos = 0;
+                let mut in_string = false;
+                let mut escaped = false;
+                
+                for (i, ch) in after_colon.char_indices() {
+                    if escaped {
+                        escaped = false;
+                        continue;
+                    }
+                    
+                    match ch {
+                        '"' => in_string = !in_string,
+                        '\\' if in_string => escaped = true,
+                        ',' | '}' | ']' if !in_string => {
+                            end_pos = i;
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+                
+                if end_pos == 0 {
+                    end_pos = after_colon.len();
+                }
+                
+                let id_text = after_colon[..end_pos].trim();
+                
+                // Try to parse as number, string, or null
+                if id_text == "null" {
+                    return Some(Value::Null);
+                } else if let Ok(num) = id_text.parse::<i64>() {
+                    return Some(Value::Number(serde_json::Number::from(num)));
+                } else if id_text.starts_with('"') && id_text.ends_with('"') && id_text.len() >= 2 {
+                    return Some(Value::String(id_text[1..id_text.len()-1].to_string()));
+                }
+            }
+        }
+        None
+    }
+
     /// Handle a JSON message with robust parsing and error recovery
     async fn handle_json_message(&self, line: &str) -> Option<String> {
+        // Try to extract ID from JSON even if parsing fails
+        let request_id = self.extract_request_id(line);
         // First try to parse the JSON as-is
         let message_result = match serde_json::from_str::<McpMessage>(line) {
             Ok(message) => Ok(message),
@@ -159,13 +210,14 @@ impl StdioTransport {
                 }
             }
             Err(e) => {
-                let error_code = match &e {
-                    McpError::PermissionDenied(_) => -32000,
-                    McpError::InvalidRequest(_) => -32600,
-                    McpError::ToolNotFound(_) | McpError::ResourceNotFound(_) => -32601,
-                    _ => -32603,
-                };
-                self.create_error_response(Value::Null, error_code, &e.to_string())
+                log::warn!("Request failed: {} ({})", e, e.error_type_name());
+                match serde_json::to_string(&e.to_json_rpc_error(request_id.clone())) {
+                    Ok(json) => json,
+                    Err(ser_err) => {
+                        log::error!("Failed to serialize error response: {}", ser_err);
+                        self.create_error_response(request_id.unwrap_or(Value::Null), -32603, "Internal error: error serialization failed")
+                    }
+                }
             }
         };
 

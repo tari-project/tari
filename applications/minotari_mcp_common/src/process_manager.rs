@@ -1,12 +1,10 @@
 //! Process management for auto-launching and supervising Tari applications
 
 use crate::error::{McpError, McpResult};
-use serde_json::Value;
 use std::net::{Ipv4Addr, TcpListener};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::{Child, Command};
-use tokio::signal;
 use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 
@@ -47,7 +45,7 @@ impl ProcessSupervisor {
         port: u16,
     ) -> McpResult<(Self, mpsc::UnboundedReceiver<ProcessStatus>)> {
         let (status_tx, status_rx) = mpsc::unbounded_channel();
-        let (shutdown_tx, shutdown_rx) = mpsc::unbounded_channel();
+        let (_shutdown_tx, shutdown_rx) = mpsc::unbounded_channel();
 
         Ok((
             Self {

@@ -1,7 +1,7 @@
 //! Configuration for MCP servers
 
 use serde::{Deserialize, Serialize};
-use std::net::IpAddr;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpConfig {
@@ -10,15 +10,6 @@ pub struct McpConfig {
     
     /// Whether control operations are enabled (potentially dangerous)
     pub control_enabled: bool,
-    
-    /// Bind address for the MCP server (default: 127.0.0.1 for security)
-    pub bind_address: IpAddr,
-    
-    /// Port to bind the MCP server to
-    pub port: u16,
-    
-    /// Maximum number of concurrent connections
-    pub max_connections: usize,
     
     /// Request timeout in seconds
     pub request_timeout_secs: u64,
@@ -30,7 +21,81 @@ pub struct McpConfig {
     pub audit_logging: bool,
     
     /// Path to audit log file (if audit_logging is enabled)
-    pub audit_log_path: Option<String>,
+    pub audit_log_path: Option<PathBuf>,
+    
+    /// Auto-launch configuration
+    pub auto_launch: AutoLaunchConfig,
+    
+    /// Input sanitization configuration
+    pub input_sanitization: InputSanitizationConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoLaunchConfig {
+    /// Whether to auto-launch processes if not running
+    pub enabled: bool,
+    
+    /// Maximum time to wait for process startup (seconds)
+    pub startup_timeout_secs: u64,
+    
+    /// Retry attempts for process launch
+    pub max_retry_attempts: u32,
+    
+    /// Delay between retry attempts (seconds)
+    pub retry_delay_secs: u64,
+    
+    /// Whether to use unique ports for wallet instances
+    pub use_unique_ports: bool,
+    
+    /// Base port for auto-assigned ports
+    pub base_port: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputSanitizationConfig {
+    /// Maximum string length for inputs
+    pub max_string_length: usize,
+    
+    /// Maximum array length for inputs
+    pub max_array_length: usize,
+    
+    /// Maximum object depth for inputs
+    pub max_object_depth: usize,
+    
+    /// Whether to enable HTML entity cleaning
+    pub clean_html_entities: bool,
+    
+    /// Whether to validate paths for security
+    pub validate_paths: bool,
+    
+    /// Whether to enforce Unicode normalization
+    pub unicode_normalization: bool,
+}
+
+impl Default for AutoLaunchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            startup_timeout_secs: 90,
+            max_retry_attempts: 3,
+            retry_delay_secs: 5,
+            use_unique_ports: true,
+            base_port: 18142, // Default Tari wallet gRPC port + 1
+        }
+    }
+}
+
+impl Default for InputSanitizationConfig {
+    fn default() -> Self {
+        Self {
+            max_string_length: 1024 * 1024, // 1MB
+            max_array_length: 10000,
+            max_object_depth: 20,
+            clean_html_entities: true,
+            validate_paths: true,
+            unicode_normalization: true,
+        }
+    }
 }
 
 impl Default for McpConfig {
@@ -38,13 +103,12 @@ impl Default for McpConfig {
         Self {
             enabled: false,
             control_enabled: false,
-            bind_address: "127.0.0.1".parse().unwrap(), // Local only for security
-            port: 8080,
-            max_connections: 10,
             request_timeout_secs: 30,
             rate_limit_per_minute: 60,
             audit_logging: true,
             audit_log_path: None,
+            auto_launch: AutoLaunchConfig::default(),
+            input_sanitization: InputSanitizationConfig::default(),
         }
     }
 }
@@ -61,13 +125,34 @@ impl McpConfig {
             if self.rate_limit_per_minute == 0 {
                 return Err("Rate limit must be greater than 0".into());
             }
+
+            // Validate auto-launch configuration
+            if self.auto_launch.enabled {
+                if self.auto_launch.startup_timeout_secs == 0 {
+                    return Err("Auto-launch startup timeout must be greater than 0".into());
+                }
+                if self.auto_launch.max_retry_attempts == 0 {
+                    return Err("Auto-launch max retry attempts must be greater than 0".into());
+                }
+            }
+
+            // Validate input sanitization configuration
+            if self.input_sanitization.max_string_length == 0 {
+                return Err("Input sanitization max string length must be greater than 0".into());
+            }
+            if self.input_sanitization.max_array_length == 0 {
+                return Err("Input sanitization max array length must be greater than 0".into());
+            }
+            if self.input_sanitization.max_object_depth == 0 {
+                return Err("Input sanitization max object depth must be greater than 0".into());
+            }
         }
 
         Ok(())
     }
 
-    /// Check if the server should accept connections
-    pub fn should_accept_connections(&self) -> bool {
+    /// Check if the server should start
+    pub fn should_start_server(&self) -> bool {
         self.enabled
     }
 
@@ -76,8 +161,20 @@ impl McpConfig {
         self.enabled && self.control_enabled
     }
 
-    /// Get the full bind address
-    pub fn bind_address(&self) -> String {
-        format!("{}:{}", self.bind_address, self.port)
+    /// Check if auto-launch is enabled
+    pub fn is_auto_launch_enabled(&self) -> bool {
+        self.enabled && self.auto_launch.enabled
+    }
+
+    /// Get audit log path with defaults
+    pub fn get_audit_log_path(&self) -> Option<PathBuf> {
+        if self.audit_logging {
+            self.audit_log_path.clone().or_else(|| {
+                // Default audit log path
+                Some(PathBuf::from("logs/mcp_audit.log"))
+            })
+        } else {
+            None
+        }
     }
 }
