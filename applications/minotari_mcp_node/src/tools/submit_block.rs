@@ -21,16 +21,7 @@ impl SubmitBlockTool {
     }
 }
 
-impl_mcp_tool!(SubmitBlockTool, control, {
-    "type": "object",
-    "properties": {
-        "block_hex": {
-            "type": "string",
-            "description": "Hexadecimal representation of the block to submit"
-        }
-    },
-    "required": ["block_hex"]
-});
+
 
 #[async_trait]
 impl McpTool for SubmitBlockTool {
@@ -40,6 +31,23 @@ impl McpTool for SubmitBlockTool {
 
     fn description(&self) -> &str {
         "Submit a new block to the Tari blockchain. This is a control operation that modifies blockchain state."
+    }
+
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "block_hex": {
+                    "type": "string",
+                    "description": "Hexadecimal representation of the block to submit"
+                }
+            },
+            "required": ["block_hex"]
+        })
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {

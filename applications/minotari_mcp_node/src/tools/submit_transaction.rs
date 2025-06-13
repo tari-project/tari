@@ -21,23 +21,7 @@ impl SubmitTransactionTool {
     }
 }
 
-impl_mcp_tool!(SubmitTransactionTool, control, {
-    "type": "object",
-    "properties": {
-        "transaction_hex": {
-            "type": "string",
-            "description": "Complete transaction in hexadecimal format (serialized binary transaction). Must be a valid hex string containing a fully formed, signed Tari transaction. Example: '01a2b3c4d5e6f7...'. Minimum length varies based on transaction complexity, typically 200+ characters for simple transactions.",
-            "pattern": "^[0-9a-fA-F]+$",
-            "minLength": 100
-        },
-        "dry_run": {
-            "type": "boolean",
-            "description": "If true, validate the transaction without actually submitting it to the mempool. Useful for testing transaction validity before broadcast.",
-            "default": false
-        }
-    },
-    "required": ["transaction_hex"]
-});
+
 
 #[async_trait]
 impl McpTool for SubmitTransactionTool {
@@ -47,6 +31,30 @@ impl McpTool for SubmitTransactionTool {
 
     fn description(&self) -> &str {
         "Submit a pre-signed transaction to the Tari mempool for inclusion in the blockchain. This tool accepts a serialized transaction in hexadecimal format and broadcasts it to the network. The transaction must be properly formatted, signed, and have valid inputs. Once submitted, the transaction will be validated by nodes and miners for inclusion in the next block. Use this for broadcasting transactions created offline or by other applications."
+    }
+
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "transaction_hex": {
+                    "type": "string",
+                    "description": "Complete transaction in hexadecimal format (serialized binary transaction). Must be a valid hex string containing a fully formed, signed Tari transaction. Example: '01a2b3c4d5e6f7...'. Minimum length varies based on transaction complexity, typically 200+ characters for simple transactions.",
+                    "pattern": "^[0-9a-fA-F]+$",
+                    "minLength": 100
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, validate the transaction without actually submitting it to the mempool. Useful for testing transaction validity before broadcast.",
+                    "default": false
+                }
+            },
+            "required": ["transaction_hex"]
+        })
     }
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
