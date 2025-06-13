@@ -9,7 +9,7 @@ use crate::{
     auto_registry::ServerType,
     McpResult, McpError,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Unified gRPC method executor for node and wallet clients
@@ -307,8 +307,9 @@ impl GrpcExecutor {
             }
             Err(error) => {
                 log::warn!("gRPC method {} failed: {}", method_info.name, error);
-                // Apply error mapping for user-friendly error messages
-                Err(self.error_mapper.to_mcp_error(error, method_info))
+                // Error is already McpError, just return it
+                // TODO: Enhance with additional context from method_info if needed
+                Err(error)
             }
         }
     }
