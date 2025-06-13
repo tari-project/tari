@@ -24,7 +24,7 @@
 use once_cell::sync::Lazy;
 
 #[cfg(feature = "metrics")]
-use tari_metrics::{Counter, Gauge, Histogram, IntCounter, IntGauge};
+use tari_metrics::{Gauge, Histogram, IntCounter, IntGauge};
 
 #[cfg(feature = "metrics")]
 pub fn proactive_dials_attempted() -> &'static IntCounter {
@@ -152,7 +152,6 @@ pub fn proactive_dialing_execution_time() -> &'static Histogram {
         tari_metrics::register_histogram(
             "comms_connectivity_proactive_dialing_execution_time_seconds",
             "Time taken to execute proactive dialing logic",
-            tari_metrics::linear_buckets(0.0, 0.1, 20).unwrap(), // 0.0 to 2.0 seconds in 0.1s buckets
         )
         .unwrap()
     });
@@ -201,8 +200,7 @@ mod stubs {
     pub fn dialing_multiplier_applied(_value: f64) {}
 }
 
-#[cfg(not(feature = "metrics"))]
-pub use stubs::*;
+// Stubs are imported individually when needed
 
 // Helper functions for easy metric updates
 #[cfg(feature = "metrics")]
