@@ -48,7 +48,7 @@ async fn main() {
     }
 
     // Create and start the MCP server
-    let server = match NodeMcpServer::new(config).await {
+    let server = match NodeMcpServer::new(config, &cli).await {
         Ok(server) => server,
         Err(e) => {
             eprintln!("Failed to create MCP server: {}", e);

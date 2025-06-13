@@ -4,12 +4,15 @@ use crate::config::NodeMcpConfig;
 use crate::tools::NodeToolRegistry;
 use crate::resources::NodeResourceRegistry;
 use crate::prompts::NodePromptRegistry;
+use crate::cli::Cli;
 use minotari_mcp_common::{
     McpServer, McpServerBuilder, McpResult, McpError,
-    ProcessSupervisor, ProcessType, ProcessUtils, ProcessStatus
+    ServiceHealthMonitors, TariProcessLauncher,
+    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils
 };
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
 use std::sync::Arc;
+use std::time::Duration;
 use tonic::transport::{Channel, Endpoint};
 
 /// Minotari Node MCP Server
@@ -20,10 +23,10 @@ pub struct NodeMcpServer {
 
 impl NodeMcpServer {
     /// Create a new Node MCP server
-    pub async fn new(config: NodeMcpConfig) -> McpResult<Self> {
+    pub async fn new(config: NodeMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch base node if configured and not running
         if config.should_auto_launch_node() {
-            Self::ensure_base_node_running(&config).await?;
+            Self::ensure_base_node_running(&config, cli).await?;
         }
 
         // Create gRPC client connection to base node
@@ -97,95 +100,89 @@ impl NodeMcpServer {
     }
 
     /// Ensure base node is running, auto-launch if needed
-    async fn ensure_base_node_running(config: &NodeMcpConfig) -> McpResult<()> {
+    async fn ensure_base_node_running(config: &NodeMcpConfig, cli: &Cli) -> McpResult<()> {
         // Extract port from gRPC address
-        let port = config.node_grpc.address
-            .split(':')
-            .next_back()
-            .and_then(|p| p.parse::<u16>().ok())
+        let port = CliIntegrationUtils::extract_port_from_address(&config.node_grpc.address)
             .unwrap_or(18142);
 
-        // Check if already running
-        if ProcessUtils::is_service_running(port).await {
-            log::info!("Base node already running on port {}", port);
+        // Check if already running using proper health monitor
+        let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address);
+        if health_monitor.is_service_ready().await {
+            log::info!("Base node already running and healthy on port {}", port);
             return Ok(());
         }
 
         log::info!("Base node not detected, auto-launching...");
 
-        // Find the minotari_node executable
-        let node_executable = Self::find_node_executable()?;
-        
-        // Build command arguments (this would use CLI args from the config)
-        let (executable, args) = ProcessUtils::build_node_command(
-            &node_executable,
-            "/tmp/tari", // This should come from CLI
-            "config/config.toml", // This should come from CLI  
-            Some("mainnet"), // This should come from CLI
-            true, // Enable gRPC
-            true, // Non-interactive
-            &[], // Additional args
-        );
+        // Extract proper CLI configuration and arguments
+        let launch_config = cli.extract_launch_config();
+        let node_args = cli.extract_node_args();
 
-        // Create and start process supervisor
-        let (supervisor, mut status_rx) = ProcessSupervisor::new(
-            ProcessType::BaseNode,
-            executable,
-            args,
-            port,
-        )?;
+        log::debug!("Launching base node with config: {:?}", launch_config);
+        log::debug!("Node arguments: {:?}", node_args);
 
-        // Start supervisor in background
-        tokio::spawn(async move {
-            if let Err(e) = supervisor.start().await {
-                log::error!("Process supervisor failed: {}", e);
+        // Create process launcher using TariProcessLauncher
+        let (launcher, mut status_rx) = TariProcessLauncher::launch_node(
+            launch_config.base_path,
+            launch_config.config_path,
+            launch_config.network,
+            config.node_grpc.address.clone(),
+            node_args,
+        ).await?;
+
+        // Start launcher in background
+        let launcher_handle = tokio::spawn(async move {
+            match launcher.launch().await {
+                Ok(result) => {
+                    log::info!("Base node launched successfully: {:?}", result);
+                    // Keep the launcher alive to maintain the process
+                    loop {
+                        if !launcher.is_running().await {
+                            log::warn!("Base node process has stopped");
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to launch base node: {}", e);
+                }
             }
         });
 
-        // Wait for the node to become healthy
+        // Wait for the node to become healthy with enhanced monitoring
         let mut attempts = 0;
-        while attempts < 30 {
-            if ProcessUtils::is_service_running(port).await {
+        const MAX_ATTEMPTS: u32 = 60; // 5 minutes with 5-second intervals
+        
+        while attempts < MAX_ATTEMPTS {
+            // Check if the service is ready using proper health check
+            if health_monitor.is_service_ready().await {
                 log::info!("Base node is now running and healthy");
                 return Ok(());
             }
             
-            // Check supervisor status
+            // Check launcher status
             if let Ok(status) = status_rx.try_recv() {
-                log::debug!("Supervisor status: {:?}", status);
-                if let ProcessStatus::Failed(err) = status {
-                    return Err(McpError::server_error(format!("Failed to start base node: {}", err)));
+                log::debug!("Launcher status: {:?}", status);
+                match status {
+                    ProcessLaunchStatus::Failed(err) => {
+                        launcher_handle.abort();
+                        return Err(McpError::server_error(format!("Failed to start base node: {}", err)));
+                    }
+                    ProcessLaunchStatus::Running => {
+                        log::info!("Base node process is running, waiting for health checks...");
+                    }
+                    _ => {}
                 }
             }
             
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(5)).await;
             attempts += 1;
         }
 
-        Err(McpError::server_error("Base node failed to start within timeout"))
+        launcher_handle.abort();
+        Err(McpError::server_error("Base node failed to become healthy within timeout"))
     }
 
-    /// Find the minotari_node executable
-    fn find_node_executable() -> McpResult<String> {
-        // Try to find the executable in common locations
-        let possible_paths = [
-            "minotari_node",
-            "./minotari_node", 
-            "../minotari_node/target/release/minotari_node",
-            "../minotari_node/target/debug/minotari_node",
-        ];
 
-        for path in &possible_paths {
-            if std::path::Path::new(path).exists() {
-                return Ok(path.to_string());
-            }
-        }
-
-        // Try to find in PATH
-        if which::which("minotari_node").is_ok() {
-            return Ok("minotari_node".to_string());
-        }
-
-        Err(McpError::config_error("Could not find minotari_node executable. Please ensure it's in PATH or specify the full path."))
-    }
 }

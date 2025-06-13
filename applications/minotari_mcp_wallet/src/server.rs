@@ -4,12 +4,15 @@ use crate::config::WalletMcpConfig;
 use crate::tools::WalletToolRegistry;
 use crate::resources::WalletResourceRegistry;
 use crate::prompts::WalletPromptRegistry;
+use crate::cli::Cli;
 use minotari_mcp_common::{
     McpServer, McpServerBuilder, McpResult, McpError,
-    ProcessSupervisor, ProcessType, ProcessUtils, ProcessStatus
+    ServiceHealthMonitors, TariProcessLauncher,
+    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use std::sync::Arc;
+use std::time::Duration;
 use tonic::transport::Channel;
 
 /// Minotari Wallet MCP Server
@@ -20,10 +23,10 @@ pub struct WalletMcpServer {
 
 impl WalletMcpServer {
     /// Create a new Wallet MCP server
-    pub async fn new(config: WalletMcpConfig) -> McpResult<Self> {
+    pub async fn new(config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch wallet if configured and not running
         if config.should_auto_launch_wallet() {
-            Self::ensure_wallet_running(&config).await?;
+            Self::ensure_wallet_running(&config, cli).await?;
         }
 
         // Create gRPC client connection to wallet
@@ -74,102 +77,99 @@ impl WalletMcpServer {
     }
 
     /// Ensure wallet is running, auto-launch if needed
-    async fn ensure_wallet_running(config: &WalletMcpConfig) -> McpResult<()> {
+    async fn ensure_wallet_running(config: &WalletMcpConfig, cli: &Cli) -> McpResult<()> {
         // Extract port from gRPC address
-        let port = config.wallet_grpc.address
-            .split(':')
-            .next_back()
-            .and_then(|p| p.parse::<u16>().ok())
+        let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address)
             .unwrap_or(18143);
 
-        // Check if already running
-        if ProcessUtils::is_service_running(port).await {
-            log::info!("Wallet already running on port {}", port);
+        // Check if already running using proper health monitor
+        let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
+        if health_monitor.is_service_ready().await {
+            log::info!("Wallet already running and healthy on port {}", port);
             return Ok(());
         }
 
         log::info!("Wallet not detected, auto-launching...");
 
-        // Find the minotari_console_wallet executable
-        let wallet_executable = Self::find_wallet_executable()?;
-        
         // Find an available port if the default is in use
-        let available_port = ProcessUtils::find_available_port(port).unwrap_or(port);
+        let available_port = CliIntegrationUtils::find_available_port(port).unwrap_or(port);
         if available_port != port {
             log::info!("Port {} in use, using port {} instead", port, available_port);
         }
-        
-        // Build command arguments
-        let (executable, args) = ProcessUtils::build_wallet_command(
-            &wallet_executable,
-            "/tmp/tari", // This should come from CLI
-            "config/config.toml", // This should come from CLI  
-            Some("mainnet"), // This should come from CLI
-            true, // Enable gRPC
-            Some(&format!("127.0.0.1:{}", available_port)), // gRPC address
-            true, // Non-interactive
-            &[], // Additional args
-        );
 
-        // Create and start process supervisor
-        let (supervisor, mut status_rx) = ProcessSupervisor::new(
-            ProcessType::Wallet,
-            executable,
-            args,
-            available_port,
-        )?;
+        // Extract proper CLI configuration and arguments
+        let launch_config = cli.extract_launch_config();
+        let wallet_args = cli.extract_wallet_args();
 
-        // Start supervisor in background
-        tokio::spawn(async move {
-            if let Err(e) = supervisor.start().await {
-                log::error!("Wallet supervisor failed: {}", e);
+        log::debug!("Launching wallet with config: {:?}", launch_config);
+        log::debug!("Wallet arguments: {:?}", wallet_args);
+
+        // Create process launcher using TariProcessLauncher
+        let grpc_address = format!("127.0.0.1:{}", available_port);
+        let (launcher, mut status_rx) = TariProcessLauncher::launch_wallet(
+            launch_config.base_path,
+            launch_config.config_path,
+            launch_config.network,
+            grpc_address,
+            wallet_args,
+        ).await?;
+
+        // Start launcher in background
+        let launcher_handle = tokio::spawn(async move {
+            match launcher.launch().await {
+                Ok(result) => {
+                    log::info!("Wallet launched successfully: {:?}", result);
+                    // Keep the launcher alive to maintain the process
+                    loop {
+                        if !launcher.is_running().await {
+                            log::warn!("Wallet process has stopped");
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to launch wallet: {}", e);
+                }
             }
         });
 
-        // Wait for the wallet to become healthy
+        // Wait for the wallet to become healthy with enhanced monitoring
         let mut attempts = 0;
-        while attempts < 30 {
-            if ProcessUtils::is_service_running(available_port).await {
+        const MAX_ATTEMPTS: u32 = 120; // 10 minutes with 5-second intervals (wallets take longer)
+        
+        // Create health monitor for the actual launched port
+        let launched_health_monitor = ServiceHealthMonitors::wallet(&format!("127.0.0.1:{}", available_port));
+        
+        while attempts < MAX_ATTEMPTS {
+            // Check if the service is ready using proper health check
+            if launched_health_monitor.is_service_ready().await {
                 log::info!("Wallet is now running and healthy on port {}", available_port);
                 return Ok(());
             }
             
-            // Check supervisor status
+            // Check launcher status
             if let Ok(status) = status_rx.try_recv() {
-                log::debug!("Supervisor status: {:?}", status);
-                if let ProcessStatus::Failed(err) = status {
-                    return Err(McpError::server_error(format!("Failed to start wallet: {}", err)));
+                log::debug!("Launcher status: {:?}", status);
+                match status {
+                    ProcessLaunchStatus::Failed(err) => {
+                        launcher_handle.abort();
+                        return Err(McpError::server_error(format!("Failed to start wallet: {}", err)));
+                    }
+                    ProcessLaunchStatus::Running => {
+                        log::info!("Wallet process is running, waiting for health checks...");
+                    }
+                    _ => {}
                 }
             }
             
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(5)).await;
             attempts += 1;
         }
 
-        Err(McpError::server_error("Wallet failed to start within timeout"))
+        launcher_handle.abort();
+        Err(McpError::server_error("Wallet failed to become healthy within timeout"))
     }
 
-    /// Find the minotari_console_wallet executable
-    fn find_wallet_executable() -> McpResult<String> {
-        // Try to find the executable in common locations
-        let possible_paths = [
-            "minotari_console_wallet",
-            "./minotari_console_wallet", 
-            "../minotari_console_wallet/target/release/minotari_console_wallet",
-            "../minotari_console_wallet/target/debug/minotari_console_wallet",
-        ];
 
-        for path in &possible_paths {
-            if std::path::Path::new(path).exists() {
-                return Ok(path.to_string());
-            }
-        }
-
-        // Try to find in PATH
-        if which::which("minotari_console_wallet").is_ok() {
-            return Ok("minotari_console_wallet".to_string());
-        }
-
-        Err(McpError::config_error("Could not find minotari_console_wallet executable. Please ensure it's in PATH or specify the full path."))
-    }
 }
