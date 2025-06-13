@@ -33,6 +33,8 @@ pub mod conversion_registry_factory;
 pub mod health_checker;
 pub mod connection_manager;
 pub mod response_converter;
+pub mod protobuf_reflector_simple;
+pub mod protobuf_integration;
 
 pub use error::{McpError, McpResult};
 pub use server::{McpServer, McpServerBuilder};
@@ -62,3 +64,5 @@ pub use conversion_registry_factory::ConversionRegistryFactory;
 pub use health_checker::{HealthChecker, HealthResult, HealthStatus as GrpcHealthStatus, HealthConfig, GrpcHealthChecker};
 pub use connection_manager::{ConnectionManager, CircuitBreaker, CircuitBreakerState, CircuitBreakerConfig, ConnectionPoolConfig, ManagedConnection};
 pub use response_converter::{ResponseConverter, ResponseConverterRegistry, ResponseConverterFactory, GenericJsonConverter, NodeResponseConverter, WalletResponseConverter};
+pub use protobuf_reflector_simple::ProtobufReflector;
+pub use protobuf_integration::{ReflectiveAutoDiscovery, EnhancedToolMetadata, ToolDocumentation, OpenApiSpec};

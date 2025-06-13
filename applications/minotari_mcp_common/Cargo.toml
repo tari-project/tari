@@ -28,6 +28,8 @@ tonic-health = "0.13.0"
 tower = { version = "0.5", features = ["timeout", "limit", "buffer"] }
 prost = "0.13.3"
 prost-types = "0.13.3"
+prost-reflect = "0.15.0"
+schemars = { version = "0.8", features = ["derive"] }
 minotari_node_grpc_client = { workspace = true }
 minotari_wallet_grpc_client = { workspace = true }
 which = "5.0"
