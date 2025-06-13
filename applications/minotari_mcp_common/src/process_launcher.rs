@@ -350,6 +350,7 @@ impl TariProcessLauncher {
         };
 
         let config = LaunchConfigBuilder::new()
+            .with_executable(TariExecutables::find_node()?)
             .with_args(args)
             .with_startup_timeout(Duration::from_secs(120))
             .with_health_check(health_config)
@@ -392,6 +393,7 @@ impl TariProcessLauncher {
         };
 
         let config = LaunchConfigBuilder::new()
+            .with_executable(TariExecutables::find_wallet()?)
             .with_args(args)
             .with_startup_timeout(Duration::from_secs(200))
             .with_health_check(health_config)

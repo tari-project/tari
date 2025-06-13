@@ -4,6 +4,9 @@
 //! arguments for launched Tari applications, ensuring configuration consistency
 //! and eliminating hardcoded values in auto-launch functionality.
 
+#![allow(clippy::vec_init_then_push)]
+#![allow(clippy::double_ended_iterator_last)]
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -104,6 +107,7 @@ pub trait CliConfigExtractor {
 pub struct NodeArgumentBuilder {
     config: LaunchCliConfig,
     node_specific_args: Vec<String>,
+    include_base_args: bool,
 }
 
 impl NodeArgumentBuilder {
@@ -111,6 +115,16 @@ impl NodeArgumentBuilder {
         Self {
             config,
             node_specific_args: Vec::new(),
+            include_base_args: true,
+        }
+    }
+    
+    /// Create builder that only includes node-specific args (no base args)
+    pub fn node_args_only(config: LaunchCliConfig) -> Self {
+        Self {
+            config,
+            node_specific_args: Vec::new(),
+            include_base_args: false,
         }
     }
 
@@ -166,18 +180,22 @@ impl NodeArgumentBuilder {
         }
 
         // Add log config if specified
-        if let Some(log_config) = self.config.log_config {
-            args.push("--log-config".to_string());
-            args.push(log_config.to_string_lossy().to_string());
+        if self.include_base_args {
+            if let Some(log_config) = self.config.log_config {
+                args.push("--log-config".to_string());
+                args.push(log_config.to_string_lossy().to_string());
+            }
         }
 
         // Add node-specific arguments
         args.extend(self.node_specific_args);
 
         // Add property overrides
-        for (key, value) in self.config.property_overrides {
-            args.push("-p".to_string());
-            args.push(format!("{}={}", key, value));
+        if self.include_base_args {
+            for (key, value) in self.config.property_overrides {
+                args.push("-p".to_string());
+                args.push(format!("{}={}", key, value));
+            }
         }
 
         args
@@ -188,6 +206,7 @@ impl NodeArgumentBuilder {
 pub struct WalletArgumentBuilder {
     config: LaunchCliConfig,
     wallet_specific_args: Vec<String>,
+    include_base_args: bool,
 }
 
 impl WalletArgumentBuilder {
@@ -195,6 +214,16 @@ impl WalletArgumentBuilder {
         Self {
             config,
             wallet_specific_args: Vec::new(),
+            include_base_args: true,
+        }
+    }
+    
+    /// Create builder that only includes wallet-specific args (no base args)
+    pub fn wallet_args_only(config: LaunchCliConfig) -> Self {
+        Self {
+            config,
+            wallet_specific_args: Vec::new(),
+            include_base_args: false,
         }
     }
 
@@ -239,31 +268,35 @@ impl WalletArgumentBuilder {
     pub fn build(self) -> Vec<String> {
         let mut args = Vec::new();
 
-        // Add base arguments
-        args.push("--base-path".to_string());
-        args.push(self.config.base_path);
-        args.push("--config".to_string());
-        args.push(self.config.config_path);
+        // Add base arguments only if requested
+        if self.include_base_args {
+            args.push("--base-path".to_string());
+            args.push(self.config.base_path);
+            args.push("--config".to_string());
+            args.push(self.config.config_path);
 
-        // Add network if specified
-        if let Some(network) = self.config.network {
-            args.push("--network".to_string());
-            args.push(network);
-        }
+            // Add network if specified
+            if let Some(network) = self.config.network {
+                args.push("--network".to_string());
+                args.push(network);
+            }
 
-        // Add log config if specified
-        if let Some(log_config) = self.config.log_config {
-            args.push("--log-config".to_string());
-            args.push(log_config.to_string_lossy().to_string());
+            // Add log config if specified
+            if let Some(log_config) = self.config.log_config {
+                args.push("--log-config".to_string());
+                args.push(log_config.to_string_lossy().to_string());
+            }
         }
 
         // Add wallet-specific arguments
         args.extend(self.wallet_specific_args);
 
         // Add property overrides
-        for (key, value) in self.config.property_overrides {
-            args.push("-p".to_string());
-            args.push(format!("{}={}", key, value));
+        if self.include_base_args {
+            for (key, value) in self.config.property_overrides {
+                args.push("-p".to_string());
+                args.push(format!("{}={}", key, value));
+            }
         }
 
         args

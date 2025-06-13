@@ -129,11 +129,13 @@ impl ConfigOverrideProvider for Cli {
 
 impl Cli {
     /// Get base path with default
+    #[allow(dead_code)]
     pub fn get_base_path(&self) -> PathBuf {
         self.common.get_base_path()
     }
     
     /// Get log config path with application name
+    #[allow(dead_code)]
     pub fn log_config_path(&self, app_name: &str) -> PathBuf {
         self.common.log_config_path(app_name)
     }
@@ -246,7 +248,7 @@ impl CliConfigExtractor for Cli {
 
     fn extract_wallet_args(&self) -> Vec<String> {
         let config = self.extract_launch_config();
-        let mut builder = WalletArgumentBuilder::new(config);
+        let mut builder = WalletArgumentBuilder::wallet_args_only(config);
 
         // Add wallet-specific flags based on CLI arguments
         if self.wallet_grpc_enabled {
