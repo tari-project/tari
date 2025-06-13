@@ -74,10 +74,12 @@ pub struct AutoDiscoveryRegistry {
     /// Configuration
     config: AutoDiscoveryConfig,
     /// Service discovery
+    #[allow(dead_code)]
     service_discovery: Arc<ServiceDiscovery>,
     /// Tool metadata registry
     metadata_registry: Arc<RwLock<ToolMetadataRegistry>>,
     /// Schema generator
+    #[allow(dead_code)]
     schema_generator: Arc<SchemaGenerator>,
     /// Error mapper
     error_mapper: Arc<GrpcErrorMapper>,
@@ -475,6 +477,7 @@ pub struct RegistryStatistics {
 pub struct DynamicGrpcTool {
     method_info: GrpcMethodInfo,
     metadata: ToolMetadata,
+    #[allow(dead_code)]
     error_mapper: Arc<GrpcErrorMapper>,
 }
 
