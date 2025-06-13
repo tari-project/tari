@@ -67,7 +67,7 @@ use tari_core::{
     transactions::{
         generate_coinbase_with_wallet_output,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             KernelBuilder,
             RangeProofType,

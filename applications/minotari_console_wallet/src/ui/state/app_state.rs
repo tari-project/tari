@@ -61,7 +61,7 @@ use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Cont
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
-        encrypted_data::{PaymentId, TxType},
+        payment_id::{PaymentId, TxType},
         OutputFeatures,
         TemplateType,
         TransactionError,
@@ -736,7 +736,7 @@ impl AppStateInner {
                 .get_pending_outbound_transactions()
                 .await?
                 .iter()
-                .map(|t| CompletedTransaction::from(t.clone()))
+                .map(|t| CompletedTransaction::from_outbound(t.clone(), Vec::new()))
                 .collect::<Vec<CompletedTransaction>>(),
         );
         pending_transactions.sort_by(|a: &CompletedTransaction, b: &CompletedTransaction| {

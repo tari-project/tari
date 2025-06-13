@@ -60,7 +60,7 @@ use crate::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             RangeProofType,
             Transaction,

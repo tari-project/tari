@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, Transaction},
+    transaction_components::{payment_id::PaymentId, Transaction},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -102,8 +102,6 @@ pub struct OutboundTransaction {
     pub last_send_timestamp: Option<DateTime<Utc>>,
     /// Hashes of outputs being sent to others (excluding change)
     pub sent_output_hashes: Vec<FixedHash>,
-    /// Hashes of change outputs (for reference)
-    pub change_output_hashes: Vec<FixedHash>,
 }
 
 impl OutboundTransaction {
@@ -132,7 +130,6 @@ impl OutboundTransaction {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: Vec::new(),
-            change_output_hashes: Vec::new(),
         }
     }
 
@@ -147,7 +144,6 @@ impl OutboundTransaction {
         timestamp: DateTime<Utc>,
         direct_send_success: bool,
         sent_output_hashes: Vec<FixedHash>,
-        change_output_hashes: Vec<FixedHash>,
     ) -> Self {
         Self {
             tx_id,
@@ -163,7 +159,6 @@ impl OutboundTransaction {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes,
-            change_output_hashes,
         }
     }
 }
@@ -327,50 +322,8 @@ impl CompletedTransaction {
         }
         vec![]
     }
-}
 
-impl From<CompletedTransaction> for InboundTransaction {
-    fn from(ct: CompletedTransaction) -> Self {
-        Self {
-            tx_id: ct.tx_id,
-            source_address: ct.source_address,
-            amount: ct.amount,
-            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
-            status: ct.status,
-            payment_id: ct.payment_id,
-            timestamp: ct.timestamp,
-            cancelled: ct.cancelled.is_some(),
-            direct_send_success: false,
-            send_count: 0,
-            last_send_timestamp: None,
-            received_output_hashes: ct.received_output_hashes,
-        }
-    }
-}
-
-impl From<CompletedTransaction> for OutboundTransaction {
-    fn from(ct: CompletedTransaction) -> Self {
-        Self {
-            tx_id: ct.tx_id,
-            destination_address: ct.destination_address,
-            amount: ct.amount,
-            fee: ct.fee,
-            sender_protocol: SenderTransactionProtocol::new_placeholder(),
-            status: ct.status,
-            payment_id: ct.payment_id,
-            timestamp: ct.timestamp,
-            cancelled: ct.cancelled.is_some(),
-            direct_send_success: false,
-            send_count: 0,
-            last_send_timestamp: None,
-            sent_output_hashes: ct.sent_output_hashes,
-            change_output_hashes: ct.change_output_hashes,
-        }
-    }
-}
-
-impl From<OutboundTransaction> for CompletedTransaction {
-    fn from(tx: OutboundTransaction) -> Self {
+    pub fn from_outbound(tx: OutboundTransaction, change_output_hashes: Vec<FixedHash>) -> Self {
         let transaction = if tx.sender_protocol.is_finalized() {
             match tx.sender_protocol.get_transaction() {
                 Ok(tx) => tx.clone(),
@@ -409,7 +362,46 @@ impl From<OutboundTransaction> for CompletedTransaction {
             payment_id: tx.payment_id,
             sent_output_hashes: tx.sent_output_hashes,
             received_output_hashes: Vec::new(),
-            change_output_hashes: tx.change_output_hashes,
+            change_output_hashes,
+        }
+    }
+}
+
+impl From<CompletedTransaction> for InboundTransaction {
+    fn from(ct: CompletedTransaction) -> Self {
+        Self {
+            tx_id: ct.tx_id,
+            source_address: ct.source_address,
+            amount: ct.amount,
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
+            status: ct.status,
+            payment_id: ct.payment_id,
+            timestamp: ct.timestamp,
+            cancelled: ct.cancelled.is_some(),
+            direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
+            received_output_hashes: ct.received_output_hashes,
+        }
+    }
+}
+
+impl From<CompletedTransaction> for OutboundTransaction {
+    fn from(ct: CompletedTransaction) -> Self {
+        Self {
+            tx_id: ct.tx_id,
+            destination_address: ct.destination_address,
+            amount: ct.amount,
+            fee: ct.fee,
+            sender_protocol: SenderTransactionProtocol::new_placeholder(),
+            status: ct.status,
+            payment_id: ct.payment_id,
+            timestamp: ct.timestamp,
+            cancelled: ct.cancelled.is_some(),
+            direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
+            sent_output_hashes: ct.sent_output_hashes,
         }
     }
 }
@@ -454,11 +446,21 @@ pub enum WalletTransaction {
     Completed(CompletedTransaction),
 }
 
+impl WalletTransaction {
+    pub fn source_address(&self) -> Option<TariAddress> {
+        match self {
+            WalletTransaction::PendingInbound(tx) => Some(tx.source_address.clone()),
+            WalletTransaction::PendingOutbound(_) => None,
+            WalletTransaction::Completed(tx) => Some(tx.source_address.clone()),
+        }
+    }
+}
+
 impl From<WalletTransaction> for CompletedTransaction {
     fn from(tx: WalletTransaction) -> Self {
         match tx {
             WalletTransaction::PendingInbound(tx) => CompletedTransaction::from(tx),
-            WalletTransaction::PendingOutbound(tx) => CompletedTransaction::from(tx),
+            WalletTransaction::PendingOutbound(tx) => CompletedTransaction::from_outbound(tx, Vec::new()),
             WalletTransaction::Completed(tx) => tx,
         }
     }

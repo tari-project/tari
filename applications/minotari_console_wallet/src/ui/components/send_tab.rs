@@ -6,7 +6,7 @@ use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_common_types::wallet_types::WalletType;
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::encrypted_data::{PaymentId, TxType},
+    transaction_components::payment_id::{PaymentId, TxType},
 };
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};

@@ -63,7 +63,7 @@ use tari_core::{
         generate_coinbase,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},

@@ -176,7 +176,7 @@ mod test {
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{
-                encrypted_data::PaymentId,
+                payment_id::PaymentId,
                 OutputFeatures,
                 TransactionKernelVersion,
                 TransactionOutputVersion,

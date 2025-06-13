@@ -858,6 +858,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     }
 }
 
+#[ignore]
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {

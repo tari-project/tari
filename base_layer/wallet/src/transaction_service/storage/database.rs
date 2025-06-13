@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, Transaction, TransactionOutput},
+    transaction_components::{payment_id::PaymentId, Transaction, TransactionOutput},
 };
 
 use crate::transaction_service::{
@@ -745,12 +745,14 @@ where T: TransactionBackend + 'static
         direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
         let hash = scanned_output.hash();
+        let fee = payment_id.get_fee().unwrap_or_default();
+        let sent_hashes = payment_id.get_sent_hashes().unwrap_or_default();
         let transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             source_address,
             destination_address,
             amount,
-            MicroMinotari::from(0),
+            fee,
             Transaction::new(
                 Vec::new(),
                 vec![scanned_output],
@@ -764,7 +766,7 @@ where T: TransactionBackend + 'static
             current_height,
             mined_timestamp,
             payment_id,
-            vec![],
+            sent_hashes,
             vec![hash],
             vec![],
         )?;
