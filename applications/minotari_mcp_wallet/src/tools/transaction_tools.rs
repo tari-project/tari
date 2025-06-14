@@ -41,6 +41,25 @@ impl McpTool for GetTransactionInfoTool {
         "Retrieves detailed information for specific transactions by their IDs"
     }
     
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "transaction_ids": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "description": "Array of transaction IDs to query",
+                    "minItems": 1
+                }
+            },
+            "required": ["transaction_ids"]
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let transaction_ids: Vec<u64> = params.get("transaction_ids")
             .and_then(|v| v.as_array())
@@ -56,7 +75,7 @@ impl McpTool for GetTransactionInfoTool {
         let request = Request::new(GetTransactionInfoRequest { transaction_ids });
         
         let response = self.grpc_client.get_transaction_info(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get transaction info: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction info: {}", e)))?
             .into_inner();
         
         let transactions: Vec<Value> = response.transactions.iter().map(|tx| {
@@ -159,6 +178,37 @@ impl McpTool for GetCompletedTransactionsTool {
         "Retrieves completed transactions with optional filtering by payment ID or block"
     }
     
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "payment_id": {
+                    "type": "string",
+                    "description": "Optional payment ID to filter by"
+                },
+                "block_hash": {
+                    "type": "string",
+                    "description": "Optional block hash to filter by"
+                },
+                "block_height": {
+                    "type": "number",
+                    "description": "Optional block height to filter by",
+                    "minimum": 0
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Maximum number of transactions to return (default: 100)",
+                    "minimum": 1,
+                    "maximum": 1000
+                }
+            }
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id")? {
             Some(UserPaymentId {
@@ -180,14 +230,14 @@ impl McpTool for GetCompletedTransactionsTool {
         });
         
         let mut response_stream = self.grpc_client.get_completed_transactions(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get completed transactions: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get completed transactions: {}", e)))?
             .into_inner();
         
         let mut transactions = Vec::new();
         let mut count = 0;
         
         while let Some(tx_response) = response_stream.message().await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to read transaction stream: {}", e)))? {
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction stream: {}", e)))? {
             
             if count >= limit {
                 break;
@@ -317,6 +367,53 @@ impl McpTool for TransferTool {
         "Execute transfers to one or more recipients with comprehensive validation and options"
     }
     
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "recipients": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "address": {
+                                "type": "string",
+                                "description": "Recipient address"
+                            },
+                            "amount": {
+                                "type": "number",
+                                "description": "Amount to transfer (in microTari)",
+                                "minimum": 1
+                            },
+                            "fee_per_gram": {
+                                "type": "number",
+                                "description": "Fee per gram for this transfer",
+                                "minimum": 1
+                            },
+                            "payment_type": {
+                                "type": "number",
+                                "description": "Payment type (default: 0 for standard)",
+                                "minimum": 0
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "Optional message for this transfer"
+                            }
+                        },
+                        "required": ["address", "amount", "fee_per_gram"]
+                    },
+                    "minItems": 1,
+                    "description": "Array of transfer recipients"
+                }
+            },
+            "required": ["recipients"]
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let recipients_array = params.get("recipients")
             .and_then(|v| v.as_array())
@@ -379,7 +476,7 @@ impl McpTool for TransferTool {
         let request = Request::new(TransferRequest { recipients });
         
         let response = self.grpc_client.transfer(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to execute transfer: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to execute transfer: {}", e)))?
             .into_inner();
         
         let results: Vec<Value> = response.results.iter().map(|result| {
@@ -441,6 +538,40 @@ impl McpTool for CoinSplitTool {
         "Splits wallet funds into multiple smaller outputs for improved transaction flexibility"
     }
     
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "amount_per_split": {
+                    "type": "number",
+                    "description": "Amount per split output (in microTari)",
+                    "minimum": 1
+                },
+                "split_count": {
+                    "type": "number",
+                    "description": "Number of outputs to create",
+                    "minimum": 1,
+                    "maximum": 100
+                },
+                "fee_per_gram": {
+                    "type": "number",
+                    "description": "Fee per gram for the transaction",
+                    "minimum": 1
+                },
+                "lock_height": {
+                    "type": "number",
+                    "description": "Optional lock height for outputs",
+                    "minimum": 0
+                }
+            },
+            "required": ["amount_per_split", "split_count", "fee_per_gram"]
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let amount_per_split = get_required_u64_param(&params, "amount_per_split")?;
         let split_count = get_required_u64_param(&params, "split_count")?;
@@ -478,7 +609,7 @@ impl McpTool for CoinSplitTool {
         });
         
         let response = self.grpc_client.coin_split(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to execute coin split: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to execute coin split: {}", e)))?
             .into_inner();
         
         Ok(json!({
@@ -526,13 +657,31 @@ impl McpTool for CancelTransactionTool {
         "Cancels a pending transaction by its transaction ID"
     }
     
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "tx_id": {
+                    "type": "number",
+                    "description": "Transaction ID to cancel",
+                    "minimum": 1
+                }
+            },
+            "required": ["tx_id"]
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let tx_id = get_required_u64_param(&params, "tx_id")?;
         
         let request = Request::new(CancelTransactionRequest { tx_id });
         
         let response = self.grpc_client.cancel_transaction(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to cancel transaction: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to cancel transaction: {}", e)))?
             .into_inner();
         
         Ok(json!({
@@ -580,6 +729,30 @@ impl McpTool for TransactionAnalysisTool {
         "Provides comprehensive analysis of wallet transaction patterns and insights"
     }
     
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "days_back": {
+                    "type": "number",
+                    "description": "Number of days to analyze (default: 30)",
+                    "minimum": 1,
+                    "maximum": 365
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Maximum number of transactions to analyze (default: 1000)",
+                    "minimum": 1,
+                    "maximum": 10000
+                }
+            }
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let days_back = params.get("days_back")
             .and_then(|v| v.as_u64())
@@ -597,7 +770,7 @@ impl McpTool for TransactionAnalysisTool {
         });
         
         let mut response_stream = self.grpc_client.get_completed_transactions(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get transactions: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transactions: {}", e)))?
             .into_inner();
         
         let mut transactions = Vec::new();
@@ -608,7 +781,7 @@ impl McpTool for TransactionAnalysisTool {
             .as_secs() - (days_back * 24 * 60 * 60);
         
         while let Some(tx_response) = response_stream.message().await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to read transaction: {}", e)))? {
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {}", e)))? {
             
             if count >= limit {
                 break;

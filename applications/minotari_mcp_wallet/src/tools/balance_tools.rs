@@ -3,7 +3,7 @@
 //! This module provides comprehensive balance management tools including
 //! balance queries, unspent amount tracking, and balance analysis.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, get_optional_string_param};
+use minotari_mcp_common::{McpTool, McpError, McpResult, get_optional_string_param, security::PermissionLevel};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -35,10 +35,28 @@ impl McpTool for GetBalanceTool {
         "Retrieves wallet balance information including available, pending, and timelocked amounts"
     }
     
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "payment_id": {
+                    "type": "string",
+                    "description": "Optional payment ID to filter balance for specific transactions"
+                }
+            },
+            "required": []
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id")? {
+        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id").unwrap_or(None) {
             Some(UserPaymentId {
-                value: Some(minotari_app_grpc::tari_rpc::user_payment_id::Value::Utf8String(payment_id_str)),
+                utf8_string: payment_id_str,
+                ..Default::default()
             })
         } else {
             None
@@ -46,8 +64,9 @@ impl McpTool for GetBalanceTool {
         
         let request = Request::new(GetBalanceRequest { payment_id });
         
-        let response = self.grpc_client.get_balance(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get balance: {}", e)))?
+        let mut client = (*self.grpc_client).clone();
+        let response = client.get_balance(request).await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {}", e)))?
             .into_inner();
         
         // Calculate total balance and percentages
@@ -111,17 +130,30 @@ impl McpTool for GetUnspentAmountsTool {
         "Retrieves the total value of all unspent transaction outputs in the wallet"
     }
     
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
+    }
+    
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
         
-        let response = self.grpc_client.get_unspent_amounts(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get unspent amounts: {}", e)))?
+        let mut client = (*self.grpc_client).clone();
+        let response = client.get_unspent_amounts(request).await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {}", e)))?
             .into_inner();
         
         Ok(json!({
             "unspent_amount": response.amount,
             "formatted": {
-                "tari": (response.amount as f64 / 1_000_000.0).round() / 1.0, // Convert from µT to T
+                "tari": (response.amount.first().copied().unwrap_or(0) as f64 / 1_000_000.0).round() / 1.0, // Convert from µT to T
                 "microtari": response.amount,
             },
             "info": {
@@ -155,17 +187,37 @@ impl McpTool for BalanceAnalysisTool {
         "Provides comprehensive balance analysis including liquidity assessment and spending recommendations"
     }
     
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "requested_amount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Optional amount to analyze spending feasibility for (in microTari)"
+                }
+            },
+            "required": []
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         // Get balance information
         let balance_request = Request::new(GetBalanceRequest { payment_id: None });
-        let balance_response = self.grpc_client.get_balance(balance_request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get balance: {}", e)))?
+        let mut client = (*self.grpc_client).clone();
+        let balance_response = client.get_balance(balance_request).await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {}", e)))?
             .into_inner();
         
         // Get unspent amounts
         let unspent_request = Request::new(Empty {});
-        let unspent_response = self.grpc_client.get_unspent_amounts(unspent_request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get unspent amounts: {}", e)))?
+        let mut client2 = (*self.grpc_client).clone();
+        let unspent_response = client2.get_unspent_amounts(unspent_request).await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {}", e)))?
             .into_inner();
         
         let requested_amount = params.get("requested_amount")
@@ -327,6 +379,35 @@ impl McpTool for BalanceMonitorTool {
         "Monitors balance status and provides alerts based on configurable thresholds"
     }
     
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "low_balance_threshold": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Threshold for low balance alerts (in microTari). Default: 1,000,000 µT (1 T)"
+                },
+                "high_pending_threshold": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Threshold for high pending balance alerts (in microTari). Default: 5,000,000 µT (5 T)"
+                },
+                "liquidity_threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Liquidity ratio threshold (0-1). Default: 0.5 (50%)"
+                }
+            },
+            "required": []
+        })
+    }
+    
     async fn execute(&self, params: Value) -> McpResult<Value> {
         // Get configurable thresholds
         let low_balance_threshold = params.get("low_balance_threshold")
@@ -343,8 +424,9 @@ impl McpTool for BalanceMonitorTool {
         
         // Get current balance
         let balance_request = Request::new(GetBalanceRequest { payment_id: None });
-        let balance_response = self.grpc_client.get_balance(balance_request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to get balance: {}", e)))?
+        let mut client = (*self.grpc_client).clone();
+        let balance_response = client.get_balance(balance_request).await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {}", e)))?
             .into_inner();
         
         let total_balance = balance_response.available_balance + 

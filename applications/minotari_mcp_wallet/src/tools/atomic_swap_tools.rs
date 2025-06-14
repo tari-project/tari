@@ -3,19 +3,15 @@
 //! This module provides tools for atomic swap transactions including
 //! SHA atomic swaps, HTLC operations, and swap management.
 
-use minotari_mcp_common::{
-    McpTool, McpError, McpResult, 
-    get_required_string_param, get_required_u64_param
+use minotari_app_grpc::tari_rpc::{
+    ClaimHtlcRefundRequest, ClaimShaAtomicSwapRequest, PaymentRecipient, SendShaAtomicSwapRequest,
 };
+use minotari_mcp_common::{get_required_string_param, get_required_u64_param, McpError, McpResult, McpTool, PermissionLevel};
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::Arc;
 use tonic::transport::Channel;
 use tonic::Request;
-use minotari_app_grpc::tari_rpc::{
-    SendShaAtomicSwapRequest, ClaimShaAtomicSwapRequest, ClaimHtlcRefundRequest,
-    PaymentRecipient,
-};
 
 /// Tool for sending SHA atomic swap transactions
 #[derive(Clone)]
@@ -34,57 +30,89 @@ impl McpTool for SendShaAtomicSwapTool {
     fn name(&self) -> &str {
         "send_sha_atomic_swap"
     }
-    
+
     fn description(&self) -> &str {
         "Initiates a SHA-based atomic swap transaction with hash time-locked contract"
     }
-    
+
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::Control
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "recipient": {
+                    "type": "object",
+                    "properties": {
+                        "address": {
+                            "type": "string",
+                            "description": "Recipient address for the atomic swap"
+                        },
+                        "amount": {
+                            "type": "number",
+                            "description": "Amount in microTari to send"
+                        },
+                        "fee_per_gram": {
+                            "type": "number",
+                            "description": "Fee per gram in microTari"
+                        }
+                    },
+                    "required": ["address", "amount", "fee_per_gram"],
+                    "description": "Recipient details for the atomic swap"
+                }
+            },
+            "required": ["recipient"]
+        })
+    }
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let recipient_data = params.get("recipient")
-            .ok_or_else(|| McpError::InvalidParameter("recipient object is required".to_string()))?;
-        
-        let address = recipient_data.get("address")
+        let recipient_data = params
+            .get("recipient")
+            .ok_or_else(|| McpError::invalid_request("recipient object is required"))?;
+
+        let address = recipient_data
+            .get("address")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| McpError::InvalidParameter("recipient.address is required".to_string()))?;
-        
-        let amount = recipient_data.get("amount")
+            .ok_or_else(|| McpError::invalid_request("recipient.address is required"))?;
+
+        let amount = recipient_data
+            .get("amount")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::InvalidParameter("recipient.amount is required".to_string()))?;
-        
-        let fee_per_gram = recipient_data.get("fee_per_gram")
+            .ok_or_else(|| McpError::invalid_request("recipient.amount is required"))?;
+
+        let fee_per_gram = recipient_data
+            .get("fee_per_gram")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::InvalidParameter("recipient.fee_per_gram is required".to_string()))?;
-        
-        let payment_id = recipient_data.get("payment_id")
-            .and_then(|v| v.as_str())
-            .map(|s| s.as_bytes().to_vec())
-            .unwrap_or_default();
-        
+            .ok_or_else(|| McpError::invalid_request("recipient.fee_per_gram is required"))?;
+
         if amount == 0 {
-            return Err(McpError::InvalidParameter("amount must be greater than 0".to_string()));
+            return Err(McpError::invalid_request("amount must be greater than 0"));
         }
-        
+
         if fee_per_gram == 0 {
-            return Err(McpError::InvalidParameter("fee_per_gram must be greater than 0".to_string()));
+            return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
         }
-        
+
         let recipient = PaymentRecipient {
             address: address.to_string(),
             amount,
             fee_per_gram,
-            payment_type: 0, // Standard payment type
-            payment_id,
             message: String::new(),
         };
-        
+
         let request = Request::new(SendShaAtomicSwapRequest {
             recipient: Some(recipient),
         });
-        
-        let response = self.grpc_client.send_sha_atomic_swap_transaction(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to send SHA atomic swap: {}", e)))?
+
+        let response = self
+            .grpc_client
+            .send_sha_atomic_swap_transaction(request)
+            .await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to send SHA atomic swap: {}", e)))?
             .into_inner();
-        
+
         Ok(json!({
             "transaction_id": response.transaction_id,
             "pre_image": hex::encode(&response.pre_image),
@@ -137,46 +165,78 @@ impl McpTool for ClaimShaAtomicSwapTool {
     fn name(&self) -> &str {
         "claim_sha_atomic_swap"
     }
-    
+
     fn description(&self) -> &str {
         "Claims a SHA atomic swap by providing the pre-image that matches the output hash"
     }
-    
+
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::Control
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "output_hash": {
+                    "type": "string",
+                    "description": "Output hash of the atomic swap to claim (64 hex characters)"
+                },
+                "pre_image": {
+                    "type": "string",
+                    "description": "Pre-image that matches the output hash (hex string)"
+                },
+                "fee_per_gram": {
+                    "type": "number",
+                    "description": "Fee per gram in microTari"
+                }
+            },
+            "required": ["output_hash", "pre_image", "fee_per_gram"]
+        })
+    }
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let output_hash = get_required_string_param(&params, "output_hash")?;
         let pre_image = get_required_string_param(&params, "pre_image")?;
         let fee_per_gram = get_required_u64_param(&params, "fee_per_gram")?;
-        
+
         // Validate hex inputs
         if !output_hash.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(McpError::InvalidParameter("output_hash must be a valid hex string".to_string()));
+            return Err(McpError::invalid_request("output_hash must be a valid hex string"));
         }
-        
+
         if !pre_image.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(McpError::InvalidParameter("pre_image must be a valid hex string".to_string()));
+            return Err(McpError::invalid_request("pre_image must be a valid hex string"));
         }
-        
+
         if output_hash.len() != 64 {
-            return Err(McpError::InvalidParameter("output_hash must be 64 hex characters (32 bytes)".to_string()));
+            return Err(McpError::invalid_request(
+                "output_hash must be 64 hex characters (32 bytes)",
+            ));
         }
-        
+
         if fee_per_gram == 0 {
-            return Err(McpError::InvalidParameter("fee_per_gram must be greater than 0".to_string()));
+            return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
         }
-        
+
         let request = Request::new(ClaimShaAtomicSwapRequest {
             output: output_hash.clone(),
             pre_image: pre_image.clone(),
             fee_per_gram,
         });
-        
-        let response = self.grpc_client.claim_sha_atomic_swap_transaction(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to claim SHA atomic swap: {}", e)))?
+
+        let response = self
+            .grpc_client
+            .claim_sha_atomic_swap_transaction(request)
+            .await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim SHA atomic swap: {}", e)))?
             .into_inner();
-        
-        let result = response.results.as_ref()
-            .ok_or_else(|| McpError::ToolExecution("No results in claim response".to_string()))?;
-        
+
+        let result = response
+            .results
+            .as_ref()
+            .ok_or_else(|| McpError::tool_execution_failed("No results in claim response"))?;
+
         Ok(json!({
             "claim_result": {
                 "address": result.address,
@@ -239,40 +299,68 @@ impl McpTool for ClaimHtlcRefundTool {
     fn name(&self) -> &str {
         "claim_htlc_refund"
     }
-    
+
     fn description(&self) -> &str {
         "Claims a refund for an expired HTLC (Hash Time-Locked Contract) after the timelock period"
     }
-    
+
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::Control
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "output_hash": {
+                    "type": "string",
+                    "description": "Output hash of the HTLC to refund (64 hex characters)"
+                },
+                "fee_per_gram": {
+                    "type": "number",
+                    "description": "Fee per gram in microTari"
+                }
+            },
+            "required": ["output_hash", "fee_per_gram"]
+        })
+    }
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let output_hash = get_required_string_param(&params, "output_hash")?;
         let fee_per_gram = get_required_u64_param(&params, "fee_per_gram")?;
-        
+
         // Validate hex input
         if !output_hash.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(McpError::InvalidParameter("output_hash must be a valid hex string".to_string()));
+            return Err(McpError::invalid_request("output_hash must be a valid hex string"));
         }
-        
+
         if output_hash.len() != 64 {
-            return Err(McpError::InvalidParameter("output_hash must be 64 hex characters (32 bytes)".to_string()));
+            return Err(McpError::invalid_request(
+                "output_hash must be 64 hex characters (32 bytes)",
+            ));
         }
-        
+
         if fee_per_gram == 0 {
-            return Err(McpError::InvalidParameter("fee_per_gram must be greater than 0".to_string()));
+            return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
         }
-        
+
         let request = Request::new(ClaimHtlcRefundRequest {
             output_hash: output_hash.clone(),
             fee_per_gram,
         });
-        
-        let response = self.grpc_client.claim_htlc_refund_transaction(request).await
-            .map_err(|e| McpError::ToolExecution(format!("Failed to claim HTLC refund: {}", e)))?
+
+        let response = self
+            .grpc_client
+            .claim_htlc_refund_transaction(request)
+            .await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim HTLC refund: {}", e)))?
             .into_inner();
-        
-        let result = response.results.as_ref()
-            .ok_or_else(|| McpError::ToolExecution("No results in refund response".to_string()))?;
-        
+
+        let result = response
+            .results
+            .as_ref()
+            .ok_or_else(|| McpError::tool_execution_failed("No results in refund response"))?;
+
         Ok(json!({
             "refund_result": {
                 "address": result.address,
@@ -334,19 +422,38 @@ impl McpTool for AtomicSwapStatusTool {
     fn name(&self) -> &str {
         "atomic_swap_status"
     }
-    
+
     fn description(&self) -> &str {
         "Provides status information and guidance for atomic swap operations"
     }
-    
+
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::ReadOnly
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "swap_type": {
+                    "type": "string",
+                    "description": "Type of swap to get information about",
+                    "enum": ["general", "sha", "sha_atomic_swap", "htlc", "htlc_refund"]
+                },
+                "output_hash": {
+                    "type": "string",
+                    "description": "Optional output hash to check status for (64 hex characters)"
+                }
+            },
+            "required": []
+        })
+    }
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let swap_type = params.get("swap_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("general");
-        
-        let output_hash = params.get("output_hash")
-            .and_then(|v| v.as_str());
-        
+        let swap_type = params.get("swap_type").and_then(|v| v.as_str()).unwrap_or("general");
+
+        let output_hash = params.get("output_hash").and_then(|v| v.as_str());
+
         // Generate general atomic swap guidance
         let mut info = json!({
             "atomic_swap_overview": {
@@ -385,7 +492,7 @@ impl McpTool for AtomicSwapStatusTool {
                 ]
             }
         });
-        
+
         // Add specific information if output hash is provided
         if let Some(hash) = output_hash {
             if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -399,7 +506,7 @@ impl McpTool for AtomicSwapStatusTool {
                 info["error"] = json!("Invalid output hash format - must be 64 hex characters");
             }
         }
-        
+
         // Add swap-type specific information
         match swap_type {
             "sha" | "sha_atomic_swap" => {
@@ -420,9 +527,9 @@ impl McpTool for AtomicSwapStatusTool {
                     "timing": "Act promptly once timelock expires",
                 });
             },
-            _ => {}
+            _ => {},
         }
-        
+
         Ok(json!({
             "atomic_swap_info": info,
             "current_timestamp": std::time::SystemTime::now()
