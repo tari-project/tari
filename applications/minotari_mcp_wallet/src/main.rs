@@ -35,7 +35,8 @@ fn init_file_logging(cli: &Cli) {
 
         fn log(&self, record: &log::Record) {
             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&self.path) {
-                let _ = writeln!(file, "{} - {}", record.level(), record.args());
+                let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let _ = writeln!(file, "{} {} [{}] - {}", timestamp, record.level(), record.target(), record.args());
             }
         }
 

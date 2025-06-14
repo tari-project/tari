@@ -61,6 +61,10 @@ impl StdioTransport {
 
         log::info!("MCP stdio transport started");
 
+        // Send a keepalive/heartbeat every 10 seconds to prevent client timeout
+        let mut heartbeat_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+        heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         loop {
             line.clear();
 
@@ -69,6 +73,12 @@ impl StdioTransport {
                 _ = shutdown_rx.recv() => {
                     log::info!("Shutdown signal received, terminating");
                     break;
+                }
+
+                // Heartbeat tick - just log to keep connection alive
+                _ = heartbeat_interval.tick() => {
+                    log::debug!("Heartbeat tick - connection alive");
+                    continue;
                 }
 
                 // Read from stdin
@@ -106,6 +116,7 @@ impl StdioTransport {
                                 }
 
                                 log::debug!("Sent response: {}", response_json);
+                                 log::info!("Response sent successfully to client");
                             }
                         }
                         Err(e) => {

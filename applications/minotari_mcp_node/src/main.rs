@@ -18,6 +18,7 @@ use clap::Parser;
 use crate::{cli::Cli, config::NodeMcpConfig, server::NodeMcpServer};
 
 /// Initialize minimal file-based logging for MCP server
+/// Initialize minimal file-based logging for MCP server
 fn init_file_logging(cli: &Cli) {
     let log_dir = cli.get_base_path().join("log");
     let _ = fs::create_dir_all(&log_dir);
@@ -36,7 +37,8 @@ fn init_file_logging(cli: &Cli) {
 
         fn log(&self, record: &log::Record) {
             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&self.path) {
-                let _ = writeln!(file, "{} - {}", record.level(), record.args());
+                let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let _ = writeln!(file, "{} {} [{}] - {}", timestamp, record.level(), record.target(), record.args());
             }
         }
 
