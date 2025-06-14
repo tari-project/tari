@@ -133,7 +133,7 @@ impl NodeMcpServer {
         // If no auto-discovered tools, fall back to manual tools
         if tool_registry.list_tools().is_empty() {
             log::warn!("No auto-discovered tools available, falling back to manual registration");
-            tool_registry = NodeToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled);
+            tool_registry = NodeToolRegistry::new((*grpc_client).clone(), config.mcp.control_enabled);
         }
 
         // Create resource registry with node-specific resources

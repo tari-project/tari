@@ -4,15 +4,14 @@
 //! block construction, and mining data retrieval. Updated to include the existing
 //! GetNewBlockTemplateTool and expand mining capabilities.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param, impl_mcp_tool, tool_schema};
+use minotari_mcp_common::{McpTool, McpError, McpResult};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
 use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
-    NewBlockTemplateRequest, NewBlockTemplate, GetNewBlockWithCoinbasesRequest,
-    GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, pow_algo::PowAlgos, PowAlgo,
+    NewBlockTemplateRequest, GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, PowAlgo,
 };
 
 /// Tool for getting a new block template (existing implementation, enhanced)
@@ -27,8 +26,6 @@ impl GetNewBlockTemplateTool {
     }
 }
 
-impl_mcp_tool!(GetNewBlockTemplateTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
-
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockTemplateTool {
     fn name(&self) -> &str {
@@ -37,6 +34,28 @@ impl McpTool for GetNewBlockTemplateTool {
     
     fn description(&self) -> &str {
         "Retrieves a new block template for mining with specified algorithm and optional weight limit"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "algo": {
+                    "type": "number",
+                    "description": "Mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)"
+                },
+                "max_weight": {
+                    "type": "number",
+                    "description": "Maximum block weight (optional, default 19500)",
+                    "minimum": 1
+                }
+            },
+            "required": ["algo"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -115,8 +134,6 @@ impl GetNewBlockTool {
     }
 }
 
-impl_mcp_tool!(GetNewBlockTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
-
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockTool {
     fn name(&self) -> &str {
@@ -125,6 +142,23 @@ impl McpTool for GetNewBlockTool {
     
     fn description(&self) -> &str {
         "Constructs a new block from a provided block template (requires template from get_new_block_template)"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "template": {
+                    "type": "object",
+                    "description": "Block template from get_new_block_template"
+                }
+            },
+            "required": ["template"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -153,8 +187,6 @@ impl GetNewBlockTemplateWithCoinbasesTool {
     }
 }
 
-impl_mcp_tool!(GetNewBlockTemplateWithCoinbasesTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
-
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
     fn name(&self) -> &str {
@@ -163,6 +195,58 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
     
     fn description(&self) -> &str {
         "Retrieves a new block template with custom coinbase outputs for mining pools or multi-recipient mining"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "algo": {
+                    "type": "number",
+                    "description": "Mining algorithm (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)"
+                },
+                "max_weight": {
+                    "type": "number",
+                    "description": "Maximum block weight (optional, default 19500)",
+                    "minimum": 1
+                },
+                "coinbases": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "address": {
+                                "type": "string",
+                                "description": "Coinbase recipient address"
+                            },
+                            "value": {
+                                "type": "number",
+                                "description": "Coinbase value"
+                            },
+                            "stealth_payment": {
+                                "type": "boolean",
+                                "description": "Whether to use stealth payment (optional)"
+                            },
+                            "revealed_value_proof": {
+                                "type": "boolean",
+                                "description": "Whether to include revealed value proof (optional)"
+                            },
+                            "coinbase_extra": {
+                                "type": "string",
+                                "description": "Extra coinbase data (optional)"
+                            }
+                        },
+                        "required": ["address", "value"]
+                    },
+                    "description": "Array of coinbase outputs"
+                }
+            },
+            "required": ["algo", "coinbases"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -174,10 +258,10 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(19500);
         
-        let pow_algo = match algo {
-            0 => PowAlgos::Sha3x,
-            1 => PowAlgos::Randomxm,
-            2 => PowAlgos::Randomxt,
+        let pow_algo_val = match algo {
+            0 => 1i32, // SHA3X
+            1 => 0i32, // RANDOMXM  
+            2 => 2i32, // RANDOMXT
             _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string())),
         };
         
@@ -223,7 +307,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
         }
         
         let request = Request::new(GetNewBlockTemplateWithCoinbasesRequest {
-            algo: Some(pow_algo),
+            algo: Some(PowAlgo { pow_algo: pow_algo_val }),
             max_weight,
             coinbases,
         });
@@ -278,8 +362,6 @@ impl GetNewBlockWithCoinbasesTool {
     }
 }
 
-impl_mcp_tool!(GetNewBlockWithCoinbasesTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
-
 #[async_trait::async_trait]
 impl McpTool for GetNewBlockWithCoinbasesTool {
     fn name(&self) -> &str {
@@ -288,6 +370,23 @@ impl McpTool for GetNewBlockWithCoinbasesTool {
     
     fn description(&self) -> &str {
         "Constructs a new block with custom coinbase outputs from a template (advanced mining operation)"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "template": {
+                    "type": "object",
+                    "description": "Block template with coinbase configuration"
+                }
+            },
+            "required": ["template"]
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {
@@ -311,8 +410,6 @@ impl MiningAnalysisTool {
     }
 }
 
-impl_mcp_tool!(MiningAnalysisTool, control, tool_schema!(optional_string("algorithm", "Mining algorithm (optional)")));
-
 #[async_trait::async_trait]
 impl McpTool for MiningAnalysisTool {
     fn name(&self) -> &str {
@@ -321,6 +418,30 @@ impl McpTool for MiningAnalysisTool {
     
     fn description(&self) -> &str {
         "Provides comprehensive mining analysis including difficulty trends, profitability estimates, and algorithm recommendations"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Control
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "preferred_algo": {
+                    "type": "number",
+                    "description": "Preferred mining algorithm (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)",
+                    "minimum": 0,
+                    "maximum": 2
+                },
+                "hash_rate": {
+                    "type": "number",
+                    "description": "Your hash rate in H/s (default 1000000)",
+                    "minimum": 1
+                }
+            },
+            "required": []
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -336,15 +457,15 @@ impl McpTool for MiningAnalysisTool {
         let mut algo_analysis = Vec::new();
         
         for algo in 0..3 {
-            let pow_algo = match algo {
-                0 => PowAlgos::Sha3x,
-                1 => PowAlgos::Randomxm,
-                2 => PowAlgos::Randomxt,
+            let pow_algo_val = match algo {
+                0 => 1i32, // SHA3X
+                1 => 0i32, // RANDOMXM
+                2 => 2i32, // RANDOMXT
                 _ => continue,
             };
             
             match self.grpc_client.clone().get_new_block_template(Request::new(NewBlockTemplateRequest {
-                algo: Some(pow_algo),
+                algo: Some(PowAlgo { pow_algo: pow_algo_val }),
                 max_weight: 19500,
             })).await {
                 Ok(response) => {

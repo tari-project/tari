@@ -3,7 +3,7 @@
 //! This module provides comprehensive access to blockchain data including headers,
 //! blocks, network status, and synchronization information.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param, get_required_string_param, impl_mcp_tool, tool_schema};
+use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_u64_param, get_optional_string_param, get_required_string_param};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
@@ -28,8 +28,6 @@ impl ListHeadersTool {
     }
 }
 
-impl_mcp_tool!(ListHeadersTool, readonly, tool_schema!(height_range));
-
 #[async_trait::async_trait]
 impl McpTool for ListHeadersTool {
     fn name(&self) -> &str {
@@ -38,6 +36,29 @@ impl McpTool for ListHeadersTool {
     
     fn description(&self) -> &str {
         "Lists headers in the current best blockchain chain with optional pagination and sorting"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "from_height": {
+                    "type": "number",
+                    "description": "Starting block height",
+                    "minimum": 0
+                },
+                "to_height": {
+                    "type": "number", 
+                    "description": "Ending block height (optional)",
+                    "minimum": 0
+                }
+            },
+            "required": ["from_height"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -107,8 +128,6 @@ impl GetHeaderByHashTool {
     }
 }
 
-impl_mcp_tool!(GetHeaderByHashTool, readonly, tool_schema!(hash_lookup("Block hash to query")));
-
 #[async_trait::async_trait]
 impl McpTool for GetHeaderByHashTool {
     fn name(&self) -> &str {
@@ -117,6 +136,23 @@ impl McpTool for GetHeaderByHashTool {
     
     fn description(&self) -> &str {
         "Retrieves a block header by its hash"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "hash": {
+                    "type": "string",
+                    "description": "Block hash to query (hex string)"
+                }
+            },
+            "required": ["hash"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -165,8 +201,6 @@ impl GetBlocksTool {
     }
 }
 
-impl_mcp_tool!(GetBlocksTool, readonly, tool_schema!(height_range));
-
 #[async_trait::async_trait]
 impl McpTool for GetBlocksTool {
     fn name(&self) -> &str {
@@ -175,6 +209,27 @@ impl McpTool for GetBlocksTool {
     
     fn description(&self) -> &str {
         "Retrieves blocks by their heights"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "heights": {
+                    "type": "array",
+                    "items": {
+                        "type": "number",
+                        "minimum": 0
+                    },
+                    "description": "Array of block heights to retrieve"
+                }
+            },
+            "required": ["heights"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -189,7 +244,7 @@ impl McpTool for GetBlocksTool {
             return Err(McpError::invalid_request("At least one height is required".to_string()));
         }
         
-        let request = Request::new(GetBlocksRequest { heights });
+        let request = Request::new(GetBlocksRequest { heights: heights.clone() });
         
         let mut response_stream = self.grpc_client.clone().get_blocks(request).await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get blocks: {}", e)))?
@@ -236,8 +291,6 @@ impl GetTipInfoTool {
     }
 }
 
-impl_mcp_tool!(GetTipInfoTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetTipInfoTool {
     fn name(&self) -> &str {
@@ -246,6 +299,18 @@ impl McpTool for GetTipInfoTool {
     
     fn description(&self) -> &str {
         "Retrieves the current blockchain tip information including height, hash, and node state"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {
@@ -295,8 +360,6 @@ impl GetSyncInfoTool {
     }
 }
 
-impl_mcp_tool!(GetSyncInfoTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetSyncInfoTool {
     fn name(&self) -> &str {
@@ -305,6 +368,18 @@ impl McpTool for GetSyncInfoTool {
     
     fn description(&self) -> &str {
         "Retrieves blockchain synchronization progress and peer information"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {
@@ -347,8 +422,6 @@ impl GetNetworkDifficultyTool {
     }
 }
 
-impl_mcp_tool!(GetNetworkDifficultyTool, readonly, tool_schema!(height_range));
-
 #[async_trait::async_trait]
 impl McpTool for GetNetworkDifficultyTool {
     fn name(&self) -> &str {
@@ -357,6 +430,34 @@ impl McpTool for GetNetworkDifficultyTool {
     
     fn description(&self) -> &str {
         "Retrieves network difficulty and hash rate estimates over a range of blocks"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "from_tip": {
+                    "type": "number",
+                    "description": "Number of blocks from tip",
+                    "minimum": 0
+                },
+                "start_height": {
+                    "type": "number",
+                    "description": "Start height",
+                    "minimum": 0
+                },
+                "end_height": {
+                    "type": "number",
+                    "description": "End height",
+                    "minimum": 0
+                }
+            },
+            "required": []
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -414,8 +515,6 @@ impl GetTokensInCirculationTool {
     }
 }
 
-impl_mcp_tool!(GetTokensInCirculationTool, readonly, tool_schema!(height_range));
-
 #[async_trait::async_trait]
 impl McpTool for GetTokensInCirculationTool {
     fn name(&self) -> &str {
@@ -424,6 +523,27 @@ impl McpTool for GetTokensInCirculationTool {
     
     fn description(&self) -> &str {
         "Retrieves information about tokens in circulation at specific block heights"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "heights": {
+                    "type": "array",
+                    "items": {
+                        "type": "number",
+                        "minimum": 0
+                    },
+                    "description": "Array of block heights to query"
+                }
+            },
+            "required": ["heights"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -477,8 +597,6 @@ impl GetNetworkStateTool {
     }
 }
 
-impl_mcp_tool!(GetNetworkStateTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetNetworkStateTool {
     fn name(&self) -> &str {
@@ -487,6 +605,18 @@ impl McpTool for GetNetworkStateTool {
     
     fn description(&self) -> &str {
         "Retrieves comprehensive network state including metadata, sync status, and hash rates"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {

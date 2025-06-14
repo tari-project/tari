@@ -3,7 +3,7 @@
 //! This module provides tools for querying network status, peer information,
 //! connectivity, and node identity.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, impl_mcp_tool, tool_schema};
+use minotari_mcp_common::{McpTool, McpError, McpResult};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
@@ -25,8 +25,6 @@ impl GetNetworkStatusTool {
     }
 }
 
-impl_mcp_tool!(GetNetworkStatusTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetNetworkStatusTool {
     fn name(&self) -> &str {
@@ -35,6 +33,18 @@ impl McpTool for GetNetworkStatusTool {
     
     fn description(&self) -> &str {
         "Retrieves base node network connectivity status and connection information"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {
@@ -93,8 +103,6 @@ impl ListConnectedPeersTool {
     }
 }
 
-impl_mcp_tool!(ListConnectedPeersTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for ListConnectedPeersTool {
     fn name(&self) -> &str {
@@ -103,6 +111,18 @@ impl McpTool for ListConnectedPeersTool {
     
     fn description(&self) -> &str {
         "Lists all peers currently connected to the base node with detailed connection information"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {
@@ -197,8 +217,6 @@ impl GetAllPeersTool {
     }
 }
 
-impl_mcp_tool!(GetAllPeersTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetAllPeersTool {
     fn name(&self) -> &str {
@@ -207,6 +225,25 @@ impl McpTool for GetAllPeersTool {
     
     fn description(&self) -> &str {
         "Retrieves information about all known peers, including both connected and disconnected peers"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "number",
+                    "description": "Maximum number of peers to return (default 50)",
+                    "minimum": 1,
+                    "maximum": 1000
+                }
+            },
+            "required": []
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -312,8 +349,6 @@ impl GetNodeIdentityTool {
     }
 }
 
-impl_mcp_tool!(GetNodeIdentityTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetNodeIdentityTool {
     fn name(&self) -> &str {
@@ -322,6 +357,18 @@ impl McpTool for GetNodeIdentityTool {
     
     fn description(&self) -> &str {
         "Retrieves the base node's network identity including public key and node ID"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {
@@ -356,8 +403,6 @@ impl NetworkDiagnosticsTool {
     }
 }
 
-impl_mcp_tool!(NetworkDiagnosticsTool, privileged, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for NetworkDiagnosticsTool {
     fn name(&self) -> &str {
@@ -366,6 +411,18 @@ impl McpTool for NetworkDiagnosticsTool {
     
     fn description(&self) -> &str {
         "Performs comprehensive network diagnostics including connectivity, performance, and peer analysis"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::Privileged
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {

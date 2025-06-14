@@ -3,7 +3,7 @@
 //! This module provides tools for querying mempool state, transactions,
 //! and transaction validation status.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_string_param, impl_mcp_tool, tool_schema};
+use minotari_mcp_common::{McpTool, McpError, McpResult, get_required_string_param};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 
@@ -25,8 +25,6 @@ impl GetMempoolStatsTool {
     }
 }
 
-impl_mcp_tool!(GetMempoolStatsTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetMempoolStatsTool {
     fn name(&self) -> &str {
@@ -35,6 +33,18 @@ impl McpTool for GetMempoolStatsTool {
     
     fn description(&self) -> &str {
         "Retrieves current mempool statistics including transaction counts and total weight"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {
@@ -65,8 +75,6 @@ impl GetMempoolTransactionsTool {
     }
 }
 
-impl_mcp_tool!(GetMempoolTransactionsTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for GetMempoolTransactionsTool {
     fn name(&self) -> &str {
@@ -75,6 +83,25 @@ impl McpTool for GetMempoolTransactionsTool {
     
     fn description(&self) -> &str {
         "Retrieves all transactions currently in the mempool with detailed information"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "number",
+                    "description": "Maximum number of transactions to return (default 100)",
+                    "minimum": 1,
+                    "maximum": 1000
+                }
+            },
+            "required": []
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -154,8 +181,6 @@ impl GetTransactionStateTool {
     }
 }
 
-impl_mcp_tool!(GetTransactionStateTool, readonly, tool_schema!(string_param("excess_signature", "Transaction excess signature (hex)")));
-
 #[async_trait::async_trait]
 impl McpTool for GetTransactionStateTool {
     fn name(&self) -> &str {
@@ -164,6 +189,23 @@ impl McpTool for GetTransactionStateTool {
     
     fn description(&self) -> &str {
         "Checks the state of a transaction (mempool, mined, or not stored) using its excess signature"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "excess_signature": {
+                    "type": "string",
+                    "description": "Transaction excess signature (hex string)"
+                }
+            },
+            "required": ["excess_signature"]
+        })
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
@@ -224,8 +266,6 @@ impl AnalyzeMempoolTool {
     }
 }
 
-impl_mcp_tool!(AnalyzeMempoolTool, readonly, tool_schema!(empty));
-
 #[async_trait::async_trait]
 impl McpTool for AnalyzeMempoolTool {
     fn name(&self) -> &str {
@@ -234,6 +274,18 @@ impl McpTool for AnalyzeMempoolTool {
     
     fn description(&self) -> &str {
         "Provides analysis of mempool transaction patterns including fee distribution and transaction types"
+    }
+    
+    fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
+        minotari_mcp_common::security::PermissionLevel::ReadOnly
+    }
+    
+    fn input_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
     }
     
     async fn execute(&self, _params: Value) -> McpResult<Value> {

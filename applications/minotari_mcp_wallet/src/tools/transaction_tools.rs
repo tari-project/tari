@@ -16,7 +16,7 @@ use minotari_app_grpc::tari_rpc::{
     GetTransactionInfoRequest, GetCompletedTransactionsRequest, GetBlockHeightTransactionsRequest,
     GetTransactionPayRefsRequest, TransferRequest, PaymentRecipient, CoinSplitRequest,
     CancelTransactionRequest, CreateBurnTransactionRequest, UserPaymentId,
-    payment_recipient::PaymentType, user_payment_id,
+    payment_recipient::PaymentType,
 };
 
 /// Tool for getting transaction information by ID
@@ -107,7 +107,7 @@ impl McpTool for GetTransactionInfoTool {
                 "is_cancelled": tx.is_cancelled,
                 "excess_sig": hex::encode(&tx.excess_sig),
                 "timestamp": tx.timestamp,
-                "payment_id": hex::encode(&tx.payment_id),
+                "payment_id": hex::encode(&tx.user_payment_id.as_ref().map(|p| p.utf8_string.as_bytes()).unwrap_or(&[])),
                 "mined_in_block_height": tx.mined_in_block_height,
                 "formatted": {
                     "amount_tari": (tx.amount as f64 / 1_000_000.0),
@@ -210,22 +210,24 @@ impl McpTool for GetCompletedTransactionsTool {
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id")? {
+        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id").ok().flatten() {
             Some(UserPaymentId {
-                value: Some(user_payment_id::Value::Utf8String(payment_id_str)),
+                utf8_string: payment_id_str,
+                u256: vec![],
+                user_bytes: vec![],
             })
         } else {
             None
         };
         
-        let block_hash = get_optional_string_param(&params, "block_hash")?;
-        let block_height = params.get("block_height").and_then(|v| v.as_u64()).unwrap_or(0);
+        let block_hash = get_optional_string_param(&params, "block_hash").ok().flatten();
+        let block_height = params.get("block_height").and_then(|v| v.as_u64());
         
         let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(100);
         
         let request = Request::new(GetCompletedTransactionsRequest {
             payment_id,
-            block_hash: block_hash.unwrap_or_default(),
+            block_hash,
             block_height,
         });
         
@@ -270,7 +272,7 @@ impl McpTool for GetCompletedTransactionsTool {
                     "amount": transaction.amount,
                     "fee": transaction.fee,
                     "timestamp": transaction.timestamp,
-                    "payment_id": hex::encode(&transaction.payment_id),
+                    "payment_id": hex::encode(&transaction.user_payment_id.as_ref().map(|p| p.utf8_string.as_bytes()).unwrap_or(&[])),
                     "mined_in_block_height": transaction.mined_in_block_height,
                     "formatted": {
                         "amount_tari": (transaction.amount as f64 / 1_000_000.0),
@@ -338,7 +340,7 @@ impl McpTool for GetCompletedTransactionsTool {
                 "filters": {
                     "payment_id": payment_id.is_some(),
                     "block_hash": block_hash.is_some(),
-                    "block_height": block_height > 0,
+                    "block_height": block_height.is_some(),
                 }
             }
         }))
@@ -447,22 +449,28 @@ impl McpTool for TransferTool {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0); // Default to standard payment
             
-            let payment_id = recipient_data.get("payment_id")
+            let raw_payment_id = recipient_data.get("payment_id")
                 .and_then(|v| v.as_str())
                 .map(|s| s.as_bytes().to_vec())
                 .unwrap_or_default();
             
-            let message = recipient_data.get("message")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
+            let user_payment_id = if let Some(payment_id_str) = recipient_data.get("payment_id").and_then(|v| v.as_str()) {
+                Some(UserPaymentId {
+                    utf8_string: payment_id_str.to_string(),
+                    u256: vec![],
+                    user_bytes: vec![],
+                })
+            } else {
+                None
+            };
             
             recipients.push(PaymentRecipient {
                 address: address.to_string(),
                 amount,
                 fee_per_gram,
                 payment_type: payment_type as i32,
-                payment_id,
-                message: message.to_string(),
+                raw_payment_id,
+                user_payment_id,
             });
             
             total_amount += amount;
@@ -593,10 +601,15 @@ impl McpTool for CoinSplitTool {
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
         
-        let payment_id = params.get("payment_id")
-            .and_then(|v| v.as_str())
-            .map(|s| s.as_bytes().to_vec())
-            .unwrap_or_default();
+        let user_payment_id = if let Some(payment_id_str) = params.get("payment_id").and_then(|v| v.as_str()) {
+            Some(UserPaymentId {
+                utf8_string: payment_id_str.to_string(),
+                u256: vec![],
+                user_bytes: vec![],
+            })
+        } else {
+            None
+        };
         
         let total_amount = amount_per_split * split_count;
         
@@ -605,7 +618,7 @@ impl McpTool for CoinSplitTool {
             split_count,
             fee_per_gram,
             lock_height,
-            payment_id,
+            user_payment_id,
         });
         
         let response = self.grpc_client.coin_split(request).await
@@ -684,6 +697,12 @@ impl McpTool for CancelTransactionTool {
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to cancel transaction: {}", e)))?
             .into_inner();
         
+        let message = if response.is_success {
+            "Transaction has been successfully cancelled".to_string()
+        } else {
+            format!("Cancellation failed: {}", response.failure_message)
+        };
+        
         Ok(json!({
             "tx_id": tx_id,
             "is_success": response.is_success,
@@ -693,11 +712,7 @@ impl McpTool for CancelTransactionTool {
             } else {
                 "CANCELLATION_FAILED"
             },
-            "message": if response.is_success {
-                "Transaction has been successfully cancelled"
-            } else {
-                format!("Cancellation failed: {}", response.failure_message)
-            },
+            "message": message,
             "note": if response.is_success {
                 "Funds will be available for spending again shortly"
             } else {
@@ -765,8 +780,8 @@ impl McpTool for TransactionAnalysisTool {
         // Get completed transactions
         let request = Request::new(GetCompletedTransactionsRequest {
             payment_id: None,
-            block_hash: String::new(),
-            block_height: 0,
+            block_hash: None,
+            block_height: None,
         });
         
         let mut response_stream = self.grpc_client.get_completed_transactions(request).await
