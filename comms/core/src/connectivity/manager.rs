@@ -1195,7 +1195,11 @@ impl ConnectivityManagerActor {
             .await?
         {
             let connected_node_ids = self.pool.get_connected_node_ids();
-            match self.peer_discovery_bridge.execute_discovery_with_pool(task_id, &connected_node_ids).await {
+            match self
+                .peer_discovery_bridge
+                .execute_discovery_with_pool(task_id, &connected_node_ids)
+                .await
+            {
                 Ok(discovered) => {
                     if discovered > 0 {
                         debug!(

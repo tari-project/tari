@@ -256,9 +256,10 @@ impl ConnectionPool {
             .iter()
             .filter_map(|(node_id, conn_state)| {
                 if conn_state.status() == ConnectionStatus::Connected &&
-                   conn_state.connection()
-                       .filter(|c| c.is_connected() && c.peer_features().is_node())
-                       .is_some()
+                    conn_state
+                        .connection()
+                        .filter(|c| c.is_connected() && c.peer_features().is_node())
+                        .is_some()
                 {
                     Some(node_id.clone())
                 } else {

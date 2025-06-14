@@ -338,13 +338,13 @@ mod tests {
     #[test]
     fn test_circuit_breaker_cooldown_preservation() {
         let mut metrics = PeerHealthMetrics::new();
-        
+
         // Record enough failures to open circuit breaker
         for _ in 0..5 {
             metrics.record_failure(3);
         }
         assert!(metrics.circuit_breaker_state.is_open());
-        
+
         // Get the original opened_at timestamp
         let original_opened_at = match &metrics.circuit_breaker_state {
             CircuitBreakerState::Open { opened_at } => *opened_at,
@@ -354,10 +354,13 @@ mod tests {
         // Record additional failures - should NOT reset the cooldown timer
         metrics.record_failure(3);
         metrics.record_failure(3);
-        
+
         // Verify the opened_at timestamp hasn't changed
         if let CircuitBreakerState::Open { opened_at } = &metrics.circuit_breaker_state {
-            assert_eq!(*opened_at, original_opened_at, "Circuit breaker cooldown should not reset on repeated failures");
+            assert_eq!(
+                *opened_at, original_opened_at,
+                "Circuit breaker cooldown should not reset on repeated failures"
+            );
         } else {
             panic!("Circuit breaker should still be open");
         }
@@ -367,7 +370,7 @@ mod tests {
     fn test_bayesian_success_rate_with_no_data() {
         let metrics = PeerHealthMetrics::new();
         let window = Duration::from_secs(60);
-        
+
         // With no data, should return conservative Bayesian prior
         let success_rate = metrics.success_rate(window);
         assert_eq!(success_rate, 0.25);
@@ -377,27 +380,27 @@ mod tests {
     fn test_bayesian_success_rate_calculation() {
         let mut metrics = PeerHealthMetrics::new();
         let window = Duration::from_secs(60);
-        
+
         // Test Bayesian calculation with different scenarios
-        
+
         // Scenario 1: All successes
         for _ in 0..5 {
             metrics.record_success(None);
         }
         let rate1 = metrics.success_rate(window);
         // (α + successes) / (α + β + total) = (1 + 5) / (1 + 3 + 5) = 6/9 = 0.666...
-        assert!((rate1 - 6.0/9.0).abs() < 0.001);
-        
+        assert!((rate1 - 6.0 / 9.0).abs() < 0.001);
+
         // Reset for next test
         let mut metrics = PeerHealthMetrics::new();
-        
+
         // Scenario 2: All failures
         for _ in 0..5 {
             metrics.record_failure(10); // High threshold to avoid circuit breaker
         }
         let rate2 = metrics.success_rate(window);
         // (α + successes) / (α + β + total) = (1 + 0) / (1 + 3 + 5) = 1/9 ≈ 0.111
-        assert!((rate2 - 1.0/9.0).abs() < 0.001);
+        assert!((rate2 - 1.0 / 9.0).abs() < 0.001);
     }
 
     #[test]

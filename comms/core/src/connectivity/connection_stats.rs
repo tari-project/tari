@@ -69,7 +69,8 @@ impl PeerConnectionStats {
         // Use default from ConnectivityConfig to ensure centralization
         use super::config::ConnectivityConfig;
         let default_config = ConnectivityConfig::default();
-        self.health_metrics.record_failure(default_config.circuit_breaker_failure_threshold);
+        self.health_metrics
+            .record_failure(default_config.circuit_breaker_failure_threshold);
     }
 
     /// Sets the last connection as a failure with configurable threshold
