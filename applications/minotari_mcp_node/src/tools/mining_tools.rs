@@ -12,6 +12,7 @@ use tonic::transport::Channel;
 use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
     NewBlockTemplateRequest, GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, PowAlgo,
+    pow_algo::PowAlgos,
 };
 
 /// Tool for getting a new block template (existing implementation, enhanced)
@@ -68,9 +69,9 @@ impl McpTool for GetNewBlockTemplateTool {
             .unwrap_or(19500); // Default max weight for blocks
         
         let pow_algo_val = match algo {
-            0 => 0i32, // RANDOMXM
-            1 => 1i32, // SHA3X  
-            2 => 2i32, // RANDOMXT
+            0 => PowAlgos::Randomxm.into(), // RANDOMXM
+            1 => PowAlgos::Sha3x.into(),    // SHA3X  
+            2 => PowAlgos::Randomxt.into(), // RANDOMXT
             _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string())),
         };
         
@@ -125,12 +126,12 @@ impl McpTool for GetNewBlockTemplateTool {
 /// Tool for constructing a new block from a template
 #[derive(Clone)]
 pub struct GetNewBlockTool {
-    grpc_client: BaseNodeGrpcClient<Channel>,
+    _grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
 impl GetNewBlockTool {
     pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
-        Self { grpc_client }
+        Self { _grpc_client: grpc_client }
     }
 }
 
@@ -161,7 +162,7 @@ impl McpTool for GetNewBlockTool {
         })
     }
     
-    async fn execute(&self, params: Value) -> McpResult<Value> {
+    async fn execute(&self, _params: Value) -> McpResult<Value> {
         // This is a simplified implementation - in reality, we'd need to properly
         // construct the NewBlockTemplate from the parameters
         return Err(McpError::invalid_request(
@@ -259,9 +260,9 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             .unwrap_or(19500);
         
         let pow_algo_val = match algo {
-            0 => 1i32, // SHA3X
-            1 => 0i32, // RANDOMXM  
-            2 => 2i32, // RANDOMXT
+            0 => PowAlgos::Sha3x.into(),    // SHA3X
+            1 => PowAlgos::Randomxm.into(), // RANDOMXM  
+            2 => PowAlgos::Randomxt.into(), // RANDOMXT
             _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string())),
         };
         
@@ -458,9 +459,9 @@ impl McpTool for MiningAnalysisTool {
         
         for algo in 0..3 {
             let pow_algo_val = match algo {
-                0 => 1i32, // SHA3X
-                1 => 0i32, // RANDOMXM
-                2 => 2i32, // RANDOMXT
+                0 => PowAlgos::Sha3x.into(),    // SHA3X
+                1 => PowAlgos::Randomxm.into(), // RANDOMXM
+                2 => PowAlgos::Randomxt.into(), // RANDOMXT
                 _ => continue,
             };
             
@@ -470,7 +471,7 @@ impl McpTool for MiningAnalysisTool {
             })).await {
                 Ok(response) => {
                     let response = response.into_inner();
-                    if let (Some(template), Some(miner_data)) = (response.new_block_template.as_ref(), response.miner_data.as_ref()) {
+                    if let (Some(_template), Some(miner_data)) = (response.new_block_template.as_ref(), response.miner_data.as_ref()) {
                         let algo_name = match algo {
                             0 => "SHA3X",
                             1 => "MONERO",

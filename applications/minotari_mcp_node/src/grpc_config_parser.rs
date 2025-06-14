@@ -18,9 +18,11 @@ pub enum GrpcConfigError {
     UnknownService(String),
     
     #[error("Configuration parsing error: {0}")]
+    #[allow(dead_code)]
     ParseError(String),
     
     #[error("Method not found: {0}")]
+    #[allow(dead_code)]
     MethodNotFound(String),
 }
 
@@ -92,6 +94,7 @@ impl GrpcConfigParser {
     }
     
     /// Check if a specific method is allowed
+    #[allow(dead_code)]
     pub fn is_method_allowed(&self, method_name: &str) -> bool {
         // If no restrictions configured, allow all methods
         if self.config.allow_all_by_default && self.config.allowed_methods.is_empty() {
@@ -114,21 +117,25 @@ impl GrpcConfigParser {
     }
     
     /// Check if control operations are allowed
+    #[allow(dead_code)]
     pub fn are_control_operations_allowed(&self) -> bool {
         self.config.allow_control_operations
     }
     
     /// Get all allowed methods
+    #[allow(dead_code)]
     pub fn get_allowed_methods(&self) -> &HashSet<String> {
         &self.allowed_methods_set
     }
     
     /// Get all allowed services (with wildcard)
+    #[allow(dead_code)]
     pub fn get_allowed_services(&self) -> &HashSet<String> {
         &self.allowed_services
     }
     
     /// Filter a list of method names based on configuration
+    #[allow(dead_code)]
     pub fn filter_methods(&self, methods: &[String]) -> Vec<String> {
         methods.iter()
             .filter(|method| self.is_method_allowed(method))
@@ -137,6 +144,7 @@ impl GrpcConfigParser {
     }
     
     /// Get configuration summary for debugging
+    #[allow(dead_code)]
     pub fn get_config_summary(&self) -> String {
         let allowed_count = self.allowed_methods_set.len();
         let services_count = self.allowed_services.len();
@@ -255,6 +263,7 @@ impl GrpcConfigParser {
     }
     
     /// Extract service name from full method name
+    #[allow(dead_code)]
     fn extract_service_name(&self, method_name: &str) -> Option<String> {
         if let Some(slash_pos) = method_name.find('/') {
             let service_part = &method_name[..slash_pos];
@@ -304,6 +313,7 @@ pub mod method_groups {
     ];
     
     /// Control operations (require careful consideration)
+    #[allow(dead_code)]
     pub const BASE_NODE_CONTROL: &[&str] = &[
         "BaseNode/SubmitBlock",
         "BaseNode/SubmitTransaction",
