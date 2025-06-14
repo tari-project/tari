@@ -1179,22 +1179,15 @@ impl ConnectivityManagerActor {
             return Ok(());
         }
 
-        // Get current peer and connection counts
-        let connected_count = self.pool.count_connected_nodes();
-        let all_peers = self
-            .peer_manager
-            .all(None)
-            .await
-            .map_err(ConnectivityError::PeerManagerError)?;
-        let total_peer_count = all_peers.len();
+        // Get current connected node IDs for filtering
+        let connected_node_ids = self.pool.get_connected_node_ids();
 
         // Check if discovery is needed
         if self
             .peer_discovery_bridge
-            .should_trigger_discovery(total_peer_count, connected_count, task_id)
+            .should_trigger_discovery(&connected_node_ids, task_id)
             .await?
         {
-            let connected_node_ids = self.pool.get_connected_node_ids();
             match self
                 .peer_discovery_bridge
                 .execute_discovery_with_pool(task_id, &connected_node_ids)
