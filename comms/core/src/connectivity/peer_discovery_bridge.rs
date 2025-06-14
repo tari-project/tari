@@ -48,20 +48,18 @@ impl PeerDiscoveryBridge {
     /// Check if we should trigger peer discovery based on available peer count
     pub async fn should_trigger_discovery(
         &mut self,
-        current_peer_count: usize,
-        connected_count: usize,
+        connected_node_ids: &[crate::peer_manager::NodeId],
         task_id: u64,
     ) -> Result<bool, ConnectivityError> {
-        // Basic threshold checks
-        let available_peers = current_peer_count.saturating_sub(connected_count);
+        // Basic threshold checks - use filtered count that excludes connected peers
+        let available_peers = self.get_available_peer_count_with_pool(connected_node_ids).await?;
         let discovery_threshold = self.config.target_connection_count * 3; // Need 3x target as available candidates
 
         debug!(
             target: LOG_TARGET,
-            "({}) Peer discovery check: available={}, connected={}, threshold={}",
+            "({}) Peer discovery check: available={}, threshold={}",
             task_id,
             available_peers,
-            connected_count,
             discovery_threshold
         );
 

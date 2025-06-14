@@ -408,8 +408,8 @@ mod tests {
         let mut metrics = PeerHealthMetrics::new();
         let window = Duration::from_secs(60);
 
-        // Perfect health initially
-        assert_eq!(metrics.health_score(window), 1.0);
+        // Conservative default health (Bayesian prior: 0.25)
+        assert_eq!(metrics.health_score(window), 0.25);
 
         // Record some successes and failures to have a mixed success rate
         metrics.record_success(None);
