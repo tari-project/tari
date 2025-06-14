@@ -938,12 +938,10 @@ impl McpTool for TransactionAnalysisTool {
                     f if f >= 0.1 => "LOW",
                     _ => "VERY_LOW",
                 },
-                "spending_behavior": if total_outbound > total_inbound {
-                    "NET_SPENDER"
-                } else if total_inbound > total_outbound {
-                    "NET_ACCUMULATOR"
-                } else {
-                    "BALANCED"
+                "spending_behavior": match total_outbound.cmp(&total_inbound) {
+                    std::cmp::Ordering::Greater => "NET_SPENDER",
+                    std::cmp::Ordering::Less => "NET_ACCUMULATOR",
+                    std::cmp::Ordering::Equal => "BALANCED",
                 },
                 "fee_efficiency": if avg_fee <= 25 {
                     "EFFICIENT"
