@@ -6,6 +6,16 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[lints.clippy]
+# Allow certain lints for this crate to focus on functionality over style
+too_many_lines = "allow"
+if_not_else = "allow"
+cast_possible_truncation = "allow"
+struct_excessive_bools = "allow"
+
+[lints.rust]
+let_underscore_drop = "allow"
+
 [[bin]]
 name = "minotari_mcp_node"
 path = "src/main.rs"
