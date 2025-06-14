@@ -51,14 +51,10 @@ impl McpTool for GetBalanceTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id") {
-            Some(UserPaymentId {
+        let payment_id = get_optional_string_param(&params, "payment_id").map(|payment_id_str| UserPaymentId {
                 utf8_string: payment_id_str,
                 ..Default::default()
-            })
-        } else {
-            None
-        };
+            });
 
         let request = Request::new(GetBalanceRequest { payment_id });
 

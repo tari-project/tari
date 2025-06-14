@@ -194,15 +194,11 @@ impl AutoDiscoveryRegistry {
             .iter()
             .filter(|method| {
                 // Check if method is allowed
-                if !self.config.allowed_methods.is_empty() {
-                    if !self.config.allowed_methods.contains(&method.name) &&
-                        !self
+                if !self.config.allowed_methods.is_empty() && !self.config.allowed_methods.contains(&method.name) && !self
                             .config
                             .allowed_methods
-                            .contains(&format!("{}/*", self.config.server_type.name()))
-                    {
-                        return false;
-                    }
+                            .contains(&format!("{}/*", self.config.server_type.name())) {
+                    return false;
                 }
 
                 // Check control operations
@@ -381,8 +377,6 @@ impl AutoDiscoveryRegistry {
             }
         } else if name_lower.contains("burn") || name_lower.contains("destroy") {
             ToolRiskLevel::Critical
-        } else if name_lower.contains("create") || name_lower.contains("generate") {
-            ToolRiskLevel::Medium
         } else {
             ToolRiskLevel::Medium
         }

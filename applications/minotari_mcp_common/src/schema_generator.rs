@@ -197,9 +197,9 @@ impl SchemaGenerator {
     fn method_to_tool_name(&self, method_name: &str) -> String {
         // Convert PascalCase to snake_case
         let mut result = String::new();
-        let mut chars = method_name.chars().peekable();
+        let chars = method_name.chars().peekable();
 
-        while let Some(ch) = chars.next() {
+        for ch in chars {
             if ch.is_uppercase() && !result.is_empty() {
                 result.push('_');
             }

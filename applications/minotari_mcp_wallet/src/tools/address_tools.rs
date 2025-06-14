@@ -190,8 +190,8 @@ impl McpTool for GetPaymentIdAddressTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let payment_id_str = get_required_string_param(&params, "payment_id")?;
 
-        let payment_id = if payment_id_str.starts_with("0x") {
-            hex::decode(&payment_id_str[2..])
+        let payment_id = if let Some(stripped) = payment_id_str.strip_prefix("0x") {
+            hex::decode(stripped)
                 .map_err(|e| McpError::invalid_request(format!("Invalid hex payment ID: {}", e)))?
         } else {
             payment_id_str.as_bytes().to_vec()
@@ -286,8 +286,8 @@ impl McpTool for AddressValidationTool {
 
         // Check if it's a hex address
         if address.starts_with("0x") || address.chars().all(|c| c.is_ascii_hexdigit()) {
-            let hex_addr = if address.starts_with("0x") {
-                &address[2..]
+            let hex_addr = if let Some(stripped) = address.strip_prefix("0x") {
+                stripped
             } else {
                 &address
             };
@@ -470,8 +470,8 @@ impl McpTool for AddressConverterTool {
         // Try to determine the input format and convert
         if address.starts_with("0x") || address.chars().all(|c| c.is_ascii_hexdigit()) {
             // Input is hex format
-            let hex_addr = if address.starts_with("0x") {
-                &address[2..]
+            let hex_addr = if let Some(stripped) = address.strip_prefix("0x") {
+                stripped
             } else {
                 &address
             };

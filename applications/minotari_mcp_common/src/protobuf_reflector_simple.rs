@@ -237,9 +237,7 @@ impl ProtobufReflector {
             }),
         );
 
-        let mut required = Vec::new();
-        required.push("recipient".to_string());
-        required.push("amount".to_string());
+        let required = vec!["recipient".to_string(), "amount".to_string()];
 
         Ok(Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::Object.into()),

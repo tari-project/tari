@@ -217,15 +217,11 @@ impl McpTool for GetCompletedTransactionsTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id") {
-            Some(UserPaymentId {
+        let payment_id = get_optional_string_param(&params, "payment_id").map(|payment_id_str| UserPaymentId {
                 utf8_string: payment_id_str,
                 u256: vec![],
                 user_bytes: vec![],
-            })
-        } else {
-            None
-        };
+            });
 
         let block_hash = get_optional_string_param(&params, "block_hash").map(|hash| BlockHashHex { hash });
         let block_height = params
@@ -483,15 +479,11 @@ impl McpTool for TransferTool {
                 .unwrap_or_default();
 
             let user_payment_id =
-                if let Some(payment_id_str) = recipient_data.get("payment_id").and_then(|v| v.as_str()) {
-                    Some(UserPaymentId {
+                recipient_data.get("payment_id").and_then(|v| v.as_str()).map(|payment_id_str| UserPaymentId {
                         utf8_string: payment_id_str.to_string(),
                         u256: vec![],
                         user_bytes: vec![],
-                    })
-                } else {
-                    None
-                };
+                    });
 
             recipients.push(PaymentRecipient {
                 address: address.to_string(),
@@ -548,7 +540,7 @@ impl McpTool for TransferTool {
                 "failed_transfers": failed_transfers,
                 "total_amount": total_amount,
                 "total_amount_tari": (total_amount as f64 / 1_000_000.0),
-                "success_rate": if results.len() > 0 {
+                "success_rate": if !results.is_empty() {
                     (successful_transfers as f64 / results.len() as f64 * 100.0).round()
                 } else {
                     0.0

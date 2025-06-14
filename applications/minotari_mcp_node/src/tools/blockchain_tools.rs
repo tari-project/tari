@@ -416,13 +416,9 @@ impl McpTool for GetSyncInfoTool {
             } else {
                 100.0
             },
-            "blocks_behind": if response.tip_height > response.local_height {
-                response.tip_height - response.local_height
-            } else {
-                0
-            },
+            "blocks_behind": response.tip_height.saturating_sub(response.local_height),
             "peer_node_ids": response.peer_node_id.iter()
-                .map(|id| hex::encode(id))
+                .map(hex::encode)
                 .collect::<Vec<_>>(),
             "is_synced": response.tip_height == response.local_height,
         }))

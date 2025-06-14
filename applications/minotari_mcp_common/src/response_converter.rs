@@ -121,6 +121,12 @@ impl Default for ResponseConverterRegistry {
 /// Generic JSON response converter for basic protobuf types
 pub struct GenericJsonConverter;
 
+impl Default for GenericJsonConverter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GenericJsonConverter {
     pub fn new() -> Self {
         Self
@@ -158,6 +164,12 @@ impl ResponseConverter for GenericJsonConverter {
 
 /// Node-specific response converter for base node gRPC methods
 pub struct NodeResponseConverter;
+
+impl Default for NodeResponseConverter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl NodeResponseConverter {
     pub fn new() -> Self {
@@ -240,6 +252,12 @@ impl ResponseConverter for NodeResponseConverter {
 
 /// Wallet-specific response converter for wallet gRPC methods
 pub struct WalletResponseConverter;
+
+impl Default for WalletResponseConverter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl WalletResponseConverter {
     pub fn new() -> Self {

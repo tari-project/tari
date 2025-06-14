@@ -298,20 +298,20 @@ impl ToolMetadataRegistry {
         // Add to category index
         self.by_category
             .entry(metadata.category)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(name.clone());
 
         // Add to risk level index
         self.by_risk_level
             .entry(metadata.risk_level)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(name.clone());
 
         // Add to tags index
         for tag in &metadata.tags {
             self.by_tags
                 .entry(tag.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(name.clone());
         }
 
