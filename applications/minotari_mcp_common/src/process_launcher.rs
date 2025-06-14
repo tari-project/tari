@@ -468,7 +468,7 @@ impl TariProcessLauncher {
             "-p".to_string(),
             format!("base_node.grpc_address={}", multiaddr_format),
             "-p".to_string(),
-            "base_node.grpc_server_allow_methods=get_version,get_tip_info,get_sync_info,get_network_status,get_peers,get_header_by_hash,get_blocks,get_network_difficulty,get_tokens_in_circulation,get_network_state,get_mempool_stats,get_mempool_transactions,get_new_block_template,get_new_block_template_with_coinbases,submit_transaction,submit_block".to_string(),
+            "base_node.grpc_server_allow_methods=get_version,get_tip_info,get_sync_info,get_network_status,get_peers,get_header_by_hash,get_blocks,get_network_difficulty,get_tokens_in_circulation,get_mempool_stats,get_mempool_transactions,get_new_block_template,get_new_block_template_with_coinbases,submit_transaction,submit_block".to_string(),
             "--non-interactive-mode".to_string(),
         ];
 
