@@ -188,9 +188,6 @@ macro_rules! impl_standard_tool {
 // All tools now use manual implementations for better control and clarity
 #[cfg(test)]
 mod tests {
-    
-
-    
 
     #[test]
     fn test_tool_schema_macros() {
