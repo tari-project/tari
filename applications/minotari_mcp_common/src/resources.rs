@@ -179,6 +179,8 @@ impl ResourceRegistry {
                 params.insert(param_name.to_string(), uri_part.to_string());
             } else if *template_part != *uri_part {
                 return Err(McpError::invalid_request("URI does not match template"));
+            } else {
+                // Template part matches URI part exactly - continue processing
             }
         }
 

@@ -144,6 +144,7 @@ impl Default for ServiceDiscovery {
 }
 
 /// Base Node gRPC method definitions
+#[allow(clippy::too_many_lines)]
 pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
     vec![
         // Blockchain methods
@@ -388,6 +389,7 @@ pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
 }
 
 /// Wallet gRPC method definitions
+#[allow(clippy::too_many_lines)]
 pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
     vec![
         // Balance methods

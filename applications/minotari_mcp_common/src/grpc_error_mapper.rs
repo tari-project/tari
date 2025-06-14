@@ -120,6 +120,7 @@ impl GrpcErrorMapper {
     }
 
     /// Map gRPC status to enhanced error context
+    #[allow(clippy::too_many_lines)]
     pub fn map_status(&self, status: &Status) -> ErrorContext {
         // Check for custom mappings first
         if let Some(context) = self.custom_mappings.get(status.message()) {

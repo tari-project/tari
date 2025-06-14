@@ -164,6 +164,8 @@ impl StdioTransport {
                     return Some(Value::Number(serde_json::Number::from(num)));
                 } else if id_text.starts_with('"') && id_text.ends_with('"') && id_text.len() >= 2 {
                     return Some(Value::String(id_text[1..id_text.len() - 1].to_string()));
+                } else {
+                    // Could not parse as valid JSON value
                 }
             }
         }
@@ -268,10 +270,10 @@ impl StdioTransport {
         repaired = leading_zeros.replace_all(&repaired, "$1").to_string();
 
         // Return the repaired JSON if it's different from input
-        if repaired != input {
-            Some(repaired)
-        } else {
+        if repaired == input {
             None
+        } else {
+            Some(repaired)
         }
     }
 

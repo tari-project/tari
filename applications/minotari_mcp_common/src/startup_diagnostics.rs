@@ -244,7 +244,7 @@ impl StartupDiagnostics {
                 let test_file = parent.join(".tari_mcp_test");
                 match std::fs::write(&test_file, "test") {
                     Ok(_) => {
-                        let _ = std::fs::remove_file(&test_file); // Clean up
+                        drop(std::fs::remove_file(&test_file)); // Clean up
                         results.push(DiagnosticResult {
                             component: "Directory Permissions".to_string(),
                             status: DiagnosticStatus::Healthy,

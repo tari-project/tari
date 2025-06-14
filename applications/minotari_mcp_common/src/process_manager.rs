@@ -99,7 +99,7 @@ impl ProcessSupervisor {
             // Check if already running via health check
             if self.is_process_healthy().await {
                 log::info!("Process already running and healthy on port {}", self.port);
-                let _ = self.status_tx.send(ProcessStatus::Running);
+                drop(self.status_tx.send(ProcessStatus::Running));
 
                 // Wait for shutdown signal
                 shutdown_rx.recv().await;
@@ -107,12 +107,12 @@ impl ProcessSupervisor {
             }
 
             // Launch the process
-            let _ = self.status_tx.send(ProcessStatus::Starting);
+            drop(self.status_tx.send(ProcessStatus::Starting));
 
             match self.launch_process().await {
                 Ok(_) => {
                     restart_attempts = 0;
-                    let _ = self.status_tx.send(ProcessStatus::Running);
+                    drop(self.status_tx.send(ProcessStatus::Running));
 
                     // Wait for process to exit or shutdown signal
                     tokio::select! {
@@ -124,7 +124,7 @@ impl ProcessSupervisor {
                                 }
                                 Err(e) => {
                                     log::error!("Process failed: {}", e);
-                                    let _ = self.status_tx.send(ProcessStatus::Failed(e.to_string()));
+                                    drop(self.status_tx.send(ProcessStatus::Failed(e.to_string())));
                                 }
                             }
                         }
@@ -137,7 +137,7 @@ impl ProcessSupervisor {
                 },
                 Err(e) => {
                     log::error!("Failed to launch process: {}", e);
-                    let _ = self.status_tx.send(ProcessStatus::Failed(e.to_string()));
+                    drop(self.status_tx.send(ProcessStatus::Failed(e.to_string())));
                 },
             }
 
@@ -145,13 +145,13 @@ impl ProcessSupervisor {
             restart_attempts += 1;
             if restart_attempts > self.max_restart_attempts {
                 log::error!("Maximum restart attempts reached, giving up");
-                let _ = self
+                drop(self
                     .status_tx
-                    .send(ProcessStatus::Failed("Max restarts exceeded".to_string()));
+                    .send(ProcessStatus::Failed("Max restarts exceeded".to_string())));
                 break;
             }
 
-            let _ = self.status_tx.send(ProcessStatus::Restarting(restart_attempts));
+            drop(self.status_tx.send(ProcessStatus::Restarting(restart_attempts)));
             log::warn!(
                 "Restarting process in {} seconds (attempt {})",
                 self.restart_delay_secs,
@@ -160,7 +160,7 @@ impl ProcessSupervisor {
             tokio::time::sleep(Duration::from_secs(self.restart_delay_secs)).await;
         }
 
-        let _ = self.status_tx.send(ProcessStatus::Stopped);
+        drop(self.status_tx.send(ProcessStatus::Stopped));
         Ok(())
     }
 
@@ -253,7 +253,7 @@ impl ProcessSupervisor {
             tokio::time::sleep(Duration::from_secs(2)).await;
 
             // Force kill if still running
-            let _ = child.kill().await;
+            drop(child.kill().await);
         }
 
         Ok(())

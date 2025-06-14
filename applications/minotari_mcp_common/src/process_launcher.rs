@@ -112,7 +112,7 @@ impl ProcessLauncher {
 
     /// Launch the process with comprehensive monitoring
     pub async fn launch(&self) -> McpResult<LaunchResult> {
-        let _ = self.status_tx.send(ProcessLaunchStatus::Starting);
+        drop(self.status_tx.send(ProcessLaunchStatus::Starting));
 
         // Discover executable if not provided
         let executable_path = if let Some(ref path) = self.config.executable_path {
@@ -204,7 +204,7 @@ impl ProcessLauncher {
                 };
 
                 let error_msg = format!("Health check failed: {}\nProcess output:\n{}", e, output_summary);
-                let _ = self.status_tx.send(ProcessLaunchStatus::Failed(error_msg.clone()));
+                drop(self.status_tx.send(ProcessLaunchStatus::Failed(error_msg.clone())));
                 return Err(McpError::server_error(error_msg));
             },
         };
@@ -217,7 +217,7 @@ impl ProcessLauncher {
             status,
         };
 
-        let _ = self.status_tx.send(ProcessLaunchStatus::Running);
+        drop(self.status_tx.send(ProcessLaunchStatus::Running));
         Ok(result)
     }
 
@@ -253,7 +253,7 @@ impl ProcessLauncher {
 
     /// Stop the launched process gracefully
     pub async fn stop(&self) -> McpResult<()> {
-        let _ = self.status_tx.send(ProcessLaunchStatus::Stopping);
+        drop(self.status_tx.send(ProcessLaunchStatus::Stopping));
 
         if let Some(child) = self.process.write().await.as_mut() {
             log::info!("Stopping launched process with PID: {:?}", child.id());
@@ -289,7 +289,7 @@ impl ProcessLauncher {
             match child.try_wait() {
                 Ok(None) => {
                     log::warn!("Process did not exit gracefully, force killing");
-                    let _ = child.kill().await;
+                    drop(child.kill().await);
 
                     // Wait a bit more for force kill to take effect
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -305,7 +305,7 @@ impl ProcessLauncher {
             log::info!("Process stopped");
         }
 
-        let _ = self.status_tx.send(ProcessLaunchStatus::Stopped);
+        drop(self.status_tx.send(ProcessLaunchStatus::Stopped));
         Ok(())
     }
 
