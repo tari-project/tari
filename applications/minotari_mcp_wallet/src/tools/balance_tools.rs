@@ -53,7 +53,7 @@ impl McpTool for GetBalanceTool {
     }
     
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id").unwrap_or(None) {
+        let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id") {
             Some(UserPaymentId {
                 utf8_string: payment_id_str,
                 ..Default::default()

@@ -99,15 +99,17 @@ impl McpTool for SendShaAtomicSwapTool {
             address: address.to_string(),
             amount,
             fee_per_gram,
-            message: String::new(),
+            payment_type: 2, // ONE_SIDED_TO_STEALTH_ADDRESS
+            raw_payment_id: vec![],
+            user_payment_id: None,
         };
 
         let request = Request::new(SendShaAtomicSwapRequest {
             recipient: Some(recipient),
         });
 
-        let response = self
-            .grpc_client
+        let mut client = (*self.grpc_client).clone();
+        let response = client
             .send_sha_atomic_swap_transaction(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to send SHA atomic swap: {}", e)))?
@@ -132,16 +134,16 @@ impl McpTool for SendShaAtomicSwapTool {
             },
             "next_steps": if response.is_success {
                 vec![
-                    "Share the output_hash with the recipient",
-                    "Keep the pre_image secret until ready to reveal",
-                    "Monitor the transaction for confirmation",
-                    "The recipient can claim using the pre_image once revealed"
+                    "Share the output_hash with the recipient".to_string(),
+                    "Keep the pre_image secret until ready to reveal".to_string(),
+                    "Monitor the transaction for confirmation".to_string(),
+                    "The recipient can claim using the pre_image once revealed".to_string()
                 ]
             } else {
                 vec![
                     format!("Fix the issue: {}", response.failure_message),
-                    "Check wallet balance and network connectivity",
-                    "Retry the atomic swap operation"
+                    "Check wallet balance and network connectivity".to_string(),
+                    "Retry the atomic swap operation".to_string()
                 ]
             }
         }))
@@ -225,8 +227,8 @@ impl McpTool for ClaimShaAtomicSwapTool {
             fee_per_gram,
         });
 
-        let response = self
-            .grpc_client
+        let mut client = (*self.grpc_client).clone();
+        let response = client
             .claim_sha_atomic_swap_transaction(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim SHA atomic swap: {}", e)))?
@@ -255,7 +257,7 @@ impl McpTool for ClaimShaAtomicSwapTool {
                 "CLAIM_FAILED"
             },
             "message": if result.is_success {
-                "Atomic swap has been successfully claimed"
+                "Atomic swap has been successfully claimed".to_string()
             } else {
                 format!("Claim failed: {}", result.failure_message)
             },
@@ -349,8 +351,8 @@ impl McpTool for ClaimHtlcRefundTool {
             fee_per_gram,
         });
 
-        let response = self
-            .grpc_client
+        let mut client = (*self.grpc_client).clone();
+        let response = client
             .claim_htlc_refund_transaction(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim HTLC refund: {}", e)))?
@@ -378,7 +380,7 @@ impl McpTool for ClaimHtlcRefundTool {
                 "REFUND_FAILED"
             },
             "message": if result.is_success {
-                "HTLC refund has been successfully claimed"
+                "HTLC refund has been successfully claimed".to_string()
             } else {
                 format!("Refund claim failed: {}", result.failure_message)
             },

@@ -50,8 +50,8 @@ impl McpTool for GetAddressTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
 
-        let response = self
-            .grpc_client
+        let mut client = (*self.grpc_client).clone();
+        let response = client
             .get_address(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get address: {}", e)))?
@@ -108,8 +108,8 @@ impl McpTool for GetCompleteAddressTool {
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
 
-        let response = self
-            .grpc_client
+        let mut client = (*self.grpc_client).clone();
+        let response = client
             .get_complete_address(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get complete address: {}", e)))?
@@ -194,8 +194,8 @@ impl McpTool for GetPaymentIdAddressTool {
 
         let request = Request::new(GetPaymentIdAddressRequest { payment_id });
 
-        let response = self
-            .grpc_client
+        let mut client = (*self.grpc_client).clone();
+        let response = client
             .get_payment_id_address(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get payment ID address: {}", e)))?
@@ -333,7 +333,7 @@ impl McpTool for AddressValidationTool {
             address_type = "INTERACTIVE";
             validation_results.push("Emoji address format detected".to_string());
 
-            let emoji_count = address.chars().filter(|c| (c as u32) > 127).count();
+            let emoji_count = address.chars().filter(|c| (*c as u32) > 127).count();
             if emoji_count < 8 {
                 validation_results.push("Warning: Emoji address seems too short".to_string());
             }
@@ -450,11 +450,8 @@ impl McpTool for AddressConverterTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let address = get_required_string_param(&params, "address")?;
-        let target_format = match get_optional_string_param(&params, "target_format") {
-            Ok(Some(format)) => format,
-            Ok(None) => "all".to_string(),
-            Err(e) => return Err(e),
-        };
+        let target_format = get_optional_string_param(&params, "target_format")
+            .unwrap_or_else(|| "all".to_string());
 
         // This is a simplified conversion - in a real implementation, we'd need
         // proper address parsing and conversion logic
