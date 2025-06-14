@@ -353,6 +353,11 @@ mod tests {
         let result = calculate_dial_count(4, 0.1, 2.0);
         assert!(result >= 4); // At least the needed amount
         assert!(result <= 20); // But capped at max concurrent
+
+        // Edge case: needed > MAX_CONCURRENT_DIALS to verify proper capping
+        assert_eq!(calculate_dial_count(25, 0.8, 1.5), 20); // Should cap at MAX_CONCURRENT_DIALS
+        assert_eq!(calculate_dial_count(25, 0.1, 2.0), 20); // Very low success rate, should still cap
+        assert_eq!(calculate_dial_count(15, 0.5, 3.0), 20); // Should still cap despite multiplier
     }
 
     #[test]
