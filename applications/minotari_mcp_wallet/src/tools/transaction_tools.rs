@@ -218,10 +218,10 @@ impl McpTool for GetCompletedTransactionsTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let payment_id = get_optional_string_param(&params, "payment_id").map(|payment_id_str| UserPaymentId {
-                utf8_string: payment_id_str,
-                u256: vec![],
-                user_bytes: vec![],
-            });
+            utf8_string: payment_id_str,
+            u256: vec![],
+            user_bytes: vec![],
+        });
 
         let block_hash = get_optional_string_param(&params, "block_hash").map(|hash| BlockHashHex { hash });
         let block_height = params
@@ -478,12 +478,14 @@ impl McpTool for TransferTool {
                 .map(|s| s.as_bytes().to_vec())
                 .unwrap_or_default();
 
-            let user_payment_id =
-                recipient_data.get("payment_id").and_then(|v| v.as_str()).map(|payment_id_str| UserPaymentId {
-                        utf8_string: payment_id_str.to_string(),
-                        u256: vec![],
-                        user_bytes: vec![],
-                    });
+            let user_payment_id = recipient_data
+                .get("payment_id")
+                .and_then(|v| v.as_str())
+                .map(|payment_id_str| UserPaymentId {
+                    utf8_string: payment_id_str.to_string(),
+                    u256: vec![],
+                    user_bytes: vec![],
+                });
 
             recipients.push(PaymentRecipient {
                 address: address.to_string(),

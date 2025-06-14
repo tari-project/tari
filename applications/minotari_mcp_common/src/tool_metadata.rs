@@ -309,10 +309,7 @@ impl ToolMetadataRegistry {
 
         // Add to tags index
         for tag in &metadata.tags {
-            self.by_tags
-                .entry(tag.clone())
-                .or_default()
-                .push(name.clone());
+            self.by_tags.entry(tag.clone()).or_default().push(name.clone());
         }
 
         // Store metadata

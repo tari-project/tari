@@ -191,8 +191,7 @@ impl McpTool for GetPaymentIdAddressTool {
         let payment_id_str = get_required_string_param(&params, "payment_id")?;
 
         let payment_id = if let Some(stripped) = payment_id_str.strip_prefix("0x") {
-            hex::decode(stripped)
-                .map_err(|e| McpError::invalid_request(format!("Invalid hex payment ID: {}", e)))?
+            hex::decode(stripped).map_err(|e| McpError::invalid_request(format!("Invalid hex payment ID: {}", e)))?
         } else {
             payment_id_str.as_bytes().to_vec()
         };

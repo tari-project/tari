@@ -194,10 +194,13 @@ impl AutoDiscoveryRegistry {
             .iter()
             .filter(|method| {
                 // Check if method is allowed
-                if !self.config.allowed_methods.is_empty() && !self.config.allowed_methods.contains(&method.name) && !self
-                            .config
-                            .allowed_methods
-                            .contains(&format!("{}/*", self.config.server_type.name())) {
+                if !self.config.allowed_methods.is_empty() &&
+                    !self.config.allowed_methods.contains(&method.name) &&
+                    !self
+                        .config
+                        .allowed_methods
+                        .contains(&format!("{}/*", self.config.server_type.name()))
+                {
                     return false;
                 }
 
