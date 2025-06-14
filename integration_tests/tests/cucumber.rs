@@ -19,8 +19,6 @@
 //   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![feature(internal_output_capture)]
-
 use std::{
     fs,
     io,
@@ -58,10 +56,8 @@ fn main() {
     )
     .expect("logging not configured");
     let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
-    #[cfg(test)]
-    std::io::set_output_capture(Some(stdout_buffer.clone()));
-    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
-    // not be affected by the output capture.
+    // Output capture removed - using internal feature that's not stable
+    // Tests will output to regular stdout/stderr instead
     let stdout_buffer_clone = stdout_buffer.clone();
     let runtime = Runtime::new().unwrap();
     runtime.block_on(async {
