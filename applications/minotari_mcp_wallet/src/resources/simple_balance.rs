@@ -1,10 +1,11 @@
 //! Simple balance resource for testing
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use minotari_mcp_common::{McpResource, McpResult};
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use async_trait::async_trait;
 use serde_json::Value;
-use std::sync::Arc;
 use tonic::transport::Channel;
 
 /// Simple resource providing wallet balance information

@@ -3,15 +3,25 @@
 //! This module provides tools for atomic swap transactions including
 //! SHA atomic swaps, HTLC operations, and swap management.
 
+use std::sync::Arc;
+
 use minotari_app_grpc::tari_rpc::{
-    ClaimHtlcRefundRequest, ClaimShaAtomicSwapRequest, PaymentRecipient, SendShaAtomicSwapRequest,
+    ClaimHtlcRefundRequest,
+    ClaimShaAtomicSwapRequest,
+    PaymentRecipient,
+    SendShaAtomicSwapRequest,
 };
-use minotari_mcp_common::{get_required_string_param, get_required_u64_param, McpError, McpResult, McpTool, PermissionLevel};
+use minotari_mcp_common::{
+    get_required_string_param,
+    get_required_u64_param,
+    McpError,
+    McpResult,
+    McpTool,
+    PermissionLevel,
+};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{json, Value};
-use std::sync::Arc;
-use tonic::transport::Channel;
-use tonic::Request;
+use tonic::{transport::Channel, Request};
 
 /// Tool for sending SHA atomic swap transactions
 #[derive(Clone)]
@@ -415,7 +425,9 @@ pub struct AtomicSwapStatusTool {
 
 impl AtomicSwapStatusTool {
     pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { _grpc_client: grpc_client }
+        Self {
+            _grpc_client: grpc_client,
+        }
     }
 }
 

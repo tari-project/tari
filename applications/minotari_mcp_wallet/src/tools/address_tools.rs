@@ -3,15 +3,20 @@
 //! This module provides comprehensive address management including
 //! address generation, validation, and format conversion.
 
+use std::sync::Arc;
+
 use minotari_app_grpc::tari_rpc::{Empty, GetPaymentIdAddressRequest};
 use minotari_mcp_common::{
-    get_optional_string_param, get_required_string_param, security::PermissionLevel, McpError, McpResult, McpTool,
+    get_optional_string_param,
+    get_required_string_param,
+    security::PermissionLevel,
+    McpError,
+    McpResult,
+    McpTool,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{json, Value};
-use std::sync::Arc;
-use tonic::transport::Channel;
-use tonic::Request;
+use tonic::{transport::Channel, Request};
 
 /// Tool for getting wallet addresses
 #[derive(Clone)]
@@ -237,7 +242,9 @@ pub struct AddressValidationTool {
 
 impl AddressValidationTool {
     pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { _grpc_client: grpc_client }
+        Self {
+            _grpc_client: grpc_client,
+        }
     }
 }
 
@@ -313,8 +320,8 @@ impl McpTool for AddressValidationTool {
             }
         }
         // Check if it's a Base58 address (Tari addresses typically start with specific characters)
-        else if address.len() > 40
-            && address
+        else if address.len() > 40 &&
+            address
                 .chars()
                 .all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c))
         {
@@ -411,7 +418,9 @@ pub struct AddressConverterTool {
 
 impl AddressConverterTool {
     pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { _grpc_client: grpc_client }
+        Self {
+            _grpc_client: grpc_client,
+        }
     }
 }
 
@@ -450,8 +459,7 @@ impl McpTool for AddressConverterTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let address = get_required_string_param(&params, "address")?;
-        let target_format = get_optional_string_param(&params, "target_format")
-            .unwrap_or_else(|| "all".to_string());
+        let target_format = get_optional_string_param(&params, "target_format").unwrap_or_else(|| "all".to_string());
 
         // This is a simplified conversion - in a real implementation, we'd need
         // proper address parsing and conversion logic

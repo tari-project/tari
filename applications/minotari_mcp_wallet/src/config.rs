@@ -1,17 +1,18 @@
 //! Configuration for the Minotari Wallet MCP Server
 
-use crate::cli::Cli;
-use minotari_mcp_common::{McpConfig, McpResult, McpError};
+use minotari_mcp_common::{McpConfig, McpError, McpResult};
 use serde::{Deserialize, Serialize};
+
+use crate::cli::Cli;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletMcpConfig {
     /// MCP server configuration
     pub mcp: McpConfig,
-    
+
     /// Wallet gRPC configuration
     pub wallet_grpc: WalletGrpcConfig,
-    
+
     /// Wallet-specific security settings
     pub security: WalletSecurityConfig,
 }
@@ -20,13 +21,13 @@ pub struct WalletMcpConfig {
 pub struct WalletGrpcConfig {
     /// Wallet gRPC endpoint address
     pub address: String,
-    
+
     /// Connection timeout in seconds
     pub timeout_secs: u64,
-    
+
     /// Maximum number of retries for failed requests
     pub max_retries: u32,
-    
+
     /// Whether to auto-launch the wallet
     pub auto_launch: bool,
 }
@@ -35,10 +36,10 @@ pub struct WalletGrpcConfig {
 pub struct WalletSecurityConfig {
     /// Require user confirmation for all value transfers
     pub require_confirmation: bool,
-    
+
     /// Maximum transaction amount without additional confirmation (in µT)
     pub max_auto_amount: u64,
-    
+
     /// Enable transaction preview before execution
     pub enable_preview: bool,
 }
@@ -47,8 +48,7 @@ impl WalletMcpConfig {
     /// Load configuration from CLI arguments
     pub fn load(cli: &Cli) -> McpResult<Self> {
         // Validate CLI arguments first
-        cli.validate()
-            .map_err(McpError::config_error)?;
+        cli.validate().map_err(McpError::config_error)?;
 
         let mcp_config = McpConfig {
             enabled: true,
@@ -89,8 +89,7 @@ impl WalletMcpConfig {
     /// Validate the configuration
     pub fn validate(&self) -> McpResult<()> {
         // Validate MCP configuration
-        self.mcp.validate()
-            .map_err(McpError::config_error)?;
+        self.mcp.validate().map_err(McpError::config_error)?;
 
         // Validate wallet gRPC configuration
         if self.wallet_grpc.address.is_empty() {

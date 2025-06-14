@@ -1,13 +1,19 @@
 //! Simple transfer tool for testing
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    get_required_string_param, get_optional_string_param, get_required_number_param
+    get_optional_string_param,
+    get_required_number_param,
+    get_required_string_param,
+    McpError,
+    McpResult,
+    McpTool,
+    PermissionLevel,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use async_trait::async_trait;
 use serde_json::Value;
-use std::sync::Arc;
 use tonic::transport::Channel;
 
 /// Simple tool for transferring Tari - basic implementation
@@ -29,7 +35,10 @@ impl McpTool for SimpleTransferTool {
     }
 
     fn description(&self) -> &str {
-        "Send Tari cryptocurrency to another wallet address. This tool transfers funds from your wallet to any valid Tari address. Before using this tool, ensure the wallet is ready (use check_wallet_state tool) and verify you have sufficient balance. The transfer is irreversible once broadcast to the network. Requires wallet to be unlocked and synced."
+        "Send Tari cryptocurrency to another wallet address. This tool transfers funds from your wallet to any valid \
+         Tari address. Before using this tool, ensure the wallet is ready (use check_wallet_state tool) and verify you \
+         have sufficient balance. The transfer is irreversible once broadcast to the network. Requires wallet to be \
+         unlocked and synced."
     }
 
     fn permission_level(&self) -> PermissionLevel {
@@ -39,7 +48,7 @@ impl McpTool for SimpleTransferTool {
     fn input_schema(&self) -> Value {
         minotari_mcp_common::json_schema! {
             "recipient" => serde_json::json!({
-                "type": "string", 
+                "type": "string",
                 "description": "Destination Tari wallet address (base58 encoded public key). Must be a valid Tari address format. Example: '9f8c3d4a5b6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b'",
                 "pattern": "^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$",
                 "minLength": 32
@@ -57,7 +66,7 @@ impl McpTool for SimpleTransferTool {
                 "default": ""
             }),
             "fee_per_gram" => serde_json::json!({
-                "type": "number", 
+                "type": "number",
                 "description": "Transaction fee per gram in microTari. Higher fees result in faster processing. If not specified, wallet will calculate an appropriate fee automatically. Typical range: 1-100 µT/gram",
                 "minimum": 1,
                 "default": null
@@ -68,27 +77,35 @@ impl McpTool for SimpleTransferTool {
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         let recipient = get_required_string_param(params, "recipient")?;
         let amount = get_required_number_param(params, "amount")? as u64;
-        
+
         // Validate recipient address format
         if recipient.is_empty() {
             return Err(McpError::invalid_request("Recipient address cannot be empty"));
         }
-        
+
         if recipient.len() < 32 {
-            return Err(McpError::invalid_request("Recipient address too short - must be at least 32 characters"));
+            return Err(McpError::invalid_request(
+                "Recipient address too short - must be at least 32 characters",
+            ));
         }
-        
+
         // Basic base58 character validation
-        if !recipient.chars().all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c)) {
-            return Err(McpError::invalid_request("Recipient address contains invalid characters - must be valid base58"));
+        if !recipient
+            .chars()
+            .all(|c| "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".contains(c))
+        {
+            return Err(McpError::invalid_request(
+                "Recipient address contains invalid characters - must be valid base58",
+            ));
         }
 
         // Validate amount
         if amount == 0 {
             return Err(McpError::invalid_request("Amount must be greater than 0 microTari"));
         }
-        
-        if amount > 21_000_000_000_000u64 { // 21M Tari in microTari
+
+        if amount > 21_000_000_000_000u64 {
+            // 21M Tari in microTari
             return Err(McpError::invalid_request("Amount exceeds maximum possible Tari supply"));
         }
 
@@ -105,7 +122,9 @@ impl McpTool for SimpleTransferTool {
                 return Err(McpError::invalid_request("Fee per gram must be at least 1 microTari"));
             }
             if fee > 10000.0 {
-                return Err(McpError::invalid_request("Fee per gram too high - maximum 10000 microTari"));
+                return Err(McpError::invalid_request(
+                    "Fee per gram too high - maximum 10000 microTari",
+                ));
             }
         }
 
@@ -122,9 +141,9 @@ impl McpTool for SimpleTransferTool {
         // In a real implementation, this would call the wallet gRPC service
         let estimated_fee = fee_per_gram.unwrap_or(25); // Default 25 µT/gram
         let total_cost = amount + estimated_fee;
-        
+
         Ok(serde_json::json!({
-            "status": "simulated", 
+            "status": "simulated",
             "message": "Transfer prepared successfully (simulation mode - actual wallet integration pending)",
             "transaction_details": {
                 "recipient": recipient,

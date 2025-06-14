@@ -3,20 +3,22 @@
 //! This module provides comprehensive health monitoring capabilities for gRPC services
 //! using tonic_health integration with bidirectional streaming health checks.
 
-use crate::{McpResult, McpError};
-use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
+
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use tokio::time;
 use tonic::{
     transport::{Channel, Endpoint},
     Status,
 };
+
+use crate::{McpError, McpResult};
 
 /// Health status of a service
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,16 +151,16 @@ impl Default for HealthConfig {
 pub trait HealthChecker: Send + Sync {
     /// Perform a health check for a specific service
     async fn check_health(&self, service_name: &str) -> HealthResult;
-    
+
     /// Start continuous health monitoring for a service
     async fn start_monitoring(&self, service_name: String) -> McpResult<()>;
-    
+
     /// Stop monitoring for a service
     async fn stop_monitoring(&self, service_name: &str) -> McpResult<()>;
-    
+
     /// Get the current health status for a service
     fn get_health_status(&self, service_name: &str) -> Option<HealthResult>;
-    
+
     /// Get health status for all monitored services
     fn get_all_health_status(&self) -> HashMap<String, HealthResult>;
 }
@@ -202,18 +204,15 @@ impl GrpcHealthChecker {
         // Initialize health status as unknown
         {
             let mut status = self.health_status.write().unwrap();
-            status.insert(
-                service_name.clone(),
-                HealthResult {
-                    status: HealthStatus::Unknown,
-                    last_check: Utc::now(),
-                    response_time: Duration::from_secs(0),
-                    failure_count: 0,
-                    consecutive_failures: 0,
-                    last_error: None,
-                    service_name: service_name.clone(),
-                },
-            );
+            status.insert(service_name.clone(), HealthResult {
+                status: HealthStatus::Unknown,
+                last_check: Utc::now(),
+                response_time: Duration::from_secs(0),
+                failure_count: 0,
+                consecutive_failures: 0,
+                last_error: None,
+                service_name: service_name.clone(),
+            });
         }
 
         // Start continuous monitoring if enabled
@@ -245,13 +244,14 @@ impl GrpcHealthChecker {
     /// Perform a basic connectivity check instead of full health protocol
     async fn check_connectivity(&self, service_name: &str, channel: &Channel) -> HealthResult {
         let start_time = Instant::now();
-        
+
         // For now, we'll do a simple connectivity check
         // In a full implementation, this would use the tonic_health protocol
         let result = tokio::time::timeout(
             self.config.check_timeout,
-            self.basic_connectivity_check(channel.clone())
-        ).await;
+            self.basic_connectivity_check(channel.clone()),
+        )
+        .await;
 
         let response_time = start_time.elapsed();
 
@@ -289,7 +289,7 @@ impl GrpcHealthChecker {
 
         tokio::spawn(async move {
             let mut interval = time::interval(check_interval);
-            
+
             loop {
                 interval.tick().await;
 
@@ -302,10 +302,8 @@ impl GrpcHealthChecker {
                 if let Some(channel) = channel {
                     // Perform basic connectivity check
                     let start_time = Instant::now();
-                    let check_result = tokio::time::timeout(
-                        Duration::from_secs(3),
-                        Self::static_connectivity_check(channel)
-                    ).await;
+                    let check_result =
+                        tokio::time::timeout(Duration::from_secs(3), Self::static_connectivity_check(channel)).await;
                     let response_time = start_time.elapsed();
 
                     // Update health status
@@ -316,29 +314,24 @@ impl GrpcHealthChecker {
                                 Ok(Ok(_)) => {
                                     current_status.update_success(response_time);
                                     log::debug!("Health check successful for {}", service_name_clone);
-                                }
+                                },
                                 Ok(Err(e)) => {
-                                    current_status.update_failure(
-                                        format!("Connection failed: {}", e),
-                                        response_time,
-                                    );
+                                    current_status.update_failure(format!("Connection failed: {}", e), response_time);
                                     log::warn!("Health check failed for {}: {}", service_name_clone, e);
-                                    
+
                                     // Log if we've hit the failure threshold
                                     if current_status.consecutive_failures >= failure_threshold {
                                         log::error!(
                                             "Service {} has failed {} consecutive health checks",
-                                            service_name_clone, current_status.consecutive_failures
+                                            service_name_clone,
+                                            current_status.consecutive_failures
                                         );
                                     }
-                                }
+                                },
                                 Err(_) => {
-                                    current_status.update_failure(
-                                        "Health check timeout".to_string(),
-                                        response_time,
-                                    );
+                                    current_status.update_failure("Health check timeout".to_string(), response_time);
                                     log::warn!("Health check timeout for {}", service_name_clone);
-                                }
+                                },
                             }
                         }
                     }
@@ -440,13 +433,14 @@ impl Drop for GrpcHealthChecker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tokio::time::Duration;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_health_result_operations() {
         let mut result = HealthResult::healthy("test_service".to_string(), Duration::from_millis(50));
-        
+
         assert!(result.is_healthy());
         assert!(!result.needs_attention());
         assert_eq!(result.consecutive_failures, 0);
@@ -474,7 +468,7 @@ mod tests {
     async fn test_health_checker_creation() {
         let config = HealthConfig::default();
         let checker = GrpcHealthChecker::new(config);
-        
+
         assert!(checker.get_all_health_status().is_empty());
     }
 

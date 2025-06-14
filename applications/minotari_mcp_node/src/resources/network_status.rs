@@ -1,10 +1,11 @@
 //! Network status resource
 
-use minotari_mcp_common::{McpResource, McpResult, McpError};
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
-use async_trait::async_trait;
-use serde_json::Value;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResource, McpResult};
+use minotari_node_grpc_client::{grpc::Empty, BaseNodeGrpcClient};
+use serde_json::Value;
 use tonic::transport::Channel;
 
 /// Resource providing current network status
@@ -38,7 +39,7 @@ impl McpResource for NetworkStatusResource {
 
     async fn read(&self) -> McpResult<Value> {
         let mut client = self.grpc_client.as_ref().clone();
-        
+
         // Get version info to test connectivity
         let version_response = client
             .get_version(Empty {})

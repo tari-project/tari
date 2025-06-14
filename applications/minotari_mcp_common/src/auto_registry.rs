@@ -3,18 +3,23 @@
 //! This module provides automatic tool discovery and registration based on
 //! configuration and permissions, replacing manual tool registration.
 
-use crate::{
-    grpc_discovery::{ServiceDiscovery, GrpcMethodInfo, GrpcMethodCategory, base_node_methods, wallet_methods},
-    tool_metadata::{ToolMetadata, ToolMetadataRegistry, ToolCategory, ToolRiskLevel},
-    grpc_error_mapper::GrpcErrorMapper,
-    schema_generator::SchemaGenerator,
-    grpc_executor::GrpcExecutor,
-    McpTool, McpResult,
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
 };
+
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use crate::{
+    grpc_discovery::{base_node_methods, wallet_methods, GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery},
+    grpc_error_mapper::GrpcErrorMapper,
+    grpc_executor::GrpcExecutor,
+    schema_generator::SchemaGenerator,
+    tool_metadata::{ToolCategory, ToolMetadata, ToolMetadataRegistry, ToolRiskLevel},
+    McpResult,
+    McpTool,
+};
 
 /// Configuration for auto-discovery
 #[derive(Debug, Clone)]
@@ -128,7 +133,7 @@ impl AutoDiscoveryRegistry {
             tool_status: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     /// Create a new auto-discovery registry with gRPC executor
     pub fn new_with_executor(
         config: AutoDiscoveryConfig,
@@ -161,13 +166,13 @@ impl AutoDiscoveryRegistry {
             ServerType::Wallet => wallet_methods(),
             _ => Vec::new(),
         };
-        
+
         // Convert to our ServiceDiscovery structure
         let methods = all_methods;
-        
+
         // Filter methods based on configuration
         let allowed_methods = self.filter_allowed_methods(&methods);
-        
+
         // Generate tools for each method
         for method in allowed_methods {
             if let Err(e) = self.generate_tool_from_method(&method).await {
@@ -175,9 +180,11 @@ impl AutoDiscoveryRegistry {
             }
         }
 
-        log::info!("Auto-discovery completed: {} tools registered", 
-                  self.tools_cache.read().await.len());
-        
+        log::info!(
+            "Auto-discovery completed: {} tools registered",
+            self.tools_cache.read().await.len()
+        );
+
         Ok(())
     }
 
@@ -189,7 +196,11 @@ impl AutoDiscoveryRegistry {
                 // Check if method is allowed
                 if !self.config.allowed_methods.is_empty() {
                     if !self.config.allowed_methods.contains(&method.name) &&
-                       !self.config.allowed_methods.contains(&format!("{}/*", self.config.server_type.name())) {
+                        !self
+                            .config
+                            .allowed_methods
+                            .contains(&format!("{}/*", self.config.server_type.name()))
+                    {
                         return false;
                     }
                 }
@@ -216,16 +227,16 @@ impl AutoDiscoveryRegistry {
     async fn generate_tool_from_method(&self, method: &GrpcMethodInfo) -> McpResult<()> {
         // Generate tool metadata
         let metadata = self.create_tool_metadata(method).await?;
-        
+
         // Create the actual tool implementation
         let tool = self.create_dynamic_tool(method, &metadata).await?;
-        
+
         // Register in metadata registry
         self.metadata_registry.write().await.add_tool(metadata);
-        
+
         // Cache the tool
         self.tools_cache.write().await.insert(method.name.clone(), tool);
-        
+
         // Initialize status tracking
         let status = ToolStatus {
             enabled: true,
@@ -236,7 +247,7 @@ impl AutoDiscoveryRegistry {
             last_error: None,
         };
         self.tool_status.write().await.insert(method.name.clone(), status);
-        
+
         Ok(())
     }
 
@@ -246,31 +257,45 @@ impl AutoDiscoveryRegistry {
         let display_name = self.generate_display_name(&tool_name);
         let category = ToolCategory::from(method.category);
         let risk_level = self.determine_risk_level(method);
-        
+
         // Apply overrides if configured
-        let (final_display_name, final_description, final_category, final_risk_level, additional_tags) = 
+        let (final_display_name, final_description, final_category, final_risk_level, additional_tags) =
             if let Some(override_config) = self.config.tool_overrides.get(&tool_name) {
                 (
                     override_config.display_name.clone().unwrap_or(display_name),
-                    override_config.description.clone().unwrap_or_else(|| method.description.clone()),
+                    override_config
+                        .description
+                        .clone()
+                        .unwrap_or_else(|| method.description.clone()),
                     override_config.category.unwrap_or(category),
                     override_config.risk_level.unwrap_or(risk_level),
                     override_config.additional_tags.clone(),
                 )
             } else {
-                (display_name, method.description.clone(), category, risk_level, Vec::new())
+                (
+                    display_name,
+                    method.description.clone(),
+                    category,
+                    risk_level,
+                    Vec::new(),
+                )
             };
 
         let mut tags = vec![
             category.display_name().to_lowercase().replace(' ', "_"),
             format!("{:?}", risk_level).to_lowercase(),
-            if method.is_control_operation { "control" } else { "read_only" }.to_string(),
+            if method.is_control_operation {
+                "control"
+            } else {
+                "read_only"
+            }
+            .to_string(),
         ];
         tags.extend(additional_tags);
 
         // Generate parameter documentation from schema
         let parameters = Vec::new(); // TODO: Implement parameter extraction from schema
-        
+
         // Generate examples
         let examples = self.generate_tool_examples(method)?;
 
@@ -293,13 +318,15 @@ impl AutoDiscoveryRegistry {
                 vec![]
             },
             estimated_duration: self.estimate_duration(method),
-            rate_limit: self.config.rate_limits.get(&method.name).map(|limit| {
-                crate::tool_metadata::RateLimit {
+            rate_limit: self
+                .config
+                .rate_limits
+                .get(&method.name)
+                .map(|limit| crate::tool_metadata::RateLimit {
                     requests_per_minute: *limit,
                     requests_per_hour: limit * 60,
                     burst_limit: (*limit).max(10),
-                }
-            }),
+                }),
             version: "1.0.0".to_string(),
             added_in_version: "1.0.0".to_string(),
             deprecation: None,
@@ -308,9 +335,9 @@ impl AutoDiscoveryRegistry {
 
     /// Create a dynamic tool implementation
     async fn create_dynamic_tool(
-        &self, 
+        &self,
         method: &GrpcMethodInfo,
-        metadata: &ToolMetadata
+        metadata: &ToolMetadata,
     ) -> McpResult<Arc<dyn McpTool>> {
         Ok(Arc::new(DynamicGrpcTool::new(
             method.clone(),
@@ -343,7 +370,7 @@ impl AutoDiscoveryRegistry {
 
         // Check method name patterns for risk assessment
         let name_lower = method.name.to_lowercase();
-        
+
         if name_lower.contains("cancel") || name_lower.contains("stop") {
             ToolRiskLevel::Low
         } else if name_lower.contains("send") || name_lower.contains("transfer") {
@@ -365,44 +392,38 @@ impl AutoDiscoveryRegistry {
     fn generate_tool_examples(&self, method: &GrpcMethodInfo) -> McpResult<Vec<crate::tool_metadata::ToolExample>> {
         // Generate basic example based on method type
         let example = match method.category {
-            GrpcMethodCategory::Balance => {
-                crate::tool_metadata::ToolExample {
-                    title: "Check wallet balance".to_string(),
-                    description: "Get current wallet balance information".to_string(),
-                    parameters: json!({}),
-                    expected_response: Some(json!({
-                        "balance": "1000.000000",
-                        "available_balance": "950.000000"
-                    })),
-                    scenario: "Regular balance check for transaction planning".to_string(),
-                }
+            GrpcMethodCategory::Balance => crate::tool_metadata::ToolExample {
+                title: "Check wallet balance".to_string(),
+                description: "Get current wallet balance information".to_string(),
+                parameters: json!({}),
+                expected_response: Some(json!({
+                    "balance": "1000.000000",
+                    "available_balance": "950.000000"
+                })),
+                scenario: "Regular balance check for transaction planning".to_string(),
             },
-            GrpcMethodCategory::Transaction => {
-                crate::tool_metadata::ToolExample {
-                    title: "Query transaction".to_string(),
-                    description: "Get details of a specific transaction".to_string(),
-                    parameters: json!({
-                        "transaction_id": "example_tx_id_123"
-                    }),
-                    expected_response: Some(json!({
-                        "transaction": {
-                            "id": "example_tx_id_123",
-                            "status": "completed",
-                            "amount": "100.000000"
-                        }
-                    })),
-                    scenario: "Check status of a pending transaction".to_string(),
-                }
+            GrpcMethodCategory::Transaction => crate::tool_metadata::ToolExample {
+                title: "Query transaction".to_string(),
+                description: "Get details of a specific transaction".to_string(),
+                parameters: json!({
+                    "transaction_id": "example_tx_id_123"
+                }),
+                expected_response: Some(json!({
+                    "transaction": {
+                        "id": "example_tx_id_123",
+                        "status": "completed",
+                        "amount": "100.000000"
+                    }
+                })),
+                scenario: "Check status of a pending transaction".to_string(),
             },
-            _ => {
-                crate::tool_metadata::ToolExample {
-                    title: format!("Use {}", method.name),
-                    description: method.description.clone(),
-                    parameters: json!({}),
-                    expected_response: None,
-                    scenario: "General usage scenario".to_string(),
-                }
-            }
+            _ => crate::tool_metadata::ToolExample {
+                title: format!("Use {}", method.name),
+                description: method.description.clone(),
+                parameters: json!({}),
+                expected_response: None,
+                scenario: "General usage scenario".to_string(),
+            },
         };
 
         Ok(vec![example])
@@ -413,7 +434,7 @@ impl AutoDiscoveryRegistry {
         // Find tools in the same category
         let registry = self.metadata_registry.read().await;
         let category_tools = registry.get_by_category(ToolCategory::from(method.category));
-        
+
         category_tools
             .iter()
             .filter(|meta| meta.name != method.name)
@@ -437,16 +458,16 @@ impl AutoDiscoveryRegistry {
     pub async fn get_tools(&self) -> HashMap<String, Arc<dyn McpTool>> {
         self.tools_cache.read().await.clone()
     }
-    
+
     /// Get healthy tools only (filters out tools for unhealthy services)
     pub async fn get_healthy_tools(&self) -> HashMap<String, Arc<dyn McpTool>> {
         let tools_cache = self.tools_cache.read().await;
         let tool_status = self.tool_status.read().await;
-        
+
         // Check if we have health monitoring via the executor
         if let Some(ref executor) = self.grpc_executor {
             let status = executor.get_status();
-            
+
             // If health monitoring is enabled, filter based on health
             if status.health_monitoring_enabled {
                 if let Some(is_healthy) = status.is_healthy() {
@@ -457,14 +478,11 @@ impl AutoDiscoveryRegistry {
                 }
             }
         }
-        
+
         // Return all tools if service is healthy or no health monitoring
-        tools_cache.iter()
-            .filter(|(name, _tool)| {
-                tool_status.get(*name)
-                    .map(|status| status.enabled)
-                    .unwrap_or(true)
-            })
+        tools_cache
+            .iter()
+            .filter(|(name, _tool)| tool_status.get(*name).map(|status| status.enabled).unwrap_or(true))
             .map(|(name, tool)| (name.clone(), tool.clone()))
             .collect()
     }
@@ -488,7 +506,7 @@ impl AutoDiscoveryRegistry {
         let total_tools = tools.len();
         let enabled_tools = status.values().filter(|s| s.enabled).count();
         let control_tools = metadata.get_by_risk_level(ToolRiskLevel::High).len() +
-                           metadata.get_by_risk_level(ToolRiskLevel::Critical).len();
+            metadata.get_by_risk_level(ToolRiskLevel::Critical).len();
         let total_usage = status.values().map(|s| s.usage_count).sum();
         let total_errors = status.values().map(|s| s.error_count).sum();
 
@@ -502,12 +520,14 @@ impl AutoDiscoveryRegistry {
             risk_distribution: metadata.get_risk_distribution(),
         }
     }
-    
+
     /// Get detailed health status for the registry
     pub async fn get_health_status(&self) -> Option<crate::grpc_executor::DetailedExecutorStatus> {
-        self.grpc_executor.as_ref().map(|executor| executor.get_detailed_status())
+        self.grpc_executor
+            .as_ref()
+            .map(|executor| executor.get_detailed_status())
     }
-    
+
     /// Check if the registry's backend service is healthy
     pub async fn is_service_healthy(&self) -> bool {
         if let Some(ref executor) = self.grpc_executor {
@@ -527,7 +547,7 @@ impl AutoDiscoveryRegistry {
         if let Some(status) = self.tool_status.write().await.get_mut(tool_name) {
             status.last_used = Some(std::time::SystemTime::now());
             status.usage_count += 1;
-            
+
             if !success {
                 status.error_count += 1;
                 status.last_error = error;
@@ -595,20 +615,24 @@ impl McpTool for DynamicGrpcTool {
     }
 
     async fn execute(&self, args: serde_json::Value) -> McpResult<serde_json::Value> {
-        log::debug!("Executing dynamic gRPC tool: {} with args: {}", self.metadata.name, args);
-        
+        log::debug!(
+            "Executing dynamic gRPC tool: {} with args: {}",
+            self.metadata.name,
+            args
+        );
+
         match &self.grpc_executor {
             Some(executor) => {
                 // Use real gRPC execution
                 if executor.can_execute(&self.method_info) {
                     let result = executor.execute_method(&self.method_info, args).await;
-                    
+
                     // Record usage statistics
                     match &result {
                         Ok(_) => log::debug!("Successfully executed gRPC method: {}", self.method_info.name),
                         Err(e) => log::warn!("Failed to execute gRPC method {}: {}", self.method_info.name, e),
                     }
-                    
+
                     result
                 } else {
                     Err(crate::McpError::server_error(format!(
@@ -616,10 +640,13 @@ impl McpTool for DynamicGrpcTool {
                         self.method_info.name, self.method_info.category
                     )))
                 }
-            }
+            },
             None => {
                 // Fallback to placeholder response when no executor is available
-                log::warn!("No gRPC executor available for tool: {}, returning placeholder", self.metadata.name);
+                log::warn!(
+                    "No gRPC executor available for tool: {}, returning placeholder",
+                    self.metadata.name
+                );
                 Ok(json!({
                     "tool": self.metadata.name,
                     "method": self.method_info.name,
@@ -627,7 +654,7 @@ impl McpTool for DynamicGrpcTool {
                     "note": "This is a dynamically generated tool placeholder - no gRPC executor configured",
                     "parameters": args,
                 }))
-            }
+            },
         }
     }
 }
@@ -648,40 +675,30 @@ impl Default for AutoDiscoveryConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_auto_discovery_registry() {
         let config = AutoDiscoveryConfig::default();
         let service_discovery = Arc::new(ServiceDiscovery::new());
         let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        
-        let registry = AutoDiscoveryRegistry::new(
-            config,
-            service_discovery,
-            schema_generator,
-            error_mapper,
-        );
-        
+
+        let registry = AutoDiscoveryRegistry::new(config, service_discovery, schema_generator, error_mapper);
+
         // Test basic functionality
         let stats = registry.get_statistics().await;
         assert_eq!(stats.total_tools, 0);
     }
-    
+
     #[test]
     fn test_risk_level_determination() {
         let config = AutoDiscoveryConfig::default();
         let service_discovery = Arc::new(ServiceDiscovery::new());
         let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        
-        let registry = AutoDiscoveryRegistry::new(
-            config,
-            service_discovery,
-            schema_generator,
-            error_mapper,
-        );
-        
+
+        let registry = AutoDiscoveryRegistry::new(config, service_discovery, schema_generator, error_mapper);
+
         let safe_method = GrpcMethodInfo {
             name: "get_balance".to_string(),
             service: "Wallet".to_string(),
@@ -693,7 +710,7 @@ mod tests {
             input_schema: json!({}),
             output_schema: json!({}),
         };
-        
+
         assert_eq!(registry.determine_risk_level(&safe_method), ToolRiskLevel::Safe);
     }
 }

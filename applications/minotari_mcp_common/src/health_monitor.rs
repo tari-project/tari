@@ -1,13 +1,15 @@
 //! Health monitoring system for gRPC services
-//! 
+//!
 //! Provides comprehensive health checking for Tari node and wallet services using
 //! the standard gRPC health checking protocol. Supports both basic connectivity
 //! tests and proper gRPC health checks with service-specific status reporting.
 
-use crate::error::{McpError, McpResult};
 use std::time::{Duration, Instant};
+
 use tokio::time::timeout;
 use tonic::transport::Channel;
+
+use crate::error::{McpError, McpResult};
 
 /// Health status for a monitored service
 #[derive(Debug, Clone, PartialEq)]
@@ -69,7 +71,7 @@ impl HealthMonitor {
     /// Perform a basic connectivity test (TCP-level)
     pub async fn check_connectivity(&self) -> HealthCheckResult {
         let start_time = Instant::now();
-        
+
         // Extract host and port from endpoint
         let endpoint_parts: Vec<&str> = self.endpoint.splitn(2, "://").collect();
         let address = if endpoint_parts.len() == 2 {
@@ -106,12 +108,9 @@ impl HealthMonitor {
     /// Perform gRPC-level health check using standard health protocol
     pub async fn check_grpc_health(&self) -> HealthCheckResult {
         let start_time = Instant::now();
-        
+
         // Try to create a gRPC channel and test connectivity
-        match timeout(
-            self.timeout_duration,
-            self.test_grpc_connection()
-        ).await {
+        match timeout(self.timeout_duration, self.test_grpc_connection()).await {
             Ok(Ok(_)) => HealthCheckResult {
                 status: HealthStatus::Healthy,
                 last_check: Instant::now(),
@@ -157,7 +156,7 @@ impl HealthMonitor {
     pub async fn check_health(&self) -> HealthCheckResult {
         // First check basic connectivity
         let connectivity_result = self.check_connectivity().await;
-        
+
         if connectivity_result.status != HealthStatus::Healthy {
             return connectivity_result;
         }
@@ -180,7 +179,7 @@ impl HealthMonitor {
 
         while start_time.elapsed() < max_wait && attempt <= max_attempts {
             let result = self.check_health().await;
-            
+
             if result.status == HealthStatus::Healthy {
                 log::info!("Service {} is healthy after {} attempts", self.service_name, attempt);
                 return Ok(());
@@ -188,7 +187,7 @@ impl HealthMonitor {
 
             // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (capped)
             let delay = Duration::from_secs((2_u64.pow(attempt.min(5))).min(30));
-            
+
             log::debug!(
                 "Service {} not ready (attempt {}): {:?}. Retrying in {:?}",
                 self.service_name,
@@ -207,8 +206,7 @@ impl HealthMonitor {
 
         Err(McpError::server_error(format!(
             "Service {} failed to become healthy within {:?}",
-            self.service_name,
-            max_wait
+            self.service_name, max_wait
         )))
     }
 }

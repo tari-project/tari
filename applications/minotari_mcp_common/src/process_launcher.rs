@@ -1,21 +1,23 @@
 //! Advanced process launcher for Tari applications
-//! 
+//!
 //! Provides sophisticated process launching with CLI integration, health monitoring,
 //! and comprehensive error handling. Supports both node and wallet launching with
 //! proper argument passthrough and startup coordination.
 
-use crate::error::{McpError, McpResult};
-use crate::health_monitor::HealthMonitor;
-use crate::executable_finder::TariExecutables;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::process::Stdio;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, RwLock};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use std::{collections::HashMap, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+    sync::{mpsc, RwLock},
+};
 use uuid::Uuid;
+
+use crate::{
+    error::{McpError, McpResult},
+    executable_finder::TariExecutables,
+    health_monitor::HealthMonitor,
+};
 
 /// Process launch configuration
 #[derive(Debug, Clone)]
@@ -84,15 +86,16 @@ pub struct ProcessLauncher {
 
 impl ProcessLauncher {
     /// Create a new process launcher
-    pub fn new(
-        config: LaunchConfig,
-    ) -> (Self, mpsc::UnboundedReceiver<ProcessLaunchStatus>) {
+    pub fn new(config: LaunchConfig) -> (Self, mpsc::UnboundedReceiver<ProcessLaunchStatus>) {
         let (status_tx, status_rx) = mpsc::unbounded_channel();
-        
-        let health_monitor = Some(HealthMonitor::new(
-            "launched_process".to_string(),
-            config.health_check_config.grpc_endpoint.clone(),
-        ).with_timeout(Duration::from_secs(10)));
+
+        let health_monitor = Some(
+            HealthMonitor::new(
+                "launched_process".to_string(),
+                config.health_check_config.grpc_endpoint.clone(),
+            )
+            .with_timeout(Duration::from_secs(10)),
+        );
 
         (
             Self {
@@ -118,8 +121,11 @@ impl ProcessLauncher {
             self.discover_executable().await?
         };
 
-        log::info!("Launching process: {} with args: {:?}", 
-                  executable_path.display(), self.config.args);
+        log::info!(
+            "Launching process: {} with args: {:?}",
+            executable_path.display(),
+            self.config.args
+        );
 
         // Prepare command
         let mut command = Command::new(&executable_path);
@@ -140,15 +146,16 @@ impl ProcessLauncher {
         }
 
         // Launch the process
-        let mut child = command.spawn()
+        let mut child = command
+            .spawn()
             .map_err(|e| McpError::server_error(format!("Failed to launch process: {}", e)))?;
 
         let pid = child.id();
-        
+
         // Capture stdout and stderr
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        
+
         // Store the process
         *self.process.write().await = Some(child);
 
@@ -165,7 +172,7 @@ impl ProcessLauncher {
                 }
             });
         }
-        
+
         if let Some(stderr) = stderr {
             let output_buffer = self.output_buffer.clone();
             tokio::spawn(async move {
@@ -187,7 +194,7 @@ impl ProcessLauncher {
             },
             Err(e) => {
                 log::error!("Process failed health checks: {}", e);
-                
+
                 // Get captured output for error reporting
                 let output = self.get_captured_output().await;
                 let output_summary = if output.is_empty() {
@@ -195,11 +202,11 @@ impl ProcessLauncher {
                 } else {
                     output.join("\n")
                 };
-                
+
                 let error_msg = format!("Health check failed: {}\nProcess output:\n{}", e, output_summary);
                 let _ = self.status_tx.send(ProcessLaunchStatus::Failed(error_msg.clone()));
                 return Err(McpError::server_error(error_msg));
-            }
+            },
         };
 
         let result = LaunchResult {
@@ -221,13 +228,13 @@ impl ProcessLauncher {
             tokio::time::sleep(self.config.health_check_config.initial_delay).await;
 
             log::debug!("Starting health checks for launched process");
-            
+
             // Wait for service to become healthy
-            health_monitor.wait_for_healthy(
-                self.config.health_check_config.max_wait_time
-            ).await?;
+            health_monitor
+                .wait_for_healthy(self.config.health_check_config.max_wait_time)
+                .await?;
         }
-        
+
         Ok(())
     }
 
@@ -259,21 +266,22 @@ impl ProcessLauncher {
 
             // Wait for graceful shutdown with periodic checks
             let mut attempts = 0;
-            while attempts < 10 { // 5 seconds total
+            while attempts < 10 {
+                // 5 seconds total
                 match child.try_wait() {
                     Ok(Some(status)) => {
                         log::info!("Process exited with status: {:?}", status);
                         break;
-                    }
+                    },
                     Ok(None) => {
                         // Still running, continue waiting
                         tokio::time::sleep(Duration::from_millis(500)).await;
                         attempts += 1;
-                    }
+                    },
                     Err(e) => {
                         log::warn!("Error checking process status: {}", e);
                         break;
-                    }
+                    },
                 }
             }
 
@@ -282,18 +290,18 @@ impl ProcessLauncher {
                 Ok(None) => {
                     log::warn!("Process did not exit gracefully, force killing");
                     let _ = child.kill().await;
-                    
+
                     // Wait a bit more for force kill to take effect
                     tokio::time::sleep(Duration::from_secs(1)).await;
-                }
+                },
                 Ok(Some(_)) => {
                     // Process has already exited
-                }
+                },
                 Err(e) => {
                     log::warn!("Error checking process status for force kill: {}", e);
-                }
+                },
             }
-            
+
             log::info!("Process stopped");
         }
 
@@ -378,7 +386,8 @@ impl LaunchConfigBuilder {
     }
 
     pub fn build(self) -> McpResult<LaunchConfig> {
-        let health_check_config = self.health_check_config
+        let health_check_config = self
+            .health_check_config
             .ok_or_else(|| McpError::config_error("Health check configuration is required"))?;
 
         Ok(LaunchConfig {
@@ -420,7 +429,7 @@ impl TariProcessLauncher {
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
         // Convert IP:PORT format to multiaddr format
         let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
-        
+
         let mut args = vec![
             "--base-path".to_string(),
             base_path,
@@ -466,7 +475,7 @@ impl TariProcessLauncher {
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
         // Convert IP:PORT format to multiaddr format
         let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
-        
+
         let mut args = vec![
             "--base-path".to_string(),
             base_path,

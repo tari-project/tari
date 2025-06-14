@@ -1,14 +1,15 @@
 //! Configuration for the Minotari Node MCP Server
 
-use crate::cli::Cli;
-use minotari_mcp_common::{McpConfig, McpResult, McpError};
+use minotari_mcp_common::{McpConfig, McpError, McpResult};
 use serde::{Deserialize, Serialize};
+
+use crate::cli::Cli;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeMcpConfig {
     /// MCP server configuration
     pub mcp: McpConfig,
-    
+
     /// Base node gRPC configuration
     pub node_grpc: NodeGrpcConfig,
 }
@@ -17,13 +18,13 @@ pub struct NodeMcpConfig {
 pub struct NodeGrpcConfig {
     /// Base node gRPC endpoint address
     pub address: String,
-    
+
     /// Connection timeout in seconds
     pub timeout_secs: u64,
-    
+
     /// Maximum number of retries for failed requests
     pub max_retries: u32,
-    
+
     /// Whether to auto-launch the base node
     pub auto_launch: bool,
 }
@@ -32,8 +33,7 @@ impl NodeMcpConfig {
     /// Load configuration from CLI arguments
     pub fn load(cli: &Cli) -> McpResult<Self> {
         // Validate CLI arguments first
-        cli.validate()
-            .map_err(McpError::config_error)?;
+        cli.validate().map_err(McpError::config_error)?;
 
         let mcp_config = McpConfig {
             enabled: true,
@@ -67,8 +67,7 @@ impl NodeMcpConfig {
     /// Validate the configuration
     pub fn validate(&self) -> McpResult<()> {
         // Validate MCP configuration
-        self.mcp.validate()
-            .map_err(McpError::config_error)?;
+        self.mcp.validate().map_err(McpError::config_error)?;
 
         // Validate node gRPC configuration
         if self.node_grpc.address.is_empty() {
@@ -86,7 +85,7 @@ impl NodeMcpConfig {
     pub fn should_auto_launch_node(&self) -> bool {
         self.node_grpc.auto_launch
     }
-    
+
     /// Get allowed gRPC methods for auto-discovery
     pub fn allowed_methods(&self) -> std::collections::HashSet<String> {
         // For now, allow all methods (empty set means all allowed)

@@ -4,13 +4,14 @@
 //! from protobuf FileDescriptorSet. This is a simplified version that focuses on the
 //! core concept and can be extended with more sophisticated reflection capabilities.
 
-use schemars::schema::*;
-use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap};
+
+use schemars::schema::*;
+
 use crate::error::{McpError, McpResult};
 
 /// Simplified protobuf schema generator
-/// 
+///
 /// This implementation provides a foundation for runtime schema generation
 /// and can be extended with full prost-reflect integration when the API
 /// compatibility issues are resolved.
@@ -23,7 +24,7 @@ pub struct ProtobufReflector {
 
 impl ProtobufReflector {
     /// Create a new reflector from FileDescriptorSet bytes
-    /// 
+    ///
     /// Note: This simplified version provides basic functionality.
     /// Full implementation would parse the descriptor set using prost-reflect.
     pub fn new(_descriptor_set: &[u8]) -> McpResult<Self> {
@@ -51,14 +52,14 @@ impl ProtobufReflector {
         // Generate basic schema based on known patterns
         let schema = self.generate_basic_schema(message_name)?;
         self.schema_cache.insert(message_name.to_string(), schema.clone());
-        
+
         Ok(schema)
     }
 
     /// Generate schema for all methods in a service (placeholder)
     pub fn generate_service_schemas(&mut self, service_name: &str) -> McpResult<HashMap<String, Schema>> {
         let mut schemas = HashMap::new();
-        
+
         // Generate placeholder schemas for common service methods
         match service_name {
             "tari.rpc.BaseNode" => {
@@ -72,7 +73,7 @@ impl ProtobufReflector {
             },
             _ => {
                 return Err(McpError::invalid_request(format!("Unknown service: {}", service_name)));
-            }
+            },
         }
 
         Ok(schemas)
@@ -85,10 +86,7 @@ impl ProtobufReflector {
 
     /// Get all available service types
     pub fn list_services(&self) -> Vec<String> {
-        vec![
-            "tari.rpc.BaseNode".to_string(),
-            "tari.rpc.Wallet".to_string(),
-        ]
+        vec!["tari.rpc.BaseNode".to_string(), "tari.rpc.Wallet".to_string()]
     }
 
     /// Generate basic schema structure for a message type
@@ -105,8 +103,8 @@ impl ProtobufReflector {
 
     /// Generate schema for GetTipInfo request
     fn generate_tip_info_schema(&self) -> McpResult<Schema> {
-        let mut properties = BTreeMap::new();
-        
+        let properties = BTreeMap::new();
+
         // GetTipInfo typically has no parameters
         Ok(Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::Object.into()),
@@ -126,8 +124,8 @@ impl ProtobufReflector {
 
     /// Generate schema for GetBalance request
     fn generate_balance_schema(&self) -> McpResult<Schema> {
-        let mut properties = BTreeMap::new();
-        
+        let properties = BTreeMap::new();
+
         // GetBalance typically has no parameters
         Ok(Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::Object.into()),
@@ -147,8 +145,8 @@ impl ProtobufReflector {
 
     /// Generate schema for GetVersion request
     fn generate_version_schema(&self) -> McpResult<Schema> {
-        let mut properties = BTreeMap::new();
-        
+        let properties = BTreeMap::new();
+
         Ok(Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::Object.into()),
             object: Some(Box::new(ObjectValidation {
@@ -167,8 +165,8 @@ impl ProtobufReflector {
 
     /// Generate schema for GetPeers request
     fn generate_peers_schema(&self) -> McpResult<Schema> {
-        let mut properties = BTreeMap::new();
-        
+        let properties = BTreeMap::new();
+
         Ok(Schema::Object(SchemaObject {
             instance_type: Some(InstanceType::Object.into()),
             object: Some(Box::new(ObjectValidation {
@@ -188,47 +186,56 @@ impl ProtobufReflector {
     /// Generate schema for Transfer request
     fn generate_transfer_schema(&self) -> McpResult<Schema> {
         let mut properties = BTreeMap::new();
-        
+
         // Transfer typically has recipient and amount parameters
-        properties.insert("recipient".to_string(), Schema::Object(SchemaObject {
-            instance_type: Some(InstanceType::String.into()),
-            string: Some(Box::new(StringValidation {
-                min_length: Some(32),
-                max_length: Some(100),
-                pattern: Some("^[0-9a-fA-F]+$".to_string()), // Hex pattern
-            })),
-            metadata: Some(Box::new(Metadata {
-                description: Some("Recipient address".to_string()),
+        properties.insert(
+            "recipient".to_string(),
+            Schema::Object(SchemaObject {
+                instance_type: Some(InstanceType::String.into()),
+                string: Some(Box::new(StringValidation {
+                    min_length: Some(32),
+                    max_length: Some(100),
+                    pattern: Some("^[0-9a-fA-F]+$".to_string()), // Hex pattern
+                })),
+                metadata: Some(Box::new(Metadata {
+                    description: Some("Recipient address".to_string()),
+                    ..Default::default()
+                })),
                 ..Default::default()
-            })),
-            ..Default::default()
-        }));
+            }),
+        );
 
-        properties.insert("amount".to_string(), Schema::Object(SchemaObject {
-            instance_type: Some(InstanceType::Integer.into()),
-            number: Some(Box::new(NumberValidation {
-                minimum: Some(1.0),
+        properties.insert(
+            "amount".to_string(),
+            Schema::Object(SchemaObject {
+                instance_type: Some(InstanceType::Integer.into()),
+                number: Some(Box::new(NumberValidation {
+                    minimum: Some(1.0),
+                    ..Default::default()
+                })),
+                metadata: Some(Box::new(Metadata {
+                    description: Some("Amount to transfer in microTari".to_string()),
+                    ..Default::default()
+                })),
                 ..Default::default()
-            })),
-            metadata: Some(Box::new(Metadata {
-                description: Some("Amount to transfer in microTari".to_string()),
-                ..Default::default()
-            })),
-            ..Default::default()
-        }));
+            }),
+        );
 
-        properties.insert("fee_per_gram".to_string(), Schema::Object(SchemaObject {
-            instance_type: Some(InstanceType::Integer.into()),
-            number: Some(Box::new(NumberValidation {
-                minimum: Some(1.0),
+        properties.insert(
+            "fee_per_gram".to_string(),
+            Schema::Object(SchemaObject {
+                instance_type: Some(InstanceType::Integer.into()),
+                number: Some(Box::new(NumberValidation {
+                    minimum: Some(1.0),
+                    ..Default::default()
+                })),
+                metadata: Some(Box::new(Metadata {
+                    description: Some("Fee per gram in microTari".to_string()),
+                    ..Default::default()
+                })),
                 ..Default::default()
-            })),
-            metadata: Some(Box::new(Metadata {
-                description: Some("Fee per gram in microTari".to_string()),
-                ..Default::default()
-            })),
-            ..Default::default()
-        }));
+            }),
+        );
 
         let mut required = Vec::new();
         required.push("recipient".to_string());
@@ -284,11 +291,11 @@ mod tests {
     #[test]
     fn test_schema_generation() {
         let mut reflector = ProtobufReflector::new(&[]).unwrap();
-        
+
         // Test known message types
         let schema = reflector.generate_schema("tari.rpc.GetTipInfoRequest");
         assert!(schema.is_ok());
-        
+
         // Test unknown message types
         let schema = reflector.generate_schema("unknown.Message");
         assert!(schema.is_ok());
@@ -297,12 +304,12 @@ mod tests {
     #[test]
     fn test_service_schemas() {
         let mut reflector = ProtobufReflector::new(&[]).unwrap();
-        
+
         // Test known service
         let schemas = reflector.generate_service_schemas("tari.rpc.BaseNode");
         assert!(schemas.is_ok());
         assert!(!schemas.unwrap().is_empty());
-        
+
         // Test unknown service
         let schemas = reflector.generate_service_schemas("unknown.Service");
         assert!(schemas.is_err());
@@ -311,10 +318,10 @@ mod tests {
     #[test]
     fn test_list_operations() {
         let reflector = ProtobufReflector::new(&[]).unwrap();
-        
+
         let messages = reflector.list_message_types();
         assert!(!messages.is_empty());
-        
+
         let services = reflector.list_services();
         assert!(!services.is_empty());
     }

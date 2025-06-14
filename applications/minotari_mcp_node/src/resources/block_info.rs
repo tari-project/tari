@@ -1,11 +1,11 @@
 //! Block information resource
 
-use minotari_mcp_common::{McpResource, McpResult, McpError};
-use minotari_node_grpc_client::BaseNodeGrpcClient;
+use std::{collections::HashMap, sync::Arc};
+
 use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResource, McpResult};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tonic::transport::Channel;
 
 /// Resource providing block information by height
@@ -43,11 +43,13 @@ impl McpResource for BlockInfoResource {
     }
 
     fn resolve_template(&self, params: &HashMap<String, String>) -> McpResult<String> {
-        let height = params.get("height")
+        let height = params
+            .get("height")
             .ok_or_else(|| McpError::invalid_request("Missing height parameter"))?;
-        
+
         // Validate height is a number
-        height.parse::<u64>()
+        height
+            .parse::<u64>()
             .map_err(|_| McpError::invalid_request("Height must be a valid number"))?;
 
         Ok(format!("block/{}", height))

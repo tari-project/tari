@@ -1,24 +1,24 @@
 //! Wallet state monitoring tool for MCP
-//! 
+//!
 //! This tool allows AI agents to monitor wallet startup progress and readiness status.
 //! Essential for determining when wallet operations are available.
 
-use minotari_mcp_common::{
-    McpTool, PermissionLevel, McpResult, McpError,
-    get_optional_string_param, json_schema
+use std::{
+    net::TcpStream,
+    sync::Arc,
+    time::{Duration, Instant},
 };
-use minotari_wallet_grpc_client::WalletGrpcClient;
+
 use async_trait::async_trait;
+use minotari_mcp_common::{get_optional_string_param, json_schema, McpError, McpResult, McpTool, PermissionLevel};
+use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{json, Value};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 use tokio::time::sleep;
 use tonic::transport::Channel;
-use std::net::TcpStream;
 
 /// Tool for checking wallet startup progress and readiness status
 pub struct WalletStateTool {
-    #[allow(dead_code)]  // Reserved for future gRPC connectivity implementation
+    #[allow(dead_code)] // Reserved for future gRPC connectivity implementation
     grpc_client: Arc<WalletGrpcClient<Channel>>,
 }
 
@@ -29,10 +29,10 @@ pub enum WalletStatus {
     /// Wallet is starting up
     Starting,
     /// Wallet is syncing with the network
-    Syncing { 
-        current_height: u64, 
+    Syncing {
+        current_height: u64,
         network_height: u64,
-        progress_percent: f64 
+        progress_percent: f64,
     },
     /// Wallet is ready for operations
     Ready,
@@ -54,13 +54,9 @@ impl WalletStateTool {
                 if let Some(sync_info) = info.get("sync_info") {
                     if let Some(is_syncing) = sync_info.get("is_syncing").and_then(|v| v.as_bool()) {
                         if is_syncing {
-                            let current_height = sync_info.get("current_height")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0);
-                            let network_height = sync_info.get("network_height")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0);
-                            
+                            let current_height = sync_info.get("current_height").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let network_height = sync_info.get("network_height").and_then(|v| v.as_u64()).unwrap_or(0);
+
                             let progress_percent = if network_height > 0 {
                                 (current_height as f64 / network_height as f64) * 100.0
                             } else {
@@ -86,14 +82,14 @@ impl WalletStateTool {
                 } else {
                     WalletStatus::Starting
                 }
-            }
+            },
             Err(e) => {
                 if e.to_string().contains("connection") || e.to_string().contains("transport") {
                     WalletStatus::NotRunning
                 } else {
                     WalletStatus::Error(e.to_string())
                 }
-            }
+            },
         }
     }
 
@@ -113,8 +109,11 @@ impl WalletStateTool {
                         "network_height": 1000000
                     }
                 }))
-            }
-            Err(e) => Err(McpError::tool_execution_failed(format!("Failed to connect to wallet: {}", e)))
+            },
+            Err(e) => Err(McpError::tool_execution_failed(format!(
+                "Failed to connect to wallet: {}",
+                e
+            ))),
         }
     }
 
@@ -153,7 +152,7 @@ impl WalletStateTool {
                         "message": "Wallet is ready for operations",
                         "status_history": status_history
                     }));
-                }
+                },
                 WalletStatus::Error(err) => {
                     return Ok(json!({
                         "final_status": "error",
@@ -162,8 +161,8 @@ impl WalletStateTool {
                         "message": format!("Wallet encountered an error: {}", err),
                         "status_history": status_history
                     }));
-                }
-                _ => {}
+                },
+                _ => {},
             }
 
             // Check timeout
@@ -193,7 +192,11 @@ impl WalletStateTool {
                 "state": "starting",
                 "description": "Wallet is starting up but not yet ready"
             }),
-            WalletStatus::Syncing { current_height, network_height, progress_percent } => json!({
+            WalletStatus::Syncing {
+                current_height,
+                network_height,
+                progress_percent,
+            } => json!({
                 "state": "syncing",
                 "description": "Wallet is syncing with the network",
                 "current_height": current_height,
@@ -221,7 +224,7 @@ impl WalletStateTool {
             (WalletStatus::Syncing { .. }, WalletStatus::Syncing { .. }) => {
                 // For syncing, consider it the same if still syncing (even if progress changed)
                 true
-            }
+            },
             (WalletStatus::Error(_), WalletStatus::Error(_)) => true,
             _ => false,
         }
@@ -235,7 +238,8 @@ impl McpTool for WalletStateTool {
     }
 
     fn description(&self) -> &str {
-        "Monitor wallet startup progress and readiness status. Essential for AI agents to know when wallet operations are available. Returns detailed status information including sync progress and estimated completion time."
+        "Monitor wallet startup progress and readiness status. Essential for AI agents to know when wallet operations \
+         are available. Returns detailed status information including sync progress and estimated completion time."
     }
 
     fn permission_level(&self) -> PermissionLevel {
@@ -261,12 +265,9 @@ impl McpTool for WalletStateTool {
     }
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let timeout_secs = params.get("timeout_seconds")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(90.0) as u64;
-            
-        let check_type = get_optional_string_param(&params, "check_type")
-            .unwrap_or_else(|| "quick".to_string());
+        let timeout_secs = params.get("timeout_seconds").and_then(|v| v.as_f64()).unwrap_or(90.0) as u64;
+
+        let check_type = get_optional_string_param(&params, "check_type").unwrap_or_else(|| "quick".to_string());
 
         match check_type.as_str() {
             "quick" => {
@@ -278,12 +279,14 @@ impl McpTool for WalletStateTool {
                     "status": self.status_to_json(&status),
                     "recommendations": self.get_status_recommendations(&status)
                 }))
-            }
+            },
             "monitor" => {
                 // Monitor startup process
                 self.monitor_wallet_startup(timeout_secs).await
-            }
-            _ => Err(McpError::invalid_request("Invalid check_type. Must be 'quick' or 'monitor'"))
+            },
+            _ => Err(McpError::invalid_request(
+                "Invalid check_type. Must be 'quick' or 'monitor'",
+            )),
         }
     }
 
@@ -329,18 +332,24 @@ impl WalletStateTool {
             WalletStatus::Syncing { progress_percent, .. } => {
                 if *progress_percent < 50.0 {
                     json!([
-                        format!("Wallet is syncing ({}% complete). Please wait for sync to complete.", progress_percent.round()),
+                        format!(
+                            "Wallet is syncing ({}% complete). Please wait for sync to complete.",
+                            progress_percent.round()
+                        ),
                         "Avoid transaction operations during initial sync.",
                         "This may take several minutes depending on network conditions."
                     ])
                 } else {
                     json!([
-                        format!("Wallet sync is nearly complete ({}%). Ready soon.", progress_percent.round()),
+                        format!(
+                            "Wallet sync is nearly complete ({}%). Ready soon.",
+                            progress_percent.round()
+                        ),
                         "You can monitor progress or wait for completion.",
                         "Basic operations may be available but wait for 100% for best reliability."
                     ])
                 }
-            }
+            },
             WalletStatus::Ready => json!([
                 "Wallet is ready for all operations.",
                 "You can now perform transactions, check balances, and other wallet functions.",

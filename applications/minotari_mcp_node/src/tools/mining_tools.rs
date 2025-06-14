@@ -4,16 +4,17 @@
 //! block construction, and mining data retrieval. Updated to include the existing
 //! GetNewBlockTemplateTool and expand mining capabilities.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult};
-use minotari_node_grpc_client::BaseNodeGrpcClient;
-use serde_json::{Value, json};
-
-use tonic::transport::Channel;
-use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
-    NewBlockTemplateRequest, GetNewBlockTemplateWithCoinbasesRequest, NewBlockCoinbase, PowAlgo,
     pow_algo::PowAlgos,
+    GetNewBlockTemplateWithCoinbasesRequest,
+    NewBlockCoinbase,
+    NewBlockTemplateRequest,
+    PowAlgo,
 };
+use minotari_mcp_common::{McpError, McpResult, McpTool};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
+use serde_json::{json, Value};
+use tonic::{transport::Channel, Request};
 
 /// Tool for getting a new block template (existing implementation, enhanced)
 #[derive(Clone)]
@@ -32,15 +33,15 @@ impl McpTool for GetNewBlockTemplateTool {
     fn name(&self) -> &str {
         "get_new_block_template"
     }
-    
+
     fn description(&self) -> &str {
         "Retrieves a new block template for mining with specified algorithm and optional weight limit"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::Control
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -58,35 +59,43 @@ impl McpTool for GetNewBlockTemplateTool {
             "required": ["algo"]
         })
     }
-    
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let algo = params.get("algo")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string()))?;
-        
-        let max_weight = params.get("max_weight")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(19500); // Default max weight for blocks
-        
+        let algo = params.get("algo").and_then(|v| v.as_u64()).ok_or_else(|| {
+            McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string())
+        })?;
+
+        let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500); // Default max weight for blocks
+
         let pow_algo_val = match algo {
             0 => PowAlgos::Randomxm.into(), // RANDOMXM
-            1 => PowAlgos::Sha3x.into(),    // SHA3X  
+            1 => PowAlgos::Sha3x.into(),    // SHA3X
             2 => PowAlgos::Randomxt.into(), // RANDOMXT
-            _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string())),
+            _ => {
+                return Err(McpError::invalid_request(
+                    "Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string(),
+                ))
+            },
         };
-        
+
         let request = Request::new(NewBlockTemplateRequest {
             algo: Some(PowAlgo { pow_algo: pow_algo_val }),
             max_weight,
         });
-        
-        let response = self.grpc_client.clone().get_new_block_template(request).await
+
+        let response = self
+            .grpc_client
+            .clone()
+            .get_new_block_template(request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template: {}", e)))?
             .into_inner();
-        
-        let template = response.new_block_template.as_ref()
+
+        let template = response
+            .new_block_template
+            .as_ref()
             .ok_or_else(|| McpError::tool_execution_failed("No block template in response".to_string()))?;
-        
+
         Ok(json!({
             "block_template": {
                 "header": {
@@ -131,7 +140,9 @@ pub struct GetNewBlockTool {
 
 impl GetNewBlockTool {
     pub fn new(grpc_client: BaseNodeGrpcClient<Channel>) -> Self {
-        Self { _grpc_client: grpc_client }
+        Self {
+            _grpc_client: grpc_client,
+        }
     }
 }
 
@@ -140,15 +151,15 @@ impl McpTool for GetNewBlockTool {
     fn name(&self) -> &str {
         "get_new_block"
     }
-    
+
     fn description(&self) -> &str {
         "Constructs a new block from a provided block template (requires template from get_new_block_template)"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::Control
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -161,14 +172,14 @@ impl McpTool for GetNewBlockTool {
             "required": ["template"]
         })
     }
-    
+
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         // This is a simplified implementation - in reality, we'd need to properly
         // construct the NewBlockTemplate from the parameters
         return Err(McpError::invalid_request(
-            "This tool requires a complete block template structure. Use get_new_block_template first.".to_string()
+            "This tool requires a complete block template structure. Use get_new_block_template first.".to_string(),
         ));
-        
+
         // TODO: Implement proper template parsing when needed
         // let template = parse_block_template(&params)?;
         // let request = Request::new(template);
@@ -193,15 +204,15 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
     fn name(&self) -> &str {
         "get_new_block_template_with_coinbases"
     }
-    
+
     fn description(&self) -> &str {
         "Retrieves a new block template with custom coinbase outputs for mining pools or multi-recipient mining"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::Control
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -249,50 +260,58 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             "required": ["algo", "coinbases"]
         })
     }
-    
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let algo = params.get("algo")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string()))?;
-        
-        let max_weight = params.get("max_weight")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(19500);
-        
+        let algo = params.get("algo").and_then(|v| v.as_u64()).ok_or_else(|| {
+            McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string())
+        })?;
+
+        let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500);
+
         let pow_algo_val = match algo {
             0 => PowAlgos::Sha3x.into(),    // SHA3X
-            1 => PowAlgos::Randomxm.into(), // RANDOMXM  
+            1 => PowAlgos::Randomxm.into(), // RANDOMXM
             2 => PowAlgos::Randomxt.into(), // RANDOMXT
-            _ => return Err(McpError::invalid_request("Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string())),
+            _ => {
+                return Err(McpError::invalid_request(
+                    "Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string(),
+                ))
+            },
         };
-        
+
         // Parse coinbase recipients
-        let coinbases: Vec<NewBlockCoinbase> = params.get("coinbases")
+        let coinbases: Vec<NewBlockCoinbase> = params
+            .get("coinbases")
             .and_then(|v| v.as_array())
             .ok_or_else(|| McpError::invalid_request("coinbases array is required".to_string()))?
             .iter()
             .map(|coinbase| -> Result<NewBlockCoinbase, McpError> {
-                let address = coinbase.get("address")
+                let address = coinbase
+                    .get("address")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| McpError::invalid_request("coinbase address is required".to_string()))?;
-                
-                let value = coinbase.get("value")
+
+                let value = coinbase
+                    .get("value")
                     .and_then(|v| v.as_u64())
                     .ok_or_else(|| McpError::invalid_request("coinbase value is required".to_string()))?;
-                
-                let stealth_payment = coinbase.get("stealth_payment")
+
+                let stealth_payment = coinbase
+                    .get("stealth_payment")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                
-                let revealed_value_proof = coinbase.get("revealed_value_proof")
+
+                let revealed_value_proof = coinbase
+                    .get("revealed_value_proof")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                
-                let coinbase_extra = coinbase.get("coinbase_extra")
+
+                let coinbase_extra = coinbase
+                    .get("coinbase_extra")
                     .and_then(|v| v.as_str())
                     .map(|s| s.as_bytes().to_vec())
                     .unwrap_or_default();
-                
+
                 Ok(NewBlockCoinbase {
                     address: address.to_string(),
                     value,
@@ -302,21 +321,29 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        
+
         if coinbases.is_empty() {
-            return Err(McpError::invalid_request("At least one coinbase output is required".to_string()));
+            return Err(McpError::invalid_request(
+                "At least one coinbase output is required".to_string(),
+            ));
         }
-        
+
         let request = Request::new(GetNewBlockTemplateWithCoinbasesRequest {
             algo: Some(PowAlgo { pow_algo: pow_algo_val }),
             max_weight,
             coinbases,
         });
-        
-        let response = self.grpc_client.clone().get_new_block_template_with_coinbases(request).await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template with coinbases: {}", e)))?
+
+        let response = self
+            .grpc_client
+            .clone()
+            .get_new_block_template_with_coinbases(request)
+            .await
+            .map_err(|e| {
+                McpError::tool_execution_failed(format!("Failed to get block template with coinbases: {}", e))
+            })?
             .into_inner();
-        
+
         Ok(json!({
             "block_hash": hex::encode(&response.block_hash),
             "block": response.block.as_ref().map(|block| json!({
@@ -368,15 +395,15 @@ impl McpTool for GetNewBlockWithCoinbasesTool {
     fn name(&self) -> &str {
         "get_new_block_with_coinbases"
     }
-    
+
     fn description(&self) -> &str {
         "Constructs a new block with custom coinbase outputs from a template (advanced mining operation)"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::Control
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -389,12 +416,14 @@ impl McpTool for GetNewBlockWithCoinbasesTool {
             "required": ["template"]
         })
     }
-    
+
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         // This would require a complete block template structure
         // For now, return an informational message
         return Err(McpError::invalid_request(
-            "This tool requires a complete block template and coinbase configuration. Use get_new_block_template_with_coinbases for most use cases.".to_string()
+            "This tool requires a complete block template and coinbase configuration. Use \
+             get_new_block_template_with_coinbases for most use cases."
+                .to_string(),
         ));
     }
 }
@@ -416,15 +445,16 @@ impl McpTool for MiningAnalysisTool {
     fn name(&self) -> &str {
         "mining_analysis"
     }
-    
+
     fn description(&self) -> &str {
-        "Provides comprehensive mining analysis including difficulty trends, profitability estimates, and algorithm recommendations"
+        "Provides comprehensive mining analysis including difficulty trends, profitability estimates, and algorithm \
+         recommendations"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::Control
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -444,19 +474,15 @@ impl McpTool for MiningAnalysisTool {
             "required": []
         })
     }
-    
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let requested_algo = params.get("preferred_algo")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0); // Default to SHA3X
-        
-        let hash_rate = params.get("hash_rate")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1000000); // Default 1 MH/s
-        
+        let requested_algo = params.get("preferred_algo").and_then(|v| v.as_u64()).unwrap_or(0); // Default to SHA3X
+
+        let hash_rate = params.get("hash_rate").and_then(|v| v.as_u64()).unwrap_or(1000000); // Default 1 MH/s
+
         // Get current mining data for all algorithms
         let mut algo_analysis = Vec::new();
-        
+
         for algo in 0..3 {
             let pow_algo_val = match algo {
                 0 => PowAlgos::Sha3x.into(),    // SHA3X
@@ -464,28 +490,35 @@ impl McpTool for MiningAnalysisTool {
                 2 => PowAlgos::Randomxt.into(), // RANDOMXT
                 _ => continue,
             };
-            
-            match self.grpc_client.clone().get_new_block_template(Request::new(NewBlockTemplateRequest {
-                algo: Some(PowAlgo { pow_algo: pow_algo_val }),
-                max_weight: 19500,
-            })).await {
+
+            match self
+                .grpc_client
+                .clone()
+                .get_new_block_template(Request::new(NewBlockTemplateRequest {
+                    algo: Some(PowAlgo { pow_algo: pow_algo_val }),
+                    max_weight: 19500,
+                }))
+                .await
+            {
                 Ok(response) => {
                     let response = response.into_inner();
-                    if let (Some(_template), Some(miner_data)) = (response.new_block_template.as_ref(), response.miner_data.as_ref()) {
+                    if let (Some(_template), Some(miner_data)) =
+                        (response.new_block_template.as_ref(), response.miner_data.as_ref())
+                    {
                         let algo_name = match algo {
                             0 => "SHA3X",
                             1 => "MONERO",
                             2 => "TARI",
                             _ => "UNKNOWN",
                         };
-                        
+
                         // Calculate estimated time to find block
                         let time_to_block = if hash_rate > 0 {
                             miner_data.target_difficulty / hash_rate
                         } else {
                             0
                         };
-                        
+
                         algo_analysis.push(json!({
                             "algorithm": algo_name,
                             "algo_id": algo,
@@ -511,21 +544,22 @@ impl McpTool for MiningAnalysisTool {
                 Err(_) => {
                     // Skip algorithms that are not available
                     continue;
-                }
+                },
             }
         }
-        
+
         // Find best algorithm
-        let best_algo = algo_analysis.iter()
-            .max_by(|a, b| {
-                a["profitability_score"].as_f64().unwrap_or(0.0)
-                    .partial_cmp(&b["profitability_score"].as_f64().unwrap_or(0.0))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-        
+        let best_algo = algo_analysis.iter().max_by(|a, b| {
+            a["profitability_score"]
+                .as_f64()
+                .unwrap_or(0.0)
+                .partial_cmp(&b["profitability_score"].as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         // Generate recommendations
         let mut recommendations = Vec::new();
-        
+
         if let Some(best) = best_algo {
             if best["algo_id"].as_u64().unwrap_or(99) != requested_algo {
                 recommendations.push(format!(
@@ -533,20 +567,21 @@ impl McpTool for MiningAnalysisTool {
                     best["algorithm"].as_str().unwrap_or("UNKNOWN")
                 ));
             }
-            
+
             if best["sync_required"].as_bool().unwrap_or(false) {
                 recommendations.push("Node sync required before mining can begin".to_string());
             }
-            
+
             if best["estimated_time_to_block_seconds"].as_u64().unwrap_or(0) > 86400 {
-                recommendations.push("Consider joining a mining pool - estimated solo mining time exceeds 24 hours".to_string());
+                recommendations
+                    .push("Consider joining a mining pool - estimated solo mining time exceeds 24 hours".to_string());
             }
         }
-        
+
         if algo_analysis.is_empty() {
             recommendations.push("No mining algorithms available - check node status and sync".to_string());
         }
-        
+
         Ok(json!({
             "mining_analysis": algo_analysis,
             "best_algorithm": best_algo,
@@ -554,7 +589,7 @@ impl McpTool for MiningAnalysisTool {
                 "algo_id": requested_algo,
                 "algo_name": match requested_algo {
                     0 => "SHA3X",
-                    1 => "MONERO", 
+                    1 => "MONERO",
                     2 => "TARI",
                     _ => "UNKNOWN",
                 }

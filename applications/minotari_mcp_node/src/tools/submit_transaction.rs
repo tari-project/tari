@@ -1,13 +1,12 @@
 //! Submit transaction MCP tool
 
-use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    get_required_string_param
-};
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::{SubmitTransactionRequest, Transaction}};
 use async_trait::async_trait;
+use minotari_mcp_common::{get_required_string_param, McpError, McpResult, McpTool};
+use minotari_node_grpc_client::{
+    grpc::{SubmitTransactionRequest, Transaction},
+    BaseNodeGrpcClient,
+};
 use serde_json::Value;
-
 use tonic::transport::Channel;
 
 /// Tool for submitting transactions to the mempool
@@ -21,8 +20,6 @@ impl SubmitTransactionTool {
     }
 }
 
-
-
 #[async_trait]
 impl McpTool for SubmitTransactionTool {
     fn name(&self) -> &str {
@@ -30,7 +27,11 @@ impl McpTool for SubmitTransactionTool {
     }
 
     fn description(&self) -> &str {
-        "Submit a pre-signed transaction to the Tari mempool for inclusion in the blockchain. This tool accepts a serialized transaction in hexadecimal format and broadcasts it to the network. The transaction must be properly formatted, signed, and have valid inputs. Once submitted, the transaction will be validated by nodes and miners for inclusion in the next block. Use this for broadcasting transactions created offline or by other applications."
+        "Submit a pre-signed transaction to the Tari mempool for inclusion in the blockchain. This tool accepts a \
+         serialized transaction in hexadecimal format and broadcasts it to the network. The transaction must be \
+         properly formatted, signed, and have valid inputs. Once submitted, the transaction will be validated by nodes \
+         and miners for inclusion in the next block. Use this for broadcasting transactions created offline or by \
+         other applications."
     }
 
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
@@ -59,7 +60,7 @@ impl McpTool for SubmitTransactionTool {
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         let tx_hex = get_required_string_param(params, "transaction_hex")?;
-        
+
         if tx_hex.is_empty() {
             return Err(McpError::invalid_request("Transaction hex cannot be empty"));
         }
@@ -78,7 +79,7 @@ impl McpTool for SubmitTransactionTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let tx_hex = get_required_string_param(&params, "transaction_hex")?;
-        
+
         // For simplicity, we'll create a minimal transaction structure
         // In a real implementation, you'd properly decode the hex into a Transaction
         let _tx_bytes = hex::decode(&tx_hex)
@@ -98,7 +99,9 @@ impl McpTool for SubmitTransactionTool {
         };
 
         // Submit transaction to mempool
-        let response = self.grpc_client.clone()
+        let response = self
+            .grpc_client
+            .clone()
             .submit_transaction(request)
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit transaction: {}", e)))?;

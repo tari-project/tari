@@ -1,21 +1,30 @@
 //! Core MCP server implementation
 
-use crate::config::McpConfig;
-use crate::error::{McpError, McpResult};
-use crate::security::SecurityContext;
-use crate::tools::{ToolRegistry, ToolInfo};
-use crate::resources::{ResourceRegistry, ResourceInfo};
-use crate::prompts::{PromptRegistry, PromptInfo};
-use crate::transport::{
-    MessageHandler, McpMessage, McpResponse,
-    ToolCallParams, ResourceReadParams, PromptGetParams, InitializeParams,
-};
-use crate::stdio_transport::StdioTransport;
-use crate::input_sanitizer::sanitize_tool_input;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use crate::{
+    config::McpConfig,
+    error::{McpError, McpResult},
+    input_sanitizer::sanitize_tool_input,
+    prompts::{PromptInfo, PromptRegistry},
+    resources::{ResourceInfo, ResourceRegistry},
+    security::SecurityContext,
+    stdio_transport::StdioTransport,
+    tools::{ToolInfo, ToolRegistry},
+    transport::{
+        InitializeParams,
+        McpMessage,
+        McpResponse,
+        MessageHandler,
+        PromptGetParams,
+        ResourceReadParams,
+        ToolCallParams,
+    },
+};
 
 /// Core MCP server trait
 #[async_trait]
@@ -71,13 +80,14 @@ impl McpServerBuilder {
 
     pub fn build(self) -> McpResult<McpServerImpl> {
         // Validate configuration
-        self.config.validate()
-            .map_err(McpError::config_error)?;
+        self.config.validate().map_err(McpError::config_error)?;
 
         let security_context = Arc::new(RwLock::new(SecurityContext::new(
             self.config.are_control_operations_enabled(),
             self.config.rate_limit_per_minute,
-            self.config.get_audit_log_path().map(|p| p.to_string_lossy().to_string()),
+            self.config
+                .get_audit_log_path()
+                .map(|p| p.to_string_lossy().to_string()),
         )));
 
         Ok(McpServerImpl {
@@ -116,17 +126,20 @@ impl McpServer for McpServerImpl {
         let transport = StdioTransport::new(Arc::new(handler));
 
         log::info!("Starting MCP server with stdio transport");
-        log::info!("Control operations enabled: {}", self.config.are_control_operations_enabled());
+        log::info!(
+            "Control operations enabled: {}",
+            self.config.are_control_operations_enabled()
+        );
 
         *running = true;
-        
+
         // Start the stdio transport (this will block until shutdown)
         transport.start().await?;
 
         // When we get here, the transport has shut down
         let mut running = self.running.write().await;
         *running = false;
-        
+
         Ok(())
     }
 
@@ -164,34 +177,18 @@ struct ServerMessageHandler {
 impl MessageHandler for ServerMessageHandler {
     async fn handle_message(&self, message: McpMessage) -> McpResult<McpResponse> {
         match message {
-            McpMessage::Initialize { id, params } => {
-                self.handle_initialize(id, params).await
-            }
-            McpMessage::Ping { id } => {
-                Ok(McpResponse {
-                    id,
-                    result: Some(json!({})),
-                    error: None,
-                })
-            }
-            McpMessage::ListTools { id } => {
-                self.handle_list_tools(id).await
-            }
-            McpMessage::CallTool { id, params } => {
-                self.handle_call_tool(id, params).await
-            }
-            McpMessage::ListResources { id } => {
-                self.handle_list_resources(id).await
-            }
-            McpMessage::ReadResource { id, params } => {
-                self.handle_read_resource(id, params).await
-            }
-            McpMessage::ListPrompts { id } => {
-                self.handle_list_prompts(id).await
-            }
-            McpMessage::GetPrompt { id, params } => {
-                self.handle_get_prompt(id, params).await
-            }
+            McpMessage::Initialize { id, params } => self.handle_initialize(id, params).await,
+            McpMessage::Ping { id } => Ok(McpResponse {
+                id,
+                result: Some(json!({})),
+                error: None,
+            }),
+            McpMessage::ListTools { id } => self.handle_list_tools(id).await,
+            McpMessage::CallTool { id, params } => self.handle_call_tool(id, params).await,
+            McpMessage::ListResources { id } => self.handle_list_resources(id).await,
+            McpMessage::ReadResource { id, params } => self.handle_read_resource(id, params).await,
+            McpMessage::ListPrompts { id } => self.handle_list_prompts(id).await,
+            McpMessage::GetPrompt { id, params } => self.handle_get_prompt(id, params).await,
         }
     }
 }
@@ -218,7 +215,7 @@ impl ServerMessageHandler {
 
     async fn handle_list_tools(&self, id: Value) -> McpResult<McpResponse> {
         let tools: Vec<ToolInfo> = self.tool_registry.list_tools();
-        
+
         Ok(McpResponse {
             id,
             result: Some(json!({
@@ -231,14 +228,14 @@ impl ServerMessageHandler {
     async fn handle_call_tool(&self, id: Value, params: ToolCallParams) -> McpResult<McpResponse> {
         // Get client IP - in a real implementation, this would come from the connection context
         let client_ip = "127.0.0.1".parse().unwrap();
-        
+
         // Sanitize tool arguments before processing
         let sanitized_arguments = if let Some(args) = params.arguments {
             Some(sanitize_tool_input(&args)?)
         } else {
             None
         };
-        
+
         // Check permissions
         let permission_level = self.tool_registry.get_permission_level(&params.name)?;
         let request_data = json!({
@@ -256,10 +253,10 @@ impl ServerMessageHandler {
         drop(security_context);
 
         // Execute the tool with sanitized arguments
-        let result = self.tool_registry.execute_tool(
-            &params.name,
-            sanitized_arguments.unwrap_or(Value::Null),
-        ).await?;
+        let result = self
+            .tool_registry
+            .execute_tool(&params.name, sanitized_arguments.unwrap_or(Value::Null))
+            .await?;
 
         Ok(McpResponse {
             id,
@@ -277,7 +274,7 @@ impl ServerMessageHandler {
 
     async fn handle_list_resources(&self, id: Value) -> McpResult<McpResponse> {
         let resources: Vec<ResourceInfo> = self.resource_registry.list_resources();
-        
+
         Ok(McpResponse {
             id,
             result: Some(json!({
@@ -307,7 +304,7 @@ impl ServerMessageHandler {
 
     async fn handle_list_prompts(&self, id: Value) -> McpResult<McpResponse> {
         let prompts: Vec<PromptInfo> = self.prompt_registry.list_prompts();
-        
+
         Ok(McpResponse {
             id,
             result: Some(json!({
@@ -329,5 +326,3 @@ impl ServerMessageHandler {
         })
     }
 }
-
-

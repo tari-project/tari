@@ -3,10 +3,10 @@
 //! This module provides functionality to automatically discover all available gRPC methods
 //! from .proto files and generate JSON Schema definitions for MCP tool parameter validation.
 
+use std::{collections::HashSet, fmt};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
-use std::fmt;
 
 /// Information about a gRPC method including its input/output schemas
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,14 +40,14 @@ pub enum GrpcMethodCategory {
     Network,
     Mempool,
     Validation,
-    
+
     // Wallet categories
     Balance,
     Transaction,
     Address,
     AtomicSwap,
     Recovery,
-    
+
     // Common categories
     System,
     Status,
@@ -97,28 +97,29 @@ impl ServiceDiscovery {
 
     /// Get all methods in a specific category
     pub fn methods_by_category(&self, category: GrpcMethodCategory) -> Vec<&GrpcMethodInfo> {
-        self.methods.iter()
-            .filter(|m| m.category == category)
-            .collect()
+        self.methods.iter().filter(|m| m.category == category).collect()
     }
 
     /// Get all available (non-restricted) methods
     pub fn available_methods(&self) -> Vec<&GrpcMethodInfo> {
-        self.methods.iter()
+        self.methods
+            .iter()
             .filter(|m| !self.restricted_methods.contains(&m.full_name))
             .collect()
     }
 
     /// Get all control operations
     pub fn control_methods(&self) -> Vec<&GrpcMethodInfo> {
-        self.methods.iter()
+        self.methods
+            .iter()
             .filter(|m| m.is_control_operation && !self.restricted_methods.contains(&m.full_name))
             .collect()
     }
 
     /// Get all read-only operations
     pub fn readonly_methods(&self) -> Vec<&GrpcMethodInfo> {
-        self.methods.iter()
+        self.methods
+            .iter()
             .filter(|m| !m.is_control_operation && !self.restricted_methods.contains(&m.full_name))
             .collect()
     }
@@ -234,7 +235,6 @@ pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Network,
             is_streaming: false,
         },
-
         // Mining methods
         GrpcMethodInfo {
             name: "GetNewBlockTemplate".to_string(),
@@ -258,7 +258,6 @@ pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Mining,
             is_streaming: false,
         },
-
         // Mempool methods
         GrpcMethodInfo {
             name: "GetMempoolTransactions".to_string(),
@@ -282,7 +281,6 @@ pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Mempool,
             is_streaming: false,
         },
-
         // Control operations (require explicit consent)
         GrpcMethodInfo {
             name: "SubmitBlock".to_string(),
@@ -306,7 +304,6 @@ pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Mempool,
             is_streaming: false,
         },
-
         // Search and validation methods
         GrpcMethodInfo {
             name: "SearchKernels".to_string(),
@@ -341,7 +338,6 @@ pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Validation,
             is_streaming: true,
         },
-
         // Network difficulty and tokens
         GrpcMethodInfo {
             name: "GetNetworkDifficulty".to_string(),
@@ -365,7 +361,6 @@ pub fn base_node_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Status,
             is_streaming: true,
         },
-
         // System info
         GrpcMethodInfo {
             name: "GetVersion".to_string(),
@@ -418,7 +413,6 @@ pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Balance,
             is_streaming: false,
         },
-
         // Address methods
         GrpcMethodInfo {
             name: "GetAddress".to_string(),
@@ -453,7 +447,6 @@ pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Address,
             is_streaming: false,
         },
-
         // Transaction methods (read-only)
         GrpcMethodInfo {
             name: "GetTransactionInfo".to_string(),
@@ -499,7 +492,6 @@ pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Transaction,
             is_streaming: false,
         },
-
         // Network and status methods
         GrpcMethodInfo {
             name: "GetNetworkStatus".to_string(),
@@ -545,7 +537,6 @@ pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Status,
             is_streaming: false,
         },
-
         // System methods
         GrpcMethodInfo {
             name: "GetVersion".to_string(),
@@ -569,7 +560,6 @@ pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::System,
             is_streaming: false,
         },
-
         // Control operations (require explicit consent)
         GrpcMethodInfo {
             name: "Transfer".to_string(),
@@ -615,7 +605,6 @@ pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::Transaction,
             is_streaming: false,
         },
-
         // Atomic swap methods (control operations)
         GrpcMethodInfo {
             name: "SendShaAtomicSwapTransaction".to_string(),
@@ -650,7 +639,6 @@ pub fn wallet_methods() -> Vec<GrpcMethodInfo> {
             category: GrpcMethodCategory::AtomicSwap,
             is_streaming: false,
         },
-
         // Import and validation methods (control operations)
         GrpcMethodInfo {
             name: "ImportUtxos".to_string(),
@@ -709,7 +697,7 @@ fn list_headers_input_schema() -> Value {
                 "description": "The height to start at"
             },
             "num_headers": {
-                "type": "integer", 
+                "type": "integer",
                 "format": "uint64",
                 "description": "The number of headers to return"
             },
@@ -737,7 +725,7 @@ fn block_header_response_schema() -> Value {
             },
             "reward": {
                 "type": "integer",
-                "format": "uint64", 
+                "format": "uint64",
                 "description": "The block reward"
             },
             "difficulty": {
@@ -773,7 +761,7 @@ fn get_header_by_hash_input_schema() -> Value {
 
 fn get_blocks_input_schema() -> Value {
     serde_json::json!({
-        "type": "object", 
+        "type": "object",
         "properties": {
             "heights": {
                 "type": "array",
@@ -823,7 +811,7 @@ fn tip_info_response_schema() -> Value {
                 "description": "Whether initial sync is achieved"
             },
             "base_node_state": {
-                "type": "integer", 
+                "type": "integer",
                 "description": "Current base node state"
             },
             "failed_checkpoints": {
@@ -846,7 +834,7 @@ fn sync_info_response_schema() -> Value {
             },
             "local_height": {
                 "type": "integer",
-                "format": "uint64", 
+                "format": "uint64",
                 "description": "Local height"
             },
             "peer_node_id": {
@@ -932,7 +920,7 @@ fn new_block_template_request_schema() -> Value {
             },
             "max_weight": {
                 "type": "integer",
-                "format": "uint64", 
+                "format": "uint64",
                 "description": "Maximum block weight"
             }
         },
@@ -971,7 +959,7 @@ fn new_block_template_schema() -> Value {
                 "description": "Block header template"
             },
             "body": {
-                "type": "object", 
+                "type": "object",
                 "description": "Block body template"
             }
         },
@@ -1021,7 +1009,7 @@ fn get_mempool_transactions_request_schema() -> Value {
 
 fn get_mempool_transactions_response_schema() -> Value {
     serde_json::json!({
-        "type": "object", 
+        "type": "object",
         "properties": {
             "transaction": {
                 "type": "object",
@@ -1047,7 +1035,7 @@ fn mempool_stats_response_schema() -> Value {
                 "description": "Number of reorg transactions"
             },
             "unconfirmed_weight": {
-                "type": "integer", 
+                "type": "integer",
                 "format": "uint64",
                 "description": "Total unconfirmed weight"
             }
@@ -1300,7 +1288,7 @@ fn node_identity_schema() -> Value {
                 "description": "Node's public address"
             },
             "node_id": {
-                "type": "string", 
+                "type": "string",
                 "format": "byte",
                 "description": "Node ID"
             }

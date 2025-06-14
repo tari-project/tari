@@ -1,11 +1,15 @@
 //! Transport layer for MCP communication
 
-use crate::error::{McpError, McpResult};
+use std::net::SocketAddr;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::net::SocketAddr;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, TcpStream},
+};
+
+use crate::error::{McpError, McpResult};
 
 /// MCP message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,25 +17,25 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 pub enum McpMessage {
     #[serde(rename = "tools/list")]
     ListTools { id: Value },
-    
+
     #[serde(rename = "tools/call")]
     CallTool { id: Value, params: ToolCallParams },
-    
+
     #[serde(rename = "resources/list")]
     ListResources { id: Value },
-    
+
     #[serde(rename = "resources/read")]
     ReadResource { id: Value, params: ResourceReadParams },
-    
+
     #[serde(rename = "prompts/list")]
     ListPrompts { id: Value },
-    
+
     #[serde(rename = "prompts/get")]
     GetPrompt { id: Value, params: PromptGetParams },
-    
+
     #[serde(rename = "ping")]
     Ping { id: Value },
-    
+
     #[serde(rename = "initialize")]
     Initialize { id: Value, params: InitializeParams },
 }
@@ -127,7 +131,8 @@ impl JsonRpcTransport {
 #[async_trait::async_trait]
 impl Transport for JsonRpcTransport {
     async fn listen(&self, addr: SocketAddr) -> McpResult<()> {
-        let listener = TcpListener::bind(addr).await
+        let listener = TcpListener::bind(addr)
+            .await
             .map_err(|e| McpError::transport_error(format!("Failed to bind to {}: {}", addr, e)))?;
 
         log::info!("MCP server listening on {}", addr);
@@ -136,7 +141,7 @@ impl Transport for JsonRpcTransport {
             match listener.accept().await {
                 Ok((stream, peer_addr)) => {
                     log::debug!("New connection from {}", peer_addr);
-                    
+
                     // Verify connection is from localhost
                     if !peer_addr.ip().is_loopback() {
                         log::warn!("Rejected non-localhost connection from {}", peer_addr);
@@ -149,10 +154,10 @@ impl Transport for JsonRpcTransport {
                             log::error!("Connection error: {}", e);
                         }
                     });
-                }
+                },
                 Err(e) => {
                     log::error!("Failed to accept connection: {}", e);
-                }
+                },
             }
         }
     }
@@ -163,10 +168,7 @@ impl Transport for JsonRpcTransport {
 }
 
 impl JsonRpcTransport {
-    async fn handle_connection_static(
-        handler: &dyn MessageHandler,
-        mut stream: TcpStream,
-    ) -> McpResult<()> {
+    async fn handle_connection_static(handler: &dyn MessageHandler, mut stream: TcpStream) -> McpResult<()> {
         let (reader, mut writer) = stream.split();
         let mut reader = BufReader::new(reader);
         let mut line = String::new();
@@ -178,7 +180,7 @@ impl JsonRpcTransport {
                     // Connection closed
                     log::debug!("Connection closed by client");
                     break;
-                }
+                },
                 Ok(_) => {
                     let line = line.trim();
                     if line.is_empty() {
@@ -192,17 +194,16 @@ impl JsonRpcTransport {
                         Ok(message) => {
                             // Handle the message
                             handler.handle_message(message).await
-                        }
+                        },
                         Err(e) => {
                             log::warn!("Failed to parse message: {}", e);
                             Err(McpError::invalid_request(format!("Invalid JSON-RPC: {}", e)))
-                        }
+                        },
                     };
 
                     // Send response
                     let response_json = match response {
-                        Ok(resp) => serde_json::to_string(&resp)
-                            .map_err(McpError::serialization_error)?,
+                        Ok(resp) => serde_json::to_string(&resp).map_err(McpError::serialization_error)?,
                         Err(e) => {
                             let error_response = McpResponse {
                                 id: Value::Null,
@@ -218,24 +219,29 @@ impl JsonRpcTransport {
                                     data: None,
                                 }),
                             };
-                            serde_json::to_string(&error_response)
-                                .map_err(McpError::serialization_error)?
-                        }
+                            serde_json::to_string(&error_response).map_err(McpError::serialization_error)?
+                        },
                     };
 
-                    writer.write_all(response_json.as_bytes()).await
+                    writer
+                        .write_all(response_json.as_bytes())
+                        .await
                         .map_err(|e| McpError::transport_error(format!("Write failed: {}", e)))?;
-                    writer.write_all(b"\n").await
+                    writer
+                        .write_all(b"\n")
+                        .await
                         .map_err(|e| McpError::transport_error(format!("Write failed: {}", e)))?;
-                    writer.flush().await
+                    writer
+                        .flush()
+                        .await
                         .map_err(|e| McpError::transport_error(format!("Flush failed: {}", e)))?;
 
                     log::debug!("Sent response: {}", response_json);
-                }
+                },
                 Err(e) => {
                     log::error!("Read error: {}", e);
                     return Err(McpError::transport_error(format!("Read failed: {}", e)));
-                }
+                },
             }
         }
 

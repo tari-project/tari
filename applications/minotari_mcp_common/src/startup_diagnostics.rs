@@ -1,16 +1,18 @@
 //! Startup diagnostics and user guidance for MCP servers
-//! 
+//!
 //! Provides comprehensive diagnostic tools for troubleshooting MCP server startup
 //! issues, including process detection, configuration validation, and user guidance
 //! for common problems.
 
-use crate::health_monitor::ServiceHealthMonitors;
-use crate::executable_finder::TariExecutables;
-use crate::cli_integration::CliIntegrationUtils;
-use std::path::Path;
-use std::process::Command;
-use std::time::Duration;
+use std::{path::Path, process::Command, time::Duration};
+
 use tokio::time::timeout;
+
+use crate::{
+    cli_integration::CliIntegrationUtils,
+    executable_finder::TariExecutables,
+    health_monitor::ServiceHealthMonitors,
+};
 
 /// Diagnostic result for startup issues
 #[derive(Debug, Clone)]
@@ -121,7 +123,7 @@ impl StartupDiagnostics {
                     suggestions: vec![],
                     details: None,
                 });
-            }
+            },
             Err(e) => {
                 results.push(DiagnosticResult {
                     component: "minotari_node".to_string(),
@@ -134,7 +136,7 @@ impl StartupDiagnostics {
                     ],
                     details: Some(e.to_string()),
                 });
-            }
+            },
         }
 
         // Check wallet executable
@@ -147,7 +149,7 @@ impl StartupDiagnostics {
                     suggestions: vec![],
                     details: None,
                 });
-            }
+            },
             Err(e) => {
                 results.push(DiagnosticResult {
                     component: "minotari_console_wallet".to_string(),
@@ -160,7 +162,7 @@ impl StartupDiagnostics {
                     ],
                     details: Some(e.to_string()),
                 });
-            }
+            },
         }
 
         results
@@ -222,9 +224,7 @@ impl StartupDiagnostics {
                 component: "Base Directory".to_string(),
                 status: DiagnosticStatus::Warning,
                 message: format!("Will be created at: {}", base_path.display()),
-                suggestions: vec![
-                    "Ensure parent directory exists and is writable".to_string(),
-                ],
+                suggestions: vec!["Ensure parent directory exists and is writable".to_string()],
                 details: Some("Directory will be created automatically on first run".to_string()),
             });
         }
@@ -252,7 +252,7 @@ impl StartupDiagnostics {
                             suggestions: vec![],
                             details: None,
                         });
-                    }
+                    },
                     Err(e) => {
                         results.push(DiagnosticResult {
                             component: "Directory Permissions".to_string(),
@@ -265,7 +265,7 @@ impl StartupDiagnostics {
                             ],
                             details: Some(e.to_string()),
                         });
-                    }
+                    },
                 }
             }
         }
@@ -385,7 +385,7 @@ impl StartupDiagnostics {
         // Check if node is running
         if let Some(ref address) = self.node_grpc_address {
             let health_monitor = ServiceHealthMonitors::base_node(address);
-            
+
             match timeout(Duration::from_secs(5), health_monitor.is_service_ready()).await {
                 Ok(true) => {
                     results.push(DiagnosticResult {
@@ -395,7 +395,7 @@ impl StartupDiagnostics {
                         suggestions: vec!["No action needed - will use existing service".to_string()],
                         details: None,
                     });
-                }
+                },
                 Ok(false) => {
                     results.push(DiagnosticResult {
                         component: "Base Node Service".to_string(),
@@ -407,7 +407,7 @@ impl StartupDiagnostics {
                         ],
                         details: None,
                     });
-                }
+                },
                 Err(_) => {
                     results.push(DiagnosticResult {
                         component: "Base Node Service".to_string(),
@@ -419,14 +419,14 @@ impl StartupDiagnostics {
                         ],
                         details: None,
                     });
-                }
+                },
             }
         }
 
         // Check if wallet is running
         if let Some(ref address) = self.wallet_grpc_address {
             let health_monitor = ServiceHealthMonitors::wallet(address);
-            
+
             match timeout(Duration::from_secs(5), health_monitor.is_service_ready()).await {
                 Ok(true) => {
                     results.push(DiagnosticResult {
@@ -436,7 +436,7 @@ impl StartupDiagnostics {
                         suggestions: vec!["No action needed - will use existing service".to_string()],
                         details: None,
                     });
-                }
+                },
                 Ok(false) => {
                     results.push(DiagnosticResult {
                         component: "Wallet Service".to_string(),
@@ -448,7 +448,7 @@ impl StartupDiagnostics {
                         ],
                         details: None,
                     });
-                }
+                },
                 Err(_) => {
                     results.push(DiagnosticResult {
                         component: "Wallet Service".to_string(),
@@ -460,7 +460,7 @@ impl StartupDiagnostics {
                         ],
                         details: None,
                     });
-                }
+                },
             }
         }
 
@@ -481,9 +481,7 @@ impl StartupDiagnostics {
                 component: "Disk Space".to_string(),
                 status: DiagnosticStatus::Healthy,
                 message: "Base path is accessible".to_string(),
-                suggestions: vec![
-                    "Ensure sufficient disk space (>10GB recommended)".to_string(),
-                ],
+                suggestions: vec!["Ensure sufficient disk space (>10GB recommended)".to_string()],
                 details: None,
             });
         } else {
@@ -509,7 +507,7 @@ impl StartupDiagnostics {
                     suggestions: vec![],
                     details: None,
                 });
-            }
+            },
             Err(_) => {
                 results.push(DiagnosticResult {
                     component: "Build Environment".to_string(),
@@ -521,7 +519,7 @@ impl StartupDiagnostics {
                     ],
                     details: None,
                 });
-            }
+            },
         }
 
         results
@@ -530,7 +528,7 @@ impl StartupDiagnostics {
     /// Generate a comprehensive diagnostic report
     pub fn format_diagnostic_report(&self, results: &[DiagnosticResult]) -> String {
         let mut report = String::new();
-        
+
         report.push_str("=== Tari MCP Server Startup Diagnostics ===\n\n");
 
         let healthy_count = results.iter().filter(|r| r.status == DiagnosticStatus::Healthy).count();
@@ -538,11 +536,18 @@ impl StartupDiagnostics {
         let error_count = results.iter().filter(|r| r.status == DiagnosticStatus::Error).count();
         let unknown_count = results.iter().filter(|r| r.status == DiagnosticStatus::Unknown).count();
 
-        report.push_str(&format!("Summary: {} healthy, {} warnings, {} errors, {} unknown\n\n", 
-                                healthy_count, warning_count, error_count, unknown_count));
+        report.push_str(&format!(
+            "Summary: {} healthy, {} warnings, {} errors, {} unknown\n\n",
+            healthy_count, warning_count, error_count, unknown_count
+        ));
 
         // Group results by status
-        for status in [DiagnosticStatus::Error, DiagnosticStatus::Warning, DiagnosticStatus::Healthy, DiagnosticStatus::Unknown] {
+        for status in [
+            DiagnosticStatus::Error,
+            DiagnosticStatus::Warning,
+            DiagnosticStatus::Healthy,
+            DiagnosticStatus::Unknown,
+        ] {
             let status_results: Vec<_> = results.iter().filter(|r| r.status == status).collect();
             if status_results.is_empty() {
                 continue;
@@ -550,7 +555,7 @@ impl StartupDiagnostics {
 
             let status_name = match status {
                 DiagnosticStatus::Error => "🔴 ERRORS",
-                DiagnosticStatus::Warning => "🟡 WARNINGS", 
+                DiagnosticStatus::Warning => "🟡 WARNINGS",
                 DiagnosticStatus::Healthy => "🟢 HEALTHY",
                 DiagnosticStatus::Unknown => "🔶 UNKNOWN",
             };
@@ -560,7 +565,7 @@ impl StartupDiagnostics {
 
             for result in status_results {
                 report.push_str(&format!("• {}: {}\n", result.component, result.message));
-                
+
                 if !result.suggestions.is_empty() {
                     report.push_str("  Suggestions:\n");
                     for suggestion in &result.suggestions {
@@ -571,7 +576,7 @@ impl StartupDiagnostics {
                 if let Some(ref details) = result.details {
                     report.push_str(&format!("  Details: {}\n", details));
                 }
-                
+
                 report.push('\n');
             }
         }

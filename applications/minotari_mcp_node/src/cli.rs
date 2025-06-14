@@ -1,10 +1,10 @@
 //! Command line interface for the Minotari Node MCP Server
 
+use std::path::PathBuf;
+
 use clap::Parser;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_mcp_common::{CliConfigExtractor, LaunchCliConfig, CliConfigBuilder, NodeArgumentBuilder};
-
-use std::path::PathBuf;
+use minotari_mcp_common::{CliConfigBuilder, CliConfigExtractor, LaunchCliConfig, NodeArgumentBuilder};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 
 #[derive(Parser, Debug)]
@@ -14,69 +14,69 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
-    
+
     /// Auto-launch base node if not already running
     #[clap(long, env = "MINOTARI_MCP_AUTO_LAUNCH_NODE", default_value = "true")]
     pub auto_launch_node: bool,
-    
+
     /// Enable MCP control operations (potentially dangerous)
     /// When disabled, only read-only operations are allowed
     #[clap(long, env = "MINOTARI_MCP_CONTROL_ENABLED")]
     pub mcp_control_enabled: bool,
-    
+
     /// Request timeout in seconds
     #[clap(long, env = "MINOTARI_MCP_TIMEOUT", default_value = "30")]
     pub mcp_timeout: u64,
-    
+
     /// Rate limit: maximum requests per minute per client
     #[clap(long, env = "MINOTARI_MCP_RATE_LIMIT", default_value = "60")]
     pub mcp_rate_limit: u32,
-    
+
     /// Enable audit logging of all MCP operations
     #[clap(long, env = "MINOTARI_MCP_AUDIT_LOGGING")]
     pub mcp_audit_logging: bool,
-    
+
     /// Path to audit log file
     #[clap(long, env = "MINOTARI_MCP_AUDIT_LOG_PATH")]
     pub mcp_audit_log_path: Option<String>,
-    
+
     /// Base node gRPC endpoint
     #[clap(long, env = "MINOTARI_NODE_GRPC_ADDRESS", default_value = "127.0.0.1:18142")]
     pub node_grpc_address: String,
-    
+
     /// Base node gRPC timeout in seconds
     #[clap(long, env = "MINOTARI_NODE_GRPC_TIMEOUT", default_value = "10")]
     pub node_grpc_timeout: u64,
-    
+
     // Node-specific flags for auto-launch (prefixed to avoid conflicts)
     /// Base node: Create a default configuration file if it doesn't exist
     #[clap(long, env = "MINOTARI_MCP_NODE_INIT")]
     pub node_init: bool,
-    
+
     /// Base node: Rebuild the database from scratch
     #[clap(long, env = "MINOTARI_MCP_NODE_REBUILD_DB")]
     pub node_rebuild_db: bool,
-    
+
     /// Base node: Run in non-interactive mode
     #[clap(long, env = "MINOTARI_MCP_NODE_NON_INTERACTIVE")]
     pub node_non_interactive: bool,
-    
-    /// Base node: Enable gRPC 
+
+    /// Base node: Enable gRPC
     #[clap(long, env = "MINOTARI_MCP_NODE_ENABLE_GRPC")]
     pub node_grpc_enabled: bool,
-    
+
     /// Base node: Enable mining
     #[clap(long, env = "MINOTARI_MCP_NODE_ENABLE_MINING")]
     pub node_mining_enabled: bool,
-    
+
     /// Base node: Enable second layer gRPC
     #[clap(long, env = "MINOTARI_MCP_NODE_SECOND_LAYER_GRPC")]
     pub node_second_layer_grpc_enabled: bool,
-    
+
     /// Base node: Disable splash screen
     #[clap(long, env = "MINOTARI_MCP_NODE_DISABLE_SPLASH")]
     pub node_disable_splash_screen: bool,
-    
+
     /// Base node: Path to libtor data directory
     #[clap(long, env = "MINOTARI_MCP_NODE_LIBTOR_DATA_DIR")]
     pub node_libtor_data_dir: Option<PathBuf>,
@@ -85,7 +85,7 @@ pub struct Cli {
 impl ConfigOverrideProvider for Cli {
     fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
         let mut overrides = self.common.get_config_property_overrides(network);
-        
+
         // MCP-specific overrides
         overrides.push(("mcp.enabled".to_string(), "true".to_string()));
         if self.mcp_control_enabled {
@@ -99,10 +99,10 @@ impl ConfigOverrideProvider for Cli {
         }
         overrides.push(("mcp.request_timeout_secs".to_string(), self.mcp_timeout.to_string()));
         overrides.push(("mcp.rate_limit_per_minute".to_string(), self.mcp_rate_limit.to_string()));
-        
+
         // Node gRPC settings
         overrides.push(("base_node.grpc_address".to_string(), self.node_grpc_address.clone()));
-        
+
         // Node auto-launch settings (if enabled)
         if self.auto_launch_node {
             overrides.push(("mcp.auto_launch_node".to_string(), "true".to_string()));
@@ -119,7 +119,7 @@ impl ConfigOverrideProvider for Cli {
                 overrides.push(("base_node.non_interactive_mode".to_string(), "true".to_string()));
             }
         }
-        
+
         overrides
     }
 }
@@ -130,13 +130,13 @@ impl Cli {
     pub fn get_base_path(&self) -> PathBuf {
         self.common.get_base_path()
     }
-    
+
     /// Get log config path with application name
     #[allow(dead_code)]
     pub fn log_config_path(&self, app_name: &str) -> PathBuf {
         self.common.log_config_path(app_name)
     }
-    
+
     /// Validate CLI arguments
     pub fn validate(&self) -> Result<(), String> {
         if self.mcp_timeout == 0 {
@@ -154,9 +154,9 @@ impl Cli {
 
         Ok(())
     }
-    
+
     /// Generate command line arguments for launching the base node
-    #[allow(dead_code)]  // Will be used by auto-launch functionality in future versions
+    #[allow(dead_code)] // Will be used by auto-launch functionality in future versions
     pub fn generate_node_args(&self) -> Vec<String> {
         // Add common args
         let mut args = vec![
@@ -165,17 +165,17 @@ impl Cli {
             "--config".to_string(),
             self.common.config.clone(),
         ];
-        
+
         if let Some(ref network) = self.common.network {
             args.push("--network".to_string());
             args.push(network.to_string());
         }
-        
+
         if let Some(ref log_config) = self.common.log_config {
             args.push("--log-config".to_string());
             args.push(log_config.to_string_lossy().to_string());
         }
-        
+
         // Add node-specific flags
         if self.node_init {
             args.push("--init".to_string());
@@ -202,13 +202,13 @@ impl Cli {
             args.push("-z".to_string());
             args.push(libtor_dir.to_string_lossy().to_string());
         }
-        
+
         // Add config property overrides
         for (key, value) in &self.common.config_property_overrides {
             args.push("-p".to_string());
             args.push(format!("{}={}", key, value));
         }
-        
+
         args
     }
 }

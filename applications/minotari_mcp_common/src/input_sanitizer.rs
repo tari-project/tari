@@ -1,13 +1,17 @@
 //! Input sanitization and validation for MCP operations
-//! 
+//!
 //! This module provides comprehensive input sanitization following MCP security best practices.
 //! It handles HTML entity cleaning, path validation, size limits, and schema-based validation.
 
-use crate::error::{McpError, McpResult};
-use crate::config::InputSanitizationConfig;
-use serde_json::Value;
 use std::collections::HashMap;
+
+use serde_json::Value;
 use unicode_normalization::UnicodeNormalization;
+
+use crate::{
+    config::InputSanitizationConfig,
+    error::{McpError, McpResult},
+};
 
 /// Input sanitizer for MCP operations
 pub struct InputSanitizer {
@@ -53,7 +57,7 @@ impl InputSanitizer {
     /// Create a new input sanitizer from configuration
     pub fn from_config(config: &InputSanitizationConfig) -> Self {
         let mut html_entities = HashMap::new();
-        
+
         if config.clean_html_entities {
             html_entities.insert("&amp;".to_string(), "&".to_string());
             html_entities.insert("&lt;".to_string(), "<".to_string());
@@ -84,25 +88,17 @@ impl InputSanitizer {
         // Check depth limit to prevent stack overflow
         if depth > self.max_object_depth {
             return Err(McpError::invalid_request(format!(
-                "JSON nesting too deep (max {} levels)", 
+                "JSON nesting too deep (max {} levels)",
                 self.max_object_depth
             )));
         }
 
         match value {
-            Value::String(s) => {
-                self.sanitize_string(s)
-            }
-            Value::Array(arr) => {
-                self.sanitize_array(arr, depth)
-            }
-            Value::Object(obj) => {
-                self.sanitize_object(obj, depth)
-            }
+            Value::String(s) => self.sanitize_string(s),
+            Value::Array(arr) => self.sanitize_array(arr, depth),
+            Value::Object(obj) => self.sanitize_object(obj, depth),
             // Numbers, booleans, and null pass through unchanged
-            Value::Number(_) | Value::Bool(_) | Value::Null => {
-                Ok(value.clone())
-            }
+            Value::Number(_) | Value::Bool(_) | Value::Null => Ok(value.clone()),
         }
     }
 
@@ -111,8 +107,8 @@ impl InputSanitizer {
         // Check length limit
         if s.len() > self.max_string_length {
             return Err(McpError::invalid_request(format!(
-                "String too long ({} chars, max {})", 
-                s.len(), 
+                "String too long ({} chars, max {})",
+                s.len(),
                 self.max_string_length
             )));
         }
@@ -126,9 +122,7 @@ impl InputSanitizer {
         // Remove null bytes and other control characters (except newlines and tabs)
         sanitized = sanitized
             .chars()
-            .filter(|&c| {
-                c == '\n' || c == '\t' || c == '\r' || (c >= ' ' && c != '\u{007F}') || c >= '\u{0080}'
-            })
+            .filter(|&c| c == '\n' || c == '\t' || c == '\r' || (c >= ' ' && c != '\u{007F}') || c >= '\u{0080}')
             .collect();
 
         // Normalize Unicode (NFC normalization)
@@ -142,8 +136,8 @@ impl InputSanitizer {
         // Check array length limit
         if arr.len() > self.max_array_length {
             return Err(McpError::invalid_request(format!(
-                "Array too long ({} elements, max {})", 
-                arr.len(), 
+                "Array too long ({} elements, max {})",
+                arr.len(),
                 self.max_array_length
             )));
         }
@@ -162,8 +156,8 @@ impl InputSanitizer {
         // Check object size limit
         if obj.len() > self.max_array_length {
             return Err(McpError::invalid_request(format!(
-                "Object too large ({} properties, max {})", 
-                obj.len(), 
+                "Object too large ({} properties, max {})",
+                obj.len(),
                 self.max_array_length
             )));
         }
@@ -203,7 +197,9 @@ impl InputSanitizer {
 
         // Check for directory traversal attempts
         if sanitized_path.contains("..") {
-            return Err(McpError::invalid_request("Path cannot contain '..' (directory traversal not allowed)"));
+            return Err(McpError::invalid_request(
+                "Path cannot contain '..' (directory traversal not allowed)",
+            ));
         }
 
         if sanitized_path.starts_with('/') && !sanitized_path.starts_with("/tmp/") {
@@ -315,42 +311,40 @@ impl ValidationPatterns {
 
     /// Hexadecimal pattern
     pub fn hex() -> regex::Regex {
-        regex::Regex::new(r"^[0-9a-fA-F]+$")
-            .expect("Valid regex pattern")
+        regex::Regex::new(r"^[0-9a-fA-F]+$").expect("Valid regex pattern")
     }
 
     /// Alphanumeric with underscores and hyphens
     pub fn alphanumeric_safe() -> regex::Regex {
-        regex::Regex::new(r"^[a-zA-Z0-9_-]+$")
-            .expect("Valid regex pattern")
+        regex::Regex::new(r"^[a-zA-Z0-9_-]+$").expect("Valid regex pattern")
     }
 
     /// Email pattern (basic)
     pub fn email() -> regex::Regex {
-        regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-            .expect("Valid regex pattern")
+        regex::Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").expect("Valid regex pattern")
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn test_html_entity_sanitization() {
         let sanitizer = InputSanitizer::default();
-        
+
         let input = json!("AT&amp;T &lt;test&gt; &quot;quote&quot;");
         let result = sanitizer.sanitize_input(&input).unwrap();
-        
+
         assert_eq!(result, json!("AT&T <test> \"quote\""));
     }
 
     #[test]
     fn test_depth_limit() {
         let sanitizer = InputSanitizer::new(1000, 100, 2);
-        
+
         // This should exceed the depth limit
         let deep_object = json!({
             "level1": {
@@ -361,7 +355,7 @@ mod tests {
                 }
             }
         });
-        
+
         let result = sanitizer.sanitize_input(&deep_object);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("nesting too deep"));
@@ -370,10 +364,10 @@ mod tests {
     #[test]
     fn test_string_length_limit() {
         let sanitizer = InputSanitizer::new(10, 100, 10);
-        
+
         let long_string = json!("This string is definitely longer than 10 characters");
         let result = sanitizer.sanitize_input(&long_string);
-        
+
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("String too long"));
     }
@@ -381,10 +375,10 @@ mod tests {
     #[test]
     fn test_array_length_limit() {
         let sanitizer = InputSanitizer::new(1000, 3, 10);
-        
+
         let long_array = json!([1, 2, 3, 4, 5]);
         let result = sanitizer.sanitize_input(&long_array);
-        
+
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Array too long"));
     }
@@ -392,11 +386,11 @@ mod tests {
     #[test]
     fn test_path_validation() {
         let sanitizer = InputSanitizer::default();
-        
+
         // Valid paths
         assert!(sanitizer.validate_file_path("config.toml").is_ok());
         assert!(sanitizer.validate_file_path("/tmp/test.txt").is_ok());
-        
+
         // Invalid paths
         assert!(sanitizer.validate_file_path("../../../etc/passwd").is_err());
         assert!(sanitizer.validate_file_path("/etc/passwd").is_err());
@@ -406,11 +400,11 @@ mod tests {
     #[test]
     fn test_url_validation() {
         let sanitizer = InputSanitizer::default();
-        
+
         // Valid URLs
         assert!(sanitizer.validate_url("https://example.com").is_ok());
         assert!(sanitizer.validate_url("http://localhost:8080/api").is_ok());
-        
+
         // Invalid URLs
         assert!(sanitizer.validate_url("javascript:alert(1)").is_err());
         assert!(sanitizer.validate_url("file:///etc/passwd").is_err());
@@ -420,21 +414,29 @@ mod tests {
     #[test]
     fn test_number_range_validation() {
         let sanitizer = InputSanitizer::default();
-        
+
         assert!(sanitizer.validate_number_range(5.0, 1.0, 10.0, "test").is_ok());
         assert!(sanitizer.validate_number_range(0.5, 1.0, 10.0, "test").is_err());
         assert!(sanitizer.validate_number_range(15.0, 1.0, 10.0, "test").is_err());
         assert!(sanitizer.validate_number_range(f64::NAN, 1.0, 10.0, "test").is_err());
-        assert!(sanitizer.validate_number_range(f64::INFINITY, 1.0, 10.0, "test").is_err());
+        assert!(sanitizer
+            .validate_number_range(f64::INFINITY, 1.0, 10.0, "test")
+            .is_err());
     }
 
     #[test]
     fn test_pattern_validation() {
         let sanitizer = InputSanitizer::default();
         let hex_pattern = ValidationPatterns::hex();
-        
-        assert!(sanitizer.validate_string_pattern("deadbeef", &hex_pattern, "hex").is_ok());
-        assert!(sanitizer.validate_string_pattern("DEADBEEF", &hex_pattern, "hex").is_ok());
-        assert!(sanitizer.validate_string_pattern("not_hex", &hex_pattern, "hex").is_err());
+
+        assert!(sanitizer
+            .validate_string_pattern("deadbeef", &hex_pattern, "hex")
+            .is_ok());
+        assert!(sanitizer
+            .validate_string_pattern("DEADBEEF", &hex_pattern, "hex")
+            .is_ok());
+        assert!(sanitizer
+            .validate_string_pattern("not_hex", &hex_pattern, "hex")
+            .is_err());
     }
 }

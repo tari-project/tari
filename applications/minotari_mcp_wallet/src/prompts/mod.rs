@@ -1,8 +1,12 @@
 //! Wallet-specific MCP prompts
 
 use minotari_mcp_common::{
-    PromptRegistry, McpResult, simple_prompt, text_message, resource_message,
-    prompts::MessageRole
+    prompts::MessageRole,
+    resource_message,
+    simple_prompt,
+    text_message,
+    McpResult,
+    PromptRegistry,
 };
 
 /// Registry for wallet-specific MCP prompts
@@ -10,7 +14,7 @@ pub struct WalletPromptRegistry;
 
 impl WalletPromptRegistry {
     /// Create a new wallet prompt registry with all available prompts
-    #[allow(clippy::new_ret_no_self)]  // Factory method for registry
+    #[allow(clippy::new_ret_no_self)] // Factory method for registry
     pub fn new() -> PromptRegistry {
         let mut registry = PromptRegistry::new();
 
@@ -19,8 +23,14 @@ impl WalletPromptRegistry {
             "balance_check",
             "Complete wallet balance and status overview including connectivity and transaction status",
             vec![
-                text_message(MessageRole::System, "You are helping assess the status of a Tari wallet. Provide a comprehensive balance and status overview."),
-                text_message(MessageRole::User, "Please provide a complete wallet status check including:
+                text_message(
+                    MessageRole::System,
+                    "You are helping assess the status of a Tari wallet. Provide a comprehensive balance and status \
+                     overview."
+                ),
+                text_message(
+                    MessageRole::User,
+                    "Please provide a complete wallet status check including:
 
 1. Current balance breakdown (available, pending, time-locked)
 2. Network connectivity status
@@ -28,7 +38,8 @@ impl WalletPromptRegistry {
 4. Address information for receiving funds
 5. Any pending transactions or issues
 
-Use the available resources to gather this information and provide a clear summary."),
+Use the available resources to gather this information and provide a clear summary."
+                ),
                 resource_message(MessageRole::User, "balance"),
                 resource_message(MessageRole::User, "network_status"),
                 resource_message(MessageRole::User, "transaction_history"),
@@ -42,8 +53,14 @@ Use the available resources to gather this information and provide a clear summa
             "send_transaction",
             "Step-by-step guidance for sending Tari with transaction best practices",
             vec![
-                text_message(MessageRole::System, "You are helping a user send Tari from their wallet. Provide step-by-step guidance with security best practices."),
-                text_message(MessageRole::User, "I want to send Tari from my wallet. Please provide guidance on:
+                text_message(
+                    MessageRole::System,
+                    "You are helping a user send Tari from their wallet. Provide step-by-step guidance with security \
+                     best practices."
+                ),
+                text_message(
+                    MessageRole::User,
+                    "I want to send Tari from my wallet. Please provide guidance on:
 
 1. How to check my available balance
 2. Best practices for setting transaction amounts and fees
@@ -51,7 +68,8 @@ Use the available resources to gather this information and provide a clear summa
 4. Transaction confirmation process
 5. How to track the transaction after sending
 
-Provide a complete guide with security considerations."),
+Provide a complete guide with security considerations."
+                ),
                 resource_message(MessageRole::User, "balance"),
                 resource_message(MessageRole::User, "addresses"),
                 resource_message(MessageRole::User, "network_status"),
@@ -63,8 +81,13 @@ Provide a complete guide with security considerations."),
             "transaction_troubleshooting",
             "Diagnosis and resolution guidance for transaction issues",
             vec![
-                text_message(MessageRole::System, "You are helping troubleshoot transaction issues for a Tari wallet."),
-                text_message(MessageRole::User, "I'm having issues with a transaction. Please help troubleshoot:
+                text_message(
+                    MessageRole::System,
+                    "You are helping troubleshoot transaction issues for a Tari wallet."
+                ),
+                text_message(
+                    MessageRole::User,
+                    "I'm having issues with a transaction. Please help troubleshoot:
 
 1. Check transaction status and history
 2. Identify pending or failed transactions
@@ -72,7 +95,8 @@ Provide a complete guide with security considerations."),
 4. Balance and UTXO availability
 5. Recommendations for resolving issues
 
-Analyze the current wallet state and provide actionable recommendations."),
+Analyze the current wallet state and provide actionable recommendations."
+                ),
                 resource_message(MessageRole::User, "transaction_history"),
                 resource_message(MessageRole::User, "balance"),
                 resource_message(MessageRole::User, "network_status"),
@@ -85,8 +109,13 @@ Analyze the current wallet state and provide actionable recommendations."),
             "wallet_recovery",
             "Wallet recovery and validation procedures for backup and restore operations",
             vec![
-                text_message(MessageRole::System, "You are helping with wallet recovery and validation procedures for a Tari wallet."),
-                text_message(MessageRole::User, "I need help with wallet recovery and validation. Please provide guidance on:
+                text_message(
+                    MessageRole::System,
+                    "You are helping with wallet recovery and validation procedures for a Tari wallet."
+                ),
+                text_message(
+                    MessageRole::User,
+                    "I need help with wallet recovery and validation. Please provide guidance on:
 
 1. Current wallet status and balance verification
 2. Address validation and backup procedures
@@ -94,7 +123,8 @@ Analyze the current wallet state and provide actionable recommendations."),
 4. Network connectivity requirements for recovery
 5. Best practices for wallet backup and security
 
-Provide comprehensive recovery guidance with security considerations."),
+Provide comprehensive recovery guidance with security considerations."
+                ),
                 resource_message(MessageRole::User, "balance"),
                 resource_message(MessageRole::User, "addresses"),
                 resource_message(MessageRole::User, "transaction_history"),

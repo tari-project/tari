@@ -3,8 +3,10 @@
 //! This module provides comprehensive metadata management for MCP tools including
 //! categorization, risk levels, documentation generation, and enhanced discovery.
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
 use crate::grpc_discovery::GrpcMethodCategory;
 
 /// Risk levels for MCP tools
@@ -33,7 +35,7 @@ impl ToolRiskLevel {
             Self::Critical => "Critical operation with irreversible system effects",
         }
     }
-    
+
     /// Get recommended user interaction level
     pub fn interaction_level(&self) -> &'static str {
         match self {
@@ -44,15 +46,15 @@ impl ToolRiskLevel {
             Self::Critical => "Multi-step verification with delay period",
         }
     }
-    
+
     /// Get color coding for UI display
     pub fn color_code(&self) -> &'static str {
         match self {
-            Self::Safe => "#28a745",      // Green
-            Self::Low => "#17a2b8",       // Blue
-            Self::Medium => "#ffc107",    // Yellow
-            Self::High => "#fd7e14",      // Orange
-            Self::Critical => "#dc3545",  // Red
+            Self::Safe => "#28a745",     // Green
+            Self::Low => "#17a2b8",      // Blue
+            Self::Medium => "#ffc107",   // Yellow
+            Self::High => "#fd7e14",     // Orange
+            Self::Critical => "#dc3545", // Red
         }
     }
 }
@@ -67,14 +69,14 @@ pub enum ToolCategory {
     Mempool,
     Validation,
     Status,
-    
+
     // Wallet categories
     Balance,
     Transaction,
     Address,
     AtomicSwap,
     Recovery,
-    
+
     // Common categories
     System,
     Diagnostic,
@@ -103,7 +105,7 @@ impl ToolCategory {
             Self::Monitoring => "Monitoring & Alerts",
         }
     }
-    
+
     /// Get a description of the category
     pub fn description(&self) -> &'static str {
         match self {
@@ -124,7 +126,7 @@ impl ToolCategory {
             Self::Monitoring => "Tools for monitoring, alerting, and health tracking",
         }
     }
-    
+
     /// Get icon or emoji for UI display
     pub fn icon(&self) -> &'static str {
         match self {
@@ -288,23 +290,23 @@ impl ToolMetadataRegistry {
             by_tags: HashMap::new(),
         }
     }
-    
+
     /// Add tool metadata
     pub fn add_tool(&mut self, metadata: ToolMetadata) {
         let name = metadata.name.clone();
-        
+
         // Add to category index
         self.by_category
             .entry(metadata.category)
             .or_insert_with(Vec::new)
             .push(name.clone());
-        
+
         // Add to risk level index
         self.by_risk_level
             .entry(metadata.risk_level)
             .or_insert_with(Vec::new)
             .push(name.clone());
-        
+
         // Add to tags index
         for tag in &metadata.tags {
             self.by_tags
@@ -312,16 +314,16 @@ impl ToolMetadataRegistry {
                 .or_insert_with(Vec::new)
                 .push(name.clone());
         }
-        
+
         // Store metadata
         self.metadata.insert(name, metadata);
     }
-    
+
     /// Get tool metadata by name
     pub fn get_tool(&self, name: &str) -> Option<&ToolMetadata> {
         self.metadata.get(name)
     }
-    
+
     /// Get all tools in a category
     pub fn get_by_category(&self, category: ToolCategory) -> Vec<&ToolMetadata> {
         self.by_category
@@ -329,7 +331,7 @@ impl ToolMetadataRegistry {
             .map(|names| names.iter().filter_map(|name| self.metadata.get(name)).collect())
             .unwrap_or_default()
     }
-    
+
     /// Get all tools with a specific risk level
     pub fn get_by_risk_level(&self, risk_level: ToolRiskLevel) -> Vec<&ToolMetadata> {
         self.by_risk_level
@@ -337,7 +339,7 @@ impl ToolMetadataRegistry {
             .map(|names| names.iter().filter_map(|name| self.metadata.get(name)).collect())
             .unwrap_or_default()
     }
-    
+
     /// Get tools by tag
     pub fn get_by_tag(&self, tag: &str) -> Vec<&ToolMetadata> {
         self.by_tags
@@ -345,7 +347,7 @@ impl ToolMetadataRegistry {
             .map(|names| names.iter().filter_map(|name| self.metadata.get(name)).collect())
             .unwrap_or_default()
     }
-    
+
     /// Search tools by name or description
     pub fn search(&self, query: &str) -> Vec<&ToolMetadata> {
         let query_lower = query.to_lowercase();
@@ -353,26 +355,31 @@ impl ToolMetadataRegistry {
             .values()
             .filter(|metadata| {
                 metadata.name.to_lowercase().contains(&query_lower) ||
-                metadata.display_name.to_lowercase().contains(&query_lower) ||
-                metadata.description.to_lowercase().contains(&query_lower) ||
-                metadata.tags.iter().any(|tag| tag.to_lowercase().contains(&query_lower))
+                    metadata.display_name.to_lowercase().contains(&query_lower) ||
+                    metadata.description.to_lowercase().contains(&query_lower) ||
+                    metadata
+                        .tags
+                        .iter()
+                        .any(|tag| tag.to_lowercase().contains(&query_lower))
             })
             .collect()
     }
-    
+
     /// Get all categories with tool counts
     pub fn get_category_summary(&self) -> Vec<(ToolCategory, usize)> {
-        let mut summary: Vec<_> = self.by_category
+        let mut summary: Vec<_> = self
+            .by_category
             .iter()
             .map(|(category, tools)| (*category, tools.len()))
             .collect();
         summary.sort_by(|a, b| a.0.display_name().cmp(b.0.display_name()));
         summary
     }
-    
+
     /// Get risk level distribution
     pub fn get_risk_distribution(&self) -> Vec<(ToolRiskLevel, usize)> {
-        let mut distribution: Vec<_> = self.by_risk_level
+        let mut distribution: Vec<_> = self
+            .by_risk_level
             .iter()
             .map(|(risk, tools)| (*risk, tools.len()))
             .collect();
@@ -385,7 +392,7 @@ impl ToolMetadataRegistry {
         });
         distribution
     }
-    
+
     /// Generate comprehensive documentation
     pub fn generate_documentation(&self) -> serde_json::Value {
         serde_json::json!({
@@ -433,12 +440,12 @@ impl Default for ToolMetadataRegistry {
 /// Utility functions for creating tool metadata
 pub mod builders {
     use super::*;
-    
+
     /// Builder for creating tool metadata
     pub struct ToolMetadataBuilder {
         metadata: ToolMetadata,
     }
-    
+
     impl ToolMetadataBuilder {
         pub fn new(name: &str) -> Self {
             Self {
@@ -464,61 +471,61 @@ pub mod builders {
                 },
             }
         }
-        
+
         pub fn display_name(mut self, display_name: &str) -> Self {
             self.metadata.display_name = display_name.to_string();
             self
         }
-        
+
         pub fn description(mut self, description: &str) -> Self {
             self.metadata.description = description.to_string();
             self
         }
-        
+
         pub fn category(mut self, category: ToolCategory) -> Self {
             self.metadata.category = category;
             self
         }
-        
+
         pub fn risk_level(mut self, risk_level: ToolRiskLevel) -> Self {
             self.metadata.risk_level = risk_level;
             self
         }
-        
+
         pub fn control_operation(mut self, is_control: bool) -> Self {
             self.metadata.is_control_operation = is_control;
             self
         }
-        
+
         pub fn streaming(mut self, is_streaming: bool) -> Self {
             self.metadata.is_streaming = is_streaming;
             self
         }
-        
+
         pub fn tags(mut self, tags: Vec<&str>) -> Self {
             self.metadata.tags = tags.into_iter().map(|s| s.to_string()).collect();
             self
         }
-        
+
         pub fn add_example(mut self, example: ToolExample) -> Self {
             self.metadata.examples.push(example);
             self
         }
-        
+
         pub fn add_parameter(mut self, param: ParameterDoc) -> Self {
             self.metadata.parameters.push(param);
             self
         }
-        
+
         pub fn build(self) -> ToolMetadata {
             self.metadata
         }
     }
-    
+
     trait ToTitleCase {
         fn to_title_case(&self) -> String;
     }
-    
+
     impl ToTitleCase for str {
         fn to_title_case(&self) -> String {
             self.split_whitespace()
@@ -537,9 +544,8 @@ pub mod builders {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::builders::ToolMetadataBuilder;
-    
+    use super::{builders::ToolMetadataBuilder, *};
+
     #[test]
     fn test_tool_metadata_builder() {
         let metadata = ToolMetadataBuilder::new("get_balance")
@@ -549,26 +555,26 @@ mod tests {
             .risk_level(ToolRiskLevel::Safe)
             .tags(vec!["balance", "wallet", "query"])
             .build();
-        
+
         assert_eq!(metadata.name, "get_balance");
         assert_eq!(metadata.display_name, "Get Balance");
         assert_eq!(metadata.category, ToolCategory::Balance);
         assert_eq!(metadata.risk_level, ToolRiskLevel::Safe);
         assert_eq!(metadata.tags, vec!["balance", "wallet", "query"]);
     }
-    
+
     #[test]
     fn test_tool_registry() {
         let mut registry = ToolMetadataRegistry::new();
-        
+
         let metadata = ToolMetadataBuilder::new("test_tool")
             .category(ToolCategory::Balance)
             .risk_level(ToolRiskLevel::Low)
             .tags(vec!["test"])
             .build();
-        
+
         registry.add_tool(metadata);
-        
+
         assert!(registry.get_tool("test_tool").is_some());
         assert_eq!(registry.get_by_category(ToolCategory::Balance).len(), 1);
         assert_eq!(registry.get_by_risk_level(ToolRiskLevel::Low).len(), 1);

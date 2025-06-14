@@ -1,13 +1,9 @@
 //! Submit block MCP tool
 
-use minotari_mcp_common::{
-    McpTool, McpResult, McpError, PermissionLevel,
-    get_required_string_param
-};
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Block};
 use async_trait::async_trait;
+use minotari_mcp_common::{get_required_string_param, McpError, McpResult, McpTool};
+use minotari_node_grpc_client::{grpc::Block, BaseNodeGrpcClient};
 use serde_json::Value;
-
 use tonic::transport::Channel;
 
 /// Tool for submitting blocks to the base node
@@ -20,8 +16,6 @@ impl SubmitBlockTool {
         Self { grpc_client }
     }
 }
-
-
 
 #[async_trait]
 impl McpTool for SubmitBlockTool {
@@ -52,7 +46,7 @@ impl McpTool for SubmitBlockTool {
 
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         let block_hex = get_required_string_param(params, "block_hex")?;
-        
+
         if block_hex.is_empty() {
             return Err(McpError::invalid_request("Block hex cannot be empty"));
         }
@@ -71,7 +65,7 @@ impl McpTool for SubmitBlockTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let block_hex = get_required_string_param(&params, "block_hex")?;
-        
+
         // Convert hex to bytes
         let _block_bytes = hex::decode(&block_hex)
             .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {}", e)))?;

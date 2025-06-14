@@ -1,11 +1,11 @@
 //! Transaction information resource
 
-use minotari_mcp_common::{McpResource, McpResult, McpError};
-use minotari_node_grpc_client::BaseNodeGrpcClient;
+use std::{collections::HashMap, sync::Arc};
+
 use async_trait::async_trait;
+use minotari_mcp_common::{McpError, McpResource, McpResult};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tonic::transport::Channel;
 
 /// Resource providing transaction information by hash
@@ -43,9 +43,10 @@ impl McpResource for TransactionInfoResource {
     }
 
     fn resolve_template(&self, params: &HashMap<String, String>) -> McpResult<String> {
-        let hash = params.get("hash")
+        let hash = params
+            .get("hash")
             .ok_or_else(|| McpError::invalid_request("Missing hash parameter"))?;
-        
+
         // Validate hash is hex
         if !hash.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(McpError::invalid_request("Hash must be hexadecimal"));

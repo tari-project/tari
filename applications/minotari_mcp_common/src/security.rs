@@ -1,11 +1,12 @@
 //! Security and permission management for MCP operations
 
-use crate::error::{McpError, McpResult};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::net::IpAddr;
+use std::{collections::HashMap, net::IpAddr};
+
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::error::{McpError, McpResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PermissionLevel {
@@ -84,7 +85,8 @@ impl SecurityContext {
     ) -> McpResult<Uuid> {
         // Enforce local-only access
         if !client_ip.is_loopback() {
-            let error = McpError::permission_denied("Remote access not allowed - MCP server only accepts local connections");
+            let error =
+                McpError::permission_denied("Remote access not allowed - MCP server only accepts local connections");
             self.audit_logger.log_operation(
                 Uuid::new_v4(),
                 client_ip,
@@ -116,11 +118,11 @@ impl SecurityContext {
         match permission_level {
             PermissionLevel::ReadOnly => {
                 // Always allowed
-            }
+            },
             PermissionLevel::Control | PermissionLevel::Privileged => {
                 if !self.control_enabled {
                     let error = McpError::permission_denied(
-                        "Control operations disabled - use --mcp-control-enabled flag to enable"
+                        "Control operations disabled - use --mcp-control-enabled flag to enable",
                     );
                     self.audit_logger.log_operation(
                         Uuid::new_v4(),
@@ -133,7 +135,7 @@ impl SecurityContext {
                     );
                     return Err(error);
                 }
-            }
+            },
         }
 
         // Create or update session
@@ -155,9 +157,10 @@ impl SecurityContext {
 
     fn create_or_update_session(&mut self, client_ip: IpAddr) -> Uuid {
         let now = Utc::now();
-        
+
         // Find existing session for this IP
-        let session_id = self.sessions
+        let session_id = self
+            .sessions
             .values()
             .find(|s| s.client_ip == client_ip)
             .map(|s| s.id)
@@ -194,10 +197,10 @@ impl RateLimiter {
         let cutoff = now - chrono::Duration::minutes(1);
 
         let requests = self.client_requests.entry(client_ip).or_default();
-        
+
         // Remove old requests
         requests.retain(|&timestamp| timestamp > cutoff);
-        
+
         // Check if under limit
         if requests.len() < self.requests_per_minute as usize {
             requests.push(now);

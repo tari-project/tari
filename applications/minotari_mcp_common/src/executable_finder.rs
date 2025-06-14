@@ -1,13 +1,16 @@
 //! Smart executable discovery for Tari applications
-//! 
+//!
 //! Provides intelligent discovery of Tari executables using PATH, relative paths,
-//! build directories, and environment variables. Includes validation and 
+//! build directories, and environment variables. Includes validation and
 //! permission checking for found executables.
 
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
 use crate::error::{McpError, McpResult};
-use std::env;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Executable finder for Tari applications
 pub struct ExecutableFinder {
@@ -48,7 +51,11 @@ impl ExecutableFinder {
 
         // Strategy 2: Check current directory
         if let Ok(path) = self.find_in_current_directory() {
-            log::debug!("Found {} in current directory: {}", self.executable_name, path.display());
+            log::debug!(
+                "Found {} in current directory: {}",
+                self.executable_name,
+                path.display()
+            );
             return Ok(path);
         }
 
@@ -60,7 +67,11 @@ impl ExecutableFinder {
 
         // Strategy 4: Check build directories
         if let Ok(path) = self.find_in_build_directories() {
-            log::debug!("Found {} in build directories: {}", self.executable_name, path.display());
+            log::debug!(
+                "Found {} in build directories: {}",
+                self.executable_name,
+                path.display()
+            );
             return Ok(path);
         }
 
@@ -80,15 +91,14 @@ impl ExecutableFinder {
 
     /// Find executable in PATH
     fn find_in_path(&self) -> McpResult<PathBuf> {
-        which::which(&self.executable_name)
-            .map_err(|_| McpError::config_error("Not found in PATH"))
+        which::which(&self.executable_name).map_err(|_| McpError::config_error("Not found in PATH"))
     }
 
     /// Find executable in current directory
     fn find_in_current_directory(&self) -> McpResult<PathBuf> {
         let current_dir = env::current_dir()
             .map_err(|e| McpError::config_error(format!("Cannot access current directory: {}", e)))?;
-        
+
         let candidate = current_dir.join(&self.executable_name);
         self.validate_executable(&candidate)
     }
@@ -139,23 +149,33 @@ impl ExecutableFinder {
     /// Validate that a path is an executable file
     fn validate_executable(&self, path: &Path) -> McpResult<PathBuf> {
         if !path.exists() {
-            return Err(McpError::config_error(format!("Path does not exist: {}", path.display())));
+            return Err(McpError::config_error(format!(
+                "Path does not exist: {}",
+                path.display()
+            )));
         }
 
         if !path.is_file() {
-            return Err(McpError::config_error(format!("Path is not a file: {}", path.display())));
+            return Err(McpError::config_error(format!(
+                "Path is not a file: {}",
+                path.display()
+            )));
         }
 
         // Check if file is executable (Unix-like systems)
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let metadata = path.metadata()
+            let metadata = path
+                .metadata()
                 .map_err(|e| McpError::config_error(format!("Cannot read file metadata: {}", e)))?;
-            
+
             let permissions = metadata.permissions();
             if permissions.mode() & 0o111 == 0 {
-                return Err(McpError::config_error(format!("File is not executable: {}", path.display())));
+                return Err(McpError::config_error(format!(
+                    "File is not executable: {}",
+                    path.display()
+                )));
             }
         }
 
@@ -171,19 +191,17 @@ impl ExecutableFinder {
     /// Verify that the executable is a valid Tari application
     fn verify_executable(&self, path: &Path) -> McpResult<()> {
         // Try to run the executable with --version flag
-        match Command::new(path)
-            .arg("--version")
-            .output()
-        {
+        match Command::new(path).arg("--version").output() {
             Ok(output) => {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                
+
                 // Check if it's a Tari executable by looking for "tari" or "minotari" in version output
-                if stdout.to_lowercase().contains("tari") || 
-                   stdout.to_lowercase().contains("minotari") ||
-                   stderr.to_lowercase().contains("tari") ||
-                   stderr.to_lowercase().contains("minotari") {
+                if stdout.to_lowercase().contains("tari") ||
+                    stdout.to_lowercase().contains("minotari") ||
+                    stderr.to_lowercase().contains("tari") ||
+                    stderr.to_lowercase().contains("minotari")
+                {
                     log::debug!("Verified Tari executable: {}", stdout.trim());
                     Ok(())
                 } else {
@@ -193,43 +211,38 @@ impl ExecutableFinder {
                     )))
                 }
             },
-            Err(e) => {
-                Err(McpError::config_error(format!(
-                    "Cannot execute --version command: {}",
-                    e
-                )))
-            }
+            Err(e) => Err(McpError::config_error(format!(
+                "Cannot execute --version command: {}",
+                e
+            ))),
         }
     }
 
     /// Generate a summary of searched locations
     fn generate_search_summary(&self) -> String {
         let mut summary = Vec::new();
-        
+
         summary.push("- PATH environment variable".to_string());
         summary.push("- Current directory".to_string());
         summary.push("- Relative paths (./target/release, ./target/debug, etc.)".to_string());
-        
+
         for build_dir in &self.build_directories {
             summary.push(format!("- Build directory: {}", build_dir));
         }
-        
+
         for search_path in &self.search_paths {
             summary.push(format!("- Search path: {}", search_path.display()));
         }
-        
+
         summary.join("\n")
     }
 
     /// Generate helpful suggestions for the user
     fn generate_suggestions(&self) -> String {
         format!(
-            "Suggestions:\n\
-            1. Install {} using 'cargo install minotari'\n\
-            2. Build the project with 'cargo build --release'\n\
-            3. Add the executable directory to your PATH\n\
-            4. Specify the full path to the executable\n\
-            5. Set MINOTARI_EXECUTABLE_PATH environment variable",
+            "Suggestions:\n1. Install {} using 'cargo install minotari'\n2. Build the project with 'cargo build \
+             --release'\n3. Add the executable directory to your PATH\n4. Specify the full path to the executable\n5. \
+             Set MINOTARI_EXECUTABLE_PATH environment variable",
             self.executable_name
         )
     }
@@ -237,22 +250,22 @@ impl ExecutableFinder {
     /// Default search paths
     fn default_search_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
-        
+
         // Add common installation directories
         if let Some(home) = env::var_os("HOME") {
             paths.push(PathBuf::from(home.clone()).join(".cargo/bin"));
             paths.push(PathBuf::from(home).join("bin"));
         }
-        
+
         // Add system directories
         paths.push(PathBuf::from("/usr/local/bin"));
         paths.push(PathBuf::from("/usr/bin"));
-        
+
         // Add environment-specific paths
         if let Ok(minotari_path) = env::var("MINOTARI_EXECUTABLE_PATH") {
             paths.push(PathBuf::from(minotari_path));
         }
-        
+
         paths
     }
 
@@ -309,18 +322,16 @@ mod tests {
     #[test]
     fn test_custom_search_paths() {
         let custom_paths = vec![PathBuf::from("/custom/path")];
-        let finder = ExecutableFinder::new("test")
-            .with_search_paths(custom_paths.clone());
-        
+        let finder = ExecutableFinder::new("test").with_search_paths(custom_paths.clone());
+
         assert!(finder.search_paths.contains(&PathBuf::from("/custom/path")));
     }
 
     #[test]
     fn test_custom_build_directories() {
         let custom_dirs = vec!["./custom_build".to_string()];
-        let finder = ExecutableFinder::new("test")
-            .with_build_directories(custom_dirs.clone());
-        
+        let finder = ExecutableFinder::new("test").with_build_directories(custom_dirs.clone());
+
         assert!(finder.build_directories.contains(&"./custom_build".to_string()));
     }
 

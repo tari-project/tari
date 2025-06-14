@@ -3,21 +3,24 @@
 //! This module provides connection pooling, circuit breaker patterns, and connection
 //! health management for gRPC services using Tower middleware.
 
-use crate::{
-    health_checker::{HealthChecker, HealthResult, GrpcHealthChecker, HealthConfig},
-    McpResult, McpError,
-};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
+
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock as AsyncRwLock;
 use tonic::{
     transport::{Channel, Endpoint},
     Status,
 };
-use serde::{Deserialize, Serialize};
+
+use crate::{
+    health_checker::{GrpcHealthChecker, HealthChecker, HealthConfig, HealthResult},
+    McpError,
+    McpResult,
+};
 
 /// Circuit breaker state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,9 +115,9 @@ impl CircuitBreakerMetrics {
     /// Check if the circuit should transition to half-open
     pub fn should_attempt_reset(&self, timeout: Duration) -> bool {
         matches!(self.state, CircuitBreakerState::Open) &&
-        self.last_failure_time
-            .map(|last_failure| last_failure.elapsed() >= timeout)
-            .unwrap_or(false)
+            self.last_failure_time
+                .map(|last_failure| last_failure.elapsed() >= timeout)
+                .unwrap_or(false)
     }
 }
 
@@ -153,7 +156,7 @@ impl CircuitBreaker {
             let mut metrics = self.metrics.write().unwrap();
             metrics.rejected_requests += 1;
             metrics.total_requests += 1;
-            
+
             return Err(McpError::service_unavailable(format!(
                 "Circuit breaker is OPEN for service: {} (failure rate: {:.1}%)",
                 self.service_name,
@@ -170,14 +173,14 @@ impl CircuitBreaker {
             Ok(Ok(success)) => {
                 self.record_success().await;
                 Ok(success)
-            }
+            },
             Ok(Err(error)) => {
                 self.record_failure().await;
                 Err(McpError::service_error(format!(
                     "Request failed for {}: {}",
                     self.service_name, error
                 )))
-            }
+            },
             Err(_) => {
                 self.record_failure().await;
                 Err(McpError::service_error(format!(
@@ -185,20 +188,23 @@ impl CircuitBreaker {
                     self.service_name,
                     start_time.elapsed().as_millis()
                 )))
-            }
+            },
         }
     }
 
     /// Check if we should reject the request due to circuit breaker state
     async fn should_reject_request(&self) -> bool {
         let mut metrics = self.metrics.write().unwrap();
-        
+
         match metrics.state {
             CircuitBreakerState::Closed => false,
             CircuitBreakerState::Open => {
                 // Check if we should transition to half-open
                 if metrics.should_attempt_reset(self.config.timeout) {
-                    log::info!("Circuit breaker transitioning to HALF_OPEN for service: {}", self.service_name);
+                    log::info!(
+                        "Circuit breaker transitioning to HALF_OPEN for service: {}",
+                        self.service_name
+                    );
                     metrics.state = CircuitBreakerState::HalfOpen;
                     metrics.last_state_change = Instant::now();
                     metrics.success_count = 0;
@@ -206,7 +212,7 @@ impl CircuitBreaker {
                 } else {
                     true
                 }
-            }
+            },
             CircuitBreakerState::HalfOpen => false,
         }
     }
@@ -216,26 +222,32 @@ impl CircuitBreaker {
         let mut metrics = self.metrics.write().unwrap();
         metrics.total_requests += 1;
         metrics.successful_requests += 1;
-        
+
         match metrics.state {
             CircuitBreakerState::Closed => {
                 // Reset failure count on success
                 metrics.failure_count = 0;
-            }
+            },
             CircuitBreakerState::HalfOpen => {
                 metrics.success_count += 1;
                 if metrics.success_count >= self.config.success_threshold {
-                    log::info!("Circuit breaker transitioning to CLOSED for service: {}", self.service_name);
+                    log::info!(
+                        "Circuit breaker transitioning to CLOSED for service: {}",
+                        self.service_name
+                    );
                     metrics.state = CircuitBreakerState::Closed;
                     metrics.last_state_change = Instant::now();
                     metrics.failure_count = 0;
                     metrics.success_count = 0;
                 }
-            }
+            },
             CircuitBreakerState::Open => {
                 // This shouldn't happen as we should have transitioned to half-open
-                log::warn!("Received success while circuit breaker is OPEN for: {}", self.service_name);
-            }
+                log::warn!(
+                    "Received success while circuit breaker is OPEN for: {}",
+                    self.service_name
+                );
+            },
         }
     }
 
@@ -251,21 +263,25 @@ impl CircuitBreaker {
                 if metrics.failure_count >= self.config.failure_threshold {
                     log::warn!(
                         "Circuit breaker transitioning to OPEN for service: {} (failures: {})",
-                        self.service_name, metrics.failure_count
+                        self.service_name,
+                        metrics.failure_count
                     );
                     metrics.state = CircuitBreakerState::Open;
                     metrics.last_state_change = Instant::now();
                 }
-            }
+            },
             CircuitBreakerState::HalfOpen => {
-                log::warn!("Circuit breaker transitioning back to OPEN for service: {}", self.service_name);
+                log::warn!(
+                    "Circuit breaker transitioning back to OPEN for service: {}",
+                    self.service_name
+                );
                 metrics.state = CircuitBreakerState::Open;
                 metrics.last_state_change = Instant::now();
                 metrics.success_count = 0;
-            }
+            },
             CircuitBreakerState::Open => {
                 // Already open, just update metrics
-            }
+            },
         }
     }
 
@@ -379,7 +395,7 @@ impl ConnectionManager {
         health_config: HealthConfig,
     ) -> Self {
         let health_checker = Arc::new(GrpcHealthChecker::new(health_config));
-        
+
         Self {
             connections: Arc::new(AsyncRwLock::new(HashMap::new())),
             circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
@@ -392,7 +408,9 @@ impl ConnectionManager {
     /// Add a service endpoint for management
     pub async fn add_service(&self, service_name: String, endpoint: Endpoint) -> McpResult<()> {
         // Add to health monitoring
-        self.health_checker.add_endpoint(service_name.clone(), endpoint.clone()).await?;
+        self.health_checker
+            .add_endpoint(service_name.clone(), endpoint.clone())
+            .await?;
 
         // Create circuit breaker
         let circuit_breaker = CircuitBreaker::new(service_name.clone(), self.circuit_config.clone());
@@ -445,14 +463,8 @@ impl ConnectionManager {
     }
 
     /// Execute a request through the connection manager with all protections
-    pub async fn execute_with_circuit_breaker<F, T>(
-        &self,
-        service_name: &str,
-        request: F,
-    ) -> McpResult<T>
-    where
-        F: std::future::Future<Output = Result<T, Status>> + Send,
-    {
+    pub async fn execute_with_circuit_breaker<F, T>(&self, service_name: &str, request: F) -> McpResult<T>
+    where F: std::future::Future<Output = Result<T, Status>> + Send {
         let circuit_breaker = {
             let breakers = self.circuit_breakers.read().unwrap();
             breakers.get(service_name).cloned()
@@ -462,18 +474,17 @@ impl ConnectionManager {
             Some(breaker) => breaker.execute(request).await,
             None => {
                 // No circuit breaker configured, execute directly
-                request.await.map_err(|e| McpError::service_error(format!(
-                    "Request failed for {}: {}",
-                    service_name, e
-                )))
-            }
+                request
+                    .await
+                    .map_err(|e| McpError::service_error(format!("Request failed for {}: {}", service_name, e)))
+            },
         }
     }
 
     /// Get a connection from the pool, creating new ones if needed
     async fn get_pooled_connection(&self, service_name: &str) -> McpResult<Channel> {
         let mut connections = self.connections.write().await;
-        
+
         if let Some(conn_list) = connections.get_mut(service_name) {
             // Clean up idle connections first
             conn_list.retain(|conn| !conn.is_idle(self.pool_config.idle_timeout));
@@ -498,18 +509,16 @@ impl ConnectionManager {
 
         // Create initial connections (start with 2-3 connections as recommended)
         for i in 0..3 {
-            match endpoint.clone()
+            match endpoint
+                .clone()
                 .timeout(self.pool_config.connect_timeout)
                 .connect()
                 .await
             {
                 Ok(channel) => {
-                    let managed_conn = ManagedConnection::new(
-                        channel,
-                        format!("{}#{}", endpoint_url, i)
-                    );
+                    let managed_conn = ManagedConnection::new(channel, format!("{}#{}", endpoint_url, i));
                     connections.push(managed_conn);
-                }
+                },
                 Err(e) => {
                     log::warn!("Failed to create connection {}: {}", i, e);
                     // Don't fail completely if some connections succeeded
@@ -519,11 +528,15 @@ impl ConnectionManager {
                             endpoint_url, e
                         )));
                     }
-                }
+                },
             }
         }
 
-        log::info!("Created {} connections for endpoint: {}", connections.len(), endpoint_url);
+        log::info!(
+            "Created {} connections for endpoint: {}",
+            connections.len(),
+            endpoint_url
+        );
         Ok(connections)
     }
 
@@ -535,7 +548,8 @@ impl ConnectionManager {
     /// Get circuit breaker status for all services
     pub fn get_all_circuit_breaker_status(&self) -> HashMap<String, CircuitBreakerMetrics> {
         let breakers = self.circuit_breakers.read().unwrap();
-        breakers.iter()
+        breakers
+            .iter()
             .map(|(name, breaker)| (name.clone(), breaker.get_metrics()))
             .collect()
     }
@@ -543,11 +557,10 @@ impl ConnectionManager {
     /// Get connection pool statistics
     pub async fn get_connection_stats(&self) -> HashMap<String, (usize, Vec<(Duration, Duration, u64)>)> {
         let connections = self.connections.read().await;
-        connections.iter()
+        connections
+            .iter()
             .map(|(name, conn_list)| {
-                let stats: Vec<(Duration, Duration, u64)> = conn_list.iter()
-                    .map(|conn| conn.get_stats())
-                    .collect();
+                let stats: Vec<(Duration, Duration, u64)> = conn_list.iter().map(|conn| conn.get_stats()).collect();
                 (name.clone(), (conn_list.len(), stats))
             })
             .collect()
@@ -562,7 +575,7 @@ impl ConnectionManager {
             let initial_count = conn_list.len();
             conn_list.retain(|conn| !conn.is_idle(self.pool_config.idle_timeout));
             let cleaned = initial_count - conn_list.len();
-            
+
             if cleaned > 0 {
                 log::debug!("Cleaned up {} idle connections for service: {}", cleaned, service_name);
                 total_cleaned += cleaned;
@@ -582,16 +595,16 @@ impl ConnectionManager {
         // Spawn background task for connection cleanup
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
-            
+
             loop {
                 interval.tick().await;
-                
+
                 let mut connections = connections.write().await;
                 for (service_name, conn_list) in connections.iter_mut() {
                     let initial_count = conn_list.len();
                     conn_list.retain(|conn| !conn.is_idle(idle_timeout));
                     let cleaned = initial_count - conn_list.len();
-                    
+
                     if cleaned > 0 {
                         log::debug!("Maintenance: Cleaned {} idle connections for {}", cleaned, service_name);
                     }
@@ -606,8 +619,9 @@ impl ConnectionManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::time::Duration;
+
+    use super::*;
 
     #[test]
     fn test_circuit_breaker_state_display() {
@@ -633,7 +647,7 @@ mod tests {
     async fn test_circuit_breaker_creation() {
         let config = CircuitBreakerConfig::default();
         let breaker = CircuitBreaker::new("test_service".to_string(), config);
-        
+
         assert_eq!(breaker.get_state(), CircuitBreakerState::Closed);
         assert_eq!(breaker.service_name, "test_service");
     }

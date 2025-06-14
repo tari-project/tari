@@ -3,15 +3,11 @@
 //! This module provides tools for querying network status, peer information,
 //! connectivity, and node identity.
 
-use minotari_mcp_common::{McpTool, McpError, McpResult};
+use minotari_app_grpc::tari_rpc::{Empty, GetPeersRequest};
+use minotari_mcp_common::{McpError, McpResult, McpTool};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
-use serde_json::{Value, json};
-
-use tonic::transport::Channel;
-use tonic::Request;
-use minotari_app_grpc::tari_rpc::{
-    Empty, GetPeersRequest,
-};
+use serde_json::{json, Value};
+use tonic::{transport::Channel, Request};
 
 /// Tool for getting network status
 #[derive(Clone)]
@@ -30,15 +26,15 @@ impl McpTool for GetNetworkStatusTool {
     fn name(&self) -> &str {
         "get_network_status"
     }
-    
+
     fn description(&self) -> &str {
         "Retrieves base node network connectivity status and connection information"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::ReadOnly
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -46,24 +42,28 @@ impl McpTool for GetNetworkStatusTool {
             "required": []
         })
     }
-    
+
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
-        
-        let response = self.grpc_client.clone().get_network_status(request).await
+
+        let response = self
+            .grpc_client
+            .clone()
+            .get_network_status(request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
             .into_inner();
-        
+
         let status = if response.num_node_connections >= 8 {
             "EXCELLENT"
         } else if response.num_node_connections >= 4 {
-            "GOOD" 
+            "GOOD"
         } else if response.num_node_connections >= 1 {
             "LIMITED"
         } else {
             "DISCONNECTED"
         };
-        
+
         Ok(json!({
             "status": status,
             "avg_latency_ms": response.avg_latency_ms,
@@ -108,15 +108,15 @@ impl McpTool for ListConnectedPeersTool {
     fn name(&self) -> &str {
         "list_connected_peers"
     }
-    
+
     fn description(&self) -> &str {
         "Lists all peers currently connected to the base node with detailed connection information"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::ReadOnly
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -124,54 +124,64 @@ impl McpTool for ListConnectedPeersTool {
             "required": []
         })
     }
-    
+
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
-        
-        let response = self.grpc_client.clone().list_connected_peers(request).await
+
+        let response = self
+            .grpc_client
+            .clone()
+            .list_connected_peers(request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to list connected peers: {}", e)))?
             .into_inner();
-        
-        let connected_peers: Vec<Value> = response.connected_peers.iter().map(|peer| {
-            json!({
-                "public_key": hex::encode(&peer.public_key),
-                "node_id": hex::encode(&peer.node_id),
-                "addresses": peer.addresses.iter().map(|addr| {
-                    format!("{}", String::from_utf8_lossy(&addr.address))
-                }).collect::<Vec<_>>(),
-                "last_connection": peer.last_connection,
-                "flags": peer.flags,
-                "banned_until": peer.banned_until,
-                "banned_reason": peer.banned_reason.clone(),
-                "offline_at": peer.offline_at,
-                "features": peer.features,
-                "supported_protocols": peer.supported_protocols.iter()
-                    .map(|proto| String::from_utf8_lossy(proto).to_string())
-                    .collect::<Vec<_>>(),
-                "user_agent": peer.user_agent.clone(),
-                "connection_status": {
-                    "is_banned": peer.banned_until > 0,
-                    "is_online": peer.offline_at == 0,
-                    "connection_age_seconds": if peer.last_connection > 0 {
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs() - peer.last_connection
-                    } else {
-                        0
+
+        let connected_peers: Vec<Value> = response
+            .connected_peers
+            .iter()
+            .map(|peer| {
+                json!({
+                    "public_key": hex::encode(&peer.public_key),
+                    "node_id": hex::encode(&peer.node_id),
+                    "addresses": peer.addresses.iter().map(|addr| {
+                        format!("{}", String::from_utf8_lossy(&addr.address))
+                    }).collect::<Vec<_>>(),
+                    "last_connection": peer.last_connection,
+                    "flags": peer.flags,
+                    "banned_until": peer.banned_until,
+                    "banned_reason": peer.banned_reason.clone(),
+                    "offline_at": peer.offline_at,
+                    "features": peer.features,
+                    "supported_protocols": peer.supported_protocols.iter()
+                        .map(|proto| String::from_utf8_lossy(proto).to_string())
+                        .collect::<Vec<_>>(),
+                    "user_agent": peer.user_agent.clone(),
+                    "connection_status": {
+                        "is_banned": peer.banned_until > 0,
+                        "is_online": peer.offline_at == 0,
+                        "connection_age_seconds": if peer.last_connection > 0 {
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs() - peer.last_connection
+                        } else {
+                            0
+                        }
                     }
-                }
+                })
             })
-        }).collect();
-        
+            .collect();
+
         let peer_count = connected_peers.len();
-        let banned_count = connected_peers.iter()
+        let banned_count = connected_peers
+            .iter()
             .filter(|peer| peer["connection_status"]["is_banned"].as_bool().unwrap_or(false))
             .count();
-        let online_count = connected_peers.iter()
+        let online_count = connected_peers
+            .iter()
             .filter(|peer| peer["connection_status"]["is_online"].as_bool().unwrap_or(false))
             .count();
-        
+
         Ok(json!({
             "connected_peers": connected_peers,
             "summary": {
@@ -222,15 +232,15 @@ impl McpTool for GetAllPeersTool {
     fn name(&self) -> &str {
         "get_all_peers"
     }
-    
+
     fn description(&self) -> &str {
         "Retrieves information about all known peers, including both connected and disconnected peers"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::ReadOnly
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -245,28 +255,32 @@ impl McpTool for GetAllPeersTool {
             "required": []
         })
     }
-    
+
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let limit = params.get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(50); // Default limit to prevent overwhelming responses
-        
+        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(50); // Default limit to prevent overwhelming responses
+
         let request = Request::new(GetPeersRequest {});
-        
-        let mut response_stream = self.grpc_client.clone().get_peers(request).await
+
+        let mut response_stream = self
+            .grpc_client
+            .clone()
+            .get_peers(request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get peers: {}", e)))?
             .into_inner();
-        
+
         let mut all_peers = Vec::new();
         let mut count = 0;
-        
-        while let Some(peer_response) = response_stream.message().await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read peer stream: {}", e)))? {
-            
+
+        while let Some(peer_response) = response_stream
+            .message()
+            .await
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read peer stream: {}", e)))?
+        {
             if count >= limit {
                 break;
             }
-            
+
             if let Some(peer) = peer_response.peer {
                 let peer_info = json!({
                     "public_key": hex::encode(&peer.public_key),
@@ -295,21 +309,23 @@ impl McpTool for GetAllPeersTool {
                         "connection_attempts": peer.flags, // Assuming flags indicate connection attempts
                     }
                 });
-                
+
                 all_peers.push(peer_info);
                 count += 1;
             }
         }
-        
+
         // Analyze peer data
-        let connected_count = all_peers.iter()
+        let connected_count = all_peers
+            .iter()
             .filter(|peer| peer["status"]["is_connected"].as_bool().unwrap_or(false))
             .count();
-        let banned_count = all_peers.iter()
+        let banned_count = all_peers
+            .iter()
             .filter(|peer| peer["status"]["is_banned"].as_bool().unwrap_or(false))
             .count();
         let total_count = all_peers.len();
-        
+
         Ok(json!({
             "peers": all_peers,
             "summary": {
@@ -354,15 +370,15 @@ impl McpTool for GetNodeIdentityTool {
     fn name(&self) -> &str {
         "get_node_identity"
     }
-    
+
     fn description(&self) -> &str {
         "Retrieves the base node's network identity including public key and node ID"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::ReadOnly
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -370,14 +386,18 @@ impl McpTool for GetNodeIdentityTool {
             "required": []
         })
     }
-    
+
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         let request = Request::new(Empty {});
-        
-        let response = self.grpc_client.clone().identify(request).await
+
+        let response = self
+            .grpc_client
+            .clone()
+            .identify(request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
             .into_inner();
-        
+
         Ok(json!({
             "public_key": hex::encode(&response.public_key),
             "node_id": hex::encode(&response.node_id),
@@ -408,15 +428,15 @@ impl McpTool for NetworkDiagnosticsTool {
     fn name(&self) -> &str {
         "network_diagnostics"
     }
-    
+
     fn description(&self) -> &str {
         "Performs comprehensive network diagnostics including connectivity, performance, and peer analysis"
     }
-    
+
     fn permission_level(&self) -> minotari_mcp_common::security::PermissionLevel {
         minotari_mcp_common::security::PermissionLevel::Privileged
     }
-    
+
     fn input_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -424,32 +444,46 @@ impl McpTool for NetworkDiagnosticsTool {
             "required": []
         })
     }
-    
+
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         // Get network status
         let status_request = Request::new(Empty {});
-        let network_status = self.grpc_client.clone().get_network_status(status_request).await
+        let network_status = self
+            .grpc_client
+            .clone()
+            .get_network_status(status_request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
             .into_inner();
-        
+
         // Get connected peers
         let peers_request = Request::new(Empty {});
-        let connected_peers = self.grpc_client.clone().list_connected_peers(peers_request).await
+        let connected_peers = self
+            .grpc_client
+            .clone()
+            .list_connected_peers(peers_request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get connected peers: {}", e)))?
             .into_inner();
-        
+
         // Get node identity
         let identity_request = Request::new(Empty {});
-        let node_identity = self.grpc_client.clone().identify(identity_request).await
+        let node_identity = self
+            .grpc_client
+            .clone()
+            .identify(identity_request)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
             .into_inner();
-        
+
         // Analyze network health
         let peer_count = connected_peers.connected_peers.len();
-        let banned_peers = connected_peers.connected_peers.iter()
+        let banned_peers = connected_peers
+            .connected_peers
+            .iter()
             .filter(|p| p.banned_until > 0)
             .count();
-        
+
         let health_score = if peer_count >= 8 && network_status.avg_latency_ms <= 200 {
             100
         } else if peer_count >= 4 && network_status.avg_latency_ms <= 500 {
@@ -461,27 +495,34 @@ impl McpTool for NetworkDiagnosticsTool {
         } else {
             0
         };
-        
+
         // Generate recommendations
         let mut recommendations = Vec::new();
-        
+
         if peer_count < 4 {
-            recommendations.push("Consider checking firewall settings or network connectivity - fewer than 4 peers connected".to_string());
+            recommendations.push(
+                "Consider checking firewall settings or network connectivity - fewer than 4 peers connected"
+                    .to_string(),
+            );
         }
         if network_status.avg_latency_ms > 1000 {
             recommendations.push("High network latency detected - check internet connection quality".to_string());
         }
         if banned_peers > 0 {
-            recommendations.push(format!("{} banned peers detected - this may indicate network issues", banned_peers));
+            recommendations.push(format!(
+                "{} banned peers detected - this may indicate network issues",
+                banned_peers
+            ));
         }
         if peer_count == 0 {
-            recommendations.push("No peers connected - check network configuration and ensure ports are open".to_string());
+            recommendations
+                .push("No peers connected - check network configuration and ensure ports are open".to_string());
         }
-        
+
         if recommendations.is_empty() {
             recommendations.push("Network appears healthy - no issues detected".to_string());
         }
-        
+
         Ok(json!({
             "network_health": {
                 "overall_score": health_score,

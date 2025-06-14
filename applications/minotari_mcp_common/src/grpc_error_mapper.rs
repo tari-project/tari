@@ -3,11 +3,12 @@
 //! This module provides comprehensive error mapping from gRPC status codes to
 //! meaningful MCP error responses with detailed context and recommendations.
 
-use crate::McpError;
-use serde_json::{Value, json};
 use std::collections::HashMap;
 
-use tonic::{Status, Code};
+use serde_json::{json, Value};
+use tonic::{Code, Status};
+
+use crate::McpError;
 
 /// Enhanced error information with context and recommendations
 #[derive(Debug, Clone)]
@@ -88,7 +89,7 @@ impl ErrorSeverity {
             Self::Critical => "Critical issue that prevents operation",
         }
     }
-    
+
     pub fn color_code(&self) -> &'static str {
         match self {
             Self::Low => "#17a2b8",      // Blue
@@ -112,19 +113,19 @@ impl GrpcErrorMapper {
             custom_mappings: HashMap::new(),
         }
     }
-    
+
     /// Add custom error mapping
     pub fn add_mapping(&mut self, grpc_message: &str, context: ErrorContext) {
         self.custom_mappings.insert(grpc_message.to_string(), context);
     }
-    
+
     /// Map gRPC status to enhanced error context
     pub fn map_status(&self, status: &Status) -> ErrorContext {
         // Check for custom mappings first
         if let Some(context) = self.custom_mappings.get(status.message()) {
             return context.clone();
         }
-        
+
         // Map based on gRPC status code
         match status.code() {
             Code::Ok => ErrorContext {
@@ -137,7 +138,7 @@ impl GrpcErrorMapper {
                 error_code: "SUCCESS".to_string(),
                 context: HashMap::new(),
             },
-            
+
             Code::Cancelled => ErrorContext {
                 message: "Operation was cancelled".to_string(),
                 category: ErrorCategory::State,
@@ -151,7 +152,7 @@ impl GrpcErrorMapper {
                 error_code: "OPERATION_CANCELLED".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::Unknown => ErrorContext {
                 message: format!("Unknown error: {}", status.message()),
                 category: ErrorCategory::Internal,
@@ -166,7 +167,7 @@ impl GrpcErrorMapper {
                 error_code: "UNKNOWN_ERROR".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::InvalidArgument => ErrorContext {
                 message: format!("Invalid argument: {}", status.message()),
                 category: ErrorCategory::Validation,
@@ -181,7 +182,7 @@ impl GrpcErrorMapper {
                 error_code: "INVALID_PARAMETERS".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::DeadlineExceeded => ErrorContext {
                 message: "Operation timed out".to_string(),
                 category: ErrorCategory::Timeout,
@@ -197,7 +198,7 @@ impl GrpcErrorMapper {
                 error_code: "TIMEOUT".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::NotFound => ErrorContext {
                 message: format!("Resource not found: {}", status.message()),
                 category: ErrorCategory::Resource,
@@ -212,7 +213,7 @@ impl GrpcErrorMapper {
                 error_code: "RESOURCE_NOT_FOUND".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::AlreadyExists => ErrorContext {
                 message: "Resource already exists".to_string(),
                 category: ErrorCategory::State,
@@ -227,7 +228,7 @@ impl GrpcErrorMapper {
                 error_code: "RESOURCE_EXISTS".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::PermissionDenied => ErrorContext {
                 message: "Permission denied".to_string(),
                 category: ErrorCategory::Authorization,
@@ -243,7 +244,7 @@ impl GrpcErrorMapper {
                 error_code: "PERMISSION_DENIED".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::ResourceExhausted => ErrorContext {
                 message: "Resource exhausted".to_string(),
                 category: ErrorCategory::Resource,
@@ -259,7 +260,7 @@ impl GrpcErrorMapper {
                 error_code: "RESOURCE_EXHAUSTED".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::FailedPrecondition => ErrorContext {
                 message: format!("Failed precondition: {}", status.message()),
                 category: ErrorCategory::State,
@@ -275,7 +276,7 @@ impl GrpcErrorMapper {
                 error_code: "PRECONDITION_FAILED".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::Aborted => ErrorContext {
                 message: "Operation was aborted".to_string(),
                 category: ErrorCategory::State,
@@ -290,7 +291,7 @@ impl GrpcErrorMapper {
                 error_code: "OPERATION_ABORTED".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::OutOfRange => ErrorContext {
                 message: format!("Value out of range: {}", status.message()),
                 category: ErrorCategory::Validation,
@@ -305,7 +306,7 @@ impl GrpcErrorMapper {
                 error_code: "VALUE_OUT_OF_RANGE".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::Unimplemented => ErrorContext {
                 message: "Operation not implemented".to_string(),
                 category: ErrorCategory::Internal,
@@ -320,7 +321,7 @@ impl GrpcErrorMapper {
                 error_code: "NOT_IMPLEMENTED".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::Internal => ErrorContext {
                 message: "Internal server error".to_string(),
                 category: ErrorCategory::Internal,
@@ -336,7 +337,7 @@ impl GrpcErrorMapper {
                 error_code: "INTERNAL_ERROR".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::Unavailable => ErrorContext {
                 message: "Service unavailable".to_string(),
                 category: ErrorCategory::Network,
@@ -352,7 +353,7 @@ impl GrpcErrorMapper {
                 error_code: "SERVICE_UNAVAILABLE".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::DataLoss => ErrorContext {
                 message: "Data loss detected".to_string(),
                 category: ErrorCategory::Internal,
@@ -368,7 +369,7 @@ impl GrpcErrorMapper {
                 error_code: "DATA_LOSS".to_string(),
                 context: self.extract_context(status),
             },
-            
+
             Code::Unauthenticated => ErrorContext {
                 message: "Authentication required".to_string(),
                 category: ErrorCategory::Authentication,
@@ -385,23 +386,21 @@ impl GrpcErrorMapper {
             },
         }
     }
-    
+
     /// Convert gRPC status to MCP error with enhanced context
     pub fn to_mcp_error(&self, status: &Status, operation: &str) -> McpError {
         let context = self.map_status(status);
-        
+
         McpError::tool_execution_failed(format!(
-            "{} failed: {} ({})", 
-            operation, 
-            context.user_message,
-            context.error_code
+            "{} failed: {} ({})",
+            operation, context.user_message, context.error_code
         ))
     }
-    
+
     /// Create a detailed error response for MCP
     pub fn create_error_response(&self, status: &Status, operation: &str) -> Value {
         let context = self.map_status(status);
-        
+
         json!({
             "error": {
                 "code": context.error_code,
@@ -429,22 +428,22 @@ impl GrpcErrorMapper {
             }
         })
     }
-    
+
     /// Extract additional context from gRPC status
     fn extract_context(&self, status: &Status) -> HashMap<String, Value> {
         let mut context = HashMap::new();
-        
+
         context.insert("grpc_code".to_string(), json!(format!("{:?}", status.code())));
         context.insert("grpc_message".to_string(), json!(status.message()));
-        
+
         // Extract metadata if available
         if !status.metadata().is_empty() {
             context.insert("has_metadata".to_string(), json!(true));
         }
-        
+
         context
     }
-    
+
     /// Generate a unique error ID for tracking
     fn generate_error_id(&self) -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -465,7 +464,7 @@ impl Default for GrpcErrorMapper {
 /// Utility functions for common error scenarios
 pub mod error_utils {
     use super::*;
-    
+
     /// Create error context for wallet-specific errors
     pub fn wallet_error_context(message: &str, is_balance_issue: bool) -> ErrorContext {
         let (recommendations, severity) = if is_balance_issue {
@@ -487,7 +486,7 @@ pub mod error_utils {
                 ErrorSeverity::High,
             )
         };
-        
+
         ErrorContext {
             message: message.to_string(),
             category: ErrorCategory::State,
@@ -499,7 +498,7 @@ pub mod error_utils {
             context: HashMap::new(),
         }
     }
-    
+
     /// Create error context for node-specific errors
     pub fn node_error_context(message: &str, is_sync_issue: bool) -> ErrorContext {
         let (recommendations, severity) = if is_sync_issue {
@@ -521,7 +520,7 @@ pub mod error_utils {
                 ErrorSeverity::High,
             )
         };
-        
+
         ErrorContext {
             message: message.to_string(),
             category: ErrorCategory::State,
@@ -538,35 +537,35 @@ pub mod error_utils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_error_mapping() {
         let mapper = GrpcErrorMapper::new();
         let status = Status::new(Code::NotFound, "Transaction not found");
-        
+
         let context = mapper.map_status(&status);
         assert_eq!(context.category, ErrorCategory::Resource);
         assert_eq!(context.error_code, "RESOURCE_NOT_FOUND");
         assert!(!context.recommendations.is_empty());
     }
-    
+
     #[test]
     fn test_mcp_error_conversion() {
         let mapper = GrpcErrorMapper::new();
         let status = Status::new(Code::InvalidArgument, "Invalid parameter");
-        
+
         let mcp_error = mapper.to_mcp_error(&status, "get_balance");
         // The error should contain the operation name and error code
         let error_msg = format!("{:?}", mcp_error);
         assert!(error_msg.contains("get_balance"));
         assert!(error_msg.contains("INVALID_PARAMETERS"));
     }
-    
+
     #[test]
     fn test_error_response_generation() {
         let mapper = GrpcErrorMapper::new();
         let status = Status::new(Code::PermissionDenied, "Access denied");
-        
+
         let response = mapper.create_error_response(&status, "transfer");
         assert!(response["error"]["code"].as_str().unwrap() == "PERMISSION_DENIED");
         assert!(response["recommendations"].as_array().unwrap().len() > 0);

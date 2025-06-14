@@ -1,7 +1,7 @@
 //! Error types for MCP operations
 
-use thiserror::Error;
 use serde_json::{json, Value};
+use thiserror::Error;
 
 pub type McpResult<T> = Result<T, McpError>;
 
@@ -112,14 +112,14 @@ impl McpError {
     /// Get JSON-RPC 2.0 error code for this error
     pub fn error_code(&self) -> i32 {
         match self {
-            Self::SerializationError(_) => -32700,  // Parse error
-            Self::InvalidRequest(_) => -32600,      // Invalid Request
+            Self::SerializationError(_) => -32700, // Parse error
+            Self::InvalidRequest(_) => -32600,     // Invalid Request
             Self::ToolNotFound(_) | Self::ResourceNotFound(_) | Self::PromptNotFound(_) => -32601, // Method not found
             Self::PermissionDenied(_) | Self::AuthenticationFailed(_) => -32603, // Internal error (authorization)
-            Self::RateLimitExceeded => -32603,      // Internal error (rate limit)
+            Self::RateLimitExceeded => -32603,     // Internal error (rate limit)
             Self::ServerError(_) | Self::TransportError(_) => -32603, // Internal error
             Self::ToolExecutionFailed(_) | Self::ResourceAccessFailed(_) => -32603, // Internal error
-            Self::ConfigError(_) => -32603,         // Internal error
+            Self::ConfigError(_) => -32603,        // Internal error
             Self::IoError(_) => -32603,            // Internal error
             Self::Other(_) => -32603,              // Internal error
         }
@@ -129,7 +129,7 @@ impl McpError {
     pub fn to_json_rpc_error(&self, id: Option<Value>) -> Value {
         let code = self.error_code();
         let message = self.to_string();
-        
+
         // Create detailed error data
         let mut data = json!({
             "error_type": self.error_type_name(),
@@ -143,32 +143,32 @@ impl McpError {
                     "permission_required": msg,
                     "help": "Check that you have the required permissions for this operation"
                 });
-            }
+            },
             Self::ToolNotFound(tool) => {
                 data["details"] = json!({
                     "tool_name": tool,
                     "help": "Use 'tools/list' to see available tools"
                 });
-            }
+            },
             Self::ResourceNotFound(resource) => {
                 data["details"] = json!({
                     "resource_uri": resource,
                     "help": "Use 'resources/list' to see available resources"
                 });
-            }
+            },
             Self::RateLimitExceeded => {
                 data["details"] = json!({
                     "retry_after": 60,
                     "help": "Wait before making more requests"
                 });
-            }
+            },
             Self::ToolExecutionFailed(msg) => {
                 data["details"] = json!({
                     "execution_error": msg,
                     "help": "Check tool parameters and try again"
                 });
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         json!({

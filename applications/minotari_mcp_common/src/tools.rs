@@ -1,30 +1,34 @@
 //! MCP tool definitions and registry
 
-use crate::error::{McpError, McpResult};
-use crate::security::PermissionLevel;
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+
+use crate::{
+    error::{McpError, McpResult},
+    security::PermissionLevel,
+};
 
 /// MCP tool trait that all tools must implement
 #[async_trait]
 pub trait McpTool: Send + Sync {
     /// Get the tool name
     fn name(&self) -> &str;
-    
+
     /// Get the tool description
     fn description(&self) -> &str;
-    
+
     /// Get the permission level required to execute this tool
     fn permission_level(&self) -> PermissionLevel;
-    
+
     /// Get the input schema for this tool
     fn input_schema(&self) -> Value;
-    
+
     /// Execute the tool with the given parameters
     async fn execute(&self, params: Value) -> McpResult<Value>;
-    
+
     /// Validate tool parameters before execution
     fn validate_params(&self, _params: &Value) -> McpResult<()> {
         // Default implementation - can be overridden
@@ -48,9 +52,7 @@ pub struct ToolRegistry {
 
 impl ToolRegistry {
     pub fn new() -> Self {
-        Self {
-            tools: HashMap::new(),
-        }
+        Self { tools: HashMap::new() }
     }
 
     /// Register a new tool
@@ -78,22 +80,21 @@ impl ToolRegistry {
 
     /// Execute a tool by name
     pub async fn execute_tool(&self, name: &str, params: Value) -> McpResult<Value> {
-        let tool = self.get(name)
-            .ok_or_else(|| McpError::tool_not_found(name))?;
+        let tool = self.get(name).ok_or_else(|| McpError::tool_not_found(name))?;
 
         // Validate parameters
         tool.validate_params(&params)
             .map_err(|e| McpError::invalid_request(format!("Parameter validation failed: {}", e)))?;
 
         // Execute the tool
-        tool.execute(params).await
+        tool.execute(params)
+            .await
             .map_err(|e| McpError::tool_execution_failed(format!("Tool '{}' execution failed: {}", name, e)))
     }
 
     /// Get the permission level required for a tool
     pub fn get_permission_level(&self, name: &str) -> McpResult<PermissionLevel> {
-        let tool = self.get(name)
-            .ok_or_else(|| McpError::tool_not_found(name))?;
+        let tool = self.get(name).ok_or_else(|| McpError::tool_not_found(name))?;
         Ok(tool.permission_level())
     }
 }
@@ -122,10 +123,7 @@ pub fn get_required_string_param(params: &Value, key: &str) -> McpResult<String>
 
 /// Helper function to validate optional string parameter
 pub fn get_optional_string_param(params: &Value, key: &str) -> Option<String> {
-    params
-        .get(key)
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    params.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 /// Helper function to validate required number parameter

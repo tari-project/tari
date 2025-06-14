@@ -3,28 +3,26 @@
 //! This module provides real implementations of the NodeGrpcClient and WalletGrpcClient
 //! traits that wrap the actual Tari gRPC clients and provide JSON-based interfaces.
 
+use std::sync::Arc;
+
+use async_trait::async_trait;
+// Import the actual gRPC clients
+use minotari_node_grpc_client::{grpc::Empty, BaseNodeGrpcClient};
+use minotari_wallet_grpc_client::WalletGrpcClient as TariWalletGrpcClient;
+use serde_json::{json, Value};
+use tonic::{transport::Channel, Status};
+
 use crate::{
     grpc_executor::{NodeGrpcClient, WalletGrpcClient},
     parameter_converter::ConversionRegistry,
-    McpResult, McpError,
+    McpError,
+    McpResult,
 };
-use serde_json::{Value, json};
-use async_trait::async_trait;
-use tonic::{Status, transport::Channel};
-use std::sync::Arc;
-
-// Import the actual gRPC clients
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::Empty};
-use minotari_wallet_grpc_client::WalletGrpcClient as TariWalletGrpcClient;
 
 /// Add conversion from tonic::Status to McpError
 impl From<Status> for McpError {
     fn from(status: Status) -> Self {
-        McpError::tool_execution_failed(format!(
-            "gRPC error: {} ({})",
-            status.message(),
-            status.code()
-        ))
+        McpError::tool_execution_failed(format!("gRPC error: {} ({})", status.message(), status.code()))
     }
 }
 
@@ -41,9 +39,12 @@ pub struct NodeGrpcClientImpl {
 impl NodeGrpcClientImpl {
     /// Create a new node client implementation with real gRPC client
     pub fn new(client: BaseNodeGrpcClient<Channel>, conversion_registry: Arc<ConversionRegistry>) -> Self {
-        Self { client, conversion_registry }
+        Self {
+            client,
+            conversion_registry,
+        }
     }
-    
+
     /// Create a placeholder for backwards compatibility
     #[deprecated(note = "Use new() with real client")]
     pub fn new_placeholder() -> Self {
@@ -57,7 +58,7 @@ impl NodeGrpcClient for NodeGrpcClientImpl {
     async fn execute_method(&self, method_name: &str, parameters: Value) -> McpResult<Value> {
         // Convert JSON parameters to protobuf using the conversion registry
         let _proto_request = self.conversion_registry.convert(method_name, parameters)?;
-        
+
         // Route to specific method implementations based on method name
         match method_name {
             "GetTipInfo" => self.get_tip_info().await,
@@ -83,17 +84,17 @@ impl NodeGrpcClient for NodeGrpcClientImpl {
                     "count": 0
                 }))
             },
-            _ => Err(McpError::invalid_request(format!("Unknown method: {}", method_name)))
+            _ => Err(McpError::invalid_request(format!("Unknown method: {}", method_name))),
         }
     }
 
     async fn get_tip_info(&self) -> McpResult<Value> {
         let mut client = self.client.clone();
         let request = tonic::Request::new(Empty {});
-        
+
         let response = client.get_tip_info(request).await?;
         let tip_info = response.into_inner();
-        
+
         Ok(json!({
             "height": tip_info.metadata.as_ref().map(|m| m.best_block_height).unwrap_or(0),
             "best_block_hash": tip_info.metadata.as_ref()
@@ -204,9 +205,12 @@ pub struct WalletGrpcClientImpl {
 impl WalletGrpcClientImpl {
     /// Create a new wallet client implementation with real gRPC client
     pub fn new(client: TariWalletGrpcClient<Channel>, conversion_registry: Arc<ConversionRegistry>) -> Self {
-        Self { _client: client, conversion_registry }
+        Self {
+            _client: client,
+            conversion_registry,
+        }
     }
-    
+
     /// Create a placeholder for backwards compatibility
     #[deprecated(note = "Use new() with real client")]
     pub fn new_placeholder() -> Self {
@@ -220,12 +224,15 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
     async fn execute_method(&self, method_name: &str, parameters: Value) -> McpResult<Value> {
         // Convert JSON parameters to protobuf using the conversion registry
         let _proto_request = self.conversion_registry.convert(method_name, parameters)?;
-        
+
         // Route to specific method implementations based on method name
         match method_name {
             "GetBalance" => self.get_balance().await,
             // TODO: Add more wallet method implementations as needed
-            _ => Err(McpError::invalid_request(format!("Unknown wallet method: {}", method_name)))
+            _ => Err(McpError::invalid_request(format!(
+                "Unknown wallet method: {}",
+                method_name
+            ))),
         }
     }
 
@@ -239,7 +246,13 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
         }))
     }
 
-    async fn transfer(&self, recipient: &str, amount: u64, _fee_per_gram: Option<u64>, _message: Option<&str>) -> McpResult<Value> {
+    async fn transfer(
+        &self,
+        recipient: &str,
+        amount: u64,
+        _fee_per_gram: Option<u64>,
+        _message: Option<&str>,
+    ) -> McpResult<Value> {
         Ok(json!({
             "transaction_id": 98765,
             "is_success": true,
@@ -274,7 +287,13 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
         }))
     }
 
-    async fn create_burn_transaction(&self, amount: u64, _fee_per_gram: Option<u64>, _message: Option<&str>, _claim_public_key: Option<&str>) -> McpResult<Value> {
+    async fn create_burn_transaction(
+        &self,
+        amount: u64,
+        _fee_per_gram: Option<u64>,
+        _message: Option<&str>,
+        _claim_public_key: Option<&str>,
+    ) -> McpResult<Value> {
         Ok(json!({
             "transaction_id": 11223,
             "is_success": true,
@@ -284,7 +303,13 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
         }))
     }
 
-    async fn coin_split(&self, amount: u64, count: u64, _fee_per_gram: Option<u64>, _message: Option<&str>) -> McpResult<Value> {
+    async fn coin_split(
+        &self,
+        amount: u64,
+        count: u64,
+        _fee_per_gram: Option<u64>,
+        _message: Option<&str>,
+    ) -> McpResult<Value> {
         Ok(json!({
             "transaction_id": 44556,
             "is_success": true,

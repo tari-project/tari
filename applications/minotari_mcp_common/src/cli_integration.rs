@@ -1,5 +1,5 @@
 //! CLI integration utilities for enhanced argument passthrough
-//! 
+//!
 //! Provides utilities for converting MCP server CLI arguments into proper
 //! arguments for launched Tari applications, ensuring configuration consistency
 //! and eliminating hardcoded values in auto-launch functionality.
@@ -7,8 +7,7 @@
 #![allow(clippy::vec_init_then_push)]
 #![allow(clippy::double_ended_iterator_last)]
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 /// Configuration extracted from CLI arguments for process launching
 #[derive(Debug, Clone)]
@@ -95,10 +94,10 @@ impl CliConfigBuilder {
 pub trait CliConfigExtractor {
     /// Extract configuration for launching processes
     fn extract_launch_config(&self) -> LaunchCliConfig;
-    
+
     /// Extract base node specific arguments
     fn extract_node_args(&self) -> Vec<String>;
-    
+
     /// Extract wallet specific arguments
     fn extract_wallet_args(&self) -> Vec<String>;
 }
@@ -118,7 +117,7 @@ impl NodeArgumentBuilder {
             include_base_args: true,
         }
     }
-    
+
     /// Create builder that only includes node-specific args (no base args)
     pub fn node_args_only(config: LaunchCliConfig) -> Self {
         Self {
@@ -219,7 +218,7 @@ impl WalletArgumentBuilder {
             include_base_args: true,
         }
     }
-    
+
     /// Create builder that only includes wallet-specific args (no base args)
     pub fn wallet_args_only(config: LaunchCliConfig) -> Self {
         Self {
@@ -311,10 +310,7 @@ pub struct CliIntegrationUtils;
 impl CliIntegrationUtils {
     /// Extract port from gRPC address string
     pub fn extract_port_from_address(address: &str) -> Option<u16> {
-        address
-            .split(':')
-            .last()
-            .and_then(|port_str| port_str.parse().ok())
+        address.split(':').last().and_then(|port_str| port_str.parse().ok())
     }
 
     /// Build gRPC endpoint URL from address
@@ -332,31 +328,28 @@ impl CliIntegrationUtils {
         if address.starts_with("http://") || address.starts_with("https://") {
             return true;
         }
-        
+
         // Check for host:port format
-        address.split(':').count() == 2 && 
-        Self::extract_port_from_address(address).is_some()
+        address.split(':').count() == 2 && Self::extract_port_from_address(address).is_some()
     }
 
     /// Find available port starting from base
     pub fn find_available_port(base_port: u16) -> Option<u16> {
-        (base_port..=u16::MAX).find(|&port| {
-            std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
-        })
+        (base_port..=u16::MAX).find(|&port| std::net::TcpListener::bind(("127.0.0.1", port)).is_ok())
     }
 
     /// Create environment variables map for launched processes
     pub fn create_environment_vars(config: &LaunchCliConfig) -> HashMap<String, String> {
         let mut env_vars = config.environment_vars.clone();
-        
+
         // Add common Tari environment variables
         env_vars.insert("TARI_BASE_PATH".to_string(), config.base_path.clone());
         env_vars.insert("TARI_CONFIG_PATH".to_string(), config.config_path.clone());
-        
+
         if let Some(ref network) = config.network {
             env_vars.insert("TARI_NETWORK".to_string(), network.clone());
         }
-        
+
         env_vars
     }
 }
@@ -392,10 +385,7 @@ mod tests {
             .with_network("mainnet".to_string())
             .build();
 
-        let args = NodeArgumentBuilder::new(config)
-            .enable_grpc()
-            .non_interactive()
-            .build();
+        let args = NodeArgumentBuilder::new(config).enable_grpc().non_interactive().build();
 
         assert!(args.contains(&"--base-path".to_string()));
         assert!(args.contains(&"/test".to_string()));
@@ -405,9 +395,7 @@ mod tests {
 
     #[test]
     fn test_wallet_argument_builder() {
-        let config = CliConfigBuilder::new()
-            .with_base_path("/test".to_string())
-            .build();
+        let config = CliConfigBuilder::new().with_base_path("/test".to_string()).build();
 
         let args = WalletArgumentBuilder::new(config)
             .enable_grpc()
@@ -422,8 +410,14 @@ mod tests {
 
     #[test]
     fn test_port_extraction() {
-        assert_eq!(CliIntegrationUtils::extract_port_from_address("127.0.0.1:18142"), Some(18142));
-        assert_eq!(CliIntegrationUtils::extract_port_from_address("localhost:8080"), Some(8080));
+        assert_eq!(
+            CliIntegrationUtils::extract_port_from_address("127.0.0.1:18142"),
+            Some(18142)
+        );
+        assert_eq!(
+            CliIntegrationUtils::extract_port_from_address("localhost:8080"),
+            Some(8080)
+        );
         assert_eq!(CliIntegrationUtils::extract_port_from_address("invalid"), None);
     }
 

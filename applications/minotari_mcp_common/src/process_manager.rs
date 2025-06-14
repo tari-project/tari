@@ -1,12 +1,18 @@
 //! Process management for auto-launching and supervising Tari applications
 
-use crate::error::{McpError, McpResult};
-use std::net::{Ipv4Addr, TcpListener};
-use std::process::Stdio;
-use std::time::Duration;
-use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, RwLock};
+use std::{
+    net::{Ipv4Addr, TcpListener},
+    process::Stdio,
+    time::Duration,
+};
+
+use tokio::{
+    process::{Child, Command},
+    sync::{mpsc, RwLock},
+};
 use uuid::Uuid;
+
+use crate::error::{McpError, McpResult};
 
 /// Process supervisor that manages application lifecycle
 pub struct ProcessSupervisor {
@@ -72,7 +78,11 @@ impl ProcessSupervisor {
     /// Start supervising the process
     pub async fn start(&self) -> McpResult<()> {
         let mut restart_attempts = 0;
-        let mut shutdown_rx = self.shutdown_rx.write().await.take()
+        let mut shutdown_rx = self
+            .shutdown_rx
+            .write()
+            .await
+            .take()
             .ok_or_else(|| McpError::server_error("Supervisor already started"))?;
 
         log::info!(
@@ -90,7 +100,7 @@ impl ProcessSupervisor {
             if self.is_process_healthy().await {
                 log::info!("Process already running and healthy on port {}", self.port);
                 let _ = self.status_tx.send(ProcessStatus::Running);
-                
+
                 // Wait for shutdown signal
                 shutdown_rx.recv().await;
                 break;
@@ -98,12 +108,12 @@ impl ProcessSupervisor {
 
             // Launch the process
             let _ = self.status_tx.send(ProcessStatus::Starting);
-            
+
             match self.launch_process().await {
                 Ok(_) => {
                     restart_attempts = 0;
                     let _ = self.status_tx.send(ProcessStatus::Running);
-                    
+
                     // Wait for process to exit or shutdown signal
                     tokio::select! {
                         result = self.wait_for_process() => {
@@ -124,23 +134,29 @@ impl ProcessSupervisor {
                             break;
                         }
                     }
-                }
+                },
                 Err(e) => {
                     log::error!("Failed to launch process: {}", e);
                     let _ = self.status_tx.send(ProcessStatus::Failed(e.to_string()));
-                }
+                },
             }
 
             // Handle restart logic
             restart_attempts += 1;
             if restart_attempts > self.max_restart_attempts {
                 log::error!("Maximum restart attempts reached, giving up");
-                let _ = self.status_tx.send(ProcessStatus::Failed("Max restarts exceeded".to_string()));
+                let _ = self
+                    .status_tx
+                    .send(ProcessStatus::Failed("Max restarts exceeded".to_string()));
                 break;
             }
 
             let _ = self.status_tx.send(ProcessStatus::Restarting(restart_attempts));
-            log::warn!("Restarting process in {} seconds (attempt {})", self.restart_delay_secs, restart_attempts);
+            log::warn!(
+                "Restarting process in {} seconds (attempt {})",
+                self.restart_delay_secs,
+                restart_attempts
+            );
             tokio::time::sleep(Duration::from_secs(self.restart_delay_secs)).await;
         }
 
@@ -157,8 +173,9 @@ impl ProcessSupervisor {
             .kill_on_drop(true);
 
         log::debug!("Launching: {} {}", self.executable_path, self.args.join(" "));
-        
-        let child = cmd.spawn()
+
+        let child = cmd
+            .spawn()
             .map_err(|e| McpError::server_error(format!("Failed to spawn process: {}", e)))?;
 
         *self.child.write().await = Some(child);
@@ -166,26 +183,31 @@ impl ProcessSupervisor {
         // Wait for process to become healthy
         let mut attempts = 0;
         const MAX_HEALTH_ATTEMPTS: u32 = 30; // 30 seconds
-        
+
         while attempts < MAX_HEALTH_ATTEMPTS {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            
+
             if self.is_process_healthy().await {
                 log::info!("Process is healthy on port {}", self.port);
                 return Ok(());
             }
-            
+
             // Check if process is still running
             if let Some(child) = self.child.write().await.as_mut() {
                 if let Ok(Some(status)) = child.try_wait() {
-                    return Err(McpError::server_error(format!("Process exited during startup with status: {:?}", status)));
+                    return Err(McpError::server_error(format!(
+                        "Process exited during startup with status: {:?}",
+                        status
+                    )));
                 }
             }
-            
+
             attempts += 1;
         }
 
-        Err(McpError::server_error("Process failed to become healthy within timeout"))
+        Err(McpError::server_error(
+            "Process failed to become healthy within timeout",
+        ))
     }
 
     /// Check if the process is healthy via gRPC connection
@@ -198,13 +220,18 @@ impl ProcessSupervisor {
     /// Wait for the process to exit
     async fn wait_for_process(&self) -> McpResult<()> {
         if let Some(child) = self.child.write().await.as_mut() {
-            let status = child.wait().await
+            let status = child
+                .wait()
+                .await
                 .map_err(|e| McpError::server_error(format!("Failed to wait for process: {}", e)))?;
-            
+
             if status.success() {
                 Ok(())
             } else {
-                Err(McpError::server_error(format!("Process exited with non-zero status: {:?}", status)))
+                Err(McpError::server_error(format!(
+                    "Process exited with non-zero status: {:?}",
+                    status
+                )))
             }
         } else {
             Err(McpError::server_error("No process to wait for"))
@@ -215,18 +242,20 @@ impl ProcessSupervisor {
     async fn stop_process(&self) -> McpResult<()> {
         if let Some(child) = self.child.write().await.as_mut() {
             log::info!("Stopping supervised process");
-            
+
             // Try graceful shutdown first
-            child.kill().await
+            child
+                .kill()
+                .await
                 .map_err(|e| McpError::server_error(format!("Failed to kill process: {}", e)))?;
-                
+
             // Wait a bit for graceful shutdown
             tokio::time::sleep(Duration::from_secs(2)).await;
-            
+
             // Force kill if still running
             let _ = child.kill().await;
         }
-        
+
         Ok(())
     }
 }
@@ -237,20 +266,19 @@ pub struct ProcessUtils;
 impl ProcessUtils {
     /// Find an available port starting from the base port
     pub fn find_available_port(base_port: u16) -> Option<u16> {
-        (base_port..=u16::MAX).find(|&port| {
-            TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok()
-        })
+        (base_port..=u16::MAX).find(|&port| TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok())
     }
 
     /// Get a random available port
     pub fn get_random_port() -> McpResult<u16> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
             .map_err(|e| McpError::server_error(format!("Failed to bind to random port: {}", e)))?;
-        
-        let port = listener.local_addr()
+
+        let port = listener
+            .local_addr()
             .map_err(|e| McpError::server_error(format!("Failed to get local address: {}", e)))?
             .port();
-            
+
         Ok(port)
     }
 
@@ -363,7 +391,7 @@ mod tests {
     fn test_is_port_available() {
         // Port 0 should never be available for binding
         assert!(!ProcessUtils::is_port_available(0));
-        
+
         // Find an available port and verify it's available
         let port = ProcessUtils::find_available_port(50000).unwrap();
         assert!(ProcessUtils::is_port_available(port));

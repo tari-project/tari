@@ -1,21 +1,23 @@
 //! MCP prompt definitions and registry
 
-use crate::error::{McpError, McpResult};
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+
+use crate::error::{McpError, McpResult};
 
 /// MCP prompt trait that all prompts must implement
 pub trait McpPrompt: Send + Sync {
     /// Get the prompt name
     fn name(&self) -> &str;
-    
+
     /// Get the prompt description
     fn description(&self) -> &str;
-    
+
     /// Get the arguments schema for this prompt
     fn arguments_schema(&self) -> Option<Value>;
-    
+
     /// Generate the prompt content with the given arguments
     fn generate(&self, args: Option<Value>) -> McpResult<PromptContent>;
 }
@@ -47,7 +49,7 @@ pub enum MessageRole {
 #[serde(untagged)]
 pub enum MessageContent {
     Text(String),
-    Resource { 
+    Resource {
         #[serde(rename = "type")]
         content_type: String,
         #[serde(rename = "resource")]
@@ -101,7 +103,8 @@ impl PromptRegistry {
 
     /// Get a prompt by name and generate its content
     pub fn get_prompt(&self, name: &str, args: Option<Value>) -> McpResult<PromptContent> {
-        let prompt = self.get(name)
+        let prompt = self
+            .get(name)
             .ok_or_else(|| McpError::PromptNotFound(name.to_string()))?;
 
         prompt.generate(args)
@@ -130,33 +133,39 @@ pub fn resource_message(role: MessageRole, resource_uri: impl Into<String>) -> P
 /// Macro to create a simple prompt
 #[macro_export]
 macro_rules! simple_prompt {
-    ($name:expr, $description:expr, $messages:expr) => {
-        {
-            use $crate::prompts::{McpPrompt, PromptContent};
-            
-            struct SimplePrompt {
-                name: String,
-                description: String,
-                messages: Vec<$crate::prompts::PromptMessage>,
-            }
-            
-            impl McpPrompt for SimplePrompt {
-                fn name(&self) -> &str { &self.name }
-                fn description(&self) -> &str { &self.description }
-                fn arguments_schema(&self) -> Option<serde_json::Value> { None }
-                
-                fn generate(&self, _args: Option<serde_json::Value>) -> McpResult<PromptContent> {
-                    Ok(PromptContent {
-                        messages: self.messages.clone(),
-                    })
-                }
-            }
-            
-            Box::new(SimplePrompt {
-                name: $name.to_string(),
-                description: $description.to_string(),
-                messages: $messages,
-            })
+    ($name:expr, $description:expr, $messages:expr) => {{
+        use $crate::prompts::{McpPrompt, PromptContent};
+
+        struct SimplePrompt {
+            name: String,
+            description: String,
+            messages: Vec<$crate::prompts::PromptMessage>,
         }
-    };
+
+        impl McpPrompt for SimplePrompt {
+            fn name(&self) -> &str {
+                &self.name
+            }
+
+            fn description(&self) -> &str {
+                &self.description
+            }
+
+            fn arguments_schema(&self) -> Option<serde_json::Value> {
+                None
+            }
+
+            fn generate(&self, _args: Option<serde_json::Value>) -> McpResult<PromptContent> {
+                Ok(PromptContent {
+                    messages: self.messages.clone(),
+                })
+            }
+        }
+
+        Box::new(SimplePrompt {
+            name: $name.to_string(),
+            description: $description.to_string(),
+            messages: $messages,
+        })
+    }};
 }

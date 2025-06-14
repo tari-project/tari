@@ -4,67 +4,128 @@
 //! MCP servers in the Tari ecosystem, following security-first principles
 //! with local-only binding and explicit control operation permissions.
 
-pub mod config;
-pub mod error;
-pub mod server;
-pub mod tools;
-pub mod resources;
-pub mod prompts;
-pub mod security;
-pub mod transport;
-pub mod stdio_transport;
-pub mod process_manager;
-pub mod input_sanitizer;
-pub mod health_monitor;
-pub mod executable_finder;
-pub mod process_launcher;
-pub mod cli_integration;
-pub mod startup_diagnostics;
-pub mod grpc_discovery;
-pub mod schema_generator;
-pub mod tool_metadata;
-pub mod grpc_error_mapper;
 pub mod auto_registry;
-pub mod grpc_executor;
-pub mod grpc_client_implementations;
-pub mod parameter_converter;
-pub mod method_implementations;
-pub mod conversion_registry_factory;
-pub mod health_checker;
+pub mod cli_integration;
+pub mod config;
 pub mod connection_manager;
-pub mod response_converter;
+pub mod conversion_registry_factory;
+pub mod error;
+pub mod executable_finder;
+pub mod grpc_client_implementations;
+pub mod grpc_discovery;
+pub mod grpc_error_mapper;
+pub mod grpc_executor;
+pub mod health_checker;
+pub mod health_monitor;
+pub mod input_sanitizer;
+pub mod method_implementations;
+pub mod parameter_converter;
+pub mod process_launcher;
+pub mod process_manager;
+pub mod prompts;
 pub mod protobuf_reflector_simple;
+pub mod resources;
+pub mod response_converter;
+pub mod schema_generator;
+pub mod security;
+pub mod server;
+pub mod startup_diagnostics;
+pub mod stdio_transport;
 pub mod tool_macros;
+pub mod tool_metadata;
+pub mod tools;
+pub mod transport;
 // pub mod protobuf_integration; // Disabled pending API compatibility fixes
 
-pub use error::{McpError, McpResult};
-pub use server::{McpServer, McpServerBuilder};
-pub use tools::{McpTool, ToolRegistry, get_required_string_param, get_optional_string_param, get_required_number_param, get_required_bool_param, get_required_u64_param};
-pub use resources::{McpResource, ResourceRegistry};
-pub use prompts::{McpPrompt, PromptRegistry, MessageRole, PromptMessage, PromptContent, text_message, resource_message};
-pub use security::{SecurityContext, PermissionLevel};
+pub use auto_registry::{AutoDiscoveryConfig, AutoDiscoveryRegistry, RegistryStatistics, ServerType, ToolOverride};
+pub use cli_integration::{
+    CliConfigBuilder,
+    CliConfigExtractor,
+    CliIntegrationUtils,
+    LaunchCliConfig,
+    NodeArgumentBuilder,
+    WalletArgumentBuilder,
+};
 pub use config::McpConfig;
-pub use stdio_transport::StdioTransport;
-pub use process_manager::{ProcessSupervisor, ProcessType, ProcessStatus, ProcessUtils};
-pub use input_sanitizer::{InputSanitizer, ValidationPatterns, sanitize_tool_input};
-pub use health_monitor::{HealthMonitor, HealthStatus, HealthCheckResult, ServiceHealthMonitors};
-pub use executable_finder::{ExecutableFinder, TariExecutables};
-pub use process_launcher::{ProcessLauncher, LaunchConfig, LaunchConfigBuilder, LaunchResult, ProcessLaunchStatus, HealthCheckConfig, TariProcessLauncher};
-pub use cli_integration::{LaunchCliConfig, CliConfigBuilder, CliConfigExtractor, NodeArgumentBuilder, WalletArgumentBuilder, CliIntegrationUtils};
-pub use startup_diagnostics::{StartupDiagnostics, DiagnosticResult, DiagnosticStatus};
-pub use grpc_discovery::{ServiceDiscovery, GrpcMethodInfo, GrpcMethodCategory, base_node_methods, wallet_methods};
-pub use schema_generator::{SchemaGenerator, SchemaError};
-pub use tool_metadata::{ToolMetadata, ToolMetadataRegistry, ToolCategory, ToolRiskLevel, ToolExample, ParameterDoc, RateLimit, DeprecationInfo};
-pub use grpc_error_mapper::{GrpcErrorMapper, ErrorContext, ErrorCategory, ErrorSeverity};
-pub use auto_registry::{AutoDiscoveryRegistry, AutoDiscoveryConfig, ServerType, ToolOverride, RegistryStatistics};
-pub use grpc_executor::{GrpcExecutor, NodeGrpcClient, WalletGrpcClient, ExecutorStatus};
-pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
-pub use parameter_converter::{ParameterConverter, ConversionRegistry, ConversionError, JsonParameterExtractor};
-pub use method_implementations::{register_node_converters, register_wallet_converters};
+pub use connection_manager::{
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerState,
+    ConnectionManager,
+    ConnectionPoolConfig,
+    ManagedConnection,
+};
 pub use conversion_registry_factory::ConversionRegistryFactory;
-pub use health_checker::{HealthChecker, HealthResult, HealthStatus as GrpcHealthStatus, HealthConfig, GrpcHealthChecker};
-pub use connection_manager::{ConnectionManager, CircuitBreaker, CircuitBreakerState, CircuitBreakerConfig, ConnectionPoolConfig, ManagedConnection};
-pub use response_converter::{ResponseConverter, ResponseConverterRegistry, ResponseConverterFactory, GenericJsonConverter, NodeResponseConverter, WalletResponseConverter};
+pub use error::{McpError, McpResult};
+pub use executable_finder::{ExecutableFinder, TariExecutables};
+pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
+pub use grpc_discovery::{base_node_methods, wallet_methods, GrpcMethodCategory, GrpcMethodInfo, ServiceDiscovery};
+pub use grpc_error_mapper::{ErrorCategory, ErrorContext, ErrorSeverity, GrpcErrorMapper};
+pub use grpc_executor::{ExecutorStatus, GrpcExecutor, NodeGrpcClient, WalletGrpcClient};
+pub use health_checker::{
+    GrpcHealthChecker,
+    HealthChecker,
+    HealthConfig,
+    HealthResult,
+    HealthStatus as GrpcHealthStatus,
+};
+pub use health_monitor::{HealthCheckResult, HealthMonitor, HealthStatus, ServiceHealthMonitors};
+pub use input_sanitizer::{sanitize_tool_input, InputSanitizer, ValidationPatterns};
+pub use method_implementations::{register_node_converters, register_wallet_converters};
+pub use parameter_converter::{ConversionError, ConversionRegistry, JsonParameterExtractor, ParameterConverter};
+pub use process_launcher::{
+    HealthCheckConfig,
+    LaunchConfig,
+    LaunchConfigBuilder,
+    LaunchResult,
+    ProcessLaunchStatus,
+    ProcessLauncher,
+    TariProcessLauncher,
+};
+pub use process_manager::{ProcessStatus, ProcessSupervisor, ProcessType, ProcessUtils};
+pub use prompts::{
+    resource_message,
+    text_message,
+    McpPrompt,
+    MessageRole,
+    PromptContent,
+    PromptMessage,
+    PromptRegistry,
+};
 pub use protobuf_reflector_simple::ProtobufReflector;
- // Export all macros for public use
-// pub use protobuf_integration::{ReflectiveAutoDiscovery, EnhancedToolMetadata, ToolDocumentation, OpenApiSpec}; // Disabled pending API compatibility fixes
+pub use resources::{McpResource, ResourceRegistry};
+pub use response_converter::{
+    GenericJsonConverter,
+    NodeResponseConverter,
+    ResponseConverter,
+    ResponseConverterFactory,
+    ResponseConverterRegistry,
+    WalletResponseConverter,
+};
+pub use schema_generator::{SchemaError, SchemaGenerator};
+pub use security::{PermissionLevel, SecurityContext};
+pub use server::{McpServer, McpServerBuilder};
+pub use startup_diagnostics::{DiagnosticResult, DiagnosticStatus, StartupDiagnostics};
+pub use stdio_transport::StdioTransport;
+pub use tool_metadata::{
+    DeprecationInfo,
+    ParameterDoc,
+    RateLimit,
+    ToolCategory,
+    ToolExample,
+    ToolMetadata,
+    ToolMetadataRegistry,
+    ToolRiskLevel,
+};
+pub use tools::{
+    get_optional_string_param,
+    get_required_bool_param,
+    get_required_number_param,
+    get_required_string_param,
+    get_required_u64_param,
+    McpTool,
+    ToolRegistry,
+};
+// Export all macros for public use
+// pub use protobuf_integration::{ReflectiveAutoDiscovery, EnhancedToolMetadata, ToolDocumentation, OpenApiSpec}; //
+// Disabled pending API compatibility fixes

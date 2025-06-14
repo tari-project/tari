@@ -1,25 +1,43 @@
 //! Node MCP server implementation
 
-use crate::config::NodeMcpConfig;
-use crate::tools::NodeToolRegistry;
-use crate::resources::NodeResourceRegistry;
-use crate::prompts::NodePromptRegistry;
-use crate::cli::Cli;
+use std::{sync::Arc, time::Duration};
+
 use minotari_mcp_common::{
-    McpServer, McpServerBuilder, McpResult, McpError,
-    ServiceHealthMonitors, TariProcessLauncher,
-    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils,
-    StartupDiagnostics, ProcessLauncher,
-    AutoDiscoveryRegistry, AutoDiscoveryConfig, ServerType,
-    ServiceDiscovery, SchemaGenerator, GrpcErrorMapper,
-    GrpcExecutor, NodeGrpcClientImpl, ConversionRegistryFactory,
-    ConnectionManager, CircuitBreakerConfig, ConnectionPoolConfig, HealthConfig
+    AutoDiscoveryConfig,
+    AutoDiscoveryRegistry,
+    CircuitBreakerConfig,
+    CliConfigExtractor,
+    CliIntegrationUtils,
+    ConnectionManager,
+    ConnectionPoolConfig,
+    ConversionRegistryFactory,
+    GrpcErrorMapper,
+    GrpcExecutor,
+    HealthConfig,
+    McpError,
+    McpResult,
+    McpServer,
+    McpServerBuilder,
+    NodeGrpcClientImpl,
+    ProcessLaunchStatus,
+    ProcessLauncher,
+    SchemaGenerator,
+    ServerType,
+    ServiceDiscovery,
+    ServiceHealthMonitors,
+    StartupDiagnostics,
+    TariProcessLauncher,
 };
-use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::base_node_client::BaseNodeClient};
-use std::sync::Arc;
-use std::time::Duration;
+use minotari_node_grpc_client::{grpc::base_node_client::BaseNodeClient, BaseNodeGrpcClient};
 use tonic::transport::{Channel, Endpoint};
-use async_trait::async_trait;
+
+use crate::{
+    cli::Cli,
+    config::NodeMcpConfig,
+    prompts::NodePromptRegistry,
+    resources::NodeResourceRegistry,
+    tools::NodeToolRegistry,
+};
 
 /// Wrapper to convert Arc<dyn McpTool> to Box<dyn McpTool>
 struct ArcToolWrapper {
@@ -78,11 +96,14 @@ impl NodeMcpServer {
 
         // Create connection manager with health monitoring
         let connection_manager = Self::create_connection_manager(&config).await?;
-        
+
         // Create health-aware gRPC executor
         let conversion_registry = ConversionRegistryFactory::create_node_registry();
         let error_mapper = Arc::new(GrpcErrorMapper::new());
-        let node_client_impl = Arc::new(NodeGrpcClientImpl::new((*grpc_client).clone(), conversion_registry.clone()));
+        let node_client_impl = Arc::new(NodeGrpcClientImpl::new(
+            (*grpc_client).clone(),
+            conversion_registry.clone(),
+        ));
         let grpc_executor = Arc::new(GrpcExecutor::new_node_with_health(
             node_client_impl,
             error_mapper.clone(),
@@ -102,7 +123,7 @@ impl NodeMcpServer {
 
         let service_discovery = Arc::new(ServiceDiscovery::new());
         let schema_generator = Arc::new(SchemaGenerator::new(&service_discovery));
-        
+
         let auto_discovery = AutoDiscoveryRegistry::new_with_executor(
             auto_discovery_config,
             service_discovery,
@@ -116,20 +137,20 @@ impl NodeMcpServer {
 
         // Get tools from auto-discovery (use healthy tools only)
         let discovered_tools = auto_discovery.get_healthy_tools().await;
-        
+
         // Create tool registry and populate with auto-discovered tools
         let mut tool_registry = minotari_mcp_common::ToolRegistry::new();
-        
+
         // Convert Arc<dyn McpTool> to Box<dyn McpTool> for registration
         for (name, arc_tool) in discovered_tools {
             log::info!("Registering auto-discovered tool: {}", name);
-            
+
             // Create a wrapper that clones the Arc for each execution
             let arc_clone = arc_tool.clone();
             let boxed_tool = Box::new(ArcToolWrapper::new(arc_clone));
             tool_registry.register(boxed_tool);
         }
-        
+
         // If no auto-discovered tools, fall back to manual tools
         if tool_registry.list_tools().is_empty() {
             log::warn!("No auto-discovered tools available, falling back to manual registration");
@@ -166,7 +187,7 @@ impl NodeMcpServer {
     #[allow(dead_code)]
     pub async fn stop(&self) -> McpResult<()> {
         log::info!("Stopping Minotari Node MCP Server");
-        
+
         // First, stop any launched processes
         if let Some(ref process_launcher) = self.launched_process {
             log::info!("Stopping launched base node process...");
@@ -174,7 +195,7 @@ impl NodeMcpServer {
                 log::warn!("Failed to stop launched base node: {}", e);
             }
         }
-        
+
         // Then stop the MCP server
         self.inner.stop().await
     }
@@ -188,9 +209,9 @@ impl NodeMcpServer {
     /// Create gRPC client connection to base node
     async fn create_grpc_client(config: &NodeMcpConfig) -> McpResult<BaseNodeGrpcClient<Channel>> {
         let endpoint_url = config.node_grpc_url();
-        
+
         log::info!("Connecting to base node at: {}", endpoint_url);
-        
+
         let endpoint = Endpoint::from_shared(endpoint_url)
             .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {}", e)))?;
 
@@ -202,10 +223,10 @@ impl NodeMcpServer {
 
         // Create client (simplified - no authentication for now)
         let client = BaseNodeClient::new(channel);
-        
+
         // TODO: Test the connection with a simple call
         // For now, skip the test call due to tonic version compatibility issues
-        
+
         log::info!("Base node client created (connection test skipped)");
         Ok(client)
     }
@@ -215,27 +236,26 @@ impl NodeMcpServer {
         let pool_config = ConnectionPoolConfig::default();
         let circuit_config = CircuitBreakerConfig::default();
         let health_config = HealthConfig::default();
-        
+
         let conn_manager = ConnectionManager::new(pool_config, circuit_config, health_config);
-        
+
         // Add the base node service endpoint
         let endpoint_url = config.node_grpc_url();
         let endpoint = Endpoint::from_shared(endpoint_url)
             .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {}", e)))?
             .timeout(Duration::from_secs(config.node_grpc.timeout_secs))
             .connect_timeout(Duration::from_secs(5));
-            
+
         conn_manager.add_service("base_node".to_string(), endpoint).await?;
         conn_manager.start_maintenance().await?;
-        
+
         Ok(Arc::new(conn_manager))
     }
 
     /// Ensure base node is running, auto-launch if needed
     async fn ensure_base_node_running(config: &NodeMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
-        let port = CliIntegrationUtils::extract_port_from_address(&config.node_grpc.address)
-            .unwrap_or(18142);
+        let port = CliIntegrationUtils::extract_port_from_address(&config.node_grpc.address).unwrap_or(18142);
 
         // Check if already running using proper health monitor
         let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address);
@@ -260,7 +280,8 @@ impl NodeMcpServer {
             launch_config.network,
             config.node_grpc.address.clone(),
             node_args,
-        ).await?;
+        )
+        .await?;
 
         let launcher = Arc::new(launcher);
         let launcher_for_background = launcher.clone();
@@ -278,24 +299,24 @@ impl NodeMcpServer {
                         }
                         tokio::time::sleep(Duration::from_secs(5)).await;
                     }
-                }
+                },
                 Err(e) => {
                     log::error!("Failed to launch base node: {}", e);
-                }
+                },
             }
         });
 
         // Wait for the node to become healthy with enhanced monitoring
         let mut attempts = 0;
         const MAX_ATTEMPTS: u32 = 60; // 5 minutes with 5-second intervals
-        
+
         while attempts < MAX_ATTEMPTS {
             // Check if the service is ready using proper health check
             if health_monitor.is_service_ready().await {
                 log::info!("Base node is now running and healthy");
                 return Ok(Some(launcher));
             }
-            
+
             // Check launcher status
             if let Ok(status) = status_rx.try_recv() {
                 log::debug!("Launcher status: {:?}", status);
@@ -303,27 +324,29 @@ impl NodeMcpServer {
                     ProcessLaunchStatus::Failed(err) => {
                         launcher_handle.abort();
                         return Err(McpError::server_error(format!("Failed to start base node: {}", err)));
-                    }
+                    },
                     ProcessLaunchStatus::Running => {
                         log::info!("Base node process is running, waiting for health checks...");
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
-            
+
             tokio::time::sleep(Duration::from_secs(5)).await;
             attempts += 1;
         }
 
         launcher_handle.abort();
-        Err(McpError::server_error("Base node failed to become healthy within timeout"))
+        Err(McpError::server_error(
+            "Base node failed to become healthy within timeout",
+        ))
     }
 
     /// Run startup diagnostics for troubleshooting
     #[allow(dead_code)]
     pub async fn run_diagnostics(config: &NodeMcpConfig, cli: &Cli) -> String {
         let launch_config = cli.extract_launch_config();
-        
+
         let diagnostics = StartupDiagnostics::new()
             .with_base_path(launch_config.base_path)
             .with_config_path(launch_config.config_path)
@@ -332,5 +355,4 @@ impl NodeMcpServer {
         let results = diagnostics.run_diagnostics().await;
         diagnostics.format_diagnostic_report(&results)
     }
-
 }

@@ -1,20 +1,30 @@
 //! Wallet MCP server implementation
 
-use crate::config::WalletMcpConfig;
-use crate::tools::WalletToolRegistry;
-use crate::resources::WalletResourceRegistry;
-use crate::prompts::WalletPromptRegistry;
-use crate::cli::Cli;
+use std::{sync::Arc, time::Duration};
+
 use minotari_mcp_common::{
-    McpServer, McpServerBuilder, McpResult, McpError,
-    ServiceHealthMonitors, TariProcessLauncher,
-    ProcessLaunchStatus, CliConfigExtractor, CliIntegrationUtils,
-    StartupDiagnostics, ProcessLauncher
+    CliConfigExtractor,
+    CliIntegrationUtils,
+    McpError,
+    McpResult,
+    McpServer,
+    McpServerBuilder,
+    ProcessLaunchStatus,
+    ProcessLauncher,
+    ServiceHealthMonitors,
+    StartupDiagnostics,
+    TariProcessLauncher,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
-use std::sync::Arc;
-use std::time::Duration;
 use tonic::transport::Channel;
+
+use crate::{
+    cli::Cli,
+    config::WalletMcpConfig,
+    prompts::WalletPromptRegistry,
+    resources::WalletResourceRegistry,
+    tools::WalletToolRegistry,
+};
 
 /// Minotari Wallet MCP Server
 pub struct WalletMcpServer {
@@ -40,7 +50,7 @@ impl WalletMcpServer {
         // Create tool registry with wallet-specific tools
         let tool_registry = WalletToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled);
 
-        // Create resource registry with wallet-specific resources  
+        // Create resource registry with wallet-specific resources
         let resource_registry = WalletResourceRegistry::new(grpc_client.clone());
 
         // Create prompt registry with wallet-specific prompts
@@ -70,7 +80,7 @@ impl WalletMcpServer {
     #[allow(dead_code)]
     pub async fn stop(&self) -> McpResult<()> {
         log::info!("Stopping Minotari Wallet MCP Server");
-        
+
         // First, stop any launched processes
         if let Some(ref process_launcher) = self.launched_process {
             log::info!("Stopping launched wallet process...");
@@ -78,7 +88,7 @@ impl WalletMcpServer {
                 log::warn!("Failed to stop launched wallet: {}", e);
             }
         }
-        
+
         // Then stop the MCP server
         self.inner.stop().await
     }
@@ -86,9 +96,9 @@ impl WalletMcpServer {
     /// Create gRPC client connection to wallet
     async fn create_grpc_client(config: &WalletMcpConfig) -> McpResult<WalletGrpcClient<Channel>> {
         let wallet_grpc_url = config.wallet_grpc_url();
-        
+
         log::info!("Connecting to wallet at: {}", wallet_grpc_url);
-        
+
         // Use the wallet client's connect method
         let client = WalletGrpcClient::connect(&wallet_grpc_url)
             .await
@@ -101,8 +111,7 @@ impl WalletMcpServer {
     /// Ensure wallet is running, auto-launch if needed
     async fn ensure_wallet_running(config: &WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
-        let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address)
-            .unwrap_or(18143);
+        let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address).unwrap_or(18143);
 
         // Check if already running using proper health monitor
         let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
@@ -134,7 +143,8 @@ impl WalletMcpServer {
             launch_config.network,
             grpc_address,
             wallet_args,
-        ).await?;
+        )
+        .await?;
 
         let launcher = Arc::new(launcher);
         let launcher_for_background = launcher.clone();
@@ -152,27 +162,27 @@ impl WalletMcpServer {
                         }
                         tokio::time::sleep(Duration::from_secs(5)).await;
                     }
-                }
+                },
                 Err(e) => {
                     log::error!("Failed to launch wallet: {}", e);
-                }
+                },
             }
         });
 
         // Wait for the wallet to become healthy with enhanced monitoring
         let mut attempts = 0;
         const MAX_ATTEMPTS: u32 = 120; // 10 minutes with 5-second intervals (wallets take longer)
-        
+
         // Create health monitor for the actual launched port
         let launched_health_monitor = ServiceHealthMonitors::wallet(&format!("127.0.0.1:{}", available_port));
-        
+
         while attempts < MAX_ATTEMPTS {
             // Check if the service is ready using proper health check
             if launched_health_monitor.is_service_ready().await {
                 log::info!("Wallet is now running and healthy on port {}", available_port);
                 return Ok(Some(launcher));
             }
-            
+
             // Check launcher status
             if let Ok(status) = status_rx.try_recv() {
                 log::debug!("Launcher status: {:?}", status);
@@ -180,14 +190,14 @@ impl WalletMcpServer {
                     ProcessLaunchStatus::Failed(err) => {
                         launcher_handle.abort();
                         return Err(McpError::server_error(format!("Failed to start wallet: {}", err)));
-                    }
+                    },
                     ProcessLaunchStatus::Running => {
                         log::info!("Wallet process is running, waiting for health checks...");
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
-            
+
             tokio::time::sleep(Duration::from_secs(5)).await;
             attempts += 1;
         }
@@ -200,7 +210,7 @@ impl WalletMcpServer {
     #[allow(dead_code)]
     pub async fn run_diagnostics(config: &WalletMcpConfig, cli: &Cli) -> String {
         let launch_config = cli.extract_launch_config();
-        
+
         let diagnostics = StartupDiagnostics::new()
             .with_base_path(launch_config.base_path)
             .with_config_path(launch_config.config_path)
@@ -209,5 +219,4 @@ impl WalletMcpServer {
         let results = diagnostics.run_diagnostics().await;
         diagnostics.format_diagnostic_report(&results)
     }
-
 }
