@@ -410,12 +410,12 @@ impl McpTool for ClaimHtlcRefundTool {
 /// Tool for atomic swap status and management
 #[derive(Clone)]
 pub struct AtomicSwapStatusTool {
-    grpc_client: Arc<WalletGrpcClient<Channel>>,
+    _grpc_client: Arc<WalletGrpcClient<Channel>>,
 }
 
 impl AtomicSwapStatusTool {
     pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+        Self { _grpc_client: grpc_client }
     }
 }
 

@@ -232,12 +232,12 @@ impl McpTool for GetPaymentIdAddressTool {
 /// Tool for address validation and analysis
 #[derive(Clone)]
 pub struct AddressValidationTool {
-    grpc_client: Arc<WalletGrpcClient<Channel>>,
+    _grpc_client: Arc<WalletGrpcClient<Channel>>,
 }
 
 impl AddressValidationTool {
     pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+        Self { _grpc_client: grpc_client }
     }
 }
 
@@ -406,12 +406,12 @@ impl McpTool for AddressValidationTool {
 /// Tool for address format conversion
 #[derive(Clone)]
 pub struct AddressConverterTool {
-    grpc_client: Arc<WalletGrpcClient<Channel>>,
+    _grpc_client: Arc<WalletGrpcClient<Channel>>,
 }
 
 impl AddressConverterTool {
     pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+        Self { _grpc_client: grpc_client }
     }
 }
 
