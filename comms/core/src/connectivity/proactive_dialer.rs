@@ -369,7 +369,7 @@ mod tests {
         let test_rate = 1.5f32;
         let clamped = test_rate.clamp(0.1, 1.0);
         assert_eq!(clamped, 1.0);
-        
+
         let low_rate = 0.05f32;
         let clamped_low = low_rate.clamp(0.1, 1.0);
         assert_eq!(clamped_low, 0.1);

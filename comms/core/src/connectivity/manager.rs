@@ -491,7 +491,7 @@ impl ConnectivityManagerActor {
             self.config.proactive_dialing_enabled,
             self.config.target_connection_count
         );
-        
+
         if self.config.proactive_dialing_enabled {
             debug!(
                 target: LOG_TARGET,
