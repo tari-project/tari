@@ -160,7 +160,7 @@ impl ProactiveDialer {
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
     ) -> f32 {
         if connection_stats.is_empty() {
-            return 0.7; // Optimistic default
+            return 0.25; // Conservative Bayesian prior default
         }
 
         let window = self.config.success_rate_tracking_window;
@@ -170,7 +170,7 @@ impl ProactiveDialer {
             .collect();
 
         if total_stats.is_empty() {
-            return 0.7;
+            return 0.25; // Conservative Bayesian prior default
         }
 
         let average = total_stats.iter().sum::<f32>() / total_stats.len() as f32;
@@ -360,10 +360,10 @@ mod tests {
         // Test success rate calculation with empty stats
         let _empty_stats: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
 
-        // With empty stats, should return optimistic default of 0.7
+        // With empty stats, should return conservative Bayesian prior default
         // This logic is tested by ensuring the default behavior
-        let default_rate = 0.7f32;
-        assert_eq!(default_rate, 0.7);
+        let default_rate = 0.25f32;
+        assert_eq!(default_rate, 0.25);
 
         // Test rate clamping behavior
         let test_rate = 1.5f32;

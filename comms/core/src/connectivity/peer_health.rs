@@ -152,7 +152,9 @@ impl PeerHealthMetrics {
             .collect();
 
         if recent_attempts.is_empty() {
-            return 1.0; // Default to optimistic success rate if no data
+            // Use conservative Bayesian prior: α=1 (success), β=3 (failure)
+            // This gives initial expectation of 1/(1+3) = 0.25 for new peers
+            return 0.25; // Conservative default based on Bayesian prior
         }
 
         let successes = recent_attempts
@@ -160,7 +162,14 @@ impl PeerHealthMetrics {
             .filter(|attempt| attempt.result == ConnectionAttemptResult::Success)
             .count();
 
-        successes as f32 / recent_attempts.len() as f32
+        // Apply Bayesian averaging with conservative prior
+        // α=1 (prior successes), β=3 (prior failures)
+        let alpha = 1.0;
+        let beta = 3.0;
+        let success_count = successes as f32;
+        let total_attempts = recent_attempts.len() as f32;
+
+        (alpha + success_count) / (alpha + beta + total_attempts)
     }
 
     /// Get the circuit breaker state
@@ -321,7 +330,9 @@ mod tests {
         metrics.record_success(None);
 
         let success_rate = metrics.success_rate(window);
-        assert_eq!(success_rate, 0.75); // 3 successes out of 4 attempts
+        // Bayesian calculation: (α + successes) / (α + β + total_attempts)
+        // (1 + 3) / (1 + 3 + 4) = 4/8 = 0.5
+        assert_eq!(success_rate, 0.5);
     }
 
     #[test]
