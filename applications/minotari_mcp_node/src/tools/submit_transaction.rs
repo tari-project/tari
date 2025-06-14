@@ -2,7 +2,7 @@
 
 use minotari_mcp_common::{
     McpTool, McpResult, McpError, PermissionLevel,
-    json_schema, get_required_string_param, impl_mcp_tool, tool_schema
+    get_required_string_param
 };
 use minotari_node_grpc_client::{BaseNodeGrpcClient, grpc::{SubmitTransactionRequest, Transaction}};
 use async_trait::async_trait;

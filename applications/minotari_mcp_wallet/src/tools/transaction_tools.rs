@@ -15,7 +15,8 @@ use tonic::Request;
 use minotari_app_grpc::tari_rpc::{
     GetTransactionInfoRequest, GetCompletedTransactionsRequest, GetBlockHeightTransactionsRequest,
     GetTransactionPayRefsRequest, TransferRequest, PaymentRecipient, CoinSplitRequest,
-    CancelTransactionRequest, CreateBurnTransactionRequest, UserPaymentId, PaymentType,
+    CancelTransactionRequest, CreateBurnTransactionRequest, UserPaymentId,
+    payment_recipient::PaymentType, user_payment_id,
 };
 
 /// Tool for getting transaction information by ID
@@ -43,13 +44,13 @@ impl McpTool for GetTransactionInfoTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let transaction_ids: Vec<u64> = params.get("transaction_ids")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| McpError::InvalidParameter("transaction_ids array is required".to_string()))?
+            .ok_or_else(|| McpError::invalid_request("transaction_ids array is required"))?
             .iter()
             .filter_map(|v| v.as_u64())
             .collect();
         
         if transaction_ids.is_empty() {
-            return Err(McpError::InvalidParameter("At least one transaction ID is required".to_string()));
+            return Err(McpError::invalid_request("At least one transaction ID is required"));
         }
         
         let request = Request::new(GetTransactionInfoRequest { transaction_ids });
@@ -161,7 +162,7 @@ impl McpTool for GetCompletedTransactionsTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let payment_id = if let Some(payment_id_str) = get_optional_string_param(&params, "payment_id")? {
             Some(UserPaymentId {
-                value: Some(minotari_app_grpc::tari_rpc::user_payment_id::Value::Utf8String(payment_id_str)),
+                value: Some(user_payment_id::Value::Utf8String(payment_id_str)),
             })
         } else {
             None
@@ -319,10 +320,10 @@ impl McpTool for TransferTool {
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let recipients_array = params.get("recipients")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| McpError::InvalidParameter("recipients array is required".to_string()))?;
+            .ok_or_else(|| McpError::invalid_request("recipients array is required"))?;
         
         if recipients_array.is_empty() {
-            return Err(McpError::InvalidParameter("At least one recipient is required".to_string()));
+            return Err(McpError::invalid_request("At least one recipient is required"));
         }
         
         let mut recipients = Vec::new();
@@ -331,19 +332,19 @@ impl McpTool for TransferTool {
         for (i, recipient_data) in recipients_array.iter().enumerate() {
             let address = recipient_data.get("address")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| McpError::InvalidParameter(format!("address is required for recipient {}", i)))?;
+                .ok_or_else(|| McpError::invalid_request(format!("address is required for recipient {}", i)))?;
             
             let amount = recipient_data.get("amount")
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| McpError::InvalidParameter(format!("amount is required for recipient {}", i)))?;
+                .ok_or_else(|| McpError::invalid_request(format!("amount is required for recipient {}", i)))?;
             
             if amount == 0 {
-                return Err(McpError::InvalidParameter(format!("amount must be greater than 0 for recipient {}", i)));
+                return Err(McpError::invalid_request(format!("amount must be greater than 0 for recipient {}", i)));
             }
             
             let fee_per_gram = recipient_data.get("fee_per_gram")
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| McpError::InvalidParameter(format!("fee_per_gram is required for recipient {}", i)))?;
+                .ok_or_else(|| McpError::invalid_request(format!("fee_per_gram is required for recipient {}", i)))?;
             
             let payment_type = recipient_data.get("payment_type")
                 .and_then(|v| v.as_u64())
@@ -372,7 +373,7 @@ impl McpTool for TransferTool {
         
         // Validate total amount
         if total_amount > 1_000_000_000_000 { // 1 million Tari
-            return Err(McpError::InvalidParameter("Total transfer amount exceeds safety limit".to_string()));
+            return Err(McpError::invalid_request("Total transfer amount exceeds safety limit"));
         }
         
         let request = Request::new(TransferRequest { recipients });
@@ -446,15 +447,15 @@ impl McpTool for CoinSplitTool {
         let fee_per_gram = get_required_u64_param(&params, "fee_per_gram")?;
         
         if amount_per_split == 0 {
-            return Err(McpError::InvalidParameter("amount_per_split must be greater than 0".to_string()));
+            return Err(McpError::invalid_request("amount_per_split must be greater than 0"));
         }
         
         if split_count == 0 || split_count > 100 {
-            return Err(McpError::InvalidParameter("split_count must be between 1 and 100".to_string()));
+            return Err(McpError::invalid_request("split_count must be between 1 and 100"));
         }
         
         if fee_per_gram == 0 {
-            return Err(McpError::InvalidParameter("fee_per_gram must be greater than 0".to_string()));
+            return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
         }
         
         let lock_height = params.get("lock_height")
