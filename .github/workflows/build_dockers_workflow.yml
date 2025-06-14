@@ -35,6 +35,18 @@ name: Build docker images - workflow_call/on-demand
         type: string
         # linux/arm64, linux/amd64
         default: linux/amd64
+      tari_network:
+        type: string
+        description: 'Tari network (mainnet, nextnet, etc.)'
+        default: ''
+      tari_target_network:
+        type: string
+        description: 'Tari target network for TARI_TARGET_NETWORK env var'
+        default: ''
+      tari_network_dir:
+        type: string
+        description: 'Tari network directory'
+        default: ''
 
 env:
   DAYS_to_EXPIRE: 30
@@ -114,6 +126,18 @@ jobs:
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
           echo ${TARI_TARGET_NETWORK}
           echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_ENV
+
+      - name: Set network environment variables from inputs
+        if: ${{ inputs.tari_target_network != '' }}
+        shell: bash
+        run: |
+          echo "Setting network environment variables from workflow inputs"
+          echo "TARI_NETWORK=${{ inputs.tari_network }}" >> $GITHUB_ENV
+          echo "TARI_TARGET_NETWORK=${{ inputs.tari_target_network }}" >> $GITHUB_ENV
+          echo "TARI_NETWORK_DIR=${{ inputs.tari_network_dir }}" >> $GITHUB_ENV
+          echo "Network: ${{ inputs.tari_network }}"
+          echo "Target Network: ${{ inputs.tari_target_network }}"
+          echo "Network Dir: ${{ inputs.tari_network_dir }}"
 
       - name: Setup expiration for none releases
         if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}

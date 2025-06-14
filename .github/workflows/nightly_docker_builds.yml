@@ -1,0 +1,125 @@
+---
+name: Nightly Docker Builds
+
+"on":
+  schedule:
+    - cron: "05 00 * * *"
+  workflow_dispatch:
+    inputs:
+      platforms:
+        default: linux/amd64
+        description: "docker platform(s)"
+        type: choice
+        options:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm64, linux/amd64
+      build_items:
+        default: minotari_all
+        description: "image(s) to build"
+        type: choice
+        options:
+          - all
+          - minotari_all
+          - minotari_node
+          - minotari_console_wallet
+          - minotari_merge_mining_proxy
+          - minotari_sha3_miner
+          - 3rdparty_all
+
+env:
+  toolchain_default: stable
+
+concurrency:
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  nightly_builds_envs_setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      toolchain: ${{ steps.envs_setup.outputs.toolchain }}
+      platforms: ${{ steps.envs_setup.outputs.platforms }}
+      tag_alias: ${{ steps.envs_setup.outputs.tag_alias }}
+      build_items: ${{ steps.envs_setup.outputs.build_items }}
+
+    steps:
+      - name: envs setup
+        id: envs_setup
+        shell: bash
+        run: |
+          echo "Nightly workflow triggered by ${{ github.actor }} for ${{ github.event_name }}"
+          echo "SHA - ${GITHUB_SHA}"
+          VSHA_SHORT=$(echo ${GITHUB_SHA::7})
+          echo "SHA short - ${VSHA_SHORT}"
+          echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
+          TOOLCHAIN=${{ github.event.inputs.toolchain }}
+          echo "toolchain=${TOOLCHAIN:-${{ env.toolchain_default }}}" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] ; then
+            echo "Manual Nightly Build - selective"
+            echo "platforms=${{ github.event.inputs.platforms }}" >> $GITHUB_OUTPUT
+            echo "build_items=${{ github.event.inputs.build_items }}" >> $GITHUB_OUTPUT
+          else
+            echo "Scheduled Nightly Build"
+            if [[ $(date +%u) -eq 7 ]] ; then
+              echo "Weekly Build - limited dual arch"
+              echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
+              echo "tag_alias=latest-weekly" >> $GITHUB_OUTPUT
+              echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+            else
+              echo "Daily Build - limited"
+              echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+              echo "tag_alias=latest-daily" >> $GITHUB_OUTPUT
+              echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: set matrix
+        id: set-matrix
+        shell: bash
+        run: |
+          # Create matrix for both mainnet and nextnet builds
+          matrix='{
+            "network": [
+              {
+                "name": "mainnet",
+                "tari_target_network": "mainnet",
+                "tari_network": "mainnet",
+                "tari_network_dir": "mainnet"
+              },
+              {
+                "name": "nextnet", 
+                "tari_target_network": "nextnet",
+                "tari_network": "nextnet",
+                "tari_network_dir": "nextnet"
+              }
+            ]
+          }'
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
+          echo "Matrix configuration:"
+          echo $matrix | jq .
+
+  nightly_builds_run:
+    needs: nightly_builds_envs_setup
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.nightly_builds_envs_setup.outputs.matrix) }}
+    uses: ./.github/workflows/build_dockers_workflow.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ needs.nightly_builds_envs_setup.outputs.toolchain }}
+      platforms: ${{ needs.nightly_builds_envs_setup.outputs.platforms }}
+      version: nightly_${{ matrix.network.name }}_${{ github.run_number }}_${{ github.sha }}
+      tag_alias: ${{ needs.nightly_builds_envs_setup.outputs.tag_alias }}-${{ matrix.network.name }}
+      build_items: ${{ needs.nightly_builds_envs_setup.outputs.build_items }}
+      tari_network: ${{ matrix.network.tari_network }}
+      tari_target_network: ${{ matrix.network.tari_target_network }}
+      tari_network_dir: ${{ matrix.network.tari_network_dir }}
