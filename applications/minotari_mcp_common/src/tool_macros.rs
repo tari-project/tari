@@ -188,14 +188,14 @@ macro_rules! impl_standard_tool {
 // All tools now use manual implementations for better control and clarity
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    
 
-    use super::*;
+    
 
     #[test]
     fn test_tool_schema_macros() {
         // Test that the schema macros compile correctly
         // The actual testing was done during manual tool implementation verification
-        assert!(true, "Schema macros compile successfully");
+        // This test verifies compilation passes - functionality verified elsewhere
     }
 }

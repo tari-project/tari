@@ -249,7 +249,7 @@ mod tests {
 
         assert_eq!(params.get_required_string("test_method", "name").unwrap(), "test");
         assert_eq!(params.get_required_u64("test_method", "count").unwrap(), 42);
-        assert_eq!(params.get_required_bool("test_method", "active").unwrap(), true);
+        assert!(params.get_required_bool("test_method", "active").unwrap());
         assert_eq!(params.get_required_array("test_method", "items").unwrap().len(), 3);
 
         assert!(params.get_required_string("test_method", "missing").is_err());

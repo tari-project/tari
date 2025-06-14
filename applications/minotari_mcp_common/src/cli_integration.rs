@@ -5,7 +5,6 @@
 //! and eliminating hardcoded values in auto-launch functionality.
 
 #![allow(clippy::vec_init_then_push)]
-#![allow(clippy::double_ended_iterator_last)]
 
 use std::{collections::HashMap, path::PathBuf};
 

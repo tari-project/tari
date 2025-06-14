@@ -568,7 +568,7 @@ mod tests {
 
         let response = mapper.create_error_response(&status, "transfer");
         assert!(response["error"]["code"].as_str().unwrap() == "PERMISSION_DENIED");
-        assert!(response["recommendations"].as_array().unwrap().len() > 0);
+        assert!(!response["recommendations"].as_array().unwrap().is_empty());
         assert!(response["support"]["error_id"].is_string());
     }
 }
