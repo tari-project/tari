@@ -2898,12 +2898,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .into_iter()
                     .filter(|u| u.features.output_type.is_sidechain_type())
                     .map(|o| {
-                        grpc_output_with_payref(o, None).inspect_err(|e| {
-                            let _ignore = tx.send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal(e.to_string()),
-                            )));
-                        })
+                        grpc_output_with_payref(o, Some(header_hash))
                     })
                     .collect::<Result<Vec<_>, _>>();
 
