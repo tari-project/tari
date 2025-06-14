@@ -102,7 +102,11 @@ impl PeerDiscoveryBridge {
     }
 
     /// Execute peer discovery to find more peer candidates
-    pub async fn execute_discovery(&mut self, task_id: u64) -> Result<usize, ConnectivityError> {
+    pub async fn execute_discovery_with_pool(
+        &mut self, 
+        task_id: u64,
+        connected_node_ids: &[crate::peer_manager::NodeId],
+    ) -> Result<usize, ConnectivityError> {
         debug!(
             target: LOG_TARGET,
             "({}) Executing peer discovery to find more candidates",
@@ -112,14 +116,14 @@ impl PeerDiscoveryBridge {
         self.last_discovery_attempt = Some(Instant::now());
         proactive_dialing_metrics::increment_peer_discovery_attempts();
 
-        // Get current peer count for comparison
-        let initial_count = self.get_available_peer_count().await?;
+        // Get current peer count for comparison (excluding already connected peers)
+        let initial_count = self.get_available_peer_count_with_pool(connected_node_ids).await?;
 
         // For now, implement a basic peer discovery strategy
         // This could be enhanced to integrate with DHT discovery, seed peer querying, etc.
         let discovered_count = self.basic_peer_discovery(task_id).await?;
 
-        let final_count = self.get_available_peer_count().await?;
+        let final_count = self.get_available_peer_count_with_pool(connected_node_ids).await?;
         let net_discovered = final_count.saturating_sub(initial_count);
 
         // Update metrics
@@ -137,8 +141,17 @@ impl PeerDiscoveryBridge {
         Ok(net_discovered)
     }
 
+    /// Execute peer discovery (backward compatibility version)
+    pub async fn execute_discovery(&mut self, task_id: u64) -> Result<usize, ConnectivityError> {
+        // Call the new version with empty connected list for backward compatibility
+        self.execute_discovery_with_pool(task_id, &[]).await
+    }
+
     /// Get the current count of available (non-banned, non-connected) peer candidates
-    async fn get_available_peer_count(&self) -> Result<usize, ConnectivityError> {
+    pub async fn get_available_peer_count_with_pool(
+        &self,
+        connected_node_ids: &[crate::peer_manager::NodeId],
+    ) -> Result<usize, ConnectivityError> {
         let all_peers = self
             .peer_manager
             .all(None)
@@ -147,10 +160,21 @@ impl PeerDiscoveryBridge {
 
         let available_count = all_peers
             .iter()
-            .filter(|peer| peer.features.is_node() && !peer.is_banned())
+            .filter(|peer| {
+                peer.features.is_node() && 
+                !peer.is_banned() && 
+                !connected_node_ids.contains(&peer.node_id)
+            })
             .count();
 
         Ok(available_count)
+    }
+
+    /// Get the current count of available (non-banned, non-connected) peer candidates
+    /// This method is for backward compatibility and doesn't filter connected peers
+    async fn get_available_peer_count(&self) -> Result<usize, ConnectivityError> {
+        // Use the new method with empty connected list for backward compatibility
+        self.get_available_peer_count_with_pool(&[]).await
     }
 
     /// Basic peer discovery implementation

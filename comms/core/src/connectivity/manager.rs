@@ -1194,7 +1194,8 @@ impl ConnectivityManagerActor {
             .should_trigger_discovery(total_peer_count, connected_count, task_id)
             .await?
         {
-            match self.peer_discovery_bridge.execute_discovery(task_id).await {
+            let connected_node_ids = self.pool.get_connected_node_ids();
+            match self.peer_discovery_bridge.execute_discovery_with_pool(task_id, &connected_node_ids).await {
                 Ok(discovered) => {
                     if discovered > 0 {
                         debug!(
