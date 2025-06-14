@@ -187,7 +187,7 @@ impl ProactiveDialer {
 
         // Cap the dial count to prevent overwhelming the network
         const MAX_CONCURRENT_DIALS: usize = 20;
-        final_count.min(MAX_CONCURRENT_DIALS).max(needed)
+        final_count.max(needed).min(MAX_CONCURRENT_DIALS)
     }
 
     /// Select healthy peer candidates for dialing
@@ -340,7 +340,7 @@ mod tests {
             #[allow(clippy::cast_possible_truncation)]
             let final_count = adjusted_count.ceil() as usize;
             const MAX_CONCURRENT_DIALS: usize = 20;
-            final_count.min(MAX_CONCURRENT_DIALS).max(needed)
+            final_count.max(needed).min(MAX_CONCURRENT_DIALS)
         }
 
         // Perfect success rate

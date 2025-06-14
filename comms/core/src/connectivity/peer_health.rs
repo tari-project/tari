@@ -112,7 +112,7 @@ impl PeerHealthMetrics {
         self.add_attempt(ConnectionAttemptResult::Failure);
 
         // Transition to open state if threshold exceeded
-        if self.consecutive_failures >= failure_threshold {
+        if self.consecutive_failures >= failure_threshold && !self.circuit_breaker_state.is_open() {
             self.circuit_breaker_state = CircuitBreakerState::Open {
                 opened_at: Instant::now(),
             };
