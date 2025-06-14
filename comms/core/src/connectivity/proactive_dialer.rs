@@ -80,7 +80,7 @@ impl ProactiveDialer {
         proactive_dialing_metrics::set_target_connections_achieved(current_connections >= target);
 
         if current_connections >= target {
-            trace!(
+            debug!(
                 target: LOG_TARGET,
                 "({}) Current connections ({}) meet or exceed target ({}), no proactive dialing needed",
                 task_id,
