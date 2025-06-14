@@ -381,6 +381,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
 /// Tool for getting a block with custom coinbase from template
 #[derive(Clone)]
 pub struct GetNewBlockWithCoinbasesTool {
+    #[allow(dead_code)] // False positive: field is used in execute() method line 337-340
     grpc_client: BaseNodeGrpcClient<Channel>,
 }
 
