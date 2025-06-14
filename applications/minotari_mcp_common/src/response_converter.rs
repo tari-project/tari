@@ -132,7 +132,7 @@ impl GenericJsonConverter {
 
 #[async_trait]
 impl ResponseConverter for GenericJsonConverter {
-    async fn convert_response(&self, method_name: &str, response: &dyn std::any::Any) -> McpResult<Value> {
+    async fn convert_response(&self, method_name: &str, _response: &dyn std::any::Any) -> McpResult<Value> {
         // This is a basic implementation that would need to be extended with
         // actual protobuf-to-JSON conversion logic using prost-reflect or similar
         
@@ -186,7 +186,7 @@ impl NodeResponseConverter {
 
 #[async_trait]
 impl ResponseConverter for NodeResponseConverter {
-    async fn convert_response(&self, method_name: &str, response: &dyn std::any::Any) -> McpResult<Value> {
+    async fn convert_response(&self, method_name: &str, _response: &dyn std::any::Any) -> McpResult<Value> {
         log::debug!("Converting node response for method: {}", method_name);
         
         // In a real implementation, this would use actual type downcasting
@@ -272,7 +272,7 @@ impl WalletResponseConverter {
 
 #[async_trait]
 impl ResponseConverter for WalletResponseConverter {
-    async fn convert_response(&self, method_name: &str, response: &dyn std::any::Any) -> McpResult<Value> {
+    async fn convert_response(&self, method_name: &str, _response: &dyn std::any::Any) -> McpResult<Value> {
         log::debug!("Converting wallet response for method: {}", method_name);
         
         match method_name {

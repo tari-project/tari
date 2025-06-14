@@ -60,11 +60,11 @@ pub use auto_registry::{AutoDiscoveryRegistry, AutoDiscoveryConfig, ServerType, 
 pub use grpc_executor::{GrpcExecutor, NodeGrpcClient, WalletGrpcClient, ExecutorStatus};
 pub use grpc_client_implementations::{NodeGrpcClientImpl, WalletGrpcClientImpl};
 pub use parameter_converter::{ParameterConverter, ConversionRegistry, ConversionError, JsonParameterExtractor};
-pub use method_implementations::{create_node_converters, create_wallet_converters};
+pub use method_implementations::{register_node_converters, register_wallet_converters};
 pub use conversion_registry_factory::ConversionRegistryFactory;
 pub use health_checker::{HealthChecker, HealthResult, HealthStatus as GrpcHealthStatus, HealthConfig, GrpcHealthChecker};
 pub use connection_manager::{ConnectionManager, CircuitBreaker, CircuitBreakerState, CircuitBreakerConfig, ConnectionPoolConfig, ManagedConnection};
 pub use response_converter::{ResponseConverter, ResponseConverterRegistry, ResponseConverterFactory, GenericJsonConverter, NodeResponseConverter, WalletResponseConverter};
 pub use protobuf_reflector_simple::ProtobufReflector;
-pub use tool_macros::*; // Export all macros for public use
+ // Export all macros for public use
 // pub use protobuf_integration::{ReflectiveAutoDiscovery, EnhancedToolMetadata, ToolDocumentation, OpenApiSpec}; // Disabled pending API compatibility fixes

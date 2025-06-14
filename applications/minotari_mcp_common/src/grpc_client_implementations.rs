@@ -196,7 +196,7 @@ impl NodeGrpcClient for NodeGrpcClientImpl {
 /// Real wallet gRPC client implementation
 pub struct WalletGrpcClientImpl {
     /// The actual wallet gRPC client
-    client: TariWalletGrpcClient<Channel>,
+    _client: TariWalletGrpcClient<Channel>,
     /// Parameter conversion registry for JSON to protobuf conversion
     conversion_registry: Arc<ConversionRegistry>,
 }
@@ -204,7 +204,7 @@ pub struct WalletGrpcClientImpl {
 impl WalletGrpcClientImpl {
     /// Create a new wallet client implementation with real gRPC client
     pub fn new(client: TariWalletGrpcClient<Channel>, conversion_registry: Arc<ConversionRegistry>) -> Self {
-        Self { client, conversion_registry }
+        Self { _client: client, conversion_registry }
     }
     
     /// Create a placeholder for backwards compatibility

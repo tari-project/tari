@@ -552,7 +552,7 @@ pub struct RegistryStatistics {
 pub struct DynamicGrpcTool {
     method_info: GrpcMethodInfo,
     metadata: ToolMetadata,
-    error_mapper: Arc<GrpcErrorMapper>,
+    _error_mapper: Arc<GrpcErrorMapper>,
     grpc_executor: Option<Arc<GrpcExecutor>>,
 }
 
@@ -566,7 +566,7 @@ impl DynamicGrpcTool {
         Self {
             method_info,
             metadata,
-            error_mapper,
+            _error_mapper: error_mapper,
             grpc_executor,
         }
     }
