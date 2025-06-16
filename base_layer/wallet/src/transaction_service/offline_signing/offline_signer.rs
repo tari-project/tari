@@ -14,7 +14,7 @@ use tari_core::{
             OutputFeatures,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::{TransactionMetadata, TransactionProtocolError},
+        transaction_protocol::TransactionMetadata,
     },
 };
 use tari_script::{push_pubkey_script, TariScript};
@@ -25,9 +25,9 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         offline_signing::{
+            marshal_output_pair::MarshalOutputPair,
             models::{
                 get_supported_version,
-                ChangeOutput,
                 OneSidedTransactionInfo,
                 PaymentRecipient,
                 PrepareOneSidedTransactionForSigningResult,
@@ -160,33 +160,18 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let inputs = stp.get_spent_inputs()?;
-        let mut encrypted_commitment_mask_keys = Vec::new();
-        for input in &inputs {
-            let key = &self
-                .resources
-                .transaction_key_manager_service
-                .encrypted_key(&input.output.spending_key_id, None)
-                .await?;
-            encrypted_commitment_mask_keys.push(key.clone());
+        let mut inputs = Vec::new();
+        for input in stp.get_spent_inputs()? {
+            inputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, input).await?);
+        }
+        let mut outputs = Vec::new();
+        for output in stp.get_outputs()? {
+            outputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, output).await?);
         }
 
         let change_output = match stp.get_full_change_output()? {
             Some(change_output) => {
-                let sender_offset_key_id = change_output.sender_offset_key_id.clone().ok_or_else(|| {
-                    TransactionServiceError::from(TransactionProtocolError::IncompleteStateError(
-                        "Missing sender offset key id".to_string(),
-                    ))
-                })?;
-                let encrypted_change_sender_offset_key = self
-                    .resources
-                    .transaction_key_manager_service
-                    .encrypted_key(&sender_offset_key_id, None)
-                    .await?;
-                Some(ChangeOutput {
-                    output: change_output,
-                    encrypted_change_sender_offset_key,
-                })
+                Some(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, change_output).await?)
             },
             None => None,
         };
@@ -207,10 +192,9 @@ where
             },
             change_output,
             inputs,
-            outputs: stp.get_outputs()?,
+            outputs,
             metadata: single_round_sender_data.metadata,
             sender_address: single_round_sender_data.sender_address,
-            encrypted_commitment_mask_keys,
         };
 
         Ok(PrepareOneSidedTransactionForSigningResult {

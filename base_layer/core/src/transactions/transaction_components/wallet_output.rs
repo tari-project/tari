@@ -73,7 +73,6 @@ pub struct WalletOutput {
     pub minimum_value_promise: MicroMinotari,
     pub range_proof: Option<RangeProof>,
     pub payment_id: PaymentId,
-    pub script_signature: Option<ComAndPubSignature>,
 }
 
 impl WalletOutput {
@@ -121,7 +120,6 @@ impl WalletOutput {
             minimum_value_promise,
             range_proof,
             payment_id,
-            script_signature: None,
         })
     }
 
@@ -159,7 +157,6 @@ impl WalletOutput {
             minimum_value_promise,
             range_proof: rangeproof,
             payment_id,
-            script_signature: None,
         }
     }
 
@@ -200,26 +197,6 @@ impl WalletOutput {
         .await
     }
 
-    /// Builds script signature
-    pub async fn build_script_signature<KM: TransactionKeyManagerInterface>(
-        &self,
-        key_manager: &KM,
-        commitment_mask_key_id: Option<&TariKeyId>,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let value = self.value.into();
-        let version = TransactionInputVersion::get_current_version();
-        let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
-        key_manager
-            .get_script_signature(
-                &self.script_key_id,
-                commitment_mask_key_id.unwrap_or(&self.spending_key_id),
-                &value,
-                &version,
-                &script_message,
-            )
-            .await
-    }
-
     /// Commits an KeyManagerOutput into a Transaction input
     pub async fn to_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
@@ -231,13 +208,17 @@ impl WalletOutput {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
         };
-        let script_signature = match &self.script_signature {
-            Some(s) => s.clone(),
-            None => {
-                self.build_script_signature(key_manager, Some(&self.spending_key_id))
-                    .await?
-            },
-        };
+        let version = TransactionInputVersion::get_current_version();
+        let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
+        let script_signature = key_manager
+            .get_script_signature(
+                &self.script_key_id,
+                &self.spending_key_id,
+                &value,
+                &version,
+                &script_message,
+            )
+            .await?;
 
         Ok(TransactionInput::new_current_version(
             SpentOutput::OutputData {

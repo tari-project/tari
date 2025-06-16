@@ -10,12 +10,15 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{encrypted_data::PaymentId, OutputFeatures, Transaction},
-        transaction_protocol::{sender::OutputPair, TransactionMetadata},
+        transaction_protocol::TransactionMetadata,
     },
 };
 use tari_script::TariScript;
 
-use crate::transaction_service::error::TransactionServiceError;
+use crate::transaction_service::{
+    error::TransactionServiceError,
+    offline_signing::marshal_output_pair::MarshalOutputPair,
+};
 
 const SUPPORTED_VERSION: &str = "1.0.0";
 
@@ -64,12 +67,6 @@ pub struct PaymentRecipient {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ChangeOutput {
-    pub output: OutputPair,
-    pub encrypted_change_sender_offset_key: Vec<u8>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OneSidedTransactionInfo {
     // Tip height
     pub last_seen_tip_height: Option<u64>,
@@ -78,17 +75,15 @@ pub struct OneSidedTransactionInfo {
     /// Recipient
     pub recipient: PaymentRecipient,
     /// The change output details. This may be None if no change is required.
-    pub change_output: Option<ChangeOutput>,
+    pub change_output: Option<MarshalOutputPair>,
     /// All transaction inputs inputs.
-    pub inputs: Vec<OutputPair>,
+    pub inputs: Vec<MarshalOutputPair>,
     /// The recipient's outputs.
-    pub outputs: Vec<OutputPair>,
+    pub outputs: Vec<MarshalOutputPair>,
     /// Details used to construct the transaction kernel.
     pub metadata: TransactionMetadata,
     /// Sender address
     pub sender_address: TariAddress,
-    /// Encrypted commitment mask keys
-    pub encrypted_commitment_mask_keys: Vec<Vec<u8>>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PrepareOneSidedTransactionForSigningResult {
