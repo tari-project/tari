@@ -10,10 +10,9 @@ use crate::transaction_service::error::TransactionServiceError;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct MarshalOutputPair {
     pub output_pair: OutputPair,
-    pub encrypted_kernel_nonce: Option<String>,
-    pub encrypted_sender_offset_key_id: Option<String>,
-    pub encrypted_output_spending_key_id: Option<String>,
-    pub encrypted_output_script_key_id: Option<String>,
+    pub encrypted_kernel_nonce: String,
+    pub encrypted_sender_offset_key: Option<String>,
+    pub encrypted_output_spending_key: String,
 }
 
 impl MarshalOutputPair {
@@ -21,23 +20,19 @@ impl MarshalOutputPair {
         key_manager: &KM,
         output_pair: OutputPair,
     ) -> Result<Self, TransactionServiceError> {
-        let encrypted_kernel_nonce =
-            MarshalOutputPair::encrypt_key_failsafe(key_manager, &output_pair.kernel_nonce).await;
+        let encrypted_kernel_nonce = MarshalOutputPair::encrypt_key(key_manager, &output_pair.kernel_nonce).await?;
         let encrypted_sender_offset_key_id = match &output_pair.sender_offset_key_id {
-            Some(key) => MarshalOutputPair::encrypt_key_failsafe(key_manager, key).await,
+            Some(key) => Some(MarshalOutputPair::encrypt_key(key_manager, key).await?),
             None => None,
         };
         let encrypted_output_spending_key_id =
-            MarshalOutputPair::encrypt_key_failsafe(key_manager, &output_pair.output.spending_key_id).await;
-        let encrypted_output_script_key_id =
-            MarshalOutputPair::encrypt_key_failsafe(key_manager, &output_pair.output.script_key_id).await;
+            MarshalOutputPair::encrypt_key(key_manager, &output_pair.output.spending_key_id).await?;
 
         Ok(MarshalOutputPair {
             output_pair,
             encrypted_kernel_nonce,
-            encrypted_sender_offset_key_id,
-            encrypted_output_spending_key_id,
-            encrypted_output_script_key_id,
+            encrypted_sender_offset_key: encrypted_sender_offset_key_id,
+            encrypted_output_spending_key: encrypted_output_spending_key_id,
         })
     }
 
@@ -45,32 +40,23 @@ impl MarshalOutputPair {
         &mut self,
         key_manager: &KM,
     ) -> Result<(), TransactionServiceError> {
-        if let Some(kernel_nonce) = &self.encrypted_kernel_nonce {
-            self.output_pair.kernel_nonce = MarshalOutputPair::import_encrypted_key(key_manager, kernel_nonce).await?;
-        }
-        if let Some(sender_offset_key_id) = &self.encrypted_sender_offset_key_id {
+        self.output_pair.kernel_nonce =
+            MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_kernel_nonce).await?;
+        if let Some(sender_offset_key_id) = &self.encrypted_sender_offset_key {
             self.output_pair.sender_offset_key_id =
                 Some(MarshalOutputPair::import_encrypted_key(key_manager, sender_offset_key_id).await?);
         }
-        if let Some(spending_key_id) = &self.encrypted_output_spending_key_id {
-            self.output_pair.output.spending_key_id =
-                MarshalOutputPair::import_encrypted_key(key_manager, spending_key_id).await?;
-        }
-        if let Some(script_key_id) = &self.encrypted_output_script_key_id {
-            self.output_pair.output.script_key_id =
-                MarshalOutputPair::import_encrypted_key(key_manager, script_key_id).await?;
-        }
+        self.output_pair.output.spending_key_id =
+            MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_spending_key).await?;
         Ok(())
     }
 
-    async fn encrypt_key_failsafe<KM: TransactionKeyManagerInterface>(
+    async fn encrypt_key<KM: TransactionKeyManagerInterface>(
         key_manager: &KM,
         key_id: &TariKeyId,
-    ) -> Option<String> {
-        match key_manager.encrypted_key(key_id, None).await {
-            Ok(key_id) => Some(key_id.to_hex()),
-            Err(_) => None,
-        }
+    ) -> Result<String, KeyManagerServiceError> {
+        let encrypted = key_manager.encrypted_key(key_id, None).await?;
+        Ok(encrypted.to_hex())
     }
 
     async fn import_encrypted_key<KM: TransactionKeyManagerInterface>(
