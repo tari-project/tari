@@ -111,8 +111,6 @@ pub(super) struct RawTransactionInfo {
     pub payment_id: PaymentId,
     /// The senders address
     pub sender_address: TariAddress,
-    /// Precomputed script offset
-    pub script_offset: Option<PrivateKey>,
 }
 
 impl RawTransactionInfo {
@@ -777,10 +775,7 @@ impl SenderTransactionProtocol {
         if let Some(received_output) = &info.recipient_output {
             tx_builder.add_output(received_output.clone());
         }
-        let script_offset = match &info.script_offset {
-            Some(script_offset) => script_offset.clone(),
-            None => key_manager.get_script_offset(&script_keys, &sender_offset_keys).await?,
-        };
+        let script_offset = key_manager.get_script_offset(&script_keys, &sender_offset_keys).await?;
 
         tx_builder.add_offset(offset);
         tx_builder.add_script_offset(script_offset);
