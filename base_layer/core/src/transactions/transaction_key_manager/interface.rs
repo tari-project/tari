@@ -483,7 +483,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         encryption_key_id: Option<&TariKeyId>,
     ) -> Result<Vec<u8>, KeyManagerServiceError>;
 
-    async fn decrypted_key(
+    async fn import_encrypted_key(
         &self,
         encrypted: Vec<u8>,
         encryption_key_id: Option<&TariKeyId>,

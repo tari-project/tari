@@ -339,7 +339,20 @@ impl SenderTransactionProtocol {
         }
     }
 
-    /// Returns the change output for a non-finalized transaction. If the transaction is finalized, or failed, an error
+    /// Returns full change output for a non-finalized transaction. If the transaction is finalized, or failed, an error
+    /// is returned.
+    pub fn get_full_change_output(&self) -> Result<Option<OutputPair>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.change_output.clone()),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// Returns the spent inputs for a non-finalized transaction. If the transaction is finalized, or failed, an error
     /// is returned.
     pub fn get_spent_inputs(&self) -> Result<Vec<OutputPair>, TPE> {
         match &self.state {
@@ -347,6 +360,19 @@ impl SenderTransactionProtocol {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok(info.inputs.clone()),
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// Returns the outputs for a non-finalized transaction. If the transaction is finalized, or failed, an error
+    /// is returned.
+    pub fn get_outputs(&self) -> Result<Vec<OutputPair>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.outputs.clone()),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -964,52 +990,6 @@ impl SenderTransactionProtocol {
                         .clone()
                 })
                 .collect()),
-            SenderState::Failed(_) => Err(TPE::InvalidStateError),
-        }
-    }
-
-    pub async fn get_encrypted_input_keys<KM: TransactionKeyManagerInterface>(
-        &self,
-        km: &KM,
-    ) -> Result<Vec<Vec<u8>>, TPE> {
-        match &self.state {
-            SenderState::Initializing(info) |
-            SenderState::Finalizing(info) |
-            SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => {
-                let mut keys = Vec::new();
-                for input in &info.inputs {
-                    let key = km.encrypted_key(&input.output.spending_key_id, None).await?;
-                    keys.push(key);
-                }
-                Ok(keys)
-            },
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
-            SenderState::Failed(_) => Err(TPE::InvalidStateError),
-        }
-    }
-
-    pub async fn get_encrypted_change_sender_offset_key<KM: TransactionKeyManagerInterface>(
-        &self,
-        km: &KM,
-    ) -> Result<Option<Vec<u8>>, TPE> {
-        match &self.state {
-            SenderState::Initializing(info) |
-            SenderState::Finalizing(info) |
-            SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => {
-                if let Some(change) = &info.change_output {
-                    let sender_offset_key_id = change
-                        .sender_offset_key_id
-                        .clone()
-                        .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
-                    let key = km.encrypted_key(&sender_offset_key_id, None).await?;
-                    Ok(Some(key))
-                } else {
-                    Ok(None)
-                }
-            },
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }

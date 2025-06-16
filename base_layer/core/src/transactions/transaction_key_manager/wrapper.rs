@@ -607,7 +607,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
-    async fn decrypted_key(
+    async fn import_encrypted_key(
         &self,
         encrypted: Vec<u8>,
         encryption_key_id: Option<&TariKeyId>,
@@ -615,7 +615,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner
             .read()
             .await
-            .decrypted_key(encrypted, encryption_key_id)
+            .import_encrypted_key(encrypted, encryption_key_id)
             .await
     }
 }

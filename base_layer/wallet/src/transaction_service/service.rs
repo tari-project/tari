@@ -4147,40 +4147,26 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = request.request.tx_id;
-        let mut stp = request.stp;
-        let dest_address = request.request.dest_address;
+        let dest_address = request.request.info.recipient.address;
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
-        let amount = request.request.amount;
-        let payment_id = request.request.payment_id;
-
-        // Finalize
-        stp.finalize(&self.resources.transaction_key_manager_service)
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-                );
-                TransactionServiceProtocolError::new(tx_id, e.into())
-            })?;
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+        let amount = request.request.info.recipient.amount;
+        let payment_id = request.request.info.payment_id;
 
         let _result = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
-        // Broadcast one-sided transaction
-        let tx = stp
-            .get_transaction()
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        if let Err(e) = check_transaction_size(&tx, tx_id) {
-            self.cancel_transaction(tx_id, TxCancellationReason::Oversized).await;
-            return Err(e.into());
-        }
-
-        let fee = stp
-            .get_fee_amount()
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = request
+            .signed_transaction
+            .transaction
+            .body
+            .kernels()
+            .first()
+            .ok_or(TransactionServiceProtocolError::new(
+                tx_id,
+                TransactionServiceError::InvalidStateError,
+            ))?
+            .fee;
 
         self.resources
             .output_manager_service
@@ -4195,23 +4181,23 @@ where
                 dest_address.clone(),
                 amount,
                 fee,
-                tx.clone(),
+                request.signed_transaction.transaction.clone(),
                 TransactionStatus::Completed,
                 Utc::now(),
                 TransactionDirection::Outbound,
                 None,
                 None,
                 payment_id,
-                request.sent_hashes,
+                request.signed_transaction.sent_hashes,
                 vec![],
-                request.change_hashes,
+                request.signed_transaction.change_hashes,
             )?,
         )
         .await?;
 
         tokio::spawn(send_finalized_transaction_message(
             tx_id,
-            tx.clone(),
+            request.signed_transaction.transaction,
             dest_address.comms_public_key().clone(),
             self.resources.outbound_message_service.clone(),
             self.resources.config.direct_send_timeout,

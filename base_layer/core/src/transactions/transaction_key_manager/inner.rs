@@ -23,7 +23,7 @@ use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use digest::consts::U64;
+use digest::consts::{U32, U64};
 use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
@@ -1714,7 +1714,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             None => self.get_private_view_key().await?,
         };
         let hasher =
-            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("key_encryption");
+            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerTransactionsHashDomain>::new_with_label("key_encryption");
         let hash = hasher.chain(encryption_key.as_bytes()).finalize();
         let key_ga = Key::from_slice(hash.as_ref());
         Ok(XChaCha20Poly1305::new(key_ga))
@@ -1743,7 +1743,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.encrypt_key(key, encryption_key_id).await
     }
 
-    pub async fn decrypted_key(
+    pub async fn import_encrypted_key(
         &self,
         encrypted: Vec<u8>,
         encryption_key_id: Option<&TariKeyId>,
