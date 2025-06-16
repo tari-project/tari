@@ -222,7 +222,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             metadata: info.metadata.clone(),
             payment_id: info.payment_id.clone(),
             features: info.recipient.output_features.clone(),
-            script: info.recipient.script.clone(),
+            script: script.clone(),
             sender_offset_public_key: info.recipient.sender_offset_public_key.clone(),
             ephemeral_public_nonce: info.recipient.ephemeral_public_key_nonce.clone(),
             covenant: info.recipient.covenant.clone(),
