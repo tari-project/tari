@@ -32,18 +32,23 @@ pub trait HasVersion {
 
 pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
     fn from_json(s: &str) -> Result<Self, TransactionServiceError> {
-        let deserialized_obj: Self =
+        let value: serde_json::Value =
             serde_json::from_str(s).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
-
-        let version = deserialized_obj.get_version();
-        let supported_version = get_supported_version();
-        if version != &supported_version {
+        let version = value
+            .get("version")
+            .ok_or_else(|| TransactionServiceError::SerializationError("Missing version".into()))?;
+        let version: Version = serde_json::from_value(version.clone())
+            .map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
+        if version != get_supported_version() {
             return Err(TransactionServiceError::SerializationError(format!(
                 "Unsupported version. Expected '{}', got '{}'",
-                supported_version.to_string(),
-                version.to_string(),
+                get_supported_version(),
+                version
             )));
         }
+
+        let deserialized_obj: Self =
+            serde_json::from_str(s).map_err(|e| TransactionServiceError::SerializationError(e.to_string()))?;
 
         Ok(deserialized_obj)
     }
