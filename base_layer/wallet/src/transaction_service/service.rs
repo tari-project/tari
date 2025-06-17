@@ -3339,7 +3339,10 @@ where
                                             },
                                         }
                                     },
-                                    _ => payment_id = Some(ro.output.payment_id.clone()),
+                                    _ => {
+                                        payment_id = Some(ro.output.payment_id.clone());
+                                        amount = Some(ro.output.value);
+                                    },
                                 };
                             }
                             received_hashes
