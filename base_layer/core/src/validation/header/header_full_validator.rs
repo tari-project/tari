@@ -66,6 +66,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<Difficulty>,
+        vm_key: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
@@ -78,8 +79,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
         check_timestamp_ftl(header, &self.rules)?;
-        check_pow_data(header)?;
-
+        check_pow_data(header, constants)?;
         let achieved_target = if let Some(target) = target_difficulty {
             check_target_difficulty(
                 header,
@@ -87,6 +87,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
                 &self.difficulty_calculator.randomx_factory,
                 &self.gen_hash,
                 &self.rules,
+                vm_key,
             )?
         } else {
             self.difficulty_calculator
@@ -186,14 +187,26 @@ fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<
 }
 
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
-fn check_pow_data(block_header: &BlockHeader) -> Result<(), ValidationError> {
-    use PowAlgorithm::{RandomX, Sha3x};
+fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    use PowAlgorithm::{RandomXM, RandomXT, Sha3x};
+    let allowed_algos = consensus_constants.current_permitted_pow_algos();
+    if !allowed_algos.contains(&block_header.pow.pow_algo) {
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidPowAlgorithm(block_header.pow.pow_algo.to_string()),
+        ));
+    }
     match block_header.pow.pow_algo {
-        RandomX => {
+        RandomXM => {
             if block_header.nonce != 0 {
                 return Err(ValidationError::BlockHeaderError(
                     BlockHeaderValidationError::InvalidNonce,
                 ));
+            }
+            Ok(())
+        },
+        RandomXT => {
+            if block_header.pow.pow_data.len() > 32 {
+                return Err(PowError::RandomxTPowDataTooLong.into());
             }
             Ok(())
         },

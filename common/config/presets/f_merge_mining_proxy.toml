@@ -74,8 +74,8 @@
 # If authentication is being used for curl. (default = false)
 #monerod_use_auth = false
 
-# The Minotari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
-#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+# The Minotari base node's GRPC address. (default = "http://127.0.0.1:18142")
+#base_node_grpc_address = "http://127.0.0.1:18142"
 
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }

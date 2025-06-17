@@ -28,11 +28,12 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{CompressedPublicKey, Signature};
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, PrivateKey},
+    types::{PrivateKey},
 };
-use tari_max_size::MaxSizeBytes;
 use tari_sidechain::EvictionProof;
 
 use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};

@@ -71,7 +71,6 @@ pub type EmojiSet = c_void;
 #[allow(dead_code)]
 pub type TariFeePerGramStats = c_void;
 pub type TariBaseNodeState = c_void;
-
 #[cfg_attr(windows, link(name = "minotari_wallet_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "minotari_wallet_ffi"))]
 #[allow(dead_code)]
@@ -202,7 +201,12 @@ extern "C" {
     ) -> *mut TariSeedWords;
     pub fn seed_words_get_length(seed_words: *const TariSeedWords, error_out: *mut c_int) -> c_uint;
     pub fn seed_words_get_at(seed_words: *mut TariSeedWords, position: c_uint, error_out: *mut c_int) -> *mut c_char;
-    pub fn seed_words_push_word(seed_words: *mut TariSeedWords, word: *const c_char, error_out: *mut c_int) -> c_uchar;
+    pub fn seed_words_push_word(
+        seed_words: *mut TariSeedWords,
+        word: *const c_char,
+        passphrase: *const c_char,
+        error_out: *mut c_int,
+    ) -> c_uchar;
     pub fn seed_words_destroy(seed_words: *mut TariSeedWords);
     pub fn contact_create(
         alias: *const c_char,
@@ -304,7 +308,7 @@ extern "C" {
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> *mut c_char;
-    pub fn completed_transaction_get_payment_id(
+    pub fn completed_transaction_get_user_payment_id(
         transaction: *mut TariCompletedTransaction,
         error_out: *mut c_int,
     ) -> *mut c_char;
@@ -398,7 +402,6 @@ extern "C" {
         database_name: *const c_char,
         datastore_path: *const c_char,
         discovery_timeout_in_secs: c_ulonglong,
-        saf_message_duration_in_secs: c_ulonglong,
         exclude_dial_test_addresses: bool,
         error_out: *mut c_int,
     ) -> *mut TariCommsConfig;
@@ -414,7 +417,7 @@ extern "C" {
         context: *mut c_void,
         config: *mut TariCommsConfig,
         log_path: *const c_char,
-        log_level: c_int,
+        log_verbosity: c_int,
         num_rolling_log_files: c_uint,
         size_per_log_file_bytes: c_uint,
         passphrase: *const c_char,
@@ -424,6 +427,7 @@ extern "C" {
         dns_seeds_str: *const c_char,
         dns_seed_name_servers_str: *const c_char,
         use_dns_sec: bool,
+
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(
@@ -463,7 +467,7 @@ extern "C" {
         callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
         callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
-        callback_base_node_state_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
+        callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
         recovery_in_progress: *mut bool,
         error_out: *mut c_int,
     ) -> *mut TariWallet;

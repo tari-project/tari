@@ -60,11 +60,6 @@ pub mod rpc {
 }
 
 #[allow(clippy::all, clippy::pedantic)]
-pub mod store_forward {
-    tari_comms::outdir_include!("tari.dht.store_forward.rs");
-}
-
-#[allow(clippy::all, clippy::pedantic)]
 pub mod message_header {
     tari_comms::outdir_include!("tari.dht.message_header.rs");
 }

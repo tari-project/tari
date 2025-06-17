@@ -22,7 +22,7 @@
 
 use std::time::Duration;
 
-use primitive_types::U256;
+use primitive_types::U512;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -83,9 +83,9 @@ pub enum BlockHeaderSyncError {
          {local}"
     )]
     PeerSentInaccurateChainMetadata {
-        claimed: U256,
-        actual: Option<U256>,
-        local: U256,
+        claimed: U512,
+        actual: Option<U512>,
+        local: U512,
     },
     #[error("This peer sent too many headers ({0}) in response to a chain split request")]
     PeerSentTooManyHeaders(usize),
@@ -97,6 +97,8 @@ pub enum BlockHeaderSyncError {
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
+    #[error("Unable to get TargetDifficulties: ({0})")]
+    TargetDifficultiesError(String),
 }
 
 impl BlockHeaderSyncError {
@@ -109,6 +111,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
+            BlockHeaderSyncError::TargetDifficultiesError(_) |
             BlockHeaderSyncError::PeerNotFound => None,
             BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),
 

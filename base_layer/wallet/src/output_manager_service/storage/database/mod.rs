@@ -184,6 +184,15 @@ where T: OutputManagerBackend + 'static
         self.db.get_balance(current_tip_for_time_lock_calculation)
     }
 
+    pub fn get_balance_payment_id(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerStorageError> {
+        self.db
+            .get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
+    }
+
     /// This method is called when a transaction is built to be sent. It will encumber unspent outputs against a pending
     /// transaction in the short term.
     pub fn encumber_outputs(

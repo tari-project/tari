@@ -39,6 +39,13 @@ hash_domain!(
     1
 );
 
+// Hash domain for Payment Reference (PayRef) generation
+hash_domain!(
+    PaymentReferenceHashDomain,
+    "com.tari.base_layer.wallet.payment_reference",
+    1
+);
+
 hash_domain!(
     ValidatorNodeHashDomain,
     "com.tari.base_layer.core.transactions.side_chain.validator_node",

@@ -43,18 +43,18 @@ pub struct DnsClient {
 }
 
 impl DnsClient {
-    pub async fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+    pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
+            DnsNameServer::System => TokioResolver::builder_tokio()?.build(),
             DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::Tls),
         };
 
         Ok(Self { resolver })
     }
 
-    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+    pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let resolver = match name_server {
-            DnsNameServer::System => TokioResolver::from_system_conf(TokioConnectionProvider::default())?,
+            DnsNameServer::System => TokioResolver::builder_tokio()?.build(),
             DnsNameServer::Custom { addr, dns_name } => Self::create_resolver(addr, dns_name, Protocol::default()),
         };
 
@@ -74,12 +74,15 @@ impl DnsClient {
             http_endpoint: None,
             trust_negative_responses: false,
             bind_addr: None,
-            tls_config: None,
         });
+
         let mut opts = ResolverOpts::default();
         opts.edns0 = true;
         opts.try_tcp_on_error = true;
-        TokioResolver::tokio(conf, opts)
+        opts.timeout = std::time::Duration::from_secs(1);
+        TokioResolver::builder_with_config(conf, TokioConnectionProvider::default())
+            .with_options(opts)
+            .build()
     }
 
     pub async fn query_txt<T: IntoName>(&mut self, name: T) -> Result<Vec<String>, DnsClientError> {
@@ -103,7 +106,7 @@ impl DnsClient {
                     if len == 0 {
                         return None;
                     }
-                    if len > txt.len() {
+                    if len >= txt.len() {
                         warn!(
                             target: LOG_TARGET,
                             "Length byte {} is greater than the length of the TXT record {}",
@@ -113,7 +116,13 @@ impl DnsClient {
                         return None;
                     }
                     // Exclude the first length byte from the string result
-                    Some(String::from_utf8_lossy(&txt[1..len]).to_string())
+                    Some(String::from_utf8_lossy(&txt[1..=len]).to_string())
+                })
+                .inspect_err(|e| {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to parse DNS TXT record. Error: {}", e
+                    );
                 })
                 .transpose()
             })

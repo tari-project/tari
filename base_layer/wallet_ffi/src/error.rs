@@ -26,8 +26,7 @@ use minotari_wallet::{
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
 use tari_common_types::tari_address::TariAddressError;
-use tari_comms::multiaddr;
-use tari_comms_dht::store_forward::StoreAndForwardError;
+use tari_comms::{multiaddr, peer_manager::PeerManagerError};
 use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_core::transactions::transaction_key_manager::error::KeyManagerServiceError;
 use tari_crypto::{
@@ -249,10 +248,6 @@ impl From<WalletError> for LibWalletError {
                 code: 301,
                 message: format!("{:?}", w),
             },
-            WalletError::StoreAndForwardError(_) => Self {
-                code: 302,
-                message: format!("{:?}", w),
-            },
             WalletError::ContactsServiceError(ContactsServiceError::ContactNotFound) => Self {
                 code: 401,
                 message: format!("{:?}", w),
@@ -445,6 +440,14 @@ impl From<TariAddressError> for LibWalletError {
                 code: 708,
                 message: format!("{:?}", e),
             },
+            TariAddressError::PaymentIdTooLarge => Self {
+                code: 709,
+                message: format!("{:?}", e),
+            },
+            TariAddressError::PaymentIdNotSupported => Self {
+                code: 710,
+                message: format!("{:?}", e),
+            },
         }
     }
 }
@@ -497,15 +500,6 @@ impl From<SchnorrSignatureError> for LibWalletError {
     }
 }
 
-impl From<StoreAndForwardError> for LibWalletError {
-    fn from(err: StoreAndForwardError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
-        Self {
-            code: 902,
-            message: format!("{:?}", err),
-        }
-    }
-}
 #[derive(Debug, Error, PartialEq)]
 pub enum TransactionError {
     #[error("The transaction has an incorrect status: `{0}`")]
@@ -547,6 +541,16 @@ impl From<KeyManagerServiceError> for LibWalletError {
         error!(target: LOG_TARGET, "{}", format!("{:?}", err));
         Self {
             code: 458,
+            message: format!("{:?}", err),
+        }
+    }
+}
+
+impl From<PeerManagerError> for LibWalletError {
+    fn from(err: PeerManagerError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        Self {
+            code: 459,
             message: format!("{:?}", err),
         }
     }

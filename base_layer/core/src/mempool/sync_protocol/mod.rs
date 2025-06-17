@@ -584,7 +584,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         let stored_result = self.mempool.insert(txn).await?;
         if stored_result.is_stored() {
             #[cfg(feature = "metrics")]
-            metrics::inbound_transactions(Some(&self.peer_node_id)).inc();
+            metrics::inbound_transactions().inc();
             debug!(
                 target: LOG_TARGET,
                 "Inserted transaction `{}` from peer `{}`",
@@ -593,7 +593,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             );
         } else {
             #[cfg(feature = "metrics")]
-            metrics::rejected_inbound_transactions(Some(&self.peer_node_id)).inc();
+            metrics::rejected_inbound_transactions().inc();
             debug!(
                 target: LOG_TARGET,
                 "Did not store new transaction `{}` in mempool: {}", excess_sig_hex, stored_result

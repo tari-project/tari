@@ -144,6 +144,8 @@ pub enum ChainStorageError {
     MrHashError(#[from] MrHashError),
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
+    #[error("JellyfishMerkleTree error: {0}")]
+    JellyfishMerkleTreeError(anyhow::Error),
 }
 
 impl ChainStorageError {
@@ -198,7 +200,8 @@ impl ChainStorageError {
             _err @ ChainStorageError::FromKeyBytesFailed(_) |
             _err @ ChainStorageError::InvalidChainMetaData(_) |
             _err @ ChainStorageError::OutOfRange |
-            _err @ ChainStorageError::MrHashError(_) => None,
+            _err @ ChainStorageError::MrHashError(_) |
+            _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
         }
     }
 }

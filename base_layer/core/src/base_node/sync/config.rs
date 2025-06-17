@@ -25,7 +25,6 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
 use tari_comms::peer_manager::NodeId;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BlockchainSyncConfig {
@@ -52,6 +51,16 @@ pub struct BlockchainSyncConfig {
     /// sync.
     #[serde(with = "serializers::seconds")]
     pub rpc_deadline: Duration,
+    /// The number of initial rounds of seed peer based bootstrapping.
+    #[serde(default = "default_num_initial_sync_rounds_seed_bootstrap")]
+    pub num_initial_sync_rounds_seed_bootstrap: usize,
+}
+
+fn default_num_initial_sync_rounds_seed_bootstrap() -> usize {
+    // This should ideally match or be related to DhtConfig.network_discovery.max_seed_peer_sync_count
+    // For now, a sensible default. This will be overridden by DhtEvent if DhtNetworkDiscoveryRoundInfo provides
+    // total_rounds.
+    5
 }
 
 impl Default for BlockchainSyncConfig {
@@ -64,6 +73,14 @@ impl Default for BlockchainSyncConfig {
             forced_sync_peers: Default::default(),
             validation_concurrency: 6,
             rpc_deadline: Duration::from_secs(240), // Syncing many full blocks over tor require this
+            num_initial_sync_rounds_seed_bootstrap: default_num_initial_sync_rounds_seed_bootstrap(),
         }
+    }
+}
+
+impl BlockchainSyncConfig {
+    // Add an accessor if one doesn't exist for the new field
+    pub fn num_initial_sync_rounds_seed_bootstrap(&self) -> usize {
+        self.num_initial_sync_rounds_seed_bootstrap
     }
 }

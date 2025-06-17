@@ -12,15 +12,13 @@ license.workspace = true
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_common = { workspace = true }
+tari_common_sqlite = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
-tari_storage = { workspace = true }
 tari_utilities = { workspace = true }
 
 anyhow = "1.0.53"
-fs2 = "0.4.0"
 futures = { version = "^0.3.1" }
-lmdb-zero = "0.4.4"
 log = "0.4.6"
 pgp = { version = "0.14.2", optional = true }
 prost = "0.13.3"
@@ -29,13 +27,17 @@ reqwest = { version = "0.11", optional = true, default-features = false }
 semver = { version = "1.0.1", optional = true }
 serde = "1.0.90"
 thiserror = "1.0.26"
-tokio = { version = "1.36", features = ["macros"] }
+tokio = { version = "1.44", features = ["macros"] }
 tokio-stream = { version = "0.1.9", default-features = false, features = [
     "time",
 ] }
 tower = "0.4.11"
-hickory-resolver = { version = "=0.25.0-alpha.4", features = ["tokio-runtime", "dns-over-tls", "dns-over-rustls"] }
-hickory-proto = { version = "=0.25.0-alpha.4" }
+hickory-resolver = { version = "0.25.2", features = [
+    "tokio",
+    "tls-ring",
+    "rustls-platform-verifier",
+] }
+hickory-proto = { version = "0.25.2" }
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }

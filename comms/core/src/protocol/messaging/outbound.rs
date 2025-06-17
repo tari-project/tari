@@ -105,7 +105,7 @@ impl OutboundMessaging {
                 Err(MessagingProtocolError::ConnectionClosed(err)) => {
                     // Not sure about the metrics, but feels safer to keep on registering the error in metrics for now
                     #[cfg(feature = "metrics")]
-                    metrics::error_count(&peer_node_id).inc();
+                    metrics::error_count().inc();
                     debug!(
                         target: LOG_TARGET,
                         "Connection closed {}: {} {}",
@@ -116,7 +116,7 @@ impl OutboundMessaging {
                 },
                 Err(err) => {
                     #[cfg(feature = "metrics")]
-                    metrics::error_count(&peer_node_id).inc();
+                    metrics::error_count().inc();
                     error!(
                         target: LOG_TARGET,
                         "Outbound messaging protocol failed for peer {}: {}", peer_node_id, err
@@ -268,7 +268,7 @@ impl OutboundMessaging {
         });
 
         #[cfg(feature = "metrics")]
-        let outbound_count = metrics::outbound_message_count(&peer_node_id);
+        let outbound_count = metrics::outbound_message_count();
         let stream = outbound_stream.map(|mut out_msg| {
             #[cfg(feature = "metrics")]
             outbound_count.inc();

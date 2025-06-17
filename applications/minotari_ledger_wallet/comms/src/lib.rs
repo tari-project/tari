@@ -30,7 +30,7 @@ mod test {
     use minotari_ledger_wallet_common::{
         get_public_spend_key_bytes_from_tari_dual_address,
         tari_dual_address_display,
-        TARI_DUAL_ADDRESS_SIZE,
+        TARI_DUAL_ADDRESS_MIN_SIZE,
     };
     use rand::rngs::OsRng;
     use tari_common_types::tari_address::TariAddress;
@@ -98,17 +98,15 @@ mod test {
             "f48ScXDKxTU3nCQsQrXHs4tnkAyLViSUpi21t7YuBNsJE1VpqFcNSeEzQWgNeCqnpRaCA9xRZ3VuV11F8pHyciegbCt";
         let tari_address = TariAddress::from_base58(tari_address_base_58).unwrap();
         let tari_address_serialized = tari_address.to_vec();
-        assert_eq!(TARI_DUAL_ADDRESS_SIZE, tari_address_serialized.len());
-        let mut tari_address_bytes = [0u8; TARI_DUAL_ADDRESS_SIZE];
-        tari_address_bytes.copy_from_slice(&tari_address_serialized);
+        assert_eq!(TARI_DUAL_ADDRESS_MIN_SIZE, tari_address_serialized.len());
         // Displaying the address as a base58 string
         assert_eq!(
-            tari_dual_address_display(&tari_address_bytes).unwrap(),
+            tari_dual_address_display(&tari_address_serialized).unwrap(),
             tari_address_base_58
         );
         // Getting the public spend key from the address
         assert_eq!(
-            get_public_spend_key_bytes_from_tari_dual_address(&tari_address_bytes)
+            get_public_spend_key_bytes_from_tari_dual_address(&tari_address_serialized)
                 .unwrap()
                 .to_vec(),
             tari_address.public_spend_key().to_vec()

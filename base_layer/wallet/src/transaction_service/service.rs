@@ -36,9 +36,10 @@ use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
-    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
+    payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
+    epoch::VnEpoch,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{
         ComAndPubSignature,
@@ -120,9 +121,10 @@ use crate::{
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
+        error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
             FeePerGramStatsResponse,
+            PaymentDetails,
             TransactionEvent,
             TransactionEventSender,
             TransactionServiceRequest,
@@ -136,7 +138,7 @@ use crate::{
             transaction_validation_protocol::TransactionValidationProtocol,
         },
         storage::{
-            database::{TransactionBackend, TransactionDatabase},
+            database::{DbKey, TransactionBackend, TransactionDatabase},
             models::{
                 CompletedTransaction,
                 TxCancellationReason,
@@ -284,12 +286,13 @@ where
         };
         let one_sided_tari_address = TariAddress::new_dual_address(
             view_key.pub_key.clone(),
-            comms_key.pub_key,
+            spend_key.pub_key.clone(),
             network,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )?;
         let interactive_tari_address =
-            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)?;
         let resources = TransactionServiceResources {
             db: db.clone(),
             output_manager_service,
@@ -953,9 +956,21 @@ where
                 TransactionServiceResponse::PendingOutboundTransactions(self.db.get_pending_outbound_transactions()?),
             ),
 
-            TransactionServiceRequest::GetCompletedTransactions => Ok(
-                TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions()?),
-            ),
+            TransactionServiceRequest::GetCompletedTransactions {
+                payment_id,
+                block_hash,
+                block_height,
+            } => Ok(TransactionServiceResponse::CompletedTransactions(
+                self.db
+                    .get_completed_transactions(payment_id, block_hash, block_height)?,
+            )),
+            TransactionServiceRequest::GetCompletedTransactionsByAddresses {
+                source_address,
+                destination_address,
+            } => Ok(TransactionServiceResponse::CompletedTransactions(
+                self.db
+                    .get_completed_transactions_by_addresses(source_address, destination_address)?,
+            )),
             TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
                 Ok(TransactionServiceResponse::PendingInboundTransactions(
                     self.db.get_cancelled_pending_inbound_transactions()?,
@@ -996,6 +1011,9 @@ where
                         tx_id
                     },
                 };
+                let _size = self
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::TransactionImported(tx_id)));
                 Ok(TransactionServiceResponse::TransactionImported(tx_id))
             },
             TransactionServiceRequest::ImportUtxoWithStatus {
@@ -1056,10 +1074,25 @@ where
                 .start_transaction_revalidation(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReValidateRejectedTransactions => self
+                .start_rejected_transaction_revalidation(transaction_validation_join_handles)
+                .await
+                .map(TransactionServiceResponse::ValidationStarted),
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
+            },
+            TransactionServiceRequest::GetPaymentByReference(payref) => self
+                .get_payment_by_reference(payref)
+                .map(TransactionServiceResponse::PaymentDetails),
+            TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
+                match self.get_transaction_with_payref(payref)? {
+                    Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
+                    None => Err(TransactionServiceError::TransactionStorageError(
+                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions),
+                    ))?,
+                }
             },
         };
 
@@ -1175,6 +1208,7 @@ where
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn send_transaction(
         &mut self,
         destination: TariAddress,
@@ -1182,7 +1216,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        mut payment_id: PaymentId,
         tx_meta: TransactionMetadata,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
@@ -1192,14 +1226,28 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
+        debug!(target: LOG_TARGET, "Sending transaction to {} with {}", destination, amount);
         let tx_id = TxId::new_random();
         if let Err(e) = self.verify_send(&destination, TariAddressFeatures::create_interactive_only()) {
-            let _result = reply_channel
-                .send(Err(TransactionServiceError::InvalidNetwork))
-                .inspect_err(|_| {
-                    warn!(target: LOG_TARGET, "Failed to send service reply");
-                });
+            let err = match e {
+                TransactionServiceError::InvalidNetwork => TransactionServiceError::InvalidNetwork,
+                TransactionServiceError::InvalidAddress(ref reason) => {
+                    TransactionServiceError::InvalidAddress(reason.clone())
+                },
+                TransactionServiceError::NotSupported(ref reason) => {
+                    TransactionServiceError::NotSupported(reason.clone())
+                },
+                _ => TransactionServiceError::NotSupported(e.to_string()),
+            };
+            let _result = reply_channel.send(Err(err)).inspect_err(|_| {
+                warn!(target: LOG_TARGET, "Failed to send service reply");
+            });
             return Err(e);
+        }
+        // let override the payment_id if the address says we should
+        if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, destination.get_payment_id_user_data_bytes());
+            payment_id = PaymentId::open(destination.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
         // If we're paying ourselves, let's complete and submit the transaction immediately
         if &self
@@ -1233,10 +1281,16 @@ where
             let _size = self
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+            let all_outputs = transaction
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.hash())
+                .collect::<Vec<HashOutput>>();
 
             self.submit_transaction(
                 transaction_broadcast_join_handles,
-                CompletedTransaction::new(
+                CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.interactive_tari_address.clone(),
                     self.resources.interactive_tari_address.clone(),
@@ -1249,6 +1303,9 @@ where
                     None,
                     None,
                     payment_id,
+                    vec![],
+                    all_outputs,
+                    vec![],
                 )?,
             )
             .await?;
@@ -1261,7 +1318,6 @@ where
 
             return Ok(());
         }
-
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
         let (cancellation_sender, cancellation_receiver) = oneshot::channel();
         self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
@@ -1308,10 +1364,7 @@ where
             .await?
             .outputs
             .into_iter()
-            .filter_map(|o| match o.try_into() {
-                Ok(output) => Some(output),
-                _ => None,
-            })
+            .filter_map(|o| o.try_into().ok())
             .collect();
         Ok(results)
     }
@@ -1372,7 +1425,13 @@ where
                 total_script_nonce,
                 shared_secret,
             )) => {
-                let completed_tx = CompletedTransaction::new(
+                let all_outputs = transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.hash())
+                    .collect::<Vec<HashOutput>>();
+                let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.interactive_tari_address.clone(),
                     recipient_address,
@@ -1385,6 +1444,9 @@ where
                     None,
                     None,
                     payment_id.clone(),
+                    all_outputs,
+                    vec![],
+                    vec![],
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
@@ -1424,7 +1486,13 @@ where
             .await
         {
             Ok((transaction, amount, fee)) => {
-                let completed_tx = CompletedTransaction::new(
+                let all_outputs = transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.hash())
+                    .collect::<Vec<HashOutput>>();
+                let completed_tx = CompletedTransaction::new_with_output_hashes(
                     tx_id,
                     self.resources.interactive_tari_address.clone(),
                     recipient_address,
@@ -1437,6 +1505,9 @@ where
                     None,
                     None,
                     payment_id,
+                    all_outputs,
+                    vec![],
+                    vec![],
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
                 self.db.insert_completed_transaction(tx_id, completed_tx)?;
@@ -1595,8 +1666,13 @@ where
         let minimum_value_promise = MicroMinotari::zero();
 
         // Prepare sender part of the transaction
-        let payment_id =
-            PaymentId::add_sender_address(payment_id, self.resources.interactive_tari_address.clone(), None);
+        let payment_id = payment_id.add_sender_address(
+            self.resources.interactive_tari_address.clone(),
+            false,
+            amount,
+            fee_per_gram,
+            None,
+        );
         let mut stp = self
             .resources
             .output_manager_service
@@ -1720,6 +1796,15 @@ where
             .unwrap();
 
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output.clone(),
@@ -1766,9 +1851,10 @@ where
             .output_manager_service
             .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
+
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.interactive_tari_address.clone(),
                 destination,
@@ -1781,6 +1867,9 @@ where
                 None,
                 None,
                 payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
             )?,
         )
         .await?;
@@ -1804,13 +1893,21 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         recipient_script: Option<TariScript>,
-        payment_id: PaymentId,
+        mut payment_id: PaymentId,
     ) -> Result<TxId, TransactionServiceError> {
+        debug!(target: LOG_TARGET, "Sending one sided transaction to {} with {}", dest_address, amount);
         let tx_id = TxId::new_random();
-        let payment_id = match payment_id.clone() {
-            PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
-                payment_id,
-                self.resources.interactive_tari_address.clone(),
+        // let override the payment_id if the address says we should
+        if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_payment_id_user_data_bytes());
+            payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
+        }
+        let payment_id = match payment_id {
+            PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
+                self.resources.one_sided_tari_address.clone(),
+                true,
+                amount,
+                fee_per_gram,
                 if dest_address == self.resources.one_sided_tari_address ||
                     dest_address == self.resources.interactive_tari_address
                 {
@@ -1964,6 +2061,15 @@ where
 
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2013,7 +2119,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address.clone(),
@@ -2026,6 +2132,9 @@ where
                 None,
                 None,
                 payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
             )?,
         )
         .await?;
@@ -2052,11 +2161,6 @@ where
         >,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let payment_id = PaymentId::AddressAndData {
-            sender_address: self.resources.interactive_tari_address.clone(),
-            tx_type: TxType::PaymentToOther,
-            user_data: vec![],
-        };
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // Prepare sender part of the transaction
@@ -2147,6 +2251,14 @@ where
         let amount = stp.get_amount_to_recipient()?;
 
         let minimum_value_promise = MicroMinotari::zero();
+        let payment_id = PaymentId::AddressAndData {
+            sender_address: self.resources.interactive_tari_address.clone(),
+            sender_one_sided: true,
+            amount,
+            fee: stp.get_fee_amount().unwrap_or_default(),
+            tx_type: TxType::PaymentToOther,
+            user_data: vec![],
+        };
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -2180,6 +2292,15 @@ where
 
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let received_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2229,7 +2350,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.one_sided_tari_address.clone(),
                 dest_address,
@@ -2242,6 +2363,9 @@ where
                 None,
                 None,
                 payment_id,
+                vec![],
+                received_hashes,
+                change_hashes,
             )?,
         )
         .await?;
@@ -2294,15 +2418,16 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
         claim_public_key: Option<CompressedPublicKey>,
-        sidechain_deployment_key: Option<PrivateKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
+            false,
+            amount,
+            fee_per_gram,
             Some(TxType::Burn),
         );
         trace!(
@@ -2444,6 +2569,15 @@ where
 
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
+        let change_hashes = match stp.get_change_output()? {
+            Some(change_output) => vec![
+                change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?,
+            ],
+            None => vec![],
+        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2503,7 +2637,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.interactive_tari_address.clone(),
                 TariAddress::default(),
@@ -2516,6 +2650,9 @@ where
                 None,
                 None,
                 payment_id,
+                sent_hashes,
+                vec![],
+                change_hashes,
             )?,
         )
         .await?;
@@ -3246,7 +3383,7 @@ where
                     source_pubkey,
                     self.resources.interactive_tari_address.network(),
                     TariAddressFeatures::INTERACTIVE,
-                )
+                )?
             };
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
@@ -3368,6 +3505,7 @@ where
                         let mut destination_address = None;
                         let mut payment_id = None;
                         let mut amount = None;
+                        let mut received_hashes = vec![];
                         for ro in recovered {
                             if source_address.is_none() {
                                 payment_id = Some(ro.output.payment_id.clone());
@@ -3376,6 +3514,7 @@ where
                                         sender_address: address,
                                         tx_type: _,
                                         user_data: _,
+                                        ..
                                     } => {
                                         source_address = Some(address.clone());
                                         destination_address = Some(self.resources.one_sided_tari_address.clone());
@@ -3409,7 +3548,8 @@ where
                                             TxType::ValidatorNodeRegistration |
                                             TxType::CodeTemplateRegistration |
                                             TxType::ClaimAtomicSwap |
-                                            TxType::HtlcAtomicSwapRefund => {
+                                            TxType::HtlcAtomicSwapRefund |
+                                            TxType::Coinbase => {
                                                 source_address = Some(own_address.clone());
                                                 destination_address = Some(own_address.clone());
                                             },
@@ -3422,8 +3562,10 @@ where
                                     _ => payment_id = Some(ro.output.payment_id.clone()),
                                 };
                             }
+                            received_hashes
+                                .push(ro.output.hash(&self.resources.transaction_key_manager_service).await?);
                         }
-                        let completed_transaction = CompletedTransaction::new(
+                        let completed_transaction = CompletedTransaction::new_with_output_hashes(
                             tx_id,
                             source_address.clone().unwrap_or_default(),
                             destination_address.clone().unwrap_or_default(),
@@ -3436,6 +3578,9 @@ where
                             None,
                             None,
                             payment_id.unwrap_or_default(),
+                            vec![],
+                            received_hashes,
+                            vec![], // no output hashes for completed transactions
                         )?;
                         self.db
                             .insert_completed_transaction(tx_id, completed_transaction.clone())?;
@@ -3614,6 +3759,16 @@ where
         self.start_transaction_validation_protocol(join_handles).await
     }
 
+    async fn start_rejected_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) -> Result<OperationId, TransactionServiceError> {
+        self.resources.db.mark_all_rejected_transactions_as_unvalidated()?;
+        self.start_transaction_validation_protocol(join_handles).await
+    }
+
     async fn start_transaction_validation_protocol(
         &mut self,
         join_handles: &mut FuturesUnordered<
@@ -3635,6 +3790,7 @@ where
             self.resources.connectivity.clone(),
             self.resources.config.clone(),
             self.event_publisher.clone(),
+            self.resources.output_manager_service.clone(),
         );
 
         let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
@@ -3909,7 +4065,8 @@ where
                     TxType::CodeTemplateRegistration |
                     TxType::ClaimAtomicSwap |
                     TxType::HtlcAtomicSwapRefund |
-                    TxType::ImportedUtxoNoneRewindable => TransactionDirection::Inbound,
+                    TxType::ImportedUtxoNoneRewindable |
+                    TxType::Coinbase => TransactionDirection::Inbound,
                 },
                 amount,
                 match tx_type {
@@ -3921,7 +4078,8 @@ where
                     TxType::ValidatorNodeRegistration |
                     TxType::CodeTemplateRegistration |
                     TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund => self.resources.one_sided_tari_address.clone(),
+                    TxType::HtlcAtomicSwapRefund |
+                    TxType::Coinbase => self.resources.one_sided_tari_address.clone(),
                 },
             )
         } else {
@@ -4032,9 +4190,10 @@ where
         amount: MicroMinotari,
         payment_id: PaymentId,
     ) -> Result<(), TransactionServiceError> {
+        let all_outputs = tx.body.outputs().iter().map(|o| o.hash()).collect::<Vec<HashOutput>>();
         self.submit_transaction(
             transaction_broadcast_join_handles,
-            CompletedTransaction::new(
+            CompletedTransaction::new_with_output_hashes(
                 tx_id,
                 self.resources.interactive_tari_address.clone(),
                 self.resources.interactive_tari_address.clone(),
@@ -4047,6 +4206,9 @@ where
                 None,
                 None,
                 payment_id,
+                vec![],
+                all_outputs,
+                vec![],
             )?,
         )
         .await?;
@@ -4089,6 +4251,93 @@ where
             ));
         }
         Ok(())
+    }
+
+    /// Get payment details by PayRef
+    fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+        let txn = match self.db.get_transaction_with_payref(&payref)? {
+            Some(txn) => txn,
+            None => return Ok(None), // No transaction found with the given PayRef
+        };
+
+        let block_hash = match txn.mined_in_block {
+            Some(hash) => hash,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let mined_height = match txn.mined_height {
+            Some(height) => height,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let confirmations = match txn.confirmations {
+            Some(confirmations) => confirmations,
+            None => return Ok(None), // This should not happen, but just in case
+        };
+
+        let payment_id_bytes = txn.payment_id.user_data_as_bytes();
+
+        // Check if PayRef matches any sent output by generating proper PayRef
+        for output_hash in &txn.sent_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
+            }
+        }
+
+        // Check if PayRef matches any received output by generating proper PayRef
+        for output_hash in &txn.received_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
+            }
+        }
+
+        // Check if PayRef matches any change output by generating proper PayRef
+        for output_hash in &txn.change_output_hashes {
+            let generated_payref = generate_payment_reference(&block_hash, output_hash);
+            if generated_payref == payref {
+                return Ok(Some(PaymentDetails {
+                    tx_id: txn.tx_id,
+                    payment_reference: payref,
+                    amount: txn.amount,
+                    direction: txn.direction,
+                    block_height: mined_height,
+                    confirmations,
+                    timestamp: Some(txn.timestamp),
+                    payment_id: Some(payment_id_bytes),
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn get_transaction_with_payref(
+        &self,
+        payref: FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionServiceError> {
+        let transactions = self.db.get_transaction_with_payref(&payref)?;
+
+        Ok(transactions)
     }
 }
 

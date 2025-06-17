@@ -14,7 +14,7 @@ Feature: Wallet Transfer
     When I have wallet WALLET_A with 10T connected to base node NODE_A
     When I have wallet WALLET_B connected to base node NODE_B
     When I wait 5 seconds
-    When I transfer 5T from WALLET_A to WALLET_B
+    When I transfer 5T one-sided from WALLET_A to WALLET_B
     When I mine 4 blocks on SEED_A
     Then wallet WALLET_A has 5T
     When I wait 5 seconds
@@ -37,7 +37,7 @@ Feature: Wallet Transfer
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I transfer 50000 uT from WALLET_A to WALLET_B and WALLET_C at fee 20
+    When I transfer 50000 uT one-sided from WALLET_A to WALLET_B and WALLET_C at fee 20
     When mining node MINER mines 10 blocks
     Then all nodes are at height 20
     Then all wallets detect all transactions as Mined_or_OneSidedConfirmed

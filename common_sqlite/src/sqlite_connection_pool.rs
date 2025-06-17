@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use core::time::Duration;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, path::PathBuf};
 
 use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
@@ -80,7 +80,7 @@ impl SqliteConnectionPool {
     pub fn get_pooled_connection(
         &self,
     ) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, SqliteStorageError> {
-        if let Some(pool) = self.pool.clone() {
+        if let Some(pool) = self.pool.as_ref() {
             pool.get().map_err(|e| {
                 warn!(
                     target: LOG_TARGET,
@@ -134,6 +134,21 @@ impl SqliteConnectionPool {
         } else {
             Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))
         }
+    }
+
+    /// Return the database path
+    pub fn db_path(&self) -> PathBuf {
+        PathBuf::from(&self.db_path)
+    }
+
+    /// Perform cleanup on the connection pool. This will drop the pool and return the state of the pool.
+    pub fn cleanup(&mut self) -> Option<String> {
+        if let Some(pool) = self.pool.take() {
+            let state = format!("{:?}", pool.state());
+            drop(pool);
+            return Some(state);
+        }
+        None
     }
 }
 

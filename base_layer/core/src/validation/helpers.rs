@@ -38,9 +38,10 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
-        randomx_difficulty,
+        monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
+        tari_randomx_difficulty,
         AchievedTargetDifficulty,
         Difficulty,
         PowAlgorithm,
@@ -110,17 +111,17 @@ pub fn check_header_timestamp_greater_than_median(
     }
 
     let median_timestamp = calc_median_timestamp(timestamps)?;
-    if block_header.timestamp < median_timestamp {
+    if block_header.timestamp <= median_timestamp {
         warn!(
             target: LOG_TARGET,
-            "Block header timestamp {} is less than median timestamp: {} for block:{}",
+            "Block header timestamp {} is less or equal than median timestamp: {} for block:{}",
             block_header.timestamp,
             median_timestamp,
             block_header.hash().to_hex()
         );
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp(format!(
-                "The timestamp `{}` was less than the median timestamp `{}`",
+                "The timestamp `{}` was less or equal than the median timestamp `{}`",
                 block_header.timestamp, median_timestamp
             )),
         ));
@@ -134,12 +135,13 @@ pub fn check_target_difficulty(
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
     consensus: &ConsensusManager,
+    tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
-        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
+        PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
+        PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
-
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
         Some(achieved_target) => Ok(achieved_target),
         None => {
@@ -214,7 +216,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         return Err(ValidationError::ContainsSTxO);
     }
 
-    warn!(
+    debug!(
         target: LOG_TARGET,
         "Input ({}, {}) does not exist in the database yet", input.commitment()?.to_hex(), output_hash.to_hex()
     );

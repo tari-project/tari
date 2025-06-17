@@ -245,8 +245,7 @@ impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
 
     fn try_from(value: grpc::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
-            author_public_key: CompressedPublicKey::from_canonical_bytes(&value.author_public_key)
-                .map_err(|e| e.to_string())?,
+            author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
                 .map(Signature::try_from)

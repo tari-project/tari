@@ -36,7 +36,7 @@ use minotari_app_utilities::parse_miner_input::{
 };
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
-use tari_common::{configuration::StringList, load_configuration, DefaultConfigLoader};
+use tari_common::{configuration::StringList, load_configuration, DefaultConfigLoader, MAX_GRPC_MESSAGE_SIZE};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
@@ -207,7 +207,7 @@ pub(crate) fn get_tari_monerod_entries(monero_fail_url: &str) -> Vec<MonerodEntr
 async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Result<(), MmProxyError> {
     if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, grpc::NewBlockTemplateRequest {
         algo: Some(grpc::PowAlgo {
-            pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
+            pow_algo: grpc::pow_algo::PowAlgos::Randomxm.into(),
         }),
         max_weight: 0,
     })
@@ -248,7 +248,9 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
     let node_conn = BaseNodeClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    );
+    )
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
     Ok(node_conn)
 }
@@ -282,7 +284,9 @@ async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2Pool
     let node_conn = ShaP2PoolClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    );
+    )
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
     Ok(node_conn)
 }

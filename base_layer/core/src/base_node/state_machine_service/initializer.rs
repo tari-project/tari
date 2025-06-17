@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_comms_dht::Dht;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
@@ -109,12 +110,14 @@ where B: BlockchainBackend + 'static
             let sync_validators =
                 SyncValidators::full_consensus(rules.clone(), factories, bypass_range_proof_verification);
 
+            let dht = handles.expect_handle::<Dht>();
             let node = BaseNodeStateMachine::new(
                 db,
                 node_local_interface,
                 connectivity,
-                peer_manager,
                 chain_metadata_service.get_event_stream(),
+                peer_manager,
+                dht.subscribe_dht_events(),
                 config,
                 sync_validators,
                 status_event_sender,
@@ -123,7 +126,6 @@ where B: BlockchainBackend + 'static
                 rules,
                 handles.get_shutdown_signal(),
             );
-
             node.run().await;
             info!(target: LOG_TARGET, "Base Node State Machine Service has shut down");
         });

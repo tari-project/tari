@@ -81,6 +81,7 @@ pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
     pub(crate) peer_index: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
+    pub birthday_offset: u16,
 }
 impl<TBackend, TWalletConnectivity> UtxoScannerTask<TBackend, TWalletConnectivity>
 where
@@ -89,26 +90,24 @@ where
 {
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
-            self.set_recovery_mode()?;
-        } else {
-            let in_progress = self.check_recovery_mode()?;
-            if in_progress {
-                warn!(
-                    target: LOG_TARGET,
-                    "Scanning round aborted as a Recovery is in progress"
-                );
-                return Ok(());
-            }
+            self.set_recovery_mode().await?;
         }
 
         loop {
             if self.shutdown_signal.is_triggered() {
                 return Ok(());
             }
+            if self.check_recovery_mode().await? && self.mode != UtxoScannerMode::Recovery {
+                warn!(
+                    target: LOG_TARGET,
+                    "{:?}: Scanning round aborted as a Recovery is in progress", self.mode
+                );
+                return Ok(());
+            }
             match self.get_next_peer() {
                 Some(peer) => match self.attempt_sync(peer.clone()).await {
                     Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
-                        debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
+                        debug!(target: LOG_TARGET, "{:?}: Scanned to height #{}", self.mode, final_height);
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
                             .await?;
                         return Ok(());
@@ -116,7 +115,7 @@ where
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
-                            "Failed to scan UTXO's from base node {}: {}", peer, e
+                            "{:?}: Failed to scan UTXO's from base node {}: {}", self.mode, peer, e
                         );
                         self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                             num_retries: self.num_retries,
@@ -136,8 +135,8 @@ where
                     if self.num_retries >= self.retry_limit {
                         self.publish_event(UtxoScannerEvent::ScanningFailed);
                         return Err(UtxoScannerError::UtxoScanningError(format!(
-                            "Failed to scan UTXO's after {} attempt(s) using sync peer(s). Aborting...",
-                            self.num_retries,
+                            "{:?}: Failed to scan UTXO's after {} attempt(s) using sync peer(s). Aborting...",
+                            self.mode, self.num_retries,
                         )));
                     }
 
@@ -157,7 +156,7 @@ where
         elapsed: Duration,
     ) -> Result<(), UtxoScannerError> {
         if num_outputs_recovered > 0 {
-            // this is a best effort, if this fails, its very likely that it's already busy with a validation.
+            // This is a best effort, if this fails, its very likely that it's already busy with a validation.
             let _result = self.resources.output_manager_service.validate_txos().await;
             let _result = self.resources.transaction_service.validate_transactions().await;
         }
@@ -171,10 +170,15 @@ where
             value_recovered: total_value,
             time_taken: elapsed,
         });
+        debug!(
+            target: LOG_TARGET,
+            "{:?}: Published events 'UtxoScannerEvent::Progress(..{})' and 'UtxoScannerEvent::Completed(..{})'",
+            self.mode, final_height, final_height,
+        );
 
-        // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
         if self.mode == UtxoScannerMode::Recovery {
-            self.clear_recovery_mode()?;
+            // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
+            self.clear_recovery_mode().await?;
         }
         Ok(())
     }
@@ -182,7 +186,7 @@ where
     async fn new_connection_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
         debug!(
             target: LOG_TARGET,
-            "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
+            "{:?}: Attempting UTXO sync with seed peer {} ({})", self.mode, self.peer_index, peer,
         );
         match self.resources.comms_connectivity.dial_peer(peer.clone()).await {
             Ok(conn) => Ok(conn),
@@ -196,7 +200,7 @@ where
 
                 if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
                     if connection.clone().disconnect(Minimized::No).await.is_ok() {
-                        debug!(target: LOG_TARGET, "Disconnected base node peer {}", peer);
+                        debug!(target: LOG_TARGET, "{:?}: Disconnected base node peer {}", self.mode, peer);
                     }
                 }
 
@@ -238,7 +242,8 @@ where
                 if last_scanned_block.height >= tip_header.height {
                     debug!(
                         target: LOG_TARGET,
-                        "Scanning complete to current tip (height: {}) in {:.2?}",
+                        "{:?}: Scanning complete to current tip (height: {}) in {:.2?}",
+                        self.mode,
                         last_scanned_block.height,
                         timer.elapsed()
                     );
@@ -267,15 +272,11 @@ where
                 // wallet birthday
                 self.resources.db.clear_scanned_blocks()?;
                 let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
-                    Some(WalletType::ProvidedKeys(_)) => {
-                        let header_proto = client.get_header_by_height(0).await?;
-                        let header = BlockHeader::try_from(header_proto).map_err(UtxoScannerError::ConversionError)?;
-                        HeightHash {
-                            height: 0,
-                            header_hash: header.hash(),
-                        }
+                    Some(WalletType::ProvidedKeys(wallet)) => {
+                        self.get_scanning_start_header_height_hash(&mut client, wallet.birthday)
+                            .await?
                     },
-                    _ => self.get_scanning_start_header_height_hash(&mut client).await?,
+                    _ => self.get_scanning_start_header_height_hash(&mut client, None).await?,
                 };
 
                 ScannedBlock {
@@ -287,7 +288,15 @@ where
                 }
             };
 
-            if self.shutdown_signal.is_triggered() {
+            if self.shutdown_signal.is_triggered() ||
+                self.check_recovery_mode().await? && self.mode != UtxoScannerMode::Recovery
+            {
+                if !self.shutdown_signal.is_triggered() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "{:?}: Scanning round aborted as a Recovery is in progress", self.mode
+                    );
+                }
                 return Ok((
                     next_block_to_scan.num_outputs.unwrap_or(0),
                     next_block_to_scan.height,
@@ -298,7 +307,8 @@ where
 
             debug!(
                 target: LOG_TARGET,
-                "Scanning UTXO's from height = {} to current tip_height = {} (starting header_hash: {})",
+                "{:?}: Scanning UTXO's from height = {} to current tip_height = {} (starting header_hash: {})",
+                self.mode,
                 next_block_to_scan.height,
                 tip_header.height,
                 next_block_to_scan.header_hash.to_hex(),
@@ -319,7 +329,8 @@ where
             }
             debug!(
                 target: LOG_TARGET,
-                "Scanning round completed up to height {} in {:.2?} ({} outputs scanned, {} recovered with value {})",
+                "{:?}: Scanning round completed up to height {} in {:.2?} ({} outputs scanned, {} recovered with value {})",
+                self.mode,
                 tip_header.height,
                 timer.elapsed(),
                 num_scanned,
@@ -360,7 +371,8 @@ where
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
-            "Found {} cached previously scanned blocks",
+            "{:?}: Found {} cached previously scanned blocks",
+            self.mode,
             scanned_blocks.len()
         );
 
@@ -417,7 +429,7 @@ where
         if let Some(block) = last_missing_scanned_block {
             warn!(
                 target: LOG_TARGET,
-                "Reorg detected on base node. Removing scanned blocks from height {}", block.height
+                "{:?}: Reorg detected on base node. Removing scanned blocks from height {}", self.mode, block.height
             );
             self.resources.db.clear_scanned_blocks_from_and_higher(block.height)?;
         }
@@ -425,7 +437,8 @@ where
         if let Some(sb) = found_scanned_block {
             debug!(
                 target: LOG_TARGET,
-                "Last scanned block found at height {} (Header Hash: {})",
+                "{:?}: Last scanned block found at height {} (Header Hash: {})",
+                self.mode,
                 sb.height,
                 sb.header_hash.to_hex()
             );
@@ -439,8 +452,8 @@ where
         } else {
             warn!(
                 target: LOG_TARGET,
-                "Reorg detected on base node. No previously scanned block headers found, resuming scan from wallet \
-                 birthday"
+                "{:?}: Reorg detected on base node. No previously scanned block headers found, resuming scan from wallet \
+                 birthday", self.mode
             );
             Ok(None)
         }
@@ -472,7 +485,8 @@ where
         let mut utxo_stream = client.sync_utxos_by_block(request).await?;
         trace!(
             target: LOG_TARGET,
-            "bulletproof rewind profile - UTXO stream request time {} ms",
+            "{:?}: bulletproof rewind profile - UTXO stream request time {} ms",
+            self.mode,
             start.elapsed().as_millis(),
         );
 
@@ -524,7 +538,8 @@ where
                     if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                         debug!(
                             target: LOG_TARGET,
-                            "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
+                            "{:?}: Scanned up to block {} with a current tip_height of {}",
+                            self.mode, current_height, tip_height
                         );
                         self.publish_event(UtxoScannerEvent::Progress {
                             current_height,
@@ -554,13 +569,15 @@ where
         }
         trace!(
             target: LOG_TARGET,
-            "bulletproof rewind profile - streamed {} outputs in {} ms",
+            "{:?}: bulletproof rewind profile - streamed {} outputs in {} ms",
+            self.mode,
             total_scanned,
             utxo_next_await_profiling.iter().fold(0, |acc, &x| acc + x.as_millis()),
         );
         trace!(
             target: LOG_TARGET,
-            "bulletproof rewind profile - scanned {} outputs in {} ms",
+            "{:?}: bulletproof rewind profile - scanned {} outputs in {} ms",
+            self.mode,
             total_scanned,
             scan_for_outputs_profiling.iter().fold(0, |acc, &x| acc + x.as_millis()),
         );
@@ -620,7 +637,8 @@ where
         let one_sided_time = start.elapsed();
         trace!(
             target: LOG_TARGET,
-            "Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            "{:?}: Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            self.mode,
             scanned_time.as_millis(),
             one_sided_time.as_millis(),
         );
@@ -670,8 +688,9 @@ where
                 ))) => {
                     info!(
                         target: LOG_TARGET,
-                        "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
+                        "{:?}: Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
+                        self.mode,
                         tx_id
                     );
                 },
@@ -681,14 +700,14 @@ where
         Ok((num_recovered, total_amount))
     }
 
-    fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    async fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
         self.resources
             .db
             .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
         Ok(())
     }
 
-    fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
+    pub async fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
         self.resources
             .db
             .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
@@ -696,7 +715,7 @@ where
             .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
-    fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    async fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
         let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned())?;
         Ok(())
     }
@@ -734,7 +753,8 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO with value {},  imported into wallet as 'ImportStatus::{}'", wallet_output.value, import_status
+            "{:?}: UTXO with value {},  imported into wallet as 'ImportStatus::{}'",
+            self.mode, wallet_output.value, import_status
         );
 
         Ok(tx_id)
@@ -749,24 +769,28 @@ where
     async fn get_scanning_start_header_height_hash(
         &self,
         client: &mut BaseNodeWalletRpcClient,
+        option_birthday: Option<u16>,
     ) -> Result<HeightHash, UtxoScannerError> {
-        let birthday = self.resources.db.get_wallet_birthday()?;
+        let birthday = match option_birthday {
+            Some(birthday) => birthday,
+            None => self.resources.db.get_wallet_birthday()?,
+        };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
         let block_height_birthday = client
             .get_height_at_time(epoch_time_birthday)
             .await
             .unwrap_or_else(|e| {
-                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
+                warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
                 0
             });
-        // Calculate the unix epoch time of two weeks (14 days), in seconds, before the
+        // Calculate the unix epoch time of 2 days, in seconds, before the
         // wallet birthday. The latter avoids any possible issues with reorgs.
-        let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, 14u16);
+        let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
         let block_height_scanning_start = client
             .get_height_at_time(epoch_time_scanning_start)
             .await
             .unwrap_or_else(|e| {
-                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
+                warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
                 0
             });
         let header = client.get_header_by_height(block_height_scanning_start).await?;
@@ -774,8 +798,9 @@ where
         let header_hash_scanning_start = header.hash();
         info!(
             target: LOG_TARGET,
-            "Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' with block height '{}', scanning \
-            from epoch time '{}' at block height '{}' with header hash '{}'",
+            "{:?}: Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' with block height '{}', \
+            scanning from epoch time '{}' at block height '{}' with header hash '{}'",
+            self.mode,
             birthday,
             epoch_time_birthday,
             block_height_birthday,

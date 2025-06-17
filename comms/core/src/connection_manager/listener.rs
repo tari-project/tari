@@ -186,7 +186,7 @@ where
                     },
                 },
                 Err(err) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Failed to read wire format byte due to error: {}", err
                     );
@@ -194,7 +194,7 @@ where
                 },
             },
             Err(elapsed) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Failed to read wire format byte within timeout of {:#?}. {}", time_to_first_byte, elapsed
                 );
@@ -243,7 +243,7 @@ where
         let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
             #[cfg(feature = "metrics")]
-            metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
+            metrics::pending_connections(ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_wire_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
@@ -287,7 +287,7 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
@@ -316,7 +316,7 @@ where
                     }
                 },
                 Err(err) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Peer at address '{}' failed to send its wire format. Expected network byte {:x?} or liveness \
                          byte {:x?} not received. Error: {}",
@@ -329,7 +329,7 @@ where
             }
 
             #[cfg(feature = "metrics")]
-            metrics::pending_connections(None, ConnectionDirection::Inbound).dec();
+            metrics::pending_connections(ConnectionDirection::Inbound).dec();
         }
         .instrument(span);
 
@@ -359,7 +359,7 @@ where
             .upgrade_socket(socket, CONNECTION_DIRECTION)
             .await
             .map_err(|err| {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "Listen - failed to upgrade noise: {} on address: {} ({})",
                     node_identity.node_id(),
@@ -436,7 +436,7 @@ where
             valid_peer_identity.metadata.supported_protocols,
         );
 
-        peer_manager.add_peer(peer).await?;
+        peer_manager.add_or_update_peer(peer).await?;
 
         Ok(conn)
     }

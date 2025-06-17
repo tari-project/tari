@@ -87,6 +87,12 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance
     fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
+    /// Return the available, time locked, pending incoming and pending outgoing balance only matching the payment id
+    fn get_balance_payment_id(
+        &self,
+        tip: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerStorageError>;
     /// Import unvalidated output
     fn add_unvalidated_output(&self, output: DbWalletOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     fn fetch_unspent_outputs_for_spending(

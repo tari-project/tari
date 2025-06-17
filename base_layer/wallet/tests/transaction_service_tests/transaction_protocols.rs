@@ -152,7 +152,7 @@ pub async fn setup() -> (
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
     let core_key_manager_service_handle = create_memory_db_key_manager().unwrap();
 
-    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
+    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock();
     let outbound_mock_state = mock_outbound_service.get_state();
     task::spawn(mock_outbound_service.run());
 
@@ -175,9 +175,12 @@ pub async fn setup() -> (
         comms_key.pub_key,
         network,
         TariAddressFeatures::create_one_sided_only(),
-    );
+        None,
+    )
+    .unwrap();
     let interactive_tari_address =
-        TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+        TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)
+            .unwrap();
     let wallet_type = core_key_manager_service_handle.get_wallet_type().await;
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -246,7 +249,7 @@ pub async fn add_transaction_to_database(
         TransactionDirection::Outbound,
         None,
         None,
-        PaymentId::open("Test", TxType::PaymentToOther),
+        PaymentId::open_from_string("Test", TxType::PaymentToOther),
     )
     .unwrap();
     db.insert_completed_transaction(tx_id, completed_tx1).unwrap();
@@ -846,13 +849,14 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
 
     assert_eq!(
         completed_txs
@@ -881,13 +885,14 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
 
     assert_eq!(
         completed_txs
@@ -934,13 +939,14 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
 
     assert_eq!(
         completed_txs
@@ -1027,13 +1033,14 @@ async fn tx_revalidation() {
         wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
 
     assert_eq!(
         completed_txs
@@ -1078,7 +1085,7 @@ async fn tx_revalidation() {
         .db
         .mark_all_non_coinbases_transactions_as_unvalidated()
         .unwrap();
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
     let completed_tx_2 = completed_txs
         .iter()
         .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
@@ -1093,13 +1100,14 @@ async fn tx_revalidation() {
         wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
     // data should now be updated and changed
     let completed_tx_2 = completed_txs
         .iter()
@@ -1263,13 +1271,14 @@ async fn tx_validation_protocol_reorg() {
         wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
     let mut unconfirmed_count = 0;
     let mut confirmed_count = 0;
     for tx in completed_txs {
@@ -1373,6 +1382,7 @@ async fn tx_validation_protocol_reorg() {
         wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1386,7 +1396,7 @@ async fn tx_validation_protocol_reorg() {
 
     assert_eq!(rpc_service_state.take_get_header_by_height_calls().len(), 0);
 
-    let completed_txs = resources.db.get_completed_transactions().unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
     // Tx 1
     assert!(completed_txs
         .iter()

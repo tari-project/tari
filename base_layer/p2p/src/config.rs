@@ -39,8 +39,9 @@ use tari_common::{
     },
     SubConfigPath,
 };
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::DhtConfig;
 
 use crate::transport::TransportConfig;
 
@@ -73,10 +74,24 @@ impl Default for PeerSeedsConfig {
         Self {
             override_from: None,
             peer_seeds: StringList::default(),
-            dns_seeds: vec![format!(
-                "seeds.{}.tari.com",
-                Network::get_current_or_user_setting_or_default().as_key_str()
-            )]
+            dns_seeds: vec![
+                format!(
+                    "seeds.{}.tari.com",
+                    Network::get_current_or_user_setting_or_default().as_key_str()
+                ),
+                format!(
+                    "ip4.seeds.{}.tari.com",
+                    Network::get_current_or_user_setting_or_default().as_key_str()
+                ),
+                format!(
+                    "ip6.seeds.{}.tari.com",
+                    Network::get_current_or_user_setting_or_default().as_key_str()
+                ),
+                format!(
+                    "tor.seeds.{}.tari.com",
+                    Network::get_current_or_user_setting_or_default().as_key_str()
+                ),
+            ]
             .into(),
             dns_seed_name_servers: DnsNameServerList::from_str(
                 "system, 1.1.1.1:853/cloudflare-dns.com, 8.8.8.8:853/dns.google, 9.9.9.9:853/dns.quad9.net",
@@ -105,7 +120,7 @@ pub struct P2pConfig {
     pub public_addresses: MultiaddrList,
     /// Transport configuration
     pub transport: TransportConfig,
-    /// Path to the LMDB data files.
+    /// Path to the SQLite data files.
     pub datastore_path: PathBuf,
     /// Name to use for the peer database
     pub peer_database_name: String,
@@ -153,8 +168,8 @@ impl Default for P2pConfig {
             transport: Default::default(),
             datastore_path: PathBuf::from("peer_db"),
             peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 4,
-            max_concurrent_outbound_tasks: 4,
+            max_concurrent_inbound_tasks: 100,
+            max_concurrent_outbound_tasks: 100,
             dht: DhtConfig {
                 database_url: DbConnectionUrl::file("dht.sqlite"),
                 auto_join: true,

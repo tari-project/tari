@@ -104,6 +104,7 @@ pub enum ConnectivityRequest {
     AddPeerToAllowList(NodeId),
     RemovePeerFromAllowList(NodeId),
     GetAllowList(oneshot::Sender<Vec<NodeId>>),
+    GetSeeds(oneshot::Sender<Vec<Peer>>),
     GetPeerStats(NodeId, oneshot::Sender<Option<Peer>>),
     GetNodeIdentity(oneshot::Sender<NodeIdentity>),
 }
@@ -162,13 +163,13 @@ impl ConnectivityRequester {
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
     #[allow(clippy::let_with_type_underscore)]
-    pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
+    pub async fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
         &self,
         peers: I,
     ) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + '_ {
         peers
             .into_iter()
-            .map(|peer| self.dial_peer(peer))
+            .map(|peer| async move { self.dial_peer(peer).await })
             .collect::<FuturesUnordered<_>>()
     }
 
@@ -292,6 +293,15 @@ impl ConnectivityRequester {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectivityRequest::GetAllowList(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
+    pub async fn get_seeds(&mut self) -> Result<Vec<Peer>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::GetSeeds(reply_tx))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)

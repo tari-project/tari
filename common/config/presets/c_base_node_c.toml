@@ -16,7 +16,7 @@
 # The relative path to store persistent data (default = "data/base_node")
 #data_dir = "data/base_node"
 
-# The relative path to store the lmbd data (default = "db")
+# The relative path to store the lmdb blockchain data (default = "db")
 #lmdb_path = "db"
 
 # The maximum amount of VMs that RandomX will be use (default = 5)
@@ -48,6 +48,9 @@
 # Interval between each request to the dns server for hte checkpoints to compare it with the local blockchain (default = 120 s)
 # tari_pulse_interval = 120
 
+# Interval which the node will use to discover and dial the seed peers.
+# tari_pulse_health_check = 600 # 10 mins
+
 [base_node.lmdb]
 #init_size_bytes = 16_777_216 # 16 *1024 * 1024
 #grow_size_bytes = 16_777_216 # 16 *1024 * 1024
@@ -72,7 +75,7 @@ track_reorgs = true
 # skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
 #unconfirmed_pool.weight_tx_skip_count = 20
 # The minimum fee accepted by the mempool
-#unconfirmed_pool.min_fee = 0,
+#unconfirmed_pool.min_fee = 50,
 
 # The height horizon to clear transactions from the reorg pool.
 #reorg_pool.expiry_height = 5
@@ -138,17 +141,17 @@ blockchain_sync_config.rpc_deadline = 240
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# Path to the LMDB data files
+# Path to the SQLite databasse (relative to data_dir) used for the peer database.
 #datastore_path = "peer_db"
 
 # Name to use for the peer database
 #peer_database_name = "peers"
 
 # The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
-#max_concurrent_inbound_tasks = 4
+#max_concurrent_inbound_tasks = 100
 
 # The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging queue
-#max_concurrent_outbound_tasks = 4
+#max_concurrent_outbound_tasks = 100
 
 # Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
 # addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
@@ -169,6 +172,9 @@ listener_self_liveness_check_interval = 15
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
 #pub cull_oldest_peer_rpc_connection_on_full = true
+# Listening address of the base node wallet query service.
+# Default: 0.0.0.0:9000
+# base_node_http_wallet_query_service_listen_address = "0.0.0.0:9000"
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -222,12 +228,10 @@ listener_self_liveness_check_interval = 15
 [base_node.p2p.dht]
 # The `DbConnectionUrl` for the Dht database. Default: In-memory database
 database_url = "data/base_node/dht.db"
-# The size of the buffer (channel) which holds pending outbound message requests. Default: 20
-#outbound_buffer_size = 20
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
-#num_neighbouring_nodes = 8
+#num_neighbouring_nodes = 6
 # Number of random peers to include. Default: 4
-#num_random_nodes = 4
+#num_random_nodes = 6
 # Connections above the configured number of neighbouring and random nodes will be removed (default: false)
 #minimize_connections = false
 # Send to this many peers when using the broadcast strategy. Default: 8
@@ -327,3 +331,16 @@ database_url = "data/base_node/dht.db"
 #                or
 #   `excluded_dial_addresses = ["/ip4/127.0:0.1/tcp/122", "/ip4/127.0:0.1/tcp/1000:2000"]`
 excluded_dial_addresses = []
+# Enables the DHT to forward messages to other nodes in the network - communication nodes only (Default: false)
+#enable_forwarding = false
+
+# setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
+# peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
+#peer_validator_config.min_peer_version = ""
+
+# Wallet Query HTTP service details
+# `external_address` is optional, but if not set, then wallet wont be able to call our endpoint.
+# This address must be accessible by the wallet (on a global scale over the internet).
+[base_node.http_wallet_query_service]
+port = 9000
+external_address = "http://127.0.0.1:9000"

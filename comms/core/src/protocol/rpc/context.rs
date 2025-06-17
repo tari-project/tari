@@ -66,7 +66,7 @@ impl RpcCommsProvider for RpcCommsBackend {
         self.peer_manager
             .find_by_node_id(node_id)
             .await
-            .or_not_found()
+            .or_not_found(node_id)
             .map_err(Into::into)
     }
 

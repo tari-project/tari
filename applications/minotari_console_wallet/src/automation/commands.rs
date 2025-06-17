@@ -81,7 +81,7 @@ use tari_common_types::{
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerQuery},
+    peer_manager::Peer,
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
@@ -827,7 +827,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    PaymentId::open(&args.payment_id, TxType::Burn),
+                    PaymentId::open_from_string(&args.payment_id, TxType::Burn),
                     None,
                 )
                 .await
@@ -851,7 +851,7 @@ pub async fn command_runner(
                 let output_hashes: Vec<HashOutput> = pre_mine_outputs.iter().map(|v| v.hash()).collect();
                 let unspent_outputs = transaction_service.fetch_unspent_outputs(output_hashes).await?;
 
-                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()).await {
+                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()) {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
@@ -1006,7 +1006,7 @@ pub async fn command_runner(
                     output_hash,
                     commitment.clone(),
                     args.recipient_address.clone(),
-                    PaymentId::open(
+                    PaymentId::open_from_string(
                         &args.payment_id,
                         detect_tx_metadata(&wallet, args.recipient_address).await,
                     ),
@@ -1290,7 +1290,7 @@ pub async fn command_runner(
                 // Encumber outputs
                 let mut outputs_for_parties = Vec::with_capacity(party_info_per_index.len());
                 let mut outputs_for_self = Vec::with_capacity(party_info_per_index.len());
-                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()).await {
+                let pre_mine_items = match get_pre_mine_items(Network::get_current_or_user_setting_or_default()) {
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
@@ -1369,7 +1369,7 @@ pub async fn command_runner(
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },
-                        PaymentId::open(
+                        PaymentId::open_from_string(
                             &args.payment_id,
                             detect_tx_metadata(&wallet, current_recipient_address).await,
                         ),
@@ -2047,7 +2047,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     args.destination.clone(),
-                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2065,7 +2065,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination.clone(),
-                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2074,6 +2074,7 @@ pub async fn command_runner(
                             target: LOG_TARGET,
                             "send-one-sided-to-stealth-address concluded with tx_id {}", tx_id
                         );
+                        println!("Transaction ID: {}", tx_id);
                         tx_ids.push(tx_id);
                     },
                     Err(e) => eprintln!("SendOneSidedToStealthAddress error! {}", e),
@@ -2091,7 +2092,7 @@ pub async fn command_runner(
                     args.start_time.unwrap_or_else(Utc::now),
                     args.destination.clone(),
                     transaction_type,
-                    PaymentId::open(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -2103,7 +2104,7 @@ pub async fn command_runner(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
-                    PaymentId::open(&args.payment_id, TxType::CoinSplit),
+                    PaymentId::open_from_string(&args.payment_id, TxType::CoinSplit),
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
@@ -2305,7 +2306,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    PaymentId::open(&args.payment_id, TxType::ClaimAtomicSwap),
+                    PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                 )
                 .await
                 {
@@ -2328,7 +2329,7 @@ pub async fn command_runner(
                         hash,
                         args.pre_image.into(),
                         config.fee_per_gram.into(),
-                        PaymentId::open(&args.payment_id, TxType::ClaimAtomicSwap),
+                        PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                     )
                     .await
                     {
@@ -2348,7 +2349,7 @@ pub async fn command_runner(
                         transaction_service.clone(),
                         hash,
                         config.fee_per_gram.into(),
-                        PaymentId::open(&args.payment_id, TxType::HtlcAtomicSwapRefund),
+                        PaymentId::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                     {
@@ -2398,7 +2399,7 @@ pub async fn command_runner(
                     args.epoch,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
-                    PaymentId::open(&args.payment_id, TxType::ValidatorNodeRegistration),
+                    PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
@@ -2537,16 +2538,19 @@ pub async fn command_runner(
                 let private_view_key_hex = wallet.key_manager_service.get_private_view_key().await?.to_hex();
                 let spend_key_hex = spend_key.pub_key.to_hex();
                 let output_file = args.output_file;
+                let birthday = wallet.db.get_wallet_birthday()?;
                 #[derive(Serialize)]
                 struct ViewKeyFile {
                     view_key: String,
                     public_view_key: String,
                     spend_key: String,
+                    birthday: u16,
                 }
                 let view_key_file = ViewKeyFile {
                     view_key: private_view_key_hex.clone(),
                     public_view_key: view_key_hex.clone(),
                     spend_key: spend_key_hex.clone(),
+                    birthday,
                 };
                 let view_key_file_json =
                     serde_json::to_string(&view_key_file).map_err(|e| CommandError::JsonFile(e.to_string()))?;
@@ -2557,6 +2561,7 @@ pub async fn command_runner(
                 } else {
                     println!("View key: {}", private_view_key_hex);
                     println!("Spend key: {}", spend_key_hex);
+                    println!("Birthday: {}", birthday);
                 }
             },
             ImportPaperWallet(args) => {
@@ -2616,11 +2621,10 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
-                    let query = PeerQuery::new().select_where(|p| p.is_seed());
                     let peer_seeds = wallet
                         .comms
                         .peer_manager()
-                        .perform_query(query)
+                        .get_seed_peers()
                         .await
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
@@ -2727,6 +2731,132 @@ pub async fn command_runner(
                 }
                 println!("removing temp wallet in: {:?}", temp_path);
                 fs::remove_dir_all(temp_path)?;
+            },
+            ShowPayRef(args) => {
+                // Show transaction details first
+                match transaction_service
+                    .get_any_transaction(args.transaction_id.into())
+                    .await
+                {
+                    Ok(Some(tx)) => {
+                        println!("Transaction ID: {}", args.transaction_id);
+                        let _status = match &tx {
+                            WalletTransaction::Completed(completed_tx) => {
+                                println!("Transaction status: Completed");
+                                println!("Amount: {}", completed_tx.amount);
+                                println!("Fee: {}", completed_tx.fee);
+                                println!("Direction: {:?}", completed_tx.direction);
+                                if let Some(height) = completed_tx.mined_height {
+                                    println!("Mined at height: {}", height);
+                                }
+                                if let Some(timestamp) = completed_tx.mined_timestamp {
+                                    println!("Mined timestamp: {}", timestamp);
+                                }
+                                if completed_tx.mined_in_block.is_some() {
+                                    println!("\nReceived PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_received_payment_references().iter().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                    println!("\nSent PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_sent_payment_references().iter().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                    println!("\nChange PayRefs for this transaction:");
+                                    for (i, pay_ref) in completed_tx.calculate_change_payment_references().iter().enumerate() {
+                                        println!("{}. PayRef: {}", i + 1, pay_ref);
+                                    }
+                                } else {
+                                    println!("Payrefs: Transaction not mined yet.");
+                                }
+                                "Completed"
+                            },
+                            minotari_wallet::transaction_service::storage::models::WalletTransaction::PendingInbound(_) => {
+                                println!("Transaction status: PendingInbound");
+                                "PendingInbound"
+                            },
+                            minotari_wallet::transaction_service::storage::models::WalletTransaction::PendingOutbound(_) => {
+                                println!("Transaction status: PendingOutbound");
+                                "PendingOutbound"
+                            },
+                        };
+                    },
+                    Ok(None) => {
+                        println!("Transaction ID {} not found", args.transaction_id);
+                    },
+                    Err(e) => eprintln!("ShowPayRef error! {}", e),
+                }
+            },
+            FindPayRef(args) => match FixedHash::from_hex(&args.payment_reference_hex) {
+                Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
+                    Ok(Some(payment_details)) => {
+                        println!("Found PayRef: {}", args.payment_reference_hex);
+                        println!("Transaction ID: {}", payment_details.tx_id);
+                        println!("Amount: {}", payment_details.amount);
+                        println!("Direction: {:?}", payment_details.direction);
+                        println!("Block height: {}", payment_details.block_height);
+                        println!("Confirmations: {}", payment_details.confirmations);
+                        if let Some(timestamp) = payment_details.timestamp {
+                            println!("Timestamp: {}", timestamp);
+                        }
+                        if let Some(payment_id) = &payment_details.payment_id {
+                            println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
+                        }
+                    },
+                    Ok(None) => {
+                        println!("No payment found for PayRef: {}", args.payment_reference_hex);
+                    },
+                    Err(e) => eprintln!("FindPayRef error! {}", e),
+                },
+                Err(e) => {
+                    eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
+                },
+            },
+            ListTx => {
+                debug!(target: LOG_TARGET, "payref_debug: List all transactions command starting execution");
+
+                match transaction_service.get_completed_transactions(None, None, None).await {
+                    Ok(txs) => {
+                        debug!(target: LOG_TARGET, "ListTxs command got {} transactions", txs.len());
+
+                        if txs.is_empty() {
+                            println!("No transactions.");
+                            continue;
+                        }
+                        println!("Found {} transaction(s)", txs.len());
+                        println!("{}", "=".repeat(80));
+
+                        for (i, tx) in txs.iter().enumerate() {
+                            println!("{}. Transaction ID: {}", i + 1, tx.tx_id);
+                            println!("   Amount: {}", tx.amount);
+                            println!("   Direction: {:?}", tx.direction);
+                            println!("   Status: {:?}", tx.status);
+                            if let Some(height) = tx.mined_height {
+                                println!("   Mined at height: {}", height);
+                            }
+                            if let Some(timestamp) = tx.mined_timestamp {
+                                println!("   Mined timestamp: {}", timestamp);
+                            }
+                            if tx.mined_in_block.is_some() {
+                                println!("\nReceived PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_received_payment_references().iter().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                                println!("\nSent PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_sent_payment_references().iter().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                                println!("\nChange PayRefs for this transaction:");
+                                for (i, pay_ref) in tx.calculate_change_payment_references().iter().enumerate() {
+                                    println!("{}. PayRef: {}", i + 1, pay_ref);
+                                }
+                            } else {
+                                println!("Payrefs: Transaction not mined yet.");
+                            }
+                            println!();
+                        }
+                    },
+                    Err(e) => eprintln!("ListTxs error! {}", e),
+                }
             },
         }
     }
@@ -2998,7 +3128,7 @@ fn write_utxos_to_csv_file(
             i + 1,
             utxo.version.as_u8(),
             utxo.value.0,
-            if with_private_keys {utxo.spending_key.to_hex()} else { "*hidden*".to_string() },
+            if with_private_keys { utxo.spending_key.to_hex() } else { "*hidden*".to_string() },
             commitment.to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,
@@ -3007,7 +3137,7 @@ fn write_utxos_to_csv_file(
             utxo.script.to_hex(),
             utxo.covenant.to_bytes().to_hex(),
             utxo.input_data.to_hex(),
-            if with_private_keys {utxo.script_private_key.to_hex()} else { "*hidden*".to_string() },
+            if with_private_keys { utxo.script_private_key.to_hex() } else { "*hidden*".to_string() },
             utxo.sender_offset_public_key.to_hex(),
             utxo.metadata_signature.ephemeral_commitment().to_hex(),
             utxo.metadata_signature.ephemeral_pubkey().to_hex(),

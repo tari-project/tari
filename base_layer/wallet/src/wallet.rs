@@ -51,7 +51,7 @@ use tari_comms::{
     NodeIdentity,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use tari_comms_dht::Dht;
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     storage::database::ContactsBackend,
@@ -148,7 +148,6 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
-    pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
@@ -161,6 +160,7 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub output_db: OutputManagerDatabase<V>,
     pub factories: CryptoFactories,
     wallet_type: Arc<WalletType>,
+    pub config: WalletConfig,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
@@ -214,7 +214,7 @@ where
                 publisher,
             ))
             .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
-                config.output_manager_service_config,
+                config.output_manager_service_config.clone(),
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network.into(),
@@ -226,7 +226,7 @@ where
                 wallet_type.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
-                config.transaction_service_config,
+                config.transaction_service_config.clone(),
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
@@ -255,11 +255,14 @@ where
                 config.base_node_service_config.clone(),
                 wallet_database.clone(),
             ))
-            .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
+            .add_initializer(WalletConnectivityInitializer::new(
+                config.base_node_service_config.clone(),
+            ))
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
                 factories.clone(),
                 config.network,
+                config.birthday_offset,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -316,17 +319,16 @@ where
                     }
                 });
             };
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
         } else {
             let after_comms = |_identity| {};
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport, after_comms).await?
+            initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
         };
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
-        let store_and_forward_requester = dht.store_and_forward_requester();
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
@@ -366,7 +368,6 @@ where
             network: config.network.into(),
             comms,
             dht_service: dht,
-            store_and_forward_requester,
             output_manager_service: output_manager_handle,
             key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,
@@ -379,6 +380,7 @@ where
             output_db: output_manager_database,
             factories,
             wallet_type,
+            config,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
@@ -427,7 +429,7 @@ where
                     );
 
                     current_peer.addresses.add_address(&add, &PeerAddressSource::Config);
-                    peer_manager.add_peer(current_peer.clone()).await?;
+                    peer_manager.add_or_update_peer(current_peer.clone()).await?;
                 }
             }
             let mut peer_list = vec![current_peer];
@@ -460,7 +462,7 @@ where
                 Default::default(),
                 String::new(),
             );
-            peer_manager.add_peer(peer.clone()).await?;
+            peer_manager.add_or_update_peer(peer.clone()).await?;
             connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
             let mut peer_list = vec![peer];
             if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
@@ -535,7 +537,8 @@ where
             comms_key.pub_key,
             self.network.as_network(),
             features,
-        ))
+            None,
+        )?)
     }
 
     pub async fn get_wallet_one_sided_address(&self) -> Result<TariAddress, KeyManagerServiceError> {
@@ -546,7 +549,8 @@ where
             spend_key.pub_key,
             self.network.as_network(),
             TariAddressFeatures::create_one_sided_only(),
-        ))
+            None,
+        )?)
     }
 
     pub async fn get_wallet_id(&self) -> Result<WalletIdentity, WalletError> {
@@ -782,7 +786,7 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: Option<PaymentId>,
     ) -> Result<TxId, WalletError> {
-        let payment_id = payment_id.unwrap_or(PaymentId::open(
+        let payment_id = payment_id.unwrap_or(PaymentId::open_from_string(
             &format!("Coin join {} outputs", commitments.len()),
             TxType::CoinJoin,
         ));

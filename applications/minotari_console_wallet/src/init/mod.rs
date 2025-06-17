@@ -25,6 +25,7 @@
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
+use dialoguer::Input as InputPrompt;
 use digest::crypto_common::rand_core::OsRng;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity};
@@ -60,7 +61,7 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures, PeerQuery},
+    peer_manager::{Peer, PeerFeatures},
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -101,7 +102,7 @@ pub enum WalletBoot {
     New,
     Existing,
     Recovery,
-    ViewAndSpendKey,
+    ViewAndSpendKey { birthday: Option<u16> },
 }
 
 /// Get and confirm a passphrase from the user, with feedback
@@ -346,11 +347,10 @@ pub async fn set_peer_and_get_base_node_peer_config(
             }
         }
     }
-    let query = PeerQuery::new().select_where(|p| p.is_seed());
-    let peer_seeds = wallet.comms.peer_manager().perform_query(query).await.map_err(|err| {
+    let peer_seeds = wallet.comms.peer_manager().get_seed_peers().await.map_err(|err| {
         ExitError::new(
             ExitCode::InterfaceError,
-            format!("Could net get seed peers from peer manager: {}", err),
+            format!("Could not get seed peers from peer manager: {}", err),
         )
     })?;
     // config
@@ -484,6 +484,12 @@ pub async fn init_wallet(
     );
 
     if let Some(file_name) = seed_words_file_name {
+        if wallet.db.get_wallet_type()? != Some(WalletType::DerivedKeys) {
+            return Err(ExitError::new(
+                ExitCode::WalletError,
+                "Cannot export seed words from a Hardware/View_only wallet",
+            ));
+        }
         let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?.join(" ");
         let _result = fs::write(file_name, seed_words.reveal()).map_err(|e| {
             ExitError::new(
@@ -610,21 +616,13 @@ pub async fn start_wallet(
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
         // NOTE: https://github.com/tari-project/tari/issues/5227
         debug!("revalidating all transactions");
-        if let Err(e) = wallet.transaction_service.revalidate_all_transactions().await {
-            error!(target: LOG_TARGET, "Failed to revalidate all transactions: {}", e);
+        if let Err(e) = wallet.transaction_service.revalidate_rejected_transactions().await {
+            error!(target: LOG_TARGET, "Failed to revalidate rejected transactions: {}", e);
         }
 
         debug!("restarting transaction protocols");
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
             error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
-        }
-
-        debug!("validating transactions");
-        if let Err(e) = wallet.transaction_service.validate_transactions().await {
-            error!(
-                target: LOG_TARGET,
-                "Problem validating and restarting transaction protocols: {}", e
-            );
         }
 
         // validate transaction outputs
@@ -751,7 +749,7 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
     }
 
     if !wallet_exists && cli.view_private_key.is_some() && cli.spend_key.is_some() {
-        return Ok(WalletBoot::ViewAndSpendKey);
+        return Ok(WalletBoot::ViewAndSpendKey { birthday: cli.birthday });
     }
 
     if wallet_exists {
@@ -791,7 +789,15 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
                             return Ok(WalletBoot::Recovery);
                         },
                         "3" => {
-                            return Ok(WalletBoot::ViewAndSpendKey);
+                            let mut birthday = InputPrompt::<u16>::new()
+                                .with_prompt("Please enter wallet birth, or enter to skip ")
+                                .default(0)
+                                .interact()
+                                .unwrap_or(0);
+                            let birthday_option = if birthday == 0 { None } else { Some(birthday) };
+                            return Ok(WalletBoot::ViewAndSpendKey {
+                                birthday: birthday_option,
+                            });
                         },
                         _ => continue,
                     }
@@ -833,7 +839,7 @@ pub(crate) fn boot_with_password(
             debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
         },
-        WalletBoot::ViewAndSpendKey => {
+        WalletBoot::ViewAndSpendKey { .. } => {
             debug!(target: LOG_TARGET, "Prompting for passphrase for view key wallet.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
         },
@@ -849,12 +855,12 @@ pub fn prompt_wallet_type(
     view_private_key: Option<String>,
     spend_key: Option<String>,
 ) -> Option<WalletType> {
-    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey) {
+    if non_interactive && !matches!(boot_mode, WalletBoot::ViewAndSpendKey { .. }) {
         return Some(WalletType::default());
     }
 
     match boot_mode {
-        WalletBoot::ViewAndSpendKey => {
+        WalletBoot::ViewAndSpendKey { birthday } => {
             let view_key = if let Some(vk) = view_private_key {
                 match PrivateKey::from_hex(&vk) {
                     Ok(pk) => pk,
@@ -883,6 +889,7 @@ pub fn prompt_wallet_type(
                 public_spend_key: spend_key,
                 private_spend_key: None,
                 private_comms_key: None,
+                birthday,
             }))
         },
         WalletBoot::New | WalletBoot::Recovery => {
@@ -975,10 +982,7 @@ pub fn prompt_public_key(prompt: &str) -> Option<CompressedPublicKey> {
     let input = input.trim();
     match CompressedPublicKey::from_hex(input) {
         Ok(pk) => Some(pk),
-        Err(_) => match CompressedPublicKey::from_monero_base58(input) {
-            Ok(pk) => Some(pk),
-            Err(_) => None,
-        },
+        Err(_) => CompressedPublicKey::from_monero_base58(input).ok(),
     }
 }
 

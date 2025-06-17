@@ -22,7 +22,7 @@
 
 use std::{collections::HashSet, convert::TryInto};
 
-use log::{trace, warn};
+use log::*;
 use tari_common_types::types::{
     CommitmentFactory,
     CompressedCommitment,
@@ -177,6 +177,21 @@ pub fn validate_individual_output(
     check_permitted_range_proof_types(consensus_constants, output)?;
     output.verify_metadata_signature()?;
     check_sidechain_features(consensus_constants, output)?;
+
+    Ok(())
+}
+
+pub fn validate_individual_output(
+    output: &TransactionOutput,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    check_permitted_output_types(consensus_constants, output)?;
+    check_script_size(output, consensus_constants.max_script_byte_size())?;
+    check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
+    check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
+    check_permitted_range_proof_types(consensus_constants, output)?;
+    check_validator_node_registration_utxo(consensus_constants, output)?;
+    output.verify_metadata_signature()?;
 
     Ok(())
 }
@@ -384,7 +399,7 @@ fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Resul
 fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
     for input in inputs {
         if !input.is_mature_at(height)? {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Input found that has not yet matured to spending height: {}", input
             );

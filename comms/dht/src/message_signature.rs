@@ -125,6 +125,7 @@ pub struct ProtoMessageSignature {
     pub signature: Vec<u8>,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum MessageSignatureError {
     #[error("Message signature does not contain valid scalar bytes")]
@@ -133,8 +134,6 @@ pub enum MessageSignatureError {
     InvalidPublicNonceBytes,
     #[error("Message signature contained an invalid signer public key")]
     InvalidSignerPublicKeyBytes,
-    #[error("Message signature failed to verify")]
-    VerificationFailed,
 }
 
 #[cfg(test)]

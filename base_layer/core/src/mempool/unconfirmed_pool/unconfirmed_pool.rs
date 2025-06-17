@@ -68,7 +68,7 @@ impl Default for UnconfirmedPoolConfig {
         Self {
             storage_capacity: 40_000,
             weight_tx_skip_count: 20,
-            min_fee: 0,
+            min_fee: 50,
         }
     }
 }

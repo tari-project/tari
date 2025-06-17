@@ -50,6 +50,7 @@ use tari_core::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
+            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures as SignaturesProto,
@@ -151,7 +152,8 @@ impl BaseNodeWalletRpcMockState {
                 metadata: Some(ChainMetadataProto {
                     best_block_height: i64::MAX as u64,
                     best_block_hash: FixedHash::zero().to_vec(),
-                    accumulated_difficulty: Vec::new(),
+                    accumulated_difficulty_low: Vec::new(),
+                    accumulated_difficulty_high: Vec::new(),
                     pruned_height: 0,
                     timestamp: EpochTime::now().as_u64(),
                 }),
@@ -850,6 +852,15 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
             acquire_lock!(self.state.get_mempool_fee_per_gram_stats).clone(),
         ))
     }
+
+    async fn get_wallet_query_http_service_address(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus> {
+        Ok(Response::new(GetWalletQueryHttpServiceAddressResponse {
+            http_address: Default::default(),
+        }))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -932,7 +943,8 @@ mod test {
         let chain_metadata = ChainMetadata {
             best_block_height: 444,
             best_block_hash: vec![],
-            accumulated_difficulty: vec![],
+            accumulated_difficulty_low: Vec::new(),
+            accumulated_difficulty_high: Vec::new(),
             pruned_height: 0,
             timestamp: EpochTime::now().as_u64(),
         };

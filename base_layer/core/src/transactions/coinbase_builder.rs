@@ -41,7 +41,7 @@ use crate::{
     transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            encrypted_data::PaymentId,
+            encrypted_data::{PaymentId, TxType},
             CoinBaseExtra,
             KernelBuilder,
             KernelFeatures,
@@ -449,6 +449,16 @@ pub async fn generate_coinbase_with_wallet_output(
             "Invalid address, address must be one-sided enabled".to_string(),
         ));
     }
+    // Override payment id if the wallet address contains a payment id
+    let payment_id = if wallet_payment_address.get_payment_id_user_data_bytes().is_empty() {
+        payment_id
+    } else {
+        PaymentId::Open {
+            user_data: wallet_payment_address.get_payment_id_user_data_bytes(),
+            tx_type: TxType::Coinbase,
+        }
+    };
+
     let sender_offset = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await?;
@@ -509,9 +519,11 @@ mod test {
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,
-        types::{CompressedCommitment, CompressedPublicKey, Signature},
+        types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
     };
     use tari_comms::types::CompressedSignature;
+    use tari_crypto::keys::SecretKey;
+    use tari_utilities::ByteArray;
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -779,15 +791,26 @@ mod test {
     }
     use tari_script::push_pubkey_script;
 
-    use crate::transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{encrypted_data::PaymentId, KernelBuilder, RangeProofType, TransactionKernelVersion},
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TxoStage,
+    use crate::{
+        test_helpers::create_consensus_constants,
+        transactions::{
+            aggregated_body::AggregateBody,
+            generate_coinbase_with_wallet_output,
+            tari_amount::MicroMinotari,
+            transaction_components::{
+                encrypted_data::{PaymentId, TxType},
+                CoinBaseExtra,
+                KernelBuilder,
+                RangeProofType,
+                TransactionKernelVersion,
+            },
+            transaction_key_manager::{
+                create_memory_db_key_manager,
+                MemoryDbKeyManager,
+                TariKeyId,
+                TransactionKeyManagerInterface,
+                TxoStage,
+            },
         },
     };
 
@@ -1207,5 +1230,56 @@ mod test {
             1,
         )
         .unwrap_err();
+    }
+
+    #[tokio::test]
+    async fn test_generate_coinbase_with_payment_id_from_address() {
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
+        let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
+
+        let script_key_id = key_manager.import_key(wallet_private_spend_key.clone()).await.unwrap();
+        let payment_id_user_data = b"This is my payment id";
+        let wallet_payment_address =
+            tari_common_types::tari_address::TariAddress::new_dual_address_with_default_features(
+                tari_common_types::types::CompressedPublicKey::from_secret_key(&wallet_private_view_key),
+                tari_common_types::types::CompressedPublicKey::from_secret_key(&wallet_private_spend_key),
+                Network::LocalNet,
+            )
+            .unwrap()
+            .with_payment_id_user_data(payment_id_user_data.to_vec())
+            .unwrap();
+        assert_eq!(
+            PaymentId::stringify_bytes(&wallet_payment_address.get_payment_id_user_data_bytes()),
+            PaymentId::stringify_bytes(payment_id_user_data)
+        );
+
+        let reward = MicroMinotari::from(1000);
+        let header_height = 1;
+        let range_proof_type = RangeProofType::RevealedValue;
+
+        let (_, _, _, coinbase_wallet_output) = generate_coinbase_with_wallet_output(
+            MicroMinotari::from(0),
+            reward,
+            header_height,
+            &CoinBaseExtra::default(),
+            &key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+            false,
+            &create_consensus_constants(header_height),
+            range_proof_type,
+            PaymentId::Open {
+                user_data: vec![],
+                tx_type: TxType::Coinbase,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            coinbase_wallet_output.payment_id.user_data_as_string(),
+            PaymentId::stringify_bytes(payment_id_user_data)
+        );
     }
 }

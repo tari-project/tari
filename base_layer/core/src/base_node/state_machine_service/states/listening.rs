@@ -38,6 +38,7 @@ use crate::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
             states::{
+                events_and_states,
                 BlockSync,
                 DecideNextSync,
                 HeaderSyncState,
@@ -127,7 +128,7 @@ impl Listening {
         if !self.is_synced {
             self.is_synced = true;
             self.initial_delay_count = 0;
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+            shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo::new(
                 true,
                 0,
                 shared.config.initial_sync_peer_count,
@@ -142,6 +143,7 @@ impl Listening {
         network_silence: bool,
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
+
         if network_silence {
             self.set_synced_response(shared);
             warn!(
@@ -150,14 +152,16 @@ impl Listening {
                 network in general is slow to respond to pings"
             );
         } else {
-            shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+            shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo::new(
                 self.is_synced,
                 self.initial_delay_count,
                 shared.config.initial_sync_peer_count,
             )));
         }
+
         let mut time_since_better_block = None;
         let mut initial_sync_counter = 0;
+        let mut ahead_of_peers_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
@@ -170,7 +174,7 @@ impl Listening {
                     // if we are not yet synced, we wait for the initial delay of ping/pongs, so let's propagate the
                     // updated info
                     if !self.is_synced {
-                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(
+                        shared.set_state_info(StateInfo::Listening(events_and_states::ListeningInfo::new(
                             self.is_synced,
                             self.initial_delay_count,
                             shared.config.initial_sync_peer_count,
@@ -189,9 +193,15 @@ impl Listening {
                         },
                         Ok(false) => {},
                         Err(e) => {
-                            return FatalError(format!("Error checking if peer is banned: {}", e));
+                            warn!(
+                                target: LOG_TARGET,
+                                "Ignoring chain metadata from peer {} due to error: {}",
+                                peer_metadata.node_id(), e
+                            );
+                            continue;
                         },
                     }
+
                     let peer_data = PeerMetadata {
                         metadata: peer_metadata.claimed_chain_metadata().clone(),
                         last_updated: EpochTime::now(),
@@ -260,8 +270,14 @@ impl Listening {
                     }
 
                     if !self.is_synced && sync_mode.is_up_to_date() {
-                        self.set_synced_response(shared);
-                        debug!(target: LOG_TARGET, "Initial sync achieved");
+                        ahead_of_peers_counter += 1;
+                        if ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
+                            self.set_synced_response(shared);
+                            info!(target: LOG_TARGET, "Initial sync achieved");
+                        } else {
+                            info!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", ahead_of_peers_counter);
+                            self.set_synced_response(shared);
+                        }
                     }
 
                     // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
@@ -319,7 +335,6 @@ impl Listening {
                 },
             }
         }
-
         debug!(
             target: LOG_TARGET,
             "Event listener is complete because liveness metadata and timeout streams were closed"
@@ -366,6 +381,7 @@ impl From<DecideNextSync> for Listening {
 }
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
+#[allow(clippy::too_many_lines)]
 fn determine_sync_mode(
     blocks_behind_before_considered_lagging: u64,
     local: &ChainMetadata,
@@ -462,6 +478,21 @@ fn determine_sync_mode(
             sync_peers: vec![network.clone().into()],
         }
     } else {
+        if local_tip_accum_difficulty / 2 > network_tip_accum_difficulty {
+            // We are ahead of the network, but not by much. We should be in listening mode.
+            info!(
+                target: LOG_TARGET,
+                "Received a metadata update from a peer that is very far behind us. Disregarding. We are at block #{} with an \
+                 accumulated difficulty of {} and the network chain tip is at #{} with an accumulated difficulty of {}",
+                local.best_block_height(),
+                local_tip_accum_difficulty,
+                network.claimed_chain_metadata().best_block_height(),
+                network_tip_accum_difficulty,
+            );
+            return SyncStatus::SyncNotPossible {
+                peers: vec![network.clone().into()],
+            };
+        }
         debug!(
             target: LOG_TARGET,
             "{} We're at block {} with an accumulated difficulty of {} and the network chain tip is at {} with an \
@@ -483,7 +514,8 @@ fn determine_sync_mode(
 
 #[cfg(test)]
 mod test {
-    use primitive_types::U256;
+
+    use primitive_types::U512;
     use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
@@ -502,7 +534,7 @@ mod test {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
             29, 30, 31,
         ]);
-        let accumulated_difficulty = U256::from(10000);
+        let accumulated_difficulty = U512::from(10000);
 
         let archival_node = PeerChainMetadata::new(
             random_node_id(),
@@ -517,7 +549,7 @@ mod test {
                 block_hash,
                 0,
                 0,
-                accumulated_difficulty - U256::from(1000),
+                accumulated_difficulty - U512::from(1000),
                 0,
             )
             .unwrap(),

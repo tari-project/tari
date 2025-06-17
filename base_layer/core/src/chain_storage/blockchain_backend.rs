@@ -3,12 +3,13 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
     epoch::VnEpoch,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
 };
 use tari_sidechain::ShardGroup;
 
-use super::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
+use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry};
+use super::{ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
@@ -25,7 +26,6 @@ use crate::{
         Reorg,
     },
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-    OutputSmt,
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -111,6 +111,10 @@ pub trait BlockchainBackend: Send + Sync {
         &self,
         commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
+
+    /// Fetch output by PayRef (Payment Reference)
+    /// Returns the OutputMinedInfo if found, None if PayRef doesn't exist
+    fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
@@ -241,6 +245,7 @@ pub trait BlockchainBackend: Send + Sync {
         start_height: u64,
         end_height: u64,
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
-    /// Calculates the tip utxo smt
-    fn calculate_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
+
+    /// Creates a reader to construct a JMT
+    fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
 }

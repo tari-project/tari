@@ -70,6 +70,10 @@ impl<const MAX: usize> MaxSizeBytes<MAX> {
         }
     }
 
+    pub fn empty() -> Self {
+        Self { inner: Vec::new() }
+    }
+
     pub fn from_bytes_truncate<T: AsRef<[u8]>>(bytes: T) -> Self {
         let b = bytes.as_ref();
         let len = cmp::min(b.len(), MAX);

@@ -23,13 +23,11 @@
 use chrono::{NaiveDateTime, Utc};
 use diesel::{dsl, result::DatabaseErrorKind, sql_types, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use log::*;
+use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
 use tari_utilities::hex::{to_hex, Hex};
 
-use crate::{
-    schema::dedup_cache,
-    storage::{DbConnection, StorageError},
-};
+use crate::schema::dedup_cache;
 
 const LOG_TARGET: &str = "comms::dht::dedup_cache";
 

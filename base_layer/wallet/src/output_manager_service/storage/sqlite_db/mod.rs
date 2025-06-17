@@ -966,6 +966,28 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         result
     }
 
+    fn get_balance_payment_id(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let result = OutputSql::get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id, &mut conn);
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_balance_payment_id: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        result
+    }
+
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;

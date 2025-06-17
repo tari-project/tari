@@ -315,14 +315,15 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let inbound_tx = InboundTransaction::new(
             1u64.into(),
             source_address,
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            PaymentId::open("1", TxType::PaymentToOther),
+            PaymentId::open_from_string("1", TxType::PaymentToOther),
             Utc::now(),
         );
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
@@ -332,12 +333,14 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let completed_tx = CompletedTransaction::new(
             2u64.into(),
             source_address,
@@ -356,7 +359,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
-            PaymentId::open("2", TxType::PaymentToOther),
+            PaymentId::open_from_string("2", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
@@ -367,7 +370,8 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let outbound_tx = OutboundTransaction::new(
             3u64.into(),
             destination_address,
@@ -375,7 +379,7 @@ mod test {
             23 * uT,
             stp,
             TransactionStatus::Pending,
-            PaymentId::open("3", TxType::PaymentToOther),
+            PaymentId::open_from_string("3", TxType::PaymentToOther),
             Utc::now(),
             false,
         );
@@ -403,12 +407,14 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let faux_unconfirmed_tx = CompletedTransaction::new(
             6u64.into(),
             source_address,
@@ -427,7 +433,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(2),
             Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
-            PaymentId::open("6", TxType::PaymentToOther),
+            PaymentId::open_from_string("6", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
@@ -437,12 +443,14 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let faux_confirmed_tx = CompletedTransaction::new(
             7u64.into(),
             source_address,
@@ -461,7 +469,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(5),
             Some(DateTime::from_timestamp(0, 0).unwrap()),
-            PaymentId::open("7", TxType::PaymentToOther),
+            PaymentId::open_from_string("7", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
@@ -501,7 +509,8 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
         let callback_handler = CallbackHandler::new(
             Context(void_ptr),

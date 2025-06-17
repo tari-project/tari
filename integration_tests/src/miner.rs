@@ -41,7 +41,12 @@ use tari_core::{
     transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, WalletOutput},
+        transaction_components::{
+            encrypted_data::{PaymentId, TxType},
+            CoinBaseExtra,
+            RangeProofType,
+            WalletOutput,
+        },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
     },
 };
@@ -86,7 +91,9 @@ impl MinerProcess {
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
     ) {
-        std::env::set_var("TARI_NETWORK", "localnet");
+        unsafe {
+            std::env::set_var("TARI_NETWORK", "localnet");
+        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
 
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
@@ -296,7 +303,10 @@ async fn create_block_template_with_coinbase(
         stealth_payment,
         consensus_manager.consensus_constants(height),
         RangeProofType::BulletProofPlus,
-        PaymentId::Empty,
+        PaymentId::Open {
+            user_data: vec![],
+            tx_type: TxType::Coinbase,
+        },
     )
     .await
     .unwrap();

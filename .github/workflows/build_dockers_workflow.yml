@@ -39,7 +39,8 @@ name: Build docker images - workflow_call/on-demand
 env:
   DAYS_to_EXPIRE: 30
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   envs_setup:
@@ -95,6 +96,7 @@ jobs:
       matrix: ${{ fromJson(needs.envs_setup.outputs.matrix) }}
 
     permissions:
+      contents: read
       packages: write
 
     runs-on: ubuntu-latest

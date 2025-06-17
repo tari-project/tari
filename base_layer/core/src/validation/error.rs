@@ -228,6 +228,8 @@ impl ValidationError {
             err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
+            err @ ValidationError::CovenantTooLarge { .. } |
+            err @ ValidationError::InvalidSerializedPublicKey(_) |
             err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
             err @ ValidationError::SidechainProofInvalid(_) |
             err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |

@@ -42,11 +42,11 @@ const LOG_TARGET: &str = "comms::dht::requests::outbound";
 
 #[derive(Clone)]
 pub struct OutboundMessageRequester {
-    sender: mpsc::Sender<DhtOutboundRequest>,
+    sender: mpsc::UnboundedSender<DhtOutboundRequest>,
 }
 
 impl OutboundMessageRequester {
-    pub fn new(sender: mpsc::Sender<DhtOutboundRequest>) -> Self {
+    pub fn new(sender: mpsc::UnboundedSender<DhtOutboundRequest>) -> Self {
         Self { sender }
     }
 
@@ -336,8 +336,7 @@ impl OutboundMessageRequester {
     ) -> Result<SendMessageResponse, DhtOutboundError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))
-            .await?;
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))?;
 
         reply_rx
             .await
@@ -352,13 +351,12 @@ impl OutboundMessageRequester {
     ) -> Result<(), DhtOutboundError> {
         let (reply_tx, _) = oneshot::channel();
         self.sender
-            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))
-            .await?;
+            .send(DhtOutboundRequest::SendMessage(Box::new(params), body, reply_tx))?;
         Ok(())
     }
 
     #[cfg(test)]
-    pub fn get_mpsc_sender(&self) -> mpsc::Sender<DhtOutboundRequest> {
+    pub fn get_mpsc_sender(&self) -> mpsc::UnboundedSender<DhtOutboundRequest> {
         self.sender.clone()
     }
 }

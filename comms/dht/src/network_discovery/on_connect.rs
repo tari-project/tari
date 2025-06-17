@@ -30,7 +30,7 @@ use tokio::sync::broadcast;
 use crate::{
     event::DhtEvent,
     network_discovery::{
-        state_machine::{NetworkDiscoveryContext, StateEvent},
+        state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
     },
@@ -150,10 +150,19 @@ impl OnConnect {
         let mut num_added = 0;
         while let Some(resp) = peer_stream.next().await {
             match resp {
-                Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
+                Ok(resp) => match resp.peer.and_then(|peer| UnvalidatedPeerInfo::try_from(peer).ok()) {
                     Some(peer) => {
-                        if self.validate_and_add_peer(peer).await? {
-                            num_added += 1;
+                        let pub_key = peer.public_key.clone();
+                        match self.validate_and_add_peer(peer).await {
+                            Ok(new_peer) => {
+                                if new_peer {
+                                    debug!(target: LOG_TARGET, "Added new peer `{}` from `{}`", &pub_key, sync_peer);
+                                    num_added += 1;
+                                }
+                            },
+                            Err(e) => {
+                                debug!(target: LOG_TARGET, "Failed to validate peer `{}` from `{}`: {}", pub_key, sync_peer, e);
+                            },
                         }
                     },
                     None => {
@@ -177,6 +186,9 @@ impl OnConnect {
                     num_duplicate_peers: 0,
                     num_succeeded: num_added,
                     sync_peers: vec![conn.peer_node_id().clone()],
+                    phase: DiscoveryPhase::General, // This is regular peer connection, not seed bootstrap
+                    round_number: None,             // Not tracking specific rounds for on_connect mode
+                    total_rounds: None,             // Not tracking total rounds for on_connect mode
                 }));
         }
 
@@ -189,7 +201,7 @@ impl OnConnect {
         let maybe_existing_peer = self.context.peer_manager.find_by_public_key(&peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();
         let valid_peer = peer_validator.validate_peer(peer, maybe_existing_peer)?;
-        self.context.peer_manager.add_peer(valid_peer).await?;
+        self.context.peer_manager.add_or_update_peer(valid_peer).await?;
         Ok(is_new_peer)
     }
 

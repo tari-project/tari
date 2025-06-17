@@ -20,8 +20,8 @@
 # automatically configured (default = )
 #public_address =
 
-# The Minotari base node's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
-#base_node_grpc_address = "127.0.0.1/tcp/18142"
+# The Minotari base node's GRPC address. (default = "http://127.0.0.1:<port>" the <port> value is based on network)
+#base_node_grpc_address = "http://127.0.0.1:18142"
 
 # How often do we want to scan the base layer for changes. (default = 10)
 #base_layer_scanning_interval = 10

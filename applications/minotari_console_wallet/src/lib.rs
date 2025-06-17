@@ -40,6 +40,7 @@ pub use cli::{
     CoinSplitArgs,
     DiscoverPeerArgs,
     ExportUtxosArgs,
+    ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
     SendMinotariArgs,
     SetBaseNodeArgs,
@@ -107,6 +108,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         profile_with_tokio_console: false,
         view_private_key: None,
         spend_key: None,
+        birthday: None,
         libtor_data_dir: None,
     };
 

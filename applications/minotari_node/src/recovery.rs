@@ -25,7 +25,7 @@ use std::{
     env::temp_dir,
     fs,
     io::{self, Write},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use anyhow::anyhow;
@@ -53,7 +53,6 @@ use tari_core::{
         mocks::MockValidator,
         DifficultyCalculator,
     },
-    OutputSmt,
 };
 
 use crate::{BaseNodeConfig, DatabaseType};
@@ -111,7 +110,6 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory);
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
         HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
@@ -129,7 +127,6 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         validators,
         node_config.storage,
         difficulty_calculator,
-        smt,
     )?;
     db.start()?;
     do_recovery(db.into(), temp_db).await?;
@@ -159,14 +156,12 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    let smt = Arc::new(RwLock::new(OutputSmt::new()));
     let source_database = BlockchainDatabase::new(
         source_backend,
         rules.clone(),
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules, Default::default()),
-        smt,
     )?;
     source_database.start()?;
     let max_height = source_database

@@ -22,7 +22,7 @@
 
 use std::fmt::{Display, Error, Formatter};
 
-use primitive_types::U256;
+use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 
 use crate::types::BlockHash;
@@ -43,7 +43,7 @@ pub struct ChainMetadata {
     /// provided. Archival nodes wil always have a `pruned_height` of zero.
     pruned_height: u64,
     /// The total accumulated proof of work of the longest chain
-    accumulated_difficulty: U256,
+    accumulated_difficulty: U512,
     /// Timestamp of the tip block in the longest valid chain
     timestamp: u64,
 }
@@ -61,7 +61,7 @@ impl ChainMetadata {
         best_block_hash: BlockHash,
         pruning_horizon: u64,
         pruned_height: u64,
-        accumulated_difficulty: U256,
+        accumulated_difficulty: U512,
         timestamp: u64,
     ) -> Result<ChainMetadata, ChainMetaDataError> {
         let chain_meta_data = ChainMetadata {
@@ -121,7 +121,7 @@ impl ChainMetadata {
         self.pruned_height
     }
 
-    pub fn accumulated_difficulty(&self) -> U256 {
+    pub fn accumulated_difficulty(&self) -> U512 {
         self.accumulated_difficulty
     }
 

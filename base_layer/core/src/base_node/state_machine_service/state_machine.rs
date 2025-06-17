@@ -27,6 +27,7 @@ use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_comms_dht::event::DhtEventReceiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -44,7 +45,6 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };
-
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
@@ -90,8 +90,9 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
-    pub(super) peer_manager: Arc<PeerManager>,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
+    pub(super) peer_manager: Arc<PeerManager>,
+    pub(super) dht_event_stream: DhtEventReceiver,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
     pub(super) sync_validators: SyncValidators<B>,
@@ -99,18 +100,21 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
     pub(super) randomx_factory: RandomXFactory,
     is_bootstrapped: bool,
+    pub(super) is_primary_bootstrap_complete: bool,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
-    /// Instantiate a new Base Node.
+    // Instantiate a new Base Node.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,
         connectivity: ConnectivityRequester,
-        peer_manager: Arc<PeerManager>,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
+        peer_manager: Arc<PeerManager>,
+        dht_event_stream: DhtEventReceiver, // New parameter
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators<B>,
         status_event_sender: watch::Sender<StatusInfo>,
@@ -123,8 +127,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             db,
             local_node_interface,
             connectivity,
-            peer_manager,
             metadata_event_stream,
+            peer_manager,
+            dht_event_stream,
             config,
             info: StateInfo::StartUp,
             event_publisher,
@@ -132,6 +137,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             sync_validators,
             randomx_factory,
             is_bootstrapped: false,
+            is_primary_bootstrap_complete: false,
             consensus_rules,
             interrupt_signal,
         }
@@ -188,7 +194,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             },
 
             (Waiting(s), Continue) => Listening(s.into(), false),
-            (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
+            (_, FatalError(s)) => panic!("{}", s),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
             (s, e) => {
                 warn!(
@@ -280,6 +286,38 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             Listening(s, network_silence) => s.next_event(shared_state, *network_silence).await,
             Waiting(s) => s.next_event().await,
             Shutdown(_) => unreachable!("called get_next_state_event while in Shutdown state"),
+        }
+    }
+
+    pub fn set_primary_bootstrap_complete(&mut self, complete: bool) {
+        info!(
+            target: LOG_TARGET,
+            "[BN SM UPDATE] Setting primary_bootstrap_complete to {}. Was: {}. Current state: {}",
+            complete,
+            self.is_primary_bootstrap_complete,
+            self.info.short_desc()
+        );
+
+        self.is_primary_bootstrap_complete = complete;
+
+        if let StateInfo::Listening(mut info) = self.info.clone() {
+            let had_bootstrap_phase = info.bootstrap_phase.is_some();
+            if complete {
+                info.bootstrap_phase = None;
+            }
+            self.set_state_info(StateInfo::Listening(info));
+
+            info!(
+                target: LOG_TARGET,
+                "[BN SM UPDATE] Updated Listening state. Removed bootstrap_phase: {}. Console should now show 'Listening'",
+                had_bootstrap_phase
+            );
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "[BN SM UPDATE] Not in Listening state ({}), bootstrap_complete flag updated but UI unchanged",
+                self.info.short_desc()
+            );
         }
     }
 

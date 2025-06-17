@@ -32,7 +32,6 @@ use crate::base_node::{
         HeaderSyncState,
         HorizonStateSync,
         Listening,
-        ListeningInfo,
         Shutdown,
         Starting,
         Waiting,
@@ -179,6 +178,54 @@ impl Display for BaseNodeState {
     }
 }
 
+// Add BootstrapPhaseInfo struct
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootstrapPhaseInfo {
+    pub current_round: usize,
+    pub total_rounds: usize,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// This struct contains info that is useful for external viewing of state info
+pub struct ListeningInfo {
+    pub synced: bool,
+    pub initial_delay_connected_count: u64,
+    pub initial_sync_peer_wait_count: u64,
+    pub bootstrap_phase: Option<BootstrapPhaseInfo>,
+}
+impl Display for ListeningInfo {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("Node in listening state\n")
+    }
+}
+
+impl ListeningInfo {
+    /// Creates a new ListeningInfo
+    pub const fn new(is_synced: bool, initial_delay_connected_count: u64, initial_sync_peer_wait_count: u64) -> Self {
+        Self {
+            synced: is_synced,
+            initial_delay_connected_count,
+            initial_sync_peer_wait_count,
+            bootstrap_phase: None,
+        }
+    }
+
+    pub fn is_synced(&self) -> bool {
+        self.synced
+    }
+
+    pub fn is_bootstrapping(&self) -> bool {
+        self.bootstrap_phase.is_some()
+    }
+
+    pub fn initial_delay_connected_count(&self) -> u64 {
+        self.initial_delay_connected_count
+    }
+
+    pub fn initial_sync_peer_wait_count(&self) -> u64 {
+        self.initial_sync_peer_wait_count
+    }
+}
+
 /// This enum will display all info inside of the state engine
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateInfo {
@@ -211,7 +258,13 @@ impl StateInfo {
 
             BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string_blocks()),
             Listening(info) => {
-                if info.is_synced() {
+                // NEW: Prioritize bootstrap display if active
+                if let Some(bootstrap_info) = info.bootstrap_phase {
+                    format!(
+                        "Bootstrapping via seeds (Round {}/{})",
+                        bootstrap_info.current_round, bootstrap_info.total_rounds
+                    )
+                } else if info.is_synced() {
                     "Listening".to_string()
                 } else {
                     format!(

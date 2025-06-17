@@ -33,6 +33,9 @@ use tari_common::{
     load_configuration,
 };
 use tari_shutdown::Shutdown;
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -48,8 +51,20 @@ mod utils;
 mod wallet_modes;
 
 fn main() {
+    #[cfg(feature = "dhat-heap")]
+    let dhat_profiler = dhat::Profiler::new_heap();
+    #[cfg(feature = "dhat-heap")]
+    println!("\n\nDHAT: Profiling enabled. Run `dhat-heap` to view the results.\n\n");
+
     match main_inner() {
-        Ok(_) => process::exit(0),
+        Ok(_) => {
+            #[cfg(feature = "dhat-heap")]
+            {
+                println!("\nCtrl-C pressed, exiting...\n");
+                drop(dhat_profiler);
+            }
+            process::exit(0)
+        },
         Err(err) => {
             eprintln!("{}", err);
             let exit_code = err.exit_code;
@@ -63,6 +78,8 @@ fn main() {
                 target: LOG_TARGET,
                 "Exiting with code ({}): {:?}: {}", exit_code as i32, exit_code, err
             );
+            #[cfg(feature = "dhat-heap")]
+            drop(dhat_profiler);
             process::exit(exit_code as i32)
         },
     }

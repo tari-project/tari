@@ -43,12 +43,6 @@ pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
     EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
 }
 
-/// Utility function that converts a `EpochTime` to a `chrono::DateTime`
-pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
-    DateTime::from_timestamp(i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0)
-        .unwrap_or(DateTime::<Utc>::MAX_UTC)
-}
-
 /// Message errors that should be verified by every node
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
@@ -119,11 +113,6 @@ impl DhtMessageType {
 
     pub fn is_dht_join(self) -> bool {
         matches!(self, DhtMessageType::Join)
-    }
-
-    pub fn is_saf_message(self) -> bool {
-        use DhtMessageType::{SafRequestMessages, SafStoredMessages};
-        matches!(self, SafRequestMessages | SafStoredMessages)
     }
 }
 

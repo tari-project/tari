@@ -22,6 +22,8 @@
 
 use std::{convert::TryFrom, path::PathBuf};
 
+use blake2::Blake2b;
+use digest::consts::U64;
 use log::{debug, error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
@@ -31,12 +33,19 @@ use minotari_wallet::{
 use rand::random;
 use tari_common_types::{
     tari_address::TariAddress,
+    types::{ Signature, UncompressedSignature},
     types::{CompressedPublicKey, FixedHash, PrivateKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
+use tari_core::{
+    consensus::DomainSeparatedConsensusHasher,
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
+    },
 };
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_hashing::TransactionHashDomain;
+use tari_key_manager::key_manager::KeyManager;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
@@ -394,6 +403,39 @@ pub async fn send_register_template_transaction_task(
             return;
         },
     };
+
+    // ----------------------------------------------------------------------------
+    // signing and sending code template registration request
+    // ----------------------------------------------------------------------------
+
+    let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U64>>::new();
+
+    let author_private_key = match km.next_key() {
+        Ok(secret_key) => secret_key.key,
+        Err(e) => {
+            error!(target: LOG_TARGET, "failed to generate key: {}", e);
+            result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
+            return;
+        },
+    };
+
+    let author_public_key = CompressedPublicKey::from_secret_key(&author_private_key);
+    let (secret_nonce, public_nonce) = CompressedPublicKey::random_keypair(&mut OsRng);
+    let challenge = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
+        .chain(&author_public_key)
+        .chain(&public_nonce)
+        .chain(&binary_sha)
+        .chain(&b"")
+        .finalize();
+
+    let author_signature = Signature::new_from_schnorr(
+        UncompressedSignature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
+            .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey"),
+    );
+
+    // ----------------------------------------------------------------------------
+    // ============================================================================
+    // ----------------------------------------------------------------------------
 
     let result = transaction_service_handle
         .register_code_template(

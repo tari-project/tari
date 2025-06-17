@@ -26,13 +26,19 @@ use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use tari_comms::{
     connectivity::ConnectivityError,
-    peer_manager::{NodeDistance, NodeId, PeerFeatures},
+    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerId},
+    types::CommsPublicKey,
     PeerConnection,
-    PeerManager,
 };
 
 use super::{
-    state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
+    state_machine::{
+        DhtNetworkDiscoveryRoundInfo,
+        DiscoveryParams,
+        DiscoveryPhase,
+        NetworkDiscoveryContext,
+        StateEvent,
+    },
     NetworkDiscoveryError,
 };
 use crate::{
@@ -74,16 +80,35 @@ impl Discovering {
         // However during a normal non-bootstrap sync receiving all new neighbours is a bit "fishy" and should be
         // treated as suspicious.
         self.neighbourhood_threshold = self
-            .context
-            .peer_manager
-            .calc_region_threshold(
-                self.context.node_identity.node_id(),
-                self.config().num_neighbouring_nodes,
-                PeerFeatures::COMMUNICATION_NODE,
-            )
+            .calc_region_threshold(self.config().num_neighbouring_nodes, PeerFeatures::COMMUNICATION_NODE)
             .await?;
 
+        // Set discovery phase and rounds information
+        self.stats.phase = DiscoveryPhase::General;
+        self.stats.round_number = Some(self.context.num_rounds());
+        self.stats.total_rounds = None; // No fixed total for general discovery
+
         Ok(())
+    }
+
+    async fn calc_region_threshold(
+        &self,
+        num_neighbouring_nodes: usize,
+        peer_features: PeerFeatures,
+    ) -> Result<NodeDistance, NetworkDiscoveryError> {
+        Ok(self
+            .context
+            .peer_manager
+            .calc_region_threshold(num_neighbouring_nodes, peer_features)
+            .await?)
+    }
+
+    async fn find_by_public_key(&self, public_key: CommsPublicKey) -> Result<Option<Peer>, NetworkDiscoveryError> {
+        Ok(self.context.peer_manager.find_by_public_key(&public_key).await?)
+    }
+
+    async fn add_peer(&self, peer: Peer) -> Result<PeerId, NetworkDiscoveryError> {
+        Ok(self.context.peer_manager.add_or_update_peer(peer).await?)
     }
 
     pub async fn next_event(&mut self) -> StateEvent {
@@ -206,7 +231,7 @@ impl Discovering {
             return Ok(());
         }
 
-        let maybe_existing_peer = self.peer_manager().find_by_public_key(&new_peer.public_key).await?;
+        let maybe_existing_peer = self.find_by_public_key(new_peer.public_key.clone()).await?;
         let peer_exists = maybe_existing_peer.is_some();
 
         let peer_validator = PeerValidator::new(self.config());
@@ -217,13 +242,13 @@ impl Discovering {
                 } else {
                     self.stats.num_new_peers += 1;
                 }
-                self.peer_manager().add_peer(valid_peer).await?;
+                self.add_peer(valid_peer).await?;
                 Ok(())
             },
             Err(err) => {
-                warn!(
+                info!(
                     target: LOG_TARGET,
-                    "Received invalid peer from sync peer '{}': {}. Banning sync peer.", sync_peer, err
+                    "Received invalid peer from sync peer '{}': {}.", sync_peer, err
                 );
                 Err(err.into())
             },
@@ -241,7 +266,6 @@ impl Discovering {
                 match &err {
                     NetworkDiscoveryError::EmptyPeerMessageReceived |
                     NetworkDiscoveryError::InvalidPeerDataReceived(_) |
-                    NetworkDiscoveryError::PeerValidationError(_) |
                     NetworkDiscoveryError::DuplicatePeerReceived |
                     NetworkDiscoveryError::TooManyPeersReceived => {
                         self.ban_peer(peer, OffenceSeverity::High, &err).await;
@@ -252,12 +276,14 @@ impl Discovering {
                     NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
                         self.ban_peer(peer, OffenceSeverity::Low, &err).await;
                     },
-                    // Other errors
+                    // Other errors - no banning needed
                     NetworkDiscoveryError::RpcStatus(_) |
                     NetworkDiscoveryError::NoSyncPeers |
                     NetworkDiscoveryError::PeerManagerError(_) |
                     NetworkDiscoveryError::RpcError(_) |
-                    NetworkDiscoveryError::ConnectivityError(_) => {},
+                    NetworkDiscoveryError::ConnectivityError(_) |
+                    NetworkDiscoveryError::PeerValidationError(_) |
+                    NetworkDiscoveryError::JoinError(_) => {},
                 }
                 Err(err)
             },
@@ -284,10 +310,6 @@ impl Discovering {
 
     fn config(&self) -> &DhtConfig {
         &self.context.config
-    }
-
-    fn peer_manager(&self) -> &PeerManager {
-        &self.context.peer_manager
     }
 
     fn dial_all_candidates(&self) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + 'static {

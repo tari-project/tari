@@ -22,6 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::{SqliteStorageError, StorageError};
+use tari_common_types::tari_address::TariAddressError;
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
 use tari_key_manager::error::{KeyManagerError, KeyManagerError as KMError};
 use tari_utilities::{hex::HexError, ByteArrayError};
@@ -83,6 +84,8 @@ pub enum KeyManagerServiceError {
     StorageError(#[from] StorageError),
     #[error("The imported private key cannot be accessed or read: `{0}")]
     ImportedPrivateKeyInaccessible(String),
+    #[error("Tari address error: `{0}`")]
+    TariAddressError(#[from] TariAddressError),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

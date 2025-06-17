@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true }
-tari_core = { workspace = true, features = ["transactions", "mempool_proto", "base_node_proto"] }
+tari_core = { workspace = true, features = ["base_node"] }
 tari_crypto = { workspace = true }
 tari_script = { workspace = true }
 tari_max_size = { workspace = true }
@@ -19,7 +19,7 @@ tari_utilities = { workspace = true }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"
-borsh = "1.5"
+borsh = "1.5.7"
 chrono = { version = "0.4.39", default-features = false }
 log = "0.4"
 prost = "0.13.3"
@@ -28,13 +28,13 @@ rand = "0.8"
 rcgen = "0.12.1"
 subtle = "2.5.0"
 thiserror = "1"
-tokio = { version = "1.36", features = ["fs"] }
-tonic = { version = "0.12.3", features = ["tls"] }
+tokio = { version = "1.44", features = ["fs"] }
+tonic = { version = "0.13.1", features = ["tls-ring"] }
 zeroize = "1"
 
 [build-dependencies]
 tari_features = { workspace = true }
-tonic-build = "0.12.3"
+tonic-build = "0.13.1"
 
 [package.metadata.cargo-machete]
 ignored = [

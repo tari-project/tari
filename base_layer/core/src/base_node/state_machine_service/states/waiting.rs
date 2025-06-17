@@ -56,7 +56,7 @@ impl Default for Waiting {
     /// A default timeout of 1 minute applies
     fn default() -> Self {
         Self {
-            timeout: Duration::from_secs(30),
+            timeout: Duration::from_secs(5),
         }
     }
 }

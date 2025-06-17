@@ -66,11 +66,12 @@ pub enum GrpcMethod {
     GetShardKey,
     GetTemplateRegistrations,
     GetSideChainUtxos,
+    SearchPaymentReferences,
 }
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 37] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 38] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -108,11 +109,12 @@ impl GrpcMethod {
         GrpcMethod::GetShardKey,
         GrpcMethod::GetTemplateRegistrations,
         GrpcMethod::GetSideChainUtxos,
+        GrpcMethod::SearchPaymentReferences,
     ];
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 37>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 38>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -164,6 +166,7 @@ impl FromStr for GrpcMethod {
             "get_shard_key" => Ok(GrpcMethod::GetShardKey),
             "get_template_registrations" => Ok(GrpcMethod::GetTemplateRegistrations),
             "get_side_chain_utxos" => Ok(GrpcMethod::GetSideChainUtxos),
+            "search_payment_references" => Ok(GrpcMethod::SearchPaymentReferences),
             _ => Err(format!("'{}' not supported", s)),
         }
     }
@@ -215,7 +218,8 @@ mod tests {
         assert!(config.inner_config.allow_methods.contains(&GrpcMethod::GetConstants));
         assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
         assert!(config.inner_config.allow_methods.contains(&GrpcMethod::Identify));
-        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
+        assert!(!config.inner_config.allow_methods.contains(&GrpcMethod::GetShardKey));
+        // commented out in the config
     }
 
     #[test]
@@ -260,6 +264,7 @@ mod tests {
                 GrpcMethod::GetShardKey => count += 1,
                 GrpcMethod::GetTemplateRegistrations => count += 1,
                 GrpcMethod::GetSideChainUtxos => count += 1,
+                GrpcMethod::SearchPaymentReferences => count += 1,
             }
         }
         assert_eq!(count, GrpcMethod::ALL_VARIANTS.len());

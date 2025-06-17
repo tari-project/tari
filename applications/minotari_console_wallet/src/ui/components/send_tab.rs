@@ -287,7 +287,7 @@ impl SendTab {
                                             amount.into(),
                                             UtxoSelectionCriteria::default(),
                                             fee_per_gram,
-                                            PaymentId::open(&self.payment_id_field, TxType::PaymentToOther),
+                                            PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
                                             tx,
                                         ),
                                     ) {
@@ -307,7 +307,7 @@ impl SendTab {
                                         amount.into(),
                                         UtxoSelectionCriteria::default(),
                                         fee_per_gram,
-                                        PaymentId::open(&self.payment_id_field, TxType::PaymentToOther),
+                                        PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
                                         tx,
                                     )) {
                                         Err(e) => {

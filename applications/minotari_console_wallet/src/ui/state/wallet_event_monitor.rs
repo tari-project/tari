@@ -168,6 +168,13 @@ impl WalletEventMonitor {
                                     self.trigger_full_tx_state_refresh().await;
                                     self.trigger_balance_refresh();
                                 },
+                                TransactionEvent::TransactionImported(tx_id) => {
+                                    self.trigger_tx_state_refresh(tx_id).await;
+                                    self.trigger_balance_refresh();
+                                    self.add_notification(
+                                        format!("Transaction Imported - TxId: {}", tx_id)
+                                    ).await;
+                                },
                                 // Only the above variants trigger state refresh
                                 _ => (),
                             }
@@ -182,19 +189,6 @@ impl WalletEventMonitor {
                     trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status changed");
                     self.trigger_peer_state_refresh().await;
                 },
-                // Ok(_) = software_update_notif.changed() => {
-                    //     trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet auto update status changed");
-                    //     let update = software_update_notif.borrow().as_ref().cloned();
-                    //     if let Some(update) = update {
-                    //         self.add_notification(format!(
-                    //             "Version {} of the {} is available: {} (sha: {})",
-                    //             update.version(),
-                    //             update.app(),
-                    //             update.download_url(),
-                    //             update.to_hash_hex()
-                    //         )).await;
-                    //     }
-                    // },
                     result = connectivity_events.recv() => {
                         match result {
                             Ok(msg) => {
@@ -227,7 +221,10 @@ impl WalletEventMonitor {
                                     final_height,
                                     ..
                                 }=> {
-                                self.trigger_wallet_scanned_height_update(final_height).await;
+                                    self.trigger_wallet_scanned_height_update(final_height).await;
+                                    if self.should_we_trigger_tx_update_for_payref().await{
+                                        self.trigger_full_tx_state_refresh().await;
+                                    }
                                 },
                                 _ => {}
                             }
@@ -241,6 +238,9 @@ impl WalletEventMonitor {
                     if let Some(peer) = peer {
                         self.trigger_base_node_peer_refresh(peer.get_current_peer()).await;
                         self.trigger_balance_refresh();
+                        if self.should_we_trigger_tx_update_for_payref().await{
+                            self.trigger_full_tx_state_refresh().await;
+                        }
                     }
                 }
                 result = base_node_events.recv() => {
@@ -248,7 +248,10 @@ impl WalletEventMonitor {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
                             if let BaseNodeEvent::BaseNodeStateChanged(state) = (*msg).clone() {
-                                    self.trigger_base_node_state_refresh(state).await;
+                                self.trigger_base_node_state_refresh(state).await;
+                                if self.should_we_trigger_tx_update_for_payref().await{
+                                    self.trigger_full_tx_state_refresh().await;
+                                }
                             }
                         },
                         Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -324,6 +327,11 @@ impl WalletEventMonitor {
         if let Err(e) = inner.cleanup_single_confirmation_state(tx_id).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
+    }
+
+    async fn should_we_trigger_tx_update_for_payref(&self) -> bool {
+        let inner = self.app_state_inner.read().await;
+        inner.should_we_trigger_tx_update_for_payref()
     }
 
     async fn trigger_full_tx_state_refresh(&mut self) {

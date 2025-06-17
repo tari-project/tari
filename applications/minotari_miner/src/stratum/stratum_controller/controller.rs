@@ -25,6 +25,7 @@ use borsh::BorshDeserialize;
 use futures::stream::StreamExt;
 use log::*;
 use minotari_app_grpc::tari_rpc::BlockHeader;
+use tari_common_types::types::FixedHash;
 use tari_max_size::MaxSizeBytes;
 use tari_utilities::{hex::Hex, ByteArray};
 
@@ -97,6 +98,8 @@ impl Controller {
                                         self.current_difficulty_target,
                                         self.num_mining_threads,
                                         true,
+                                        FixedHash::zero(),
+                                        None,
                                     ));
                                 } else {
                                     continue;

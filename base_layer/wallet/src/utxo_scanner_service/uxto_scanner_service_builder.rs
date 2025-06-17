@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Debug;
+
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::transactions::{
@@ -45,11 +47,20 @@ use crate::{
     WalletSqlite,
 };
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
 pub enum UtxoScannerMode {
     #[default]
     Recovery,
     Scanning,
+}
+
+impl Debug for UtxoScannerMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UtxoScannerMode::Recovery => write!(f, "UtxoRecoveryMode"),
+            UtxoScannerMode::Scanning => write!(f, "UtxoScanningMode"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +129,7 @@ impl UtxoScannerServiceBuilder {
             factories: wallet.factories.clone(),
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
+            birthday_offset: wallet.config.birthday_offset,
         };
 
         let (event_sender, _) = broadcast::channel(200);
@@ -153,6 +165,7 @@ impl UtxoScannerServiceBuilder {
         base_node_service: BaseNodeServiceHandle,
         one_sided_message_watch: watch::Receiver<String>,
         recovery_message_watch: watch::Receiver<String>,
+        birthday_offset: u16,
     ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
         let resources = UtxoScannerResources {
             db,
@@ -165,6 +178,7 @@ impl UtxoScannerServiceBuilder {
             factories,
             recovery_message: self.recovery_message.clone(),
             one_sided_payment_message: self.one_sided_message.clone(),
+            birthday_offset,
         };
 
         UtxoScannerService::new(

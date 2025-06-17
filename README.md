@@ -20,11 +20,11 @@ Want to contribute? Start by reading the [Contributing Guide](Contributing.md) a
 ### Versions
 The recommended running versions of each network are:
 
-| Network   | Version        |
-|-----------|----------------|
-| Stagenet  | 1.0.0-alpha.0a |
-| Nextnet   | 1.13.3-rc.0    |
-| Esmeralda | 1.13.3-pre.0   |
+| Network   | Version     |
+|-----------|-------------|
+| Mainnet   | 4.4.1       |
+| Nextnet   | 4.4.1-rc.0  |
+| Esmeralda | 4.4.1-pre.0 |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
@@ -40,8 +40,6 @@ Then run the tests with:
 ```bash
 cargo +nightly ci-test
 ```
-
-
 
 ### Download
 
@@ -148,69 +146,7 @@ sudo apt-get install -y powershell
 
 #### (Windows)
 
-First you'll need to make sure you have a full development environment set up:
-
-- LLVM
-
-  - https://releases.llvm.org/
-  - Create a `LIBCLANG_PATH` environment variable pointing to the LLVM lib path, e.g.
-    ```
-    setx LIBCLANG_PATH "C:\Program Files\LLVM\lib"
-    ```
-
-- Build Tools
-
-  - [CMake](https://cmake.org/download/) (Used for RandomX)
-
-  - Either:
-
-    - Microsoft Visual Studio Version 2019 or later
-      - C++ CMake tools for Windows
-      - MSVC build tools (latest version for your platform ARM, ARM64 or x64.x86)
-      - Spectre-mitigated libs (latest version for your platform ARM, ARM64 or x64.x86)
-
-    or
-
-    - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
-
-- OpenSSL:
-
-  - install `vcpkg`
-  - install static openssl `vcpkg install openssl:x64-windows-static`
-  - set env var: `OPENSSL_DIR=C:\vcpkg\packages\openssl_x64-windows-static`, replace `C:\vcpkg` with the root where you installed vcpkg
-
-- [Protocol Buffers](https://protobuf.dev/)
-  - Install from https://github.com/protocolbuffers/protobuf#protobuf-compiler-installation or if you using [The Package Manager for Windows](https://chocolatey.org/), run ```choco upgrade protoc -y```
-
-- Tor
-  - Download [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)
-  - Extract to local path, e.g. `C:\Program Files (x86)\Tor Services`
-  - Ensure the directory containing the Tor executable, e.g. `C:\Program Files (x86)\Tor Services\Tor`, is in the path
-
-#### Install Rust (\*nix)
-
-You can follow along at [The Rust Website](https://www.rust-lang.org/tools/install) or just follow these steps to get
-Rust installed on your machine:
-
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-Then make sure that `cargo` has been added to your path:
-
-    export PATH="$HOME/.cargo/bin:$PATH"
-
-#### Install Rust (Windows 10)
-
-Follow the installation process for Windows at [The Rust Website](https://www.rust-lang.org/tools/install). Then make
-sure that `cargo` and `rustc` have been added to your path:
-
-    cargo --version
-    rustc --version
-
-### Checkout the source code
-
-In your directory of choice (_e.g._ `%USERPROFILE%\Code` on Windows), clone the Tari repo:
-
-    git clone https://github.com/tari-project/tari.git
+Please follow the instructions [located here](https://github.com/tari-project/tari/blob/development/buildtools/windows-dev-environment-notes.md) for instructions on setting up your build environment in Windows.
 
 ### Build
 
@@ -422,7 +358,7 @@ the Minotari Base Node and the Minotari Wallet, if they are not enabled already.
 ```
 [wallet]
 
-grpc_address = "127.0.0.1:18143"
+grpc_address = "http://127.0.0.1:18143"
 ```
 
 ```
@@ -430,7 +366,7 @@ grpc_address = "127.0.0.1:18143"
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
-grpc_base_node_address = "127.0.0.1:18142"
+grpc_base_node_address = "http://127.0.0.1:18142"
 ```
 
 For the Minotari Miner there are some additional settings under section **`miner`** that can be changed:
@@ -445,11 +381,11 @@ For the Minotari Miner there are some additional settings under section **`miner
 
 # GRPC address of base node
 # Default: value from `base_node.grpc_base_node_address`
-#base_node_grpc_address = "127.0.0.1:18142"
+#base_node_grpc_address = "http://127.0.0.1:18142"
 
 # GRPC address of console wallet
 # Default: value from `wallet.grpc_address`
-#wallet_grpc_address = "127.0.0.1:18143"
+#wallet_grpc_address = "http://127.0.0.1:18143"
 
 # Start mining only when base node is bootstrapped
 # and current block height is on the tip of network
@@ -547,13 +483,13 @@ they are not enabled already:
 - For the Minotari Base Node and the Minotari Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
   ```
   [wallet]
-  grpc_address = "127.0.0.1:18143"
+  grpc_address = "http://127.0.0.1:18143"
   ```
   ```
   [base_node.esmeralda]
   transpo*_r_*t = "tor"
   allow_test_addresses = false
-  base_node_grpc_address = "127.0.0.1:18142"
+  base_node_grpc_address = "http://127.0.0.1:18142"
   ```
 
 Depending on if you are using solo mining or self-select mining, you will use one of the following:

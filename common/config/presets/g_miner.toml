@@ -7,8 +7,8 @@
 
 [miner]
 
-# GRPC address of base node (default = "/ip4/127.0.0.1/tcp/18142")
-#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+# GRPC address of base node (default = "http://127.0.0.1:18142")
+#base_node_grpc_address = "http://127.0.0.1:18142"
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 # GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
@@ -47,3 +47,6 @@
 #wallet_payment_address = "YOUR_WALLET_TARI_ADDRESS"
 # Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
 #range_proof_type = "revealed_value"
+
+# mine sha3x, or set to RandomXT to mine randomx using tari randomx
+#proof_of_work_algo = "Sha3X"

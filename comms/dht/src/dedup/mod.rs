@@ -186,7 +186,7 @@ mod test {
         let rt = Runtime::new().unwrap();
         let spy = service_spy();
 
-        let (dht_requester, mock) = create_dht_actor_mock(1);
+        let (dht_requester, mock) = create_dht_actor_mock();
         let mock_state = mock.get_shared_state();
         mock_state.set_number_of_message_hits(1);
         rt.spawn(mock.run());

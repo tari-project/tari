@@ -115,9 +115,9 @@ use crate::{
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
     },
+    transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
-
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
@@ -156,6 +156,7 @@ where
         connectivity: TWalletConnectivity,
         key_manager: TKeyManagerInterface,
         utxo_scanner_handle: UtxoScannerHandle,
+        transaction_service_handle: TransactionServiceHandle,
     ) -> Result<Self, OutputManagerError> {
         let view_key = key_manager.get_view_key().await?;
         let spend_key = key_manager.get_spend_key().await?;
@@ -167,12 +168,13 @@ where
         };
         let one_sided_tari_address = TariAddress::new_dual_address(
             view_key.pub_key.clone(),
-            comms_key.pub_key,
+            spend_key.pub_key.clone(),
             network,
             TariAddressFeatures::create_one_sided_only(),
-        );
+            None,
+        )?;
         let interactive_tari_address =
-            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features);
+            TariAddress::new_dual_address(view_key.pub_key, spend_key.pub_key, network, interactive_features, None)?;
         let resources = OutputManagerResources {
             config,
             db,
@@ -185,6 +187,7 @@ where
             one_sided_tari_address,
             interactive_tari_address,
             utxo_scanner_handle,
+            transaction_service_handle,
         };
 
         Ok(Self {
@@ -334,6 +337,14 @@ where
                 self.get_balance(current_tip_for_time_lock_calculation)
                     .map(OutputManagerResponse::Balance)
             },
+            OutputManagerRequest::GetBalancePaymentId(payment_id) => {
+                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
+                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
+                    Err(_) => None,
+                };
+                self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
+                    .map(OutputManagerResponse::Balance)
+            },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
                 .get_default_recipient_transaction(tsm)
                 .await
@@ -477,12 +488,14 @@ where
                 .await
                 .map(OutputManagerResponse::Transaction),
 
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => {
-                StandardUtxoRecoverer::new(self.resources.key_manager.clone(), self.resources.db.clone())
-                    .scan_and_recover_outputs(outputs)
-                    .await
-                    .map(OutputManagerResponse::RewoundOutputs)
-            },
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
+                self.resources.key_manager.clone(),
+                self.resources.db.clone(),
+                self.resources.transaction_service_handle.clone(),
+            )
+            .scan_and_recover_outputs(outputs)
+            .await
+            .map(OutputManagerResponse::RewoundOutputs),
             OutputManagerRequest::ScanOutputs(outputs) => self
                 .scan_outputs_for_one_sided_payments(outputs)
                 .await
@@ -805,6 +818,19 @@ where
         Ok(balance)
     }
 
+    fn get_balance_payment_id(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerError> {
+        let balance = self
+            .resources
+            .db
+            .get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)?;
+        trace!(target: LOG_TARGET, "Balance: {:?}", balance);
+        Ok(balance)
+    }
+
     /// Request a receiver transaction be generated from the supplied Sender Message
     #[allow(clippy::too_many_lines)]
     async fn get_default_recipient_transaction(
@@ -849,6 +875,9 @@ where
         };
         let payment_id = PaymentId::AddressAndData {
             sender_address: single_round_sender_data.sender_address.clone(),
+            amount: single_round_sender_data.amount,
+            fee: single_round_sender_data.metadata.fee,
+            sender_one_sided: false,
             tx_type: TxType::PaymentToOther,
             user_data: vec![],
         };
@@ -1274,25 +1303,33 @@ where
         payment_id: PaymentId,
         tx_id: TxId,
     ) -> Result<TariKeyAndId, OutputManagerError> {
-        if let PaymentId::U64(index) = payment_id {
-            let script_key_id = TariKeyId::Managed {
-                branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
-                index,
-            };
-            Ok(TariKeyAndId {
-                pub_key: self
-                    .resources
-                    .key_manager
-                    .get_public_key_at_key_id(&script_key_id)
-                    .await?,
-                key_id: script_key_id,
-            })
-        } else {
-            Err(OutputManagerError::ServiceError(format!(
-                "Invalid payment id (TxId: {}): expected 'PaymentId::U64(_)', received {:?}",
-                tx_id, payment_id
-            )))
-        }
+        let index = match payment_id {
+            PaymentId::U256(index) => u64::try_from(index).expect("we dont go over u64"),
+            PaymentId::Open { user_data: data, .. } => {
+                let bytes: [u8; size_of::<u64>()] = data.try_into().map_err(|_| {
+                    OutputManagerError::ServiceError(format!("Invalid payment id (TxId: {}): expected", tx_id))
+                })?;
+                u64::from_le_bytes(bytes)
+            },
+            _ => {
+                return Err(OutputManagerError::ServiceError(format!(
+                    "Invalid payment id (TxId: {}): expected 'PaymentId as u64', received {:?}",
+                    tx_id, payment_id
+                )))
+            },
+        };
+        let script_key_id = TariKeyId::Managed {
+            branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
+            index,
+        };
+        Ok(TariKeyAndId {
+            pub_key: self
+                .resources
+                .key_manager
+                .get_public_key_at_key_id(&script_key_id)
+                .await?,
+            key_id: script_key_id,
+        })
     }
 
     /// Create a partial transaction in order to prepare output
@@ -1897,9 +1934,11 @@ where
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())
             .await?;
         let script = push_pubkey_script(&script_spending_key);
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.one_sided_tari_address.clone(),
+            true,
+            amount,
+            fee,
             Some(TxType::PaymentToOther),
         );
 
@@ -1957,6 +1996,7 @@ where
         Ok((tx, amount, fee))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
@@ -2012,7 +2052,13 @@ where
         }
 
         let (output, sender_offset_key_id) = self
-            .output_to_self(output_features, amount, covenant, payment_id)
+            .output_to_self(
+                output_features,
+                amount,
+                covenant,
+                payment_id,
+                input_selection.fee_without_change,
+            )
             .await?;
 
         builder
@@ -2036,7 +2082,10 @@ where
                 Covenant::default(),
                 self.resources.interactive_tari_address.clone(),
             )
-            .with_payment_id(PaymentId::open("Pay to self transaction", TxType::PaymentToSelf));
+            .with_payment_id(PaymentId::open_from_string(
+                "Pay to self transaction",
+                TxType::PaymentToSelf,
+            ));
 
         let mut stp = builder
             .build()
@@ -2466,7 +2515,7 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
-            .with_payment_id(PaymentId::open(
+            .with_payment_id(PaymentId::open_from_string(
                 &format!(
                     "Coin split transaction, {} into {} outputs",
                     accumulated_amount, number_of_splits
@@ -2500,7 +2549,8 @@ where
                     OutputFeatures::default(),
                     amount_per_split,
                     Covenant::default(),
-                    PaymentId::open(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                    PaymentId::open_from_string(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                    fee,
                 )
                 .await?;
 
@@ -2636,7 +2686,7 @@ where
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
         );
-        let payment_id = PaymentId::open(
+        let payment_id = PaymentId::open_from_string(
             &format!("Coin split, {} into {} outputs", accumulated_amount, number_of_splits),
             TxType::CoinSplit,
         );
@@ -2666,6 +2716,7 @@ where
                     amount_per_split,
                     Covenant::default(),
                     payment_id.clone(),
+                    final_fee,
                 )
                 .await?;
 
@@ -2764,6 +2815,7 @@ where
         amount: MicroMinotari,
         covenant: Covenant,
         payment_id: PaymentId,
+        fee: MicroMinotari,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (commitment_mask_key, script_key) = self
             .resources
@@ -2771,9 +2823,11 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
+            false,
+            amount,
+            fee,
             Some(TxType::PaymentToSelf),
         );
 
@@ -2907,6 +2961,7 @@ where
                 accumulated_amount,
                 Covenant::default(),
                 payment_id.clone(),
+                fee,
             )
             .await?;
 
@@ -2987,7 +3042,7 @@ where
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_payment_id(PaymentId::open("scraping wallet", TxType::PaymentToOther))
+            .with_payment_id(PaymentId::open_from_string("scraping wallet", TxType::PaymentToOther))
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -3030,7 +3085,7 @@ where
         let req = FetchMatchingUtxos {
             output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
         };
-        let results: Vec<TransactionOutput> = self
+        let outputs = self
             .resources
             .connectivity
             .obtain_base_node_wallet_rpc_client()
@@ -3040,13 +3095,18 @@ where
             })?
             .fetch_matching_utxos(req)
             .await?
-            .outputs
-            .into_iter()
-            .filter_map(|o| match o.try_into() {
-                Ok(output) => Some(output),
-                _ => None,
-            })
-            .collect();
+            .outputs;
+
+        let mut results = Vec::new();
+        for output in outputs {
+            match output.try_into() {
+                Ok(tx_output) => results.push(tx_output),
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Failed to convert output from base node response: {}", e);
+                    // Continue processing other outputs instead of failing completely
+                },
+            }
+        }
         Ok(results)
     }
 
@@ -3099,7 +3159,10 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_payment_id(PaymentId::open("SHA-XTR atomic swap", TxType::ClaimAtomicSwap))
+                    .with_payment_id(PaymentId::open_from_string(
+                        "SHA-XTR atomic swap",
+                        TxType::ClaimAtomicSwap,
+                    ))
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(rewound_output)
@@ -3182,7 +3245,10 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_payment_id(PaymentId::open("SHA-XTR atomic refund", TxType::HtlcAtomicSwapRefund))
+            .with_payment_id(PaymentId::open_from_string(
+                "SHA-XTR atomic refund",
+                TxType::HtlcAtomicSwapRefund,
+            ))
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)

@@ -49,7 +49,7 @@ fn random_string(len: usize) -> String {
 pub fn create_memory_db_key_manager_with_range_proof_size(
     size: usize,
 ) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)))?;
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))?;
     let cipher = CipherSeed::new();
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
@@ -69,7 +69,7 @@ pub fn create_memory_db_key_manager_from_seed(
     seed: CipherSeed,
     rangeproof_size: usize,
 ) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)))?;
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))?;
     let cipher = seed;
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);

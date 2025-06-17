@@ -69,7 +69,14 @@
 /// `whoami` - Displays identity information about this Base Node and it's wallet
 /// `quit` - Exits the Base Node
 /// `exit` - Same as quit
-use std::{process, sync::Arc};
+use std::{
+    fs::File,
+    io::Write,
+    panic,
+    process,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use clap::Parser;
 use log::*;
@@ -80,16 +87,65 @@ use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 const LOG_TARGET: &str = "minotari::base_node::app";
 
+fn format_system_time(time: SystemTime) -> String {
+    let datetime = time.duration_since(UNIX_EPOCH).unwrap();
+    let seconds = datetime.as_secs();
+    let nanos = datetime.subsec_nanos();
+    let naive = chrono::DateTime::from_timestamp(seconds.try_into().unwrap(), nanos).unwrap();
+    naive.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
 /// Application entry point
 fn main() {
+    #[cfg(feature = "dhat-heap")]
+    let dhat_profiler = dhat::Profiler::new_heap();
+    #[cfg(feature = "dhat-heap")]
+    println!("\n\nDHAT: Profiling enabled. Run `dhat-heap` to view the results.\n\n");
+
+    panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info
+            .location()
+            .map(|loc| {
+                format!(
+                    "{} file: '{}', line: {}",
+                    format_system_time(SystemTime::now()),
+                    loc.file(),
+                    loc.line()
+                )
+            })
+            .unwrap_or_else(|| "unknown location".to_string());
+
+        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic message".to_string()
+        };
+
+        error!(target: "tari::p2pool::main", "Panic occurred at {}: {}", location, message);
+
+        // Optionally, write a custom message directly to the file
+        let mut file = File::create("minotari-node-panic.log").unwrap();
+        file.write_all(format!("Panic at {}: {}", location, message).as_bytes())
+            .unwrap();
+        // if cfg!(debug_assertions) {
+        // In debug mode, we want to see the panic message
+        eprintln!("Panic occurred at {}: {}", location, message);
+        std::process::exit(500);
+        // }
+    }));
+
     if let Err(err) = main_inner() {
         eprintln!("{:?}", err);
         let exit_code = err.exit_code;
         if let Some(hint) = exit_code.hint() {
-            eprintln!();
             eprintln!("{}", hint);
             eprintln!();
         }
@@ -97,7 +153,15 @@ fn main() {
             target: LOG_TARGET,
             "Exiting with code ({}): {:?}", exit_code as i32, err
         );
+        #[cfg(feature = "dhat-heap")]
+        drop(dhat_profiler);
         process::exit(exit_code as i32);
+    }
+
+    #[cfg(feature = "dhat-heap")]
+    {
+        println!("\nCtrl-C pressed, exiting...\n");
+        drop(dhat_profiler);
     }
 }
 

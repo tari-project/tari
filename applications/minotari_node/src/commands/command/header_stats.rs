@@ -26,7 +26,10 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::Utc;
 use clap::Parser;
-use tari_core::proof_of_work::{lwma_diff::LinearWeightedMovingAverage, PowAlgorithm};
+use tari_core::{
+    chain_storage::ChainStorageError,
+    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, PowAlgorithm},
+};
 use tari_utilities::hex::Hex;
 use tokio::{
     fs::File,
@@ -113,7 +116,10 @@ impl CommandContext {
                 .consensus_constants(height)
                 .max_pow_difficulty(pow_algo);
 
-            let calculated_target_difficulty = target_diff.get(pow_algo).calculate(min, max);
+            let calculated_target_difficulty = target_diff
+                .get(pow_algo)
+                .map_err(ChainStorageError::UnexpectedResult)?
+                .calculate(min, max);
             let existing_target_difficulty = header.accumulated_data().target_difficulty;
             let achieved = header.accumulated_data().achieved_difficulty;
             let solve_time = header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
@@ -127,12 +133,13 @@ impl CommandContext {
                 .map_err(Error::msg)?,
             );
             let acc_sha3 = header.accumulated_data().accumulated_sha3x_difficulty;
-            let acc_monero = header.accumulated_data().accumulated_randomx_difficulty;
+            let acc_monero = header.accumulated_data().accumulated_monero_randomx_difficulty;
+            let acc_tari_rx = header.accumulated_data().accumulated_tari_randomx_difficulty;
 
             buff.clear();
             writeln!(
                 buff,
-                "{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{},{}",
                 height,
                 achieved.as_u64(),
                 existing_target_difficulty.as_u64(),
@@ -142,8 +149,12 @@ impl CommandContext {
                 pow_algo,
                 chrono::DateTime::<Utc>::from_timestamp(header.header().timestamp.as_u64() as i64, 0)
                     .unwrap_or_default(),
-                target_diff.get(pow_algo).len(),
+                target_diff
+                    .get(pow_algo)
+                    .map_err(ChainStorageError::UnexpectedResult)?
+                    .len(),
                 acc_monero,
+                acc_tari_rx,
                 acc_sha3,
             )?;
             output.write_all(&buff).await?;

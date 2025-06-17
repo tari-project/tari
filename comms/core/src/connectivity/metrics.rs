@@ -21,9 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+use tari_metrics::{IntCounter, IntGauge, IntGaugeVec};
 
-use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId};
+use crate::connection_manager::ConnectionDirection;
 
 pub fn connections(direction: ConnectionDirection) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
@@ -45,15 +45,11 @@ pub fn uptime() -> IntGauge {
     METER.clone()
 }
 
-pub fn banned_peers_counter(peer: &NodeId) -> IntCounter {
-    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
-            "comms::connectivity::banned_peers",
-            "The number of peer bans by peer",
-            &["peer_id"],
-        )
-        .unwrap()
+pub fn banned_peers_counter() -> IntCounter {
+    static METER: Lazy<IntCounter> = Lazy::new(|| {
+        tari_metrics::register_int_counter("comms::connectivity::banned_peers", "The number of peer bans by peer")
+            .unwrap()
     });
 
-    METER.with_label_values(&[peer.to_string().as_str()])
+    METER.clone()
 }

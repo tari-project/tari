@@ -32,6 +32,7 @@ use tari_common_types::{
         CompressedPublicKey,
         PrivateKey,
         Signature,
+        UncompressedCommitment,
         UncompressedPublicKey,
     },
 };
@@ -69,7 +70,7 @@ use crate::{
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub(crate) struct OutputPair {
+pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
     pub sender_offset_key_id: Option<TariKeyId>,
@@ -331,6 +332,19 @@ impl SenderTransactionProtocol {
             SenderState::CollectingSingleSignature(info) => {
                 Ok(info.change_output.as_ref().map(|output| output.output.clone()))
             },
+            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// Returns the change output for a non-finalized transaction. If the transaction is finalized, or failed, an error
+    /// is returned.
+    pub fn get_spent_inputs(&self) -> Result<Vec<OutputPair>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.inputs.clone()),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -804,6 +818,63 @@ impl SenderTransactionProtocol {
     pub fn new_placeholder() -> Self {
         SenderTransactionProtocol {
             state: SenderState::Failed(TPE::IncompleteStateError("This is a placeholder protocol".to_string())),
+        }
+    }
+
+    pub async fn get_output_commitments<KM: TransactionKeyManagerInterface>(
+        &self,
+        km: &KM,
+    ) -> Result<Vec<CompressedCommitment>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
+                let mut commitments = Vec::new();
+                for output in &info.outputs {
+                    commitments.push(output.output.to_transaction_output(km).await?.commitment);
+                }
+                if let Some(change) = info.change_output.as_ref() {
+                    commitments.push(change.output.to_transaction_output(km).await?.commitment);
+                }
+                if let Some(recipient) = info.recipient_output.as_ref() {
+                    commitments.push(recipient.commitment.clone());
+                }
+                Ok(commitments)
+            },
+            SenderState::FinalizedTransaction(txn) => {
+                Ok(txn.body.outputs().iter().map(|o| o.commitment.clone()).collect())
+            },
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    pub async fn get_input_commitments<KM: TransactionKeyManagerInterface>(
+        &self,
+        km: &KM,
+    ) -> Result<Vec<CompressedCommitment>, TPE> {
+        match &self.state {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
+                let mut commitments = Vec::new();
+                for output in &info.inputs {
+                    commitments.push(output.output.to_transaction_output(km).await?.commitment);
+                }
+                Ok(commitments)
+            },
+            SenderState::FinalizedTransaction(txn) => Ok(txn
+                .body
+                .inputs()
+                .iter()
+                .map(|i| {
+                    i.commitment()
+                        .unwrap_or(&CompressedCommitment::from_commitment(UncompressedCommitment::default()))
+                        .clone()
+                })
+                .collect()),
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
 

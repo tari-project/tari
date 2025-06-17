@@ -66,6 +66,7 @@ impl InboundMessaging {
     pub async fn run<S>(mut self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = self.connection.peer_node_id();
+
         #[cfg(feature = "metrics")]
         metrics::num_sessions().inc();
         debug!(
@@ -82,7 +83,7 @@ impl InboundMessaging {
             match result {
                 Ok(raw_msg) => {
                     #[cfg(feature = "metrics")]
-                    metrics::inbound_message_count(self.connection.peer_node_id()).inc();
+                    metrics::inbound_message_count().inc();
                     let msg_len = raw_msg.len();
                     let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
                     debug!(
@@ -115,7 +116,7 @@ impl InboundMessaging {
                 // LengthDelimitedCodec emits a InvalidData io error when the message length exceeds the maximum allowed
                 Err(err) if err.kind() == io::ErrorKind::InvalidData => {
                     #[cfg(feature = "metrics")]
-                    metrics::error_count(peer).inc();
+                    metrics::error_count().inc();
                     debug!(
                         target: LOG_TARGET,
                         "Failed to receive from peer '{}' because '{}'",
@@ -130,7 +131,7 @@ impl InboundMessaging {
                 },
                 Err(err) => {
                     #[cfg(feature = "metrics")]
-                    metrics::error_count(peer).inc();
+                    metrics::error_count().inc();
                     error!(
                         target: LOG_TARGET,
                         "Failed to receive from peer '{}' because '{}'",

@@ -32,7 +32,7 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     epoch::VnEpoch,
     tari_address::TariAddress,
-    transaction::{ImportStatus, TxId},
+    transaction::{ImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
@@ -52,7 +52,7 @@ use tari_core::{
         },
     },
 };
-use tari_max_size::MaxSizeString;
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
@@ -81,7 +81,15 @@ use crate::{
 pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
-    GetCompletedTransactions,
+    GetCompletedTransactions {
+        payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
+    },
+    GetCompletedTransactionsByAddresses {
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    },
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
     GetCancelledCompletedTransactions,
@@ -218,10 +226,15 @@ pub enum TransactionServiceRequest {
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
     ReValidateTransactions,
+    ReValidateRejectedTransactions,
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
         count: usize,
     },
+    /// Get transaction details for a PayRef (enhanced with multiple recipients)
+    GetPaymentByReference(FixedHash),
+    /// Get all transactions with their PayRefs (for listing/filtering)
+    GetTransactionByPaymentReference(FixedHash),
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -230,7 +243,8 @@ impl fmt::Display for TransactionServiceRequest {
         match self {
             Self::GetPendingInboundTransactions => write!(f, "GetPendingInboundTransactions"),
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
-            Self::GetCompletedTransactions => write!(f, "GetCompletedTransactions"),
+            Self::GetCompletedTransactions { .. } => write!(f, "GetCompletedTransactions"),
+            Self::GetCompletedTransactionsByAddresses { .. } => write!(f, "GetCompletedTransactionsByAddresses"),
             Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
@@ -419,11 +433,18 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
+            Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
             Self::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
+            },
+            Self::GetPaymentByReference(payref) => {
+                write!(f, "GetPaymentByReference({})", payref)
+            },
+            Self::GetTransactionByPaymentReference(payref) => {
+                write!(f, "GetTransactionByPaymentReference({})", payref)
             },
             Self::SubmitValidatorEvictionProof {
                 amount,
@@ -486,6 +507,10 @@ pub enum TransactionServiceResponse {
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, CompressedPublicKey, TransactionOutput)>),
     FeePerGramStatsPerBlock(FeePerGramStatsResponse),
+    /// Response containing PayRefs for a transaction
+    TransactionPayRefs(Vec<FixedHash>),
+    /// Response containing payment details for a PayRef
+    PaymentDetails(Option<PaymentDetails>),
     CodeRegistrationTransactionSent {
         tx_id: TxId,
         template_address: FixedHash,
@@ -541,6 +566,7 @@ pub enum TransactionEvent {
         num_confirmations: u64,
         is_valid: bool,
     },
+    TransactionImported(TxId),
     TransactionValidationStateChanged(OperationId),
     TransactionValidationCompleted(OperationId),
     TransactionValidationFailed(OperationId, u64),
@@ -602,6 +628,9 @@ impl fmt::Display for TransactionEvent {
                      {is_valid}",
                 )
             },
+            TransactionEvent::TransactionImported(tx) => {
+                write!(f, "TransactionImported for {tx}")
+            },
             TransactionEvent::Error(error) => {
                 write!(f, "Error:{error}")
             },
@@ -632,6 +661,19 @@ impl From<proto::base_node::GetMempoolFeePerGramStatsResponse> for FeePerGramSta
             stats: value.stats.into_iter().map(Into::into).collect(),
         }
     }
+}
+
+/// Enhanced payment details for PayRef functionality
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentDetails {
+    pub payment_reference: FixedHash,
+    pub amount: MicroMinotari,
+    pub direction: TransactionDirection,
+    pub block_height: u64,
+    pub confirmations: u64,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub payment_id: Option<Vec<u8>>,
+    pub tx_id: TxId,
 }
 
 /// The Transaction Service Handle is a struct that contains the interfaces used to communicate with a running
@@ -1083,10 +1125,37 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn get_completed_transactions(&mut self) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
+    pub async fn get_completed_transactions(
+        &mut self,
+        payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetCompletedTransactions)
+            .call(TransactionServiceRequest::GetCompletedTransactions {
+                payment_id,
+                block_hash,
+                block_height,
+            })
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_completed_transactions_by_addresses(
+        &mut self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCompletedTransactionsByAddresses {
+                source_address,
+                destination_address,
+            })
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
@@ -1214,6 +1283,17 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn revalidate_rejected_transactions(&mut self) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ReValidateRejectedTransactions)
+            .await??
+        {
+            TransactionServiceResponse::ValidationStarted(_) => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn set_normal_power_mode(&mut self) -> Result<(), TransactionServiceError> {
         match self
             .handle
@@ -1318,6 +1398,36 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::FeePerGramStatsPerBlock(resp) => Ok(resp),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get details for a PayRef (enhanced with multiple recipients)
+    pub async fn get_payment_by_reference(
+        &mut self,
+        payref: FixedHash,
+    ) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetPaymentByReference(payref))
+            .await??
+        {
+            TransactionServiceResponse::PaymentDetails(details) => Ok(details),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get a transaction by PayRef
+    pub async fn get_transaction_by_payref(
+        &mut self,
+        payref: FixedHash,
+    ) -> Result<CompletedTransaction, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetTransactionByPaymentReference(payref))
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransaction(tx) => Ok(*tx),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

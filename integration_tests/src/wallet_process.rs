@@ -31,8 +31,9 @@ use tari_common::{
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
 };
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
 use tokio::runtime;
@@ -48,6 +49,8 @@ pub struct WalletProcess {
     pub name: String,
     pub port: u64,
     pub temp_dir_path: PathBuf,
+    pub base_node_name: Option<String>,
+    pub peer_seeds: Vec<String>,
 }
 
 impl Drop for WalletProcess {
@@ -65,7 +68,9 @@ pub async fn spawn_wallet(
     routing_mechanism: Option<TransactionRoutingMechanism>,
     cli: Option<Cli>,
 ) {
-    std::env::set_var("TARI_NETWORK", "localnet");
+    unsafe {
+        std::env::set_var("TARI_NETWORK", "localnet");
+    }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
     let port: u64;
@@ -80,8 +85,8 @@ pub async fn spawn_wallet(
         wallet_config = wallet_ps.config.clone();
     } else {
         // each spawned wallet will use different ports
-        port = get_port(18000..18499).unwrap();
-        grpc_port = get_port(18500..18999).unwrap();
+        port = get_port(world, 18000..18499).unwrap();
+        grpc_port = get_port(world, 18500..18999).unwrap();
 
         temp_dir_path = world
             .current_base_dir
@@ -96,7 +101,7 @@ pub async fn spawn_wallet(
             .base_node_monitor_max_refresh_interval = Duration::from_secs(5);
     };
 
-    let base_node = base_node_name.map(|name| {
+    let base_node = base_node_name.clone().map(|name| {
         let pubkey = world.base_nodes.get(&name).unwrap().identity.public_key().clone();
         let port = world.base_nodes.get(&name).unwrap().port;
         let set_base_node_request = SetBaseNodeRequest {
@@ -189,7 +194,9 @@ pub async fn spawn_wallet(
         port,
         grpc_port,
         temp_dir_path: temp_dir,
+        base_node_name,
         kill_signal: shutdown,
+        peer_seeds,
     });
 
     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -234,6 +241,7 @@ pub fn get_default_cli() -> Cli {
         command2: None,
         profile_with_tokio_console: false,
         view_private_key: None,
+        birthday: None,
         spend_key: None,
         libtor_data_dir: None,
     }

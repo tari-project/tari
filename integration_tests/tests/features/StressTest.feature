@@ -23,7 +23,7 @@ Feature: Stress Test
         # When mining node MINER mines <NumCoinsplitsNeeded> blocks
         # Then all nodes are on the same chain tip
         # Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
-        # When I send <NumTransactions> transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
+        # When I send <NumTransactions> one-sided transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
         # # Mine enough blocks for the first block of transactions to be confirmed.
         # When mining node MINER mines 4 blocks
         # Then all nodes are on the same chain tip
@@ -72,7 +72,7 @@ Feature: Stress Test
 
         # Then all nodes are on the same chain tip
         # Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
-        # When I send 2000 transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
+        # When I send 2000 one-sided transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
         # # Mine enough blocks for the first block of transactions to be confirmed.
         # When mining node MINER mines 4 blocks
         # Then all nodes are on the same chain tip
