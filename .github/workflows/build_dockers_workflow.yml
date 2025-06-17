@@ -282,12 +282,13 @@ jobs:
 
           if [ ${#multiarch_images[@]} -eq 0 ]; then
             echo "No multi-arch Docker images found."
-            mapfile -t all_images < <(jq -r '.builds[].image_name' build-bmatrix.json  | sort -u)
-            for img in "${all_images[@]}"; do
-              if [[ ! " ${multiarch_images[*]} " =~ " ${img} " ]]; then
-                echo "Image '$img' has only one architecture built."
-              fi
-            done
+            mapfile -t all_images < <(
+              echo '${{ env.BMATRIX }}' | jq -r '.builds[].image_name' | sort -u)
+                for img in "${all_images[@]}"; do
+                  if [[ ! " ${multiarch_images[*]} " =~ " ${img} " ]]; then
+                    echo "Image '$img' has only one architecture built."
+                  fi
+                done
           else
             echo "Found ${#multiarch_images[@]} multi-arch Docker images."
             echo "${multiarch_images[*]}"

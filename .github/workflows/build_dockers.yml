@@ -11,8 +11,8 @@ name: Build docker images
       - 'build-all-*'
       - 'build-dockers-*'
   schedule:
-    - cron: '05 00 * * 0-5'  # Daily build, 5min past midnight, Sunday to Friday
-    - cron: '23 01 * * 0-5'  # MainNet Debug - Daily build at 01h23, Sunday to Friday
+    - cron: '05 00 * * 0-5'  # Nightly build, 5min past midnight, Sunday to Friday
+    - cron: '23 01 * * 0-5'  # MainNet Debug - Nightly build at 01h23, Sunday to Friday
   workflow_dispatch:
     inputs:
       version:
@@ -127,17 +127,17 @@ jobs:
               echo "tari_network=esme" >> $GITHUB_OUTPUT
               echo "build_items=minotari_all" >> $GITHUB_OUTPUT
             else
-              echo "Daily Build - limited amd64 - esme"
+              echo "Nightly Build - limited amd64 - esme"
               echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-              #echo "tag_alias=latest-daily" >> $GITHUB_OUTPUT
+              #echo "tag_alias=latest-nightly" >> $GITHUB_OUTPUT
               echo "tari_network=esme" >> $GITHUB_OUTPUT
               echo "build_items=minotari_all" >> $GITHUB_OUTPUT
             fi
             echo "Schedule: ${SCHEDULE} - $(date)"
             if [[ "${SCHEDULE}" == "23 01 * * 0-5" ]]; then
-              echo "Daily CI Build - limited amd64 - mainNet - minotari_node"
+              echo "Nightly CI Build - limited amd64 - mainNet - minotari_node"
               echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-              echo "tag_alias=latest-ci-node" >> $GITHUB_OUTPUT
+              echo "tag_alias=nightly-ci-node" >> $GITHUB_OUTPUT
               echo "tari_network=mainnet" >> $GITHUB_OUTPUT
               echo "build_items=minotari_node" >> $GITHUB_OUTPUT
             fi
