@@ -2897,9 +2897,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let sidechain_outputs = utxos
                     .into_iter()
                     .filter(|u| u.features.output_type.is_sidechain_type())
-                    .map(|o| {
-                        grpc_output_with_payref(o, Some(header_hash))
-                    })
+                    .map(|o| grpc_output_with_payref(o, Some(header_hash)))
                     .collect::<Result<Vec<_>, _>>();
 
                 match sidechain_outputs {
