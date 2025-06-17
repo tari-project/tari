@@ -90,14 +90,14 @@ where
 {
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
-            self.set_recovery_mode().await?;
+            self.set_recovery_mode()?;
         }
 
         loop {
             if self.shutdown_signal.is_triggered() {
                 return Ok(());
             }
-            if self.check_recovery_mode().await? && self.mode != UtxoScannerMode::Recovery {
+            if self.check_recovery_mode()? && self.mode != UtxoScannerMode::Recovery {
                 warn!(
                     target: LOG_TARGET,
                     "{:?}: Scanning round aborted as a Recovery is in progress", self.mode
@@ -178,7 +178,7 @@ where
 
         if self.mode == UtxoScannerMode::Recovery {
             // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
-            self.clear_recovery_mode().await?;
+            self.clear_recovery_mode()?;
         }
         Ok(())
     }
@@ -289,7 +289,7 @@ where
             };
 
             if self.shutdown_signal.is_triggered() ||
-                self.check_recovery_mode().await? && self.mode != UtxoScannerMode::Recovery
+                self.check_recovery_mode()? && self.mode != UtxoScannerMode::Recovery
             {
                 if !self.shutdown_signal.is_triggered() {
                     warn!(
@@ -700,14 +700,14 @@ where
         Ok((num_recovered, total_amount))
     }
 
-    async fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
         self.resources
             .db
             .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
         Ok(())
     }
 
-    pub async fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
+    pub fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
         self.resources
             .db
             .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
@@ -715,7 +715,7 @@ where
             .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
-    async fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
         let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned())?;
         Ok(())
     }
