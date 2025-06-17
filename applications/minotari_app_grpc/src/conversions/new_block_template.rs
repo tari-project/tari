@@ -29,7 +29,7 @@ use tari_core::{
 };
 use tari_utilities::ByteArray;
 
-use crate::tari_rpc as grpc;
+use crate::{conversions::transaction_output::grpc_output_with_payref, tari_rpc as grpc};
 
 impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
     type Error = String;
@@ -58,7 +58,7 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .body
                     .outputs()
                     .iter()
-                    .map(|output| grpc::TransactionOutput::try_from(output.clone()))
+                    .map(|output| grpc_output_with_payref(output.clone(), None))
                     .collect::<Result<Vec<_>, _>>()?,
                 kernels: block
                     .body

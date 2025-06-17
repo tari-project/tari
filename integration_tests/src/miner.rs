@@ -20,15 +20,11 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, time::Duration};
+use std::time::Duration;
 
-use minotari_app_grpc::tari_rpc::{
-    pow_algo::PowAlgos,
-    Block,
-    NewBlockTemplate,
-    NewBlockTemplateRequest,
-    PowAlgo,
-    TransactionOutput as GrpcTransactionOutput,
+use minotari_app_grpc::{
+    conversions::transaction_output::grpc_output_with_payref,
+    tari_rpc::{pow_algo::PowAlgos, Block, NewBlockTemplate, NewBlockTemplateRequest, PowAlgo},
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{run_miner, Cli};
@@ -312,7 +308,7 @@ async fn create_block_template_with_coinbase(
     .unwrap();
     let body = block_template.body.as_mut().unwrap();
 
-    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output).unwrap();
+    let grpc_output = grpc_output_with_payref(coinbase_output, None).unwrap();
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());
 
