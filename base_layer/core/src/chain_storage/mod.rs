@@ -39,15 +39,8 @@ use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
-    calculate_mmr_roots,
-    calculate_validator_node_mr,
-    fetch_header,
-    fetch_headers,
-    fetch_target_difficulty_for_next_block,
-    BlockchainDatabase,
-    BlockchainDatabaseConfig,
-    MmrRoots,
-    Validators,
+    calculate_mmr_roots, calculate_validator_node_mr, fetch_header, fetch_headers,
+    fetch_target_difficulty_for_next_block, BlockchainDatabase, BlockchainDatabaseConfig, MmrRoots, Validators,
 };
 mod blockchain_backend;
 pub use blockchain_backend::BlockchainBackend;
@@ -64,8 +57,7 @@ mod reorg;
 pub use reorg::Reorg;
 mod lmdb_db;
 pub use lmdb_db::{
-    create_lmdb_database,
-    create_recovery_lmdb_database,
+    create_lmdb_database, create_recovery_lmdb_database,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     LMDBDatabase,
 };
@@ -84,6 +76,7 @@ use tari_common_types::{
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
 mod smt_hasher;
+
 pub use smt_hasher::SmtHasher;
 
 use crate::transactions::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};

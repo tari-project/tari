@@ -67,6 +67,7 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         prev_header: &BlockHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<Difficulty>,
+        vm_key: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError>;
 }
 

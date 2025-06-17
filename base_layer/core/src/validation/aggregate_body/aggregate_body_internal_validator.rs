@@ -24,14 +24,8 @@ use std::{collections::HashSet, convert::TryInto};
 
 use log::*;
 use tari_common_types::types::{
-    CommitmentFactory,
-    CompressedCommitment,
-    CompressedPublicKey,
-    HashOutput,
-    PrivateKey,
-    RangeProofService,
-    UncompressedCommitment,
-    UncompressedPublicKey,
+    CommitmentFactory, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey, RangeProofService,
+    UncompressedCommitment, UncompressedPublicKey,
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
@@ -43,27 +37,16 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
         transaction_components::{
-            transaction_output::batch_verify_range_proofs,
-            KernelSum,
-            SideChainFeature,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
+            transaction_output::batch_verify_range_proofs, KernelSum, SideChainFeature, TransactionError,
+            TransactionInput, TransactionKernel, TransactionOutput,
         },
         CryptoFactories,
     },
     validation::{
         helpers::{
-            check_covenant_length,
-            check_permitted_output_types,
-            check_permitted_range_proof_types,
-            check_tari_encrypted_data_byte_size,
-            check_tari_script_byte_size,
-            is_all_unique_and_sorted,
-            validate_input_version,
-            validate_kernel_version,
-            validate_output_version,
+            check_covenant_length, check_permitted_output_types, check_permitted_range_proof_types,
+            check_tari_encrypted_data_byte_size, check_tari_script_byte_size, is_all_unique_and_sorted,
+            validate_input_version, validate_kernel_version, validate_output_version,
         },
         ValidationError,
     },
@@ -177,21 +160,6 @@ pub fn validate_individual_output(
     check_permitted_range_proof_types(consensus_constants, output)?;
     output.verify_metadata_signature()?;
     check_sidechain_features(consensus_constants, output)?;
-
-    Ok(())
-}
-
-pub fn validate_individual_output(
-    output: &TransactionOutput,
-    consensus_constants: &ConsensusConstants,
-) -> Result<(), ValidationError> {
-    check_permitted_output_types(consensus_constants, output)?;
-    check_script_size(output, consensus_constants.max_script_byte_size())?;
-    check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
-    check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
-    check_permitted_range_proof_types(consensus_constants, output)?;
-    check_validator_node_registration_utxo(consensus_constants, output)?;
-    output.verify_metadata_signature()?;
 
     Ok(())
 }
@@ -628,10 +596,11 @@ mod test {
         kernel2.burn_commitment = Some(output2.commitment.clone());
         let kernel3 = kernel1.clone();
 
-        let mut body = AggregateBody::new(Vec::new(), vec![output1.clone(), output2.clone()], vec![
-            kernel1.clone(),
-            kernel2.clone(),
-        ]);
+        let mut body = AggregateBody::new(
+            Vec::new(),
+            vec![output1.clone(), output2.clone()],
+            vec![kernel1.clone(), kernel2.clone()],
+        );
         assert!(check_total_burned(&body).is_ok());
         // lets add an extra kernel
         body.add_kernels([kernel3]);

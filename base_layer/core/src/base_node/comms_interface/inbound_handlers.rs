@@ -35,26 +35,16 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
-        comms_response::ValidatorNodeChange,
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
+        comms_response::ValidatorNodeChange, error::CommsInterfaceError, local_interface::BlockEventSender,
+        FetchMempoolTransactionsResponse, NodeCommsRequest, NodeCommsResponse, OutboundNodeCommsInterface,
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
-        monero_randomx_difficulty,
-        randomx_factory::RandomXFactory,
-        sha3x_difficulty,
-        tari_randomx_difficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
+        monero_randomx_difficulty, randomx_factory::RandomXFactory, sha3x_difficulty, tari_randomx_difficulty,
+        Difficulty, PowAlgorithm, PowError,
     },
     transactions::aggregated_body::AggregateBody,
     validation::{helpers, tari_rx_vm_key_height, ValidationError},
@@ -95,7 +85,8 @@ pub struct InboundNodeCommsHandlers<B> {
 }
 
 impl<B> InboundNodeCommsHandlers<B>
-where B: BlockchainBackend + 'static
+where
+    B: BlockchainBackend + 'static,
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(
@@ -482,6 +473,14 @@ where B: BlockchainBackend + 'static
                     .blockchain_db
                     .fetch_validators_exiting_in_epoch(sidechain_id.clone(), epoch)
                     .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    "Fetched {} validators activating and {} validators exiting in epoch {}",
+                    added_validators.len(),
+                    exit_validators.len(),
+                    epoch,
+                );
 
                 let mut node_changes = Vec::with_capacity(added_validators.len() + exit_validators.len());
 

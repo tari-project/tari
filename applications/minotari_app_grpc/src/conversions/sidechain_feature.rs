@@ -32,32 +32,15 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            BuildInfo,
-            CodeTemplateRegistration,
-            ConfidentialOutputData,
-            SideChainFeature,
-            SideChainFeatureData,
-            SideChainId,
-            TemplateType,
-            ValidatorNodeExit,
-            ValidatorNodeRegistration,
-            ValidatorNodeSignature,
+            BuildInfo, CodeTemplateRegistration, ConfidentialOutputData, SideChainFeature, SideChainFeatureData,
+            SideChainId, TemplateType, ValidatorNodeExit, ValidatorNodeRegistration, ValidatorNodeSignature,
         },
     },
 };
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
-    ChainLink,
-    CommandCommitProof,
-    CommandCommitProofV1,
-    CommitProofElement,
-    EvictNodeAtom,
-    EvictionProof,
-    QuorumCertificate,
-    QuorumDecision,
-    ShardGroup,
-    SidechainBlockCommitProof,
-    SidechainBlockHeader,
+    ChainLink, CommandCommitProof, CommandCommitProofV1, CommitProofElement, EvictNodeAtom, EvictionProof,
+    QuorumCertificate, QuorumDecision, ShardGroup, SidechainBlockCommitProof, SidechainBlockHeader,
     ValidatorQcSignature,
 };
 use tari_utilities::ByteArray;
@@ -245,7 +228,8 @@ impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
 
     fn try_from(value: grpc::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
-            author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
+            author_public_key: CompressedPublicKey::from_canonical_bytes(&value.author_public_key)
+                .map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
                 .map(Signature::try_from)

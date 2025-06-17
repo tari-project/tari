@@ -20,110 +20,71 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use super::ValidatorNodeRegistrationInfo;
+use super::{smt_hasher::SmtHasher, TemplateRegistrationEntry};
+use crate::chain_storage::smt_hasher::ValidatorNodeJmtHasher;
+use crate::{
+    block_output_mr_hash_from_pruned_mmr,
+    blocks::{
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainBlock,
+        ChainHeader, HistoricalBlock, NewBlockTemplate, UpdateBlockAccumulatedData,
+    },
+    chain_storage::{
+        consts::{
+            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY, BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
+            BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
+        },
+        db_transaction::{DbKey, DbTransaction, DbValue},
+        error::ChainStorageError,
+        utxo_mined_info::OutputMinedInfo,
+        BlockAddResult, BlockchainBackend, DbBasicStats, DbTotalSizeStats, HorizonData, InputMinedInfo, MmrTree,
+        Optional, OrNotFound, Reorg, TargetDifficulties,
+    },
+    common::{rolling_vec::RollingVec, BanPeriod},
+    consensus::{
+        chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager,
+        DomainSeparatedConsensusHasher,
+    },
+    input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_pruned_mmr,
+    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
+    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    validation::{
+        helpers::calc_median_timestamp, tari_rx_vm_key_height, CandidateBlockValidator, DifficultyCalculator,
+        HeaderChainLinkedValidator, InternalConsistencyValidator, ValidationError,
+    },
+    PrunedInputMmr, PrunedKernelMmr, PrunedOutputMmr,
+};
+use blake2::Blake2b;
+use digest::consts::U32;
+use jmt::storage::{LeafNode, Node, NodeKey, TreeReader};
+use jmt::{JellyfishMerkleTree, KeyHash, OwnedValue, Version};
+use log::*;
+use primitive_types::U512;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp,
     cmp::Ordering,
-    collections::{VecDeque},
+    collections::VecDeque,
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
     sync::{
         atomic::{self, AtomicBool},
-        Arc,
-        RwLock,
-        RwLockReadGuard,
-        RwLockWriteGuard,
+        Arc, RwLock, RwLockReadGuard, RwLockWriteGuard,
     },
     time::Instant,
 };
-use std::collections::HashMap;
-use blake2::Blake2b;
-use digest::consts::U32;
-use jmt::{JellyfishMerkleTree, KeyHash};
-use log::*;
-use primitive_types::U512;
-use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        Signature,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature,
         UncompressedCommitment,
     },
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
-
-use super::{smt_hasher::SmtHasher, TemplateRegistrationEntry};
-use super::{ValidatorNodeRegistrationInfo};
-use crate::{
-    block_output_mr_hash_from_pruned_mmr,
-    blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        BlockHeaderValidationError,
-        ChainBlock,
-        ChainHeader,
-        HistoricalBlock,
-        NewBlockTemplate,
-        UpdateBlockAccumulatedData,
-    },
-    chain_storage::{
-        consts::{
-            BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
-            BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
-        },
-        db_transaction::{DbKey, DbTransaction, DbValue},
-        error::ChainStorageError,
-        utxo_mined_info::OutputMinedInfo,
-        BlockAddResult,
-        BlockchainBackend,
-        DbBasicStats,
-        DbTotalSizeStats,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Optional,
-        OrNotFound,
-        Reorg,
-        TargetDifficulties,
-    },
-    common::{rolling_vec::RollingVec, BanPeriod},
-    consensus::{
-        chain_strength_comparer::ChainStrengthComparer,
-        ConsensusConstants,
-        ConsensusManager,
-        DomainSeparatedConsensusHasher,
-    },
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_pruned_mmr,
-    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-    validation::{
-        helpers::calc_median_timestamp,
-        tari_rx_vm_key_height,
-        CandidateBlockValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        InternalConsistencyValidator,
-        ValidationError,
-    },
-    PrunedInputMmr,
-    PrunedKernelMmr,
-    PrunedOutputMmr,
-    ValidatorNodeBMT,
-    ValidatorNodeMerkleHasherBlake256,
-};
 
 const LOG_TARGET: &str = "c::cs::database";
 
@@ -232,7 +193,8 @@ pub struct BlockchainDatabase<B> {
 
 #[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
-where B: BlockchainBackend
+where
+    B: BlockchainBackend,
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
@@ -304,10 +266,13 @@ where B: BlockchainBackend
             for kernel in body.kernels() {
                 kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
             }
-            txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
-                ..Default::default()
-            });
+            txn.update_block_accumulated_data(
+                *genesis_block.hash(),
+                UpdateBlockAccumulatedData {
+                    kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                    ..Default::default()
+                },
+            );
             txn.set_pruned_height(0);
             txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
             self.write(txn)?;
@@ -1539,15 +1504,43 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 pub fn calculate_validator_node_mr(
     validator_nodes: &[ValidatorNodeRegistrationInfo],
 ) -> Result<FixedHash, ChainStorageError> {
-    fn hash_node((pk, s): &(&CompressedPublicKey, &[u8; 32])) -> Vec<u8> {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
-            .chain(pk)
-            .chain(s)
-            .finalize()
-            .to_vec()
+    struct EmptyJmtStore;
+
+    impl TreeReader for EmptyJmtStore {
+        fn get_node_option(&self, _node_key: &NodeKey) -> anyhow::Result<Option<Node>> {
+            Ok(None)
+        }
+
+        fn get_value_option(&self, _max_version: Version, _key_hash: KeyHash) -> anyhow::Result<Option<OwnedValue>> {
+            Ok(None)
+        }
+
+        fn get_rightmost_leaf(&self) -> anyhow::Result<Option<(NodeKey, LeafNode)>> {
+            Ok(None)
+        }
+    }
+    fn hash_node((pk, s): &(&CompressedPublicKey, &[u8; 32])) -> KeyHash {
+        KeyHash(
+            DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
+                .chain(pk)
+                .chain(s)
+                .finalize()
+                .into(),
+        )
     }
 
-    let mut hash_map = HashMap::new();
+    fn hash_sid(sid: Option<&CompressedPublicKey>) -> KeyHash {
+        KeyHash(
+            DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node_sid")
+                .chain(&sid)
+                .finalize()
+                .into(),
+        )
+    }
+
+    // TODO: update validator JMTs as outputs are added to the blockchain
+    // Alternatively, we could use the utxo JMT for inclusion proofs
+    let mut validator_sets = Vec::<(Option<&CompressedPublicKey>, Vec<(&CompressedPublicKey, &[u8; 32])>)>::new();
     for ValidatorNodeRegistrationInfo {
         public_key: pk,
         sidechain_id,
@@ -1555,30 +1548,36 @@ pub fn calculate_validator_node_mr(
         ..
     } in validator_nodes
     {
-        hash_map
-            .entry(sidechain_id.as_ref().map_or([0u8; 32].as_slice(), |n| n.as_bytes()))
-            .or_insert_with(Vec::new)
-            .push((pk, shard_key));
+        // NOTE: this depends on validator_nodes being ordered by sidechain ID (we happen to know this is the case, i.e the natural LMDB order)
+        match validator_sets.last_mut() {
+            Some((sid, set)) if *sid == sidechain_id.as_ref() => {
+                // If the last entry has the same sidechain ID, we can just push to it
+                set.push((pk, shard_key));
+            },
+            Some(_) | None => {
+                // If there are no entries or the sidechain id has changed, we create a new one
+                validator_sets.push((sidechain_id.as_ref(), vec![(pk, shard_key)]));
+            },
+        }
     }
-    let mut roots = HashMap::new();
-    for (sidechain_pk, set) in hash_map {
-        let mut sorted_set = set;
-        sorted_set.sort_unstable_by(|(pk1, _), (pk2, _)| pk1.as_bytes().cmp(pk2.as_bytes()));
-
-        let vn_bmt = ValidatorNodeBMT::create(sorted_set.iter().map(hash_node).collect());
-        roots.insert(sidechain_pk, vn_bmt.get_merkle_root());
+    let mut roots = Vec::with_capacity(validator_sets.len());
+    for (sidechain_pk, set) in validator_sets {
+        let sidechain_mt = JellyfishMerkleTree::<_, ValidatorNodeJmtHasher>::new(&EmptyJmtStore);
+        let (root, _) = sidechain_mt
+            .put_value_set(
+                set.iter()
+                    .map(|pk_and_shard_key| (hash_node(pk_and_shard_key), Some(vec![]))),
+                1,
+            )
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        roots.push((hash_sid(sidechain_pk), root));
     }
 
-    let mut keys = roots.keys().copied().collect::<Vec<_>>();
-    keys.sort();
-    let mut root_mt = SparseMerkleTree::<ValidatorNodeMerkleHasherBlake256>::new();
-    for key in keys {
-        let node_key = NodeKey::try_from(key)?;
-        let value_hash = ValueHash::try_from(roots[&key].as_slice())?;
-        root_mt.insert(node_key, value_hash)?;
-    }
-
-    Ok(FixedHash::try_from(root_mt.hash().as_slice())?)
+    let root_mt = JellyfishMerkleTree::<_, ValidatorNodeJmtHasher>::new(&EmptyJmtStore);
+    let (root_hash, _) = root_mt
+        .put_value_set(roots.into_iter().map(|(sid, root)| (sid, Some(root.0.to_vec()))), 1)
+        .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+    Ok(FixedHash::from(root_hash.0))
 }
 
 pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
@@ -2700,19 +2699,14 @@ mod test {
     use crate::{
         block_specs,
         consensus::{
-            chain_strength_comparer::strongest_chain,
-            consensus_constants::PowAlgorithmConstants,
+            chain_strength_comparer::strongest_chain, consensus_constants::PowAlgorithmConstants,
             ConsensusConstantsBuilder,
         },
         proof_of_work::Difficulty,
         test_helpers::{
             blockchain::{
-                create_chained_blocks,
-                create_main_chain,
-                create_new_blockchain,
-                create_orphan_chain,
-                create_test_blockchain_db,
-                TempDatabase,
+                create_chained_blocks, create_main_chain, create_new_blockchain, create_orphan_chain,
+                create_test_blockchain_db, TempDatabase,
             },
             BlockSpecs,
         },
@@ -2776,12 +2770,10 @@ mod test {
         async fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
-            let (_, mainchain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 1, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-            ])
+            let (_, mainchain) = create_main_chain(
+                &db,
+                &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+            )
             .await;
             // Create reorg chain
             let fork_root = mainchain.get("B").unwrap().clone();
@@ -2896,15 +2888,18 @@ mod test {
         async fn it_correctly_detects_strongest_orphan_tips() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[
-                ("A->GB", 1, 120),
-                ("B->A", 2, 120),
-                ("C->B", 1, 120),
-                ("D->C", 1, 120),
-                ("E->D", 1, 120),
-                ("F->E", 1, 120),
-                ("G->F", 1, 120),
-            ])
+            let (_, main_chain) = create_main_chain(
+                &db,
+                &[
+                    ("A->GB", 1, 120),
+                    ("B->A", 2, 120),
+                    ("C->B", 1, 120),
+                    ("D->C", 1, 120),
+                    ("E->D", 1, 120),
+                    ("F->E", 1, 120),
+                    ("G->F", 1, 120),
+                ],
+            )
             .await;
 
             // Fork 1 (with 3 blocks)
@@ -3314,12 +3309,10 @@ mod test {
     // \ JMT"]
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3395,12 +3388,10 @@ mod test {
     #[tokio::test]
     async fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
-        let (_, mainchain) = create_main_chain(&db, &[
-            ("A->GB", 1, 120),
-            ("B->A", 1, 120),
-            ("C->B", 1, 120),
-            ("D->C", 1, 120),
-        ])
+        let (_, mainchain) = create_main_chain(
+            &db,
+            &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120), ("D->C", 1, 120)],
+        )
         .await;
 
         let mock_validator = MockValidator::new(true);
@@ -3710,11 +3701,14 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-                        min_difficulty: Difficulty::min(),
-                        max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
-                        target_time: 120,
-                    })
+                    .add_proof_of_work(
+                        PowAlgorithm::Sha3x,
+                        PowAlgorithmConstants {
+                            min_difficulty: Difficulty::min(),
+                            max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
+                            target_time: 120,
+                        },
+                    )
                     .build(),
             )
             .build()

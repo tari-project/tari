@@ -34,13 +34,9 @@ use std::{
     time::Instant,
 };
 
-use borsh::BorshDeserialize;
 use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
-use lmdb_zero::{
-    traits::AsLmdbBytes,
-};
 use log::*;
 use primitive_types::{U256, U512};
 use serde::{Deserialize, Serialize};
@@ -49,23 +45,14 @@ use tari_common_types::{
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        PrivateKey,
-        Signature,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature,
         UncompressedCommitment,
     },
-
 };
-use tari_mmr::sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash};
 use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::{
-    hex::{from_hex, to_hex, Hex},
+    hex::{to_hex, Hex},
     ByteArray,
 };
 
@@ -77,12 +64,7 @@ use super::{
 };
 use crate::{
     blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader,
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
@@ -92,45 +74,19 @@ use crate::{
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
-                fetch_db_entry_sizes,
-                lmdb_all,
-                lmdb_clear,
-                lmdb_delete,
-                lmdb_delete_each_where,
-                lmdb_delete_key_value,
-                lmdb_delete_keys_starting_with,
-                lmdb_exists,
-                lmdb_fetch_matching_after,
-                lmdb_filter_map_values,
-                lmdb_first_after,
-                lmdb_get,
-                lmdb_get_multiple,
-                lmdb_insert,
-                lmdb_insert_dup,
-                lmdb_last,
-                lmdb_len,
+                fetch_db_entry_sizes, lmdb_all, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
+                lmdb_delete_keys_starting_with, lmdb_exists, lmdb_fetch_matching_after, lmdb_filter_map_values,
+                lmdb_first_after, lmdb_get, lmdb_get_multiple, lmdb_insert, lmdb_insert_dup, lmdb_last, lmdb_len,
                 lmdb_replace,
             },
             validator_node_store::ValidatorNodeStore,
-            TransactionInputRowData,
-            TransactionInputRowDataRef,
-            TransactionKernelRowData,
-            TransactionOutputRowData,
+            TransactionInputRowData, TransactionInputRowDataRef, TransactionKernelRowData, TransactionOutputRowData,
         },
         smt_hasher::SmtHasher,
         stats::DbTotalSizeStats,
         utxo_mined_info::OutputMinedInfo,
-        BlockchainBackend,
-        ChainTipData,
-        DbBasicStats,
-        DbSize,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Reorg,
-        TemplateRegistrationEntry,
-        ValidatorNodeEntry,
-        ValidatorNodeRegistrationInfo,
+        BlockchainBackend, ChainTipData, DbBasicStats, DbSize, HorizonData, InputMinedInfo, MmrTree, Reorg,
+        TemplateRegistrationEntry, ValidatorNodeEntry, ValidatorNodeRegistrationInfo,
     },
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty, Difficulty, PowAlgorithm},
@@ -138,14 +94,8 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
         transaction_components::{
-            OutputType,
-            SideChainFeatureData,
-            SideChainId,
-            SpentOutput,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            ValidatorNodeRegistration,
+            OutputType, SideChainFeatureData, SideChainId, SpentOutput, TransactionInput, TransactionKernel,
+            TransactionOutput, ValidatorNodeRegistration,
         },
     },
     PrunedKernelMmr,
@@ -1066,7 +1016,7 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash)?;
+        self.delete_block_inputs_outputs(write_txn, block_hash, height)?;
 
         let new_tip_header = self.fetch_chain_header_by_height(prev_height)?;
         let reader = LmdbTreeReader::new(write_txn, self.jmt_node_data.clone(), self.jmt_unique_key_data.clone());
@@ -1099,6 +1049,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         block_hash: &HashOutput,
+        height: u64,
     ) -> Result<(), ChainStorageError> {
         let output_rows =
             lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash.as_slice())?;
@@ -2048,6 +1999,28 @@ impl LMDBDatabase {
         self.consensus_manager.consensus_constants(height)
     }
 
+    fn fetch_utxo_by_commitment(
+        &self,
+        txn: &ConstTransaction<'_>,
+        commitment: &CompressedCommitment,
+    ) -> Result<OutputMinedInfo, ChainStorageError> {
+        let output_hash = lmdb_get::<_, HashOutput>(txn, &self.utxo_commitment_index, commitment.as_bytes())?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "UTXO (in fetch_utxo_by_commitment)",
+                field: "commitment",
+                value: commitment.to_hex(),
+            })?;
+        let output =
+            self.fetch_output_in_txn(txn, output_hash.as_slice())?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "UTXO (in fetch_utxo_by_commitment)",
+                    field: "hash",
+                    value: output_hash.to_string(),
+                })?;
+
+        Ok(output)
+    }
+
     #[cfg(test)]
     pub(crate) fn create_write_txn(&self) -> WriteTransaction<'_> {
         self.write_transaction().expect("Failed to create write transaction")
@@ -2112,9 +2085,9 @@ impl BlockchainBackend for LMDBDatabase {
         // attempted; this is more efficient than relying on an error if the LMDB environment map size was reached with
         // the write operation, with cleanup, resize and re-try afterwards.
         let block_operations = txn.operations().iter().filter(|op| {
-            matches!(op, WriteOperation::InsertOrphanBlock { .. }) ||
-                matches!(op, WriteOperation::InsertTipBlockBody { .. }) ||
-                matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
+            matches!(op, WriteOperation::InsertOrphanBlock { .. })
+                || matches!(op, WriteOperation::InsertTipBlockBody { .. })
+                || matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
         });
         let count = block_operations.count();
         if count > 0 {

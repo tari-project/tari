@@ -30,9 +30,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
-        create_block,
-        default_coinbase_entities,
-        BlockSpec,
+        create_block, default_coinbase_entities, BlockSpec,
     },
     transactions::{
         tari_amount::T,
@@ -585,11 +583,6 @@ mod clear_all_pending_headers {
 }
 
 mod validator_node_merkle_root {
-    use std::convert::TryFrom;
-
-    use rand::rngs::OsRng;
-    use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
-
     use super::*;
     use crate::{
         chain_storage::calculate_validator_node_mr,
@@ -597,16 +590,18 @@ mod validator_node_merkle_root {
             transaction_components::{OutputFeatures, ValidatorNodeSignature},
             transaction_key_manager::create_memory_db_key_manager,
         },
-        ValidatorNodeMerkleHasherBlake256,
     };
+    use rand::rngs::OsRng;
+    use std::convert::TryFrom;
+    use tari_common_types::types::FixedHash;
+    use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
 
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let mut vn_mmr = SparseMerkleTree::<ValidatorNodeMerkleHasherBlake256>::new();
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
-        assert_eq!(blocks[0].header.validator_node_mr.as_slice(), vn_mmr.hash().as_slice());
+        assert_eq!(blocks[0].header.validator_node_mr, FixedHash::zero());
     }
 
     #[tokio::test]
@@ -698,5 +693,6 @@ mod validator_node_merkle_root {
 
         let tip = db.fetch_tip_header().unwrap();
         assert_eq!(tip.header().validator_node_mr, merkle_root);
+        assert_ne!(tip.header().validator_node_mr, FixedHash::zero());
     }
 }

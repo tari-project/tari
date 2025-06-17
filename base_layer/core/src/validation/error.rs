@@ -188,58 +188,56 @@ impl ValidationError {
     pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             ValidationError::ProofOfWorkError(e) => e.get_ban_reason(),
-            err @ ValidationError::SerializationError(_) |
-            err @ ValidationError::BlockHeaderError(_) |
-            err @ ValidationError::BlockError(_) |
-            err @ ValidationError::MaturityError |
-            err @ ValidationError::BlockTooLarge { .. } |
-            err @ ValidationError::UnknownInputs(_) |
-            err @ ValidationError::UnknownInput |
-            err @ ValidationError::TransactionError(_) |
-            err @ ValidationError::InvalidAccountingBalance |
-            err @ ValidationError::ContainsSTxO |
-            err @ ValidationError::ContainsTxO |
-            err @ ValidationError::ContainsDuplicateUtxoCommitment |
-            err @ ValidationError::ChainBalanceValidationFailed(_) |
-            err @ ValidationError::ValidatingGenesis |
-            err @ ValidationError::UnsortedOrDuplicateInput |
-            err @ ValidationError::UnsortedOrDuplicateOutput |
-            err @ ValidationError::UnsortedOrDuplicateKernel |
-            err @ ValidationError::MaxTransactionWeightExceeded |
-            err @ ValidationError::IncorrectHeight { .. } |
-            err @ ValidationError::IncorrectPreviousHash { .. } |
-            err @ ValidationError::BadBlockFound { .. } |
-            err @ ValidationError::TariScriptExceedsMaxSize { .. } |
-            err @ ValidationError::EncryptedDataExceedsMaxSize { .. } |
-            err @ ValidationError::ConsensusError(_) |
-            err @ ValidationError::DuplicateKernelError(_) |
-            err @ ValidationError::CovenantError(_) |
-            err @ ValidationError::InvalidBlockchainVersion { .. } |
-            err @ ValidationError::InvalidBurnError(_) |
-            err @ ValidationError::OutputTypeNotPermitted { .. } |
-            err @ ValidationError::RangeProofTypeNotPermitted { .. } |
-            err @ ValidationError::OutputTypeNotMatchedToRangeProofType { .. } |
-            err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
-            err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
-            err @ ValidationError::InvalidValidatorNodeSignature |
-            err @ ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof |
-            err @ ValidationError::TemplateInvalidSidechainIdKnowledgeProof |
-            err @ ValidationError::TemplateAuthorSignatureNotValid |
-            err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid |
-            err @ ValidationError::DifficultyError(_) |
-            err @ ValidationError::CoinbaseExceedsMaxLimit |
-            err @ ValidationError::CovenantTooLarge { .. } |
-            err @ ValidationError::InvalidSerializedPublicKey(_) |
-            err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
-            err @ ValidationError::SidechainProofInvalid(_) |
-            err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
-            err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
-            err @ ValidationError::ValidatorNodeNotRegistered { .. } |
-            err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
-            err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
-            err @ ValidationError::CovenantTooLarge { .. } |
-            err @ ValidationError::OutputSpendRuleDisallow { .. } |
-            err @ ValidationError::InvalidSerializedPublicKey(_) => Some(BanReason {
+            err @ ValidationError::SerializationError(_)
+            | err @ ValidationError::BlockHeaderError(_)
+            | err @ ValidationError::BlockError(_)
+            | err @ ValidationError::MaturityError
+            | err @ ValidationError::BlockTooLarge { .. }
+            | err @ ValidationError::UnknownInputs(_)
+            | err @ ValidationError::UnknownInput
+            | err @ ValidationError::TransactionError(_)
+            | err @ ValidationError::InvalidAccountingBalance
+            | err @ ValidationError::ContainsSTxO
+            | err @ ValidationError::ContainsTxO
+            | err @ ValidationError::ContainsDuplicateUtxoCommitment
+            | err @ ValidationError::ChainBalanceValidationFailed(_)
+            | err @ ValidationError::ValidatingGenesis
+            | err @ ValidationError::UnsortedOrDuplicateInput
+            | err @ ValidationError::UnsortedOrDuplicateOutput
+            | err @ ValidationError::UnsortedOrDuplicateKernel
+            | err @ ValidationError::MaxTransactionWeightExceeded
+            | err @ ValidationError::IncorrectHeight { .. }
+            | err @ ValidationError::IncorrectPreviousHash { .. }
+            | err @ ValidationError::BadBlockFound { .. }
+            | err @ ValidationError::TariScriptExceedsMaxSize { .. }
+            | err @ ValidationError::EncryptedDataExceedsMaxSize { .. }
+            | err @ ValidationError::ConsensusError(_)
+            | err @ ValidationError::DuplicateKernelError(_)
+            | err @ ValidationError::CovenantError(_)
+            | err @ ValidationError::InvalidBlockchainVersion { .. }
+            | err @ ValidationError::InvalidBurnError(_)
+            | err @ ValidationError::OutputTypeNotPermitted { .. }
+            | err @ ValidationError::RangeProofTypeNotPermitted { .. }
+            | err @ ValidationError::OutputTypeNotMatchedToRangeProofType { .. }
+            | err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. }
+            | err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. }
+            | err @ ValidationError::InvalidValidatorNodeSignature
+            | err @ ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof
+            | err @ ValidationError::TemplateInvalidSidechainIdKnowledgeProof
+            | err @ ValidationError::TemplateAuthorSignatureNotValid
+            | err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid
+            | err @ ValidationError::DifficultyError(_)
+            | err @ ValidationError::CoinbaseExceedsMaxLimit
+            | err @ ValidationError::CovenantTooLarge { .. }
+            | err @ ValidationError::InvalidSerializedPublicKey(_)
+            | err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. }
+            | err @ ValidationError::SidechainProofInvalid(_)
+            | err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. }
+            | err @ ValidationError::ValidatorNodeAlreadyRegistered { .. }
+            | err @ ValidationError::ValidatorNodeNotRegistered { .. }
+            | err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. }
+            | err @ ValidationError::OutputTypeNotMatchSidechainData { .. }
+            | err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),

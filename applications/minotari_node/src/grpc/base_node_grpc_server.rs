@@ -39,23 +39,15 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     types::{
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        Signature,
-        UncompressedCommitment,
-        UncompressedPublicKey,
+        CompressedCommitment, CompressedPublicKey, FixedHash, Signature, UncompressedCommitment, UncompressedPublicKey,
         UncompressedSignature,
     },
 };
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
-        comms_interface::CommsInterfaceError,
-        state_machine_service::states::StateInfo,
-        tari_pulse_service::TariPulseHandle,
-        LocalNodeCommsInterface,
-        StateMachineHandle,
+        comms_interface::CommsInterfaceError, state_machine_service::states::StateInfo,
+        tari_pulse_service::TariPulseHandle, LocalNodeCommsInterface, StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
@@ -67,12 +59,7 @@ use tari_core::{
         generate_coinbase_with_wallet_output,
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            CoinBaseExtra,
-            KernelBuilder,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
+            CoinBaseExtra, KernelBuilder, RangeProofType, Transaction, TransactionKernel, TransactionKernelVersion,
         },
         transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     },
@@ -339,27 +326,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let estimated_hash_rate = sha3x_estimated_hash_rate
                         .saturating_add(monero_randomx_estimated_hash_rate)
                         .saturating_add(tari_randomx_estimated_hash_rate);
-
-                    let block = match handler.get_block(current_height, true).await {
-                        Ok(block) => block,
-                        Err(err) => {
-                            warn!(target: LOG_TARGET, "Base node service error: {:?}", err,);
-                            let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal(format!("Error fetching block at height {}", current_height)),
-                            )));
-                            return;
-                        },
-                    };
-                    if block.is_none() {
-                        let _network_difficulty_response = tx.send(Err(obscure_error_if_true(
-                            report_error_flag,
-                            Status::internal(format!("Block not found at height {}", current_height)),
-                        )));
-                        return;
-                    }
-                    let block = block.unwrap();
-                    let coinbases = block.block().body.get_coinbase_outputs();
 
                     let block = match handler.get_block(current_height, true).await {
                         Ok(block) => block,
@@ -1120,8 +1086,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
-        if coinbases.len() as u64 >
-            self.consensus_rules
+        if coinbases.len() as u64
+            > self
+                .consensus_rules
                 .consensus_constants(meta.best_block_height().saturating_add(1))
                 .max_block_coinbase_count()
         {
@@ -1156,8 +1123,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .checked_div(total_shares)
                     .ok_or_else(|| {
                         obscure_error_if_true(report_error_flag, Status::internal("total shares are zero".to_string()))
-                    })? -
-                    prev_coinbase_value,
+                    })?
+                    - prev_coinbase_value,
             )
             .map_err(|_| {
                 obscure_error_if_true(
@@ -1215,13 +1182,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce +
-                &new_nonce
+            total_nonce = &total_nonce
+                + &new_nonce
                     .pub_key
                     .to_public_key()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_excess = &total_excess +
-                &coinbase_kernel
+            total_excess = &total_excess
+                + &coinbase_kernel
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
@@ -1237,8 +1204,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let mut kernel_signature = UncompressedSignature::default();
         for (spending_key_id, nonce) in private_keys {
-            kernel_signature = &kernel_signature +
-                &key_manager
+            kernel_signature = &kernel_signature
+                + &key_manager
                     .get_partial_txo_kernel_signature(
                         &spending_key_id,
                         &nonce,
@@ -1376,8 +1343,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 )
             })?;
         let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
-        if coinbases.len() as u64 >
-            self.consensus_rules
+        if coinbases.len() as u64
+            > self
+                .consensus_rules
                 .consensus_constants(block_template.header.height)
                 .max_block_coinbase_count()
         {
@@ -1454,13 +1422,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                 .await
                 .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_nonce = &total_nonce +
-                &new_nonce
+            total_nonce = &total_nonce
+                + &new_nonce
                     .pub_key
                     .to_public_key()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            total_excess = &total_excess +
-                &coinbase_kernel
+            total_excess = &total_excess
+                + &coinbase_kernel
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
@@ -1476,8 +1444,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let mut kernel_signature = UncompressedSignature::default();
         for (spending_key_id, nonce) in private_keys {
-            kernel_signature = &kernel_signature +
-                &key_manager
+            kernel_signature = &kernel_signature
+                + &key_manager
                     .get_partial_txo_kernel_signature(
                         &spending_key_id,
                         &nonce,
@@ -1803,16 +1771,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::UnconfirmedPool => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Accepted.into(),
             },
-            TxStorageResponse::ReorgPool |
-            TxStorageResponse::NotStoredAlreadySpent |
-            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
+            TxStorageResponse::ReorgPool
+            | TxStorageResponse::NotStoredAlreadySpent
+            | TxStorageResponse::NotStoredAlreadyMined => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
             },
-            TxStorageResponse::NotStored |
-            TxStorageResponse::NotStoredOrphan |
-            TxStorageResponse::NotStoredConsensus |
-            TxStorageResponse::NotStoredFeeTooLow |
-            TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
+            TxStorageResponse::NotStored
+            | TxStorageResponse::NotStoredOrphan
+            | TxStorageResponse::NotStoredConsensus
+            | TxStorageResponse::NotStoredFeeTooLow
+            | TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Rejected.into(),
             },
         };
@@ -1891,12 +1859,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                                                             * node does not think it is. */
                 }
             },
-            TxStorageResponse::NotStored |
-            TxStorageResponse::NotStoredConsensus |
-            TxStorageResponse::NotStoredOrphan |
-            TxStorageResponse::NotStoredFeeTooLow |
-            TxStorageResponse::NotStoredTimeLocked |
-            TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
+            TxStorageResponse::NotStored
+            | TxStorageResponse::NotStoredConsensus
+            | TxStorageResponse::NotStoredOrphan
+            | TxStorageResponse::NotStoredFeeTooLow
+            | TxStorageResponse::NotStoredTimeLocked
+            | TxStorageResponse::NotStoredAlreadyMined => tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::NotStored.into(),
             },
         };

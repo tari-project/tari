@@ -345,6 +345,10 @@ mod test {
                     assert_eq!(branch.as_byte(), *expected_byte);
                     assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
                 },
+                Branch::CodeTemplateAuthor => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
             }
         }
     }

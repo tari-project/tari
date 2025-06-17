@@ -115,11 +115,11 @@ impl TransactionKeyManagerBranch {
         let branch = TransactionKeyManagerBranch::from_key(value);
         matches!(
             branch,
-            TransactionKeyManagerBranch::OneSidedSenderOffset |
-                TransactionKeyManagerBranch::Spend |
-                TransactionKeyManagerBranch::RandomKey |
-                TransactionKeyManagerBranch::PreMine |
-                TransactionKeyManagerBranch::MetadataEphemeralNonce
+            TransactionKeyManagerBranch::OneSidedSenderOffset
+                | TransactionKeyManagerBranch::Spend
+                | TransactionKeyManagerBranch::RandomKey
+                | TransactionKeyManagerBranch::PreMine
+                | TransactionKeyManagerBranch::MetadataEphemeralNonce
         )
     }
 }
@@ -130,16 +130,8 @@ mod test {
 
     use crate::{
         key_branches::{
-            TransactionKeyManagerBranch,
-            COMMITMENT_MASK,
-            DATA_ENCRYPTION,
-            KERNEL_NONCE,
-            METADATA_EPHEMERAL_NONCE,
-            NONCE,
-            ONE_SIDED_SENDER_OFFSET,
-            PRE_MINE,
-            RANDOM_KEY,
-            SENDER_OFFSET,
+            TransactionKeyManagerBranch, COMMITMENT_MASK, DATA_ENCRYPTION, KERNEL_NONCE, METADATA_EPHEMERAL_NONCE,
+            NONCE, ONE_SIDED_SENDER_OFFSET, PRE_MINE, RANDOM_KEY, SENDER_OFFSET,
         },
         WALLET_COMMS_AND_SPEND_KEY_BRANCH,
     };

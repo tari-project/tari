@@ -23,7 +23,6 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::types::FixedHash;
 use tari_common_types::epoch::VnEpoch;
 use tari_utilities::hex::Hex;
 
@@ -34,23 +33,13 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{
-            OutputType,
-            SideChainId,
-            SpentOutput,
-            TransactionError,
-            TransactionInput,
-            ValidatorNodeRegistration,
+            OutputType, SideChainId, SpentOutput, TransactionError, TransactionInput, ValidatorNodeRegistration,
         },
     },
     validation::{
         helpers::{
-            check_eviction_proof,
-            check_input_is_utxo,
-            check_not_duplicate_txo,
-            check_tari_encrypted_data_byte_size,
-            check_tari_script_byte_size,
-            check_validator_node_exit,
-            check_validator_node_registration,
+            check_eviction_proof, check_input_is_utxo, check_not_duplicate_txo, check_tari_encrypted_data_byte_size,
+            check_tari_script_byte_size, check_validator_node_exit, check_validator_node_registration,
         },
         ValidationError,
     },
@@ -135,7 +124,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                             debug!(
                                 target: LOG_TARGET,
                                 "Input not found in database or block, commitment: {}, hash: {}",
-                                input.commitment()?, input_output_hash,
+                                input.commitment()?.to_hex(), input_output_hash,
                             );
                             return Err(ValidationError::UnknownInput);
                         }
