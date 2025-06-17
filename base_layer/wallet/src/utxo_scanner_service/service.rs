@@ -145,20 +145,22 @@ where
         loop {
             let mut local_shutdown = Shutdown::new();
 
-            if self
-                .resources
-                .comms_connectivity
-                .get_connectivity_status()
-                .await?
-                .is_offline()
-            {
-                debug!(
-                    target: LOG_TARGET,
-                    "{:?}: Comms connectivity is offline - waiting for connectivity.",
-                    self.mode
-                );
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                continue;
+            match self.resources.comms_connectivity.get_connectivity_status().await {
+                Ok(status) if status.is_offline() => {
+                    debug!(target: LOG_TARGET,
+                     "{:?}: Comms connectivity is offline - waiting for connectivity.",
+                     self.mode);
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                },
+                Err(e) => {
+                    warn!(target: LOG_TARGET,
+                        "{:?}: Failed to query connectivity status: {} – retrying in 5 s",
+                        self.mode, e);
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                },
+                _ => {},
             }
 
             // If we have a base node connection, we can spawn a task to scanning UTXOs
