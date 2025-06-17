@@ -785,7 +785,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 let json_data = data.to_json().map_err(|e| Status::internal(e.to_string()))?;
                 PrepareOneSidedTransactionForSigningResponse {
                     is_success: true,
-                    lock_details: json_data,
+                    result: json_data,
                     failure_message: Default::default(),
                 }
             },
@@ -796,7 +796,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 );
                 PrepareOneSidedTransactionForSigningResponse {
                     is_success: false,
-                    lock_details: Default::default(),
+                    result: Default::default(),
                     failure_message: err.to_string(),
                 }
             },

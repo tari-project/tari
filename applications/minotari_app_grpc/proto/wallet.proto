@@ -1179,7 +1179,7 @@ message PrepareOneSidedTransactionForSigningRequest {
 
 message PrepareOneSidedTransactionForSigningResponse {
   bool is_success = 1;
-  string lockDetails = 2;
+  string result = 2;
   string failure_message = 3;
 }
 
