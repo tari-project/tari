@@ -33,7 +33,7 @@ name: Build docker images - workflow_call/on-demand
         description: 'build images'
       platforms:
         type: string
-        # linux/arm64, linux/amd64
+        # linux/arm64,linux/amd64
         default: linux/amd64
         description: 'docker target build platform(s)'
 
@@ -77,8 +77,8 @@ jobs:
           cd buildtools/docker_rig
           source ./build-matrix.sh "${{ inputs.build_items }}" "${VERSION}" "${{ inputs.platforms }}"
 
-          echo $matrix
-          echo $matrix | jq .
+          echo "${matrix}"
+          echo "${matrix}" | jq .
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT
 
       - name: Declare TestNet for tags/branches
@@ -340,9 +340,9 @@ jobs:
                 fi
 
                 if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
-                  echo "Latest Release Multi-Arch tag - $GITHUB_REF_NAME for $GITHUB_REF"
+                  echo "Latest Release Multi-Arch tag - $GITHUB_REF_NAME for $GITHUB_REF using ${DVERSION}${DSUFFIX}"
                   docker manifest create \
-                    ${DREGISTRY}/${REPO}/${DNAME}:latest-${DSUFFIX} \
+                    ${DREGISTRY}/${REPO}/${DNAME}:latest${DSUFFIX} \
                       --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-amd64 \
                       --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-arm64
                   #docker manifest annotate ${DREGISTRY}/${REPO}/${DNAME}:latest${DSUFFIX} --file manifest.json

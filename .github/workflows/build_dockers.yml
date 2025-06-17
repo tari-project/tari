@@ -96,15 +96,15 @@ jobs:
             #VERSION="${{ github.ref_name }}_$(date -u '+%Y%m%d')_${VSHA_SHORT}"
             VERSION="${{ github.ref_name }}"
             echo "Version used - ${VERSION}"
-            echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
+            echo "platforms=linux/arm64,linux/amd64" >> $GITHUB_OUTPUT
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "tag_alias=latest" >> $GITHUB_OUTPUT
             echo "build_items=all" >> $GITHUB_OUTPUT
           fi
           if [[ "${{ github.ref }}" =~ ^refs/heads/build-dockers-* ]] || [[ "${{ github.ref }}" =~ ^refs/heads/build-all-* ]] ; then
             echo "Branch Build - limited dual arch"
-            echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
-            #echo "tag_alias=latest-adhoc" >> $GITHUB_OUTPUT
+            echo "platforms=linux/arm64,linux/amd64" >> $GITHUB_OUTPUT
+            echo "tag_alias=latest-adhoc" >> $GITHUB_OUTPUT
             echo "tari_network=esmeralda" >> $GITHUB_OUTPUT
             #echo "build_items=xmrig" >> $GITHUB_OUTPUT
             #echo "build_items=3rdparty" >> $GITHUB_OUTPUT
@@ -122,14 +122,14 @@ jobs:
             echo "Scheduled builds"
             if [[ $(date +%u) -eq 7 ]] ; then
               echo "Weekly Build - limited dual arch - esmeralda"
-              echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
+              echo "platforms=linux/arm64,linux/amd64" >> $GITHUB_OUTPUT
               echo "tag_alias=latest-weekly" >> $GITHUB_OUTPUT
               echo "tari_network=esmeralda" >> $GITHUB_OUTPUT
               echo "build_items=minotari_all" >> $GITHUB_OUTPUT
             else
               echo "Nightly Build - limited amd64 - esmeralda"
               echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-              #echo "tag_alias=latest-nightly" >> $GITHUB_OUTPUT
+              echo "tag_alias=latest-nightly" >> $GITHUB_OUTPUT
               echo "tari_network=esmeralda" >> $GITHUB_OUTPUT
               echo "build_items=minotari_all" >> $GITHUB_OUTPUT
             fi
