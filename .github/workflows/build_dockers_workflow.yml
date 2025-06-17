@@ -236,7 +236,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:${{ matrix.builds.version }}${{ env.DSuffix }}
             ${{ steps.meta.outputs.tags }}
             ${{ env.TAG_ALIASQ }}
-            ${{ env.TAG_ALIASD }}
+            ${{ env.TAG_ALIASG }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
 

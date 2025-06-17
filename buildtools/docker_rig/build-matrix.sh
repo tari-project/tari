@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
-# prep json build matrix from envs
+# prep json build matrix from args
 #
 # ./build-matrix.sh all "4.4.1" "linux/amd64,linux/arm64"
 # ./build-matrix.sh minotari_sha3_miner "4.4.1" "linux/arm64"
 # ./build-matrix.sh tor "4.4.1" "linux/arm64"
+#
 
-#set -xuo pipefail
+set -euxo pipefail
 
 build_items=${1:-minotari_all}
 echo "Building with ${build_items}."
@@ -19,7 +20,7 @@ elif [ "${build_items:0:9}" = "minotari_" ] ; then
     | select(."image_name"==$jsonVar)]' tarisuite.json )
 elif [ "${build_items}" = "all" ] ; then
   echo "Build all images"
-  matrix_selection=$( jq -c '. += input' tarisuite.json 3rdparty.json )
+  matrix_selection=$(jq -s -c '.[0] + .[1]' tarisuite.json 3rdparty.json)
 elif [ "${build_items:0:8}" = "3rdparty" ] ; then
   echo "Build only 3rdparty images - ${build_items}"
   matrix_selection=$( jq -s -c '.[]' 3rdparty.json )
@@ -35,12 +36,12 @@ MINOTARI_VERSION="${2:-dev}"  # e.g., pass in tag as first arg
 # Start jSon string
 matrix_details="["
 
-echo "${matrix_selection}" | jq -c '.'
+#echo "${matrix_selection}" | jq -c '.'
 while read -r item; do
 
   image_name=$(jq -r '.image_name' <<< "${item}")
-  echo "Image: ${image_name}"
-  echo "JSon Object: $(jq -r '.' <<< "${item}")"
+  #echo "Image: ${image_name}"
+  #echo "JSon Object: $(jq -r '.' <<< "${item}")"
 
   # Determine version
   if [[ "${image_name}" == minotari_* ]]; then
@@ -60,7 +61,7 @@ while read -r item; do
     continue
   fi
 
-  echo "${version}, ${dockerfile}, ${build_arg}"
+  #echo "${version}, ${dockerfile}, ${build_arg}"
 
   # Extend the original JSON object with new fields
   enriched=$(jq -c \
@@ -86,7 +87,7 @@ else
   matrix_details+="]"
 fi
 
-#echo $matrix_details
+#echo "${matrix_details}"
 #echo "${matrix_details}" | jq .
 
 build_platforms=${3:-"linux/arm64, linux/amd64"}
@@ -113,7 +114,7 @@ matrix_platforms=$(jq --argjson platforms "$platforms_json" '
   ]
 ' <<< "${matrix_details}")
 
-matrix=$(echo ${matrix_platforms} | jq -s -c '{"builds": .[]}')
+matrix=$(echo "${matrix_platforms}" | jq -s -c '{"builds": .[]}')
 
-echo $matrix
-echo $matrix | jq .
+echo "${matrix}"
+echo "${matrix}" | jq .
