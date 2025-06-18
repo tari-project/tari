@@ -2620,6 +2620,10 @@ criteria = "safe-to-deploy"
 version = "2.0.101"
 criteria = "safe-to-deploy"
 
+[[exemptions.syn]]
+version = "2.0.103"
+criteria = "safe-to-deploy"
+
 [[exemptions.sync_wrapper]]
 version = "0.1.2"
 criteria = "safe-to-deploy"
