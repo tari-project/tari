@@ -10,4 +10,11 @@ extern crate alloc;
 
 pub mod common_types;
 mod utils;
-pub use utils::{get_public_spend_key_bytes_from_tari_dual_address, tari_dual_address_display, TARI_DUAL_ADDRESS_SIZE};
+pub use utils::{
+    address_has_payment_id,
+    get_payment_id_bytes_from_tari_dual_address,
+    get_public_spend_key_bytes_from_tari_dual_address,
+    tari_dual_address_display,
+    TARI_DUAL_ADDRESS_MAX_SIZE,
+    TARI_DUAL_ADDRESS_MIN_SIZE,
+};

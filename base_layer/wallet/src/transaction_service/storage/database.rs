@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, Transaction, TransactionOutput},
+    transaction_components::{payment_id::PaymentId, Transaction, TransactionOutput},
 };
 
 use crate::transaction_service::{
@@ -141,6 +141,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Reset optional 'mined height' and 'mined in block' fields to nothing
     fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
+    fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
     /// Light weight method to retrieve pertinent transaction sender info for all pending inbound transactions
     fn get_pending_inbound_transaction_sender_info(
         &self,
@@ -744,12 +745,14 @@ where T: TransactionBackend + 'static
         direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
         let hash = scanned_output.hash();
+        let fee = payment_id.get_fee().unwrap_or_default();
+        let sent_hashes = payment_id.get_sent_hashes().unwrap_or_default();
         let transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             source_address,
             destination_address,
             amount,
-            MicroMinotari::from(0),
+            fee,
             Transaction::new(
                 Vec::new(),
                 vec![scanned_output],
@@ -763,7 +766,7 @@ where T: TransactionBackend + 'static
             current_height,
             mined_timestamp,
             payment_id,
-            vec![],
+            sent_hashes,
             vec![hash],
             vec![],
         )?;
@@ -786,6 +789,10 @@ where T: TransactionBackend + 'static
 
     pub fn mark_all_non_coinbases_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
         self.db.mark_all_non_coinbases_transactions_as_unvalidated()
+    }
+
+    pub fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        self.db.mark_all_rejected_transactions_as_unvalidated()
     }
 
     pub fn set_transaction_mined_height(

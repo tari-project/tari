@@ -53,7 +53,7 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             RangeProofType,
             Transaction,
@@ -148,7 +148,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: vec![],
-            change_output_hashes: vec![],
         });
         assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
 

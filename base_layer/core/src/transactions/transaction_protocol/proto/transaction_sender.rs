@@ -33,7 +33,7 @@ use tari_utilities::ByteArray;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
 use crate::transactions::{
-    transaction_components::encrypted_data::PaymentId,
+    transaction_components::payment_id::PaymentId,
     transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage},
 };
 

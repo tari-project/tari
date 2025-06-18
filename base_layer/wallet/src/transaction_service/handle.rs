@@ -41,7 +41,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             BuildInfo,
             CodeTemplateRegistration,
             OutputFeatures,
@@ -219,6 +219,7 @@ pub enum TransactionServiceRequest {
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
     ReValidateTransactions,
+    ReValidateRejectedTransactions,
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
         count: usize,
@@ -424,6 +425,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
+            Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
@@ -1236,6 +1238,17 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::ReValidateTransactions)
+            .await??
+        {
+            TransactionServiceResponse::ValidationStarted(_) => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn revalidate_rejected_transactions(&mut self) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ReValidateRejectedTransactions)
             .await??
         {
             TransactionServiceResponse::ValidationStarted(_) => Ok(()),

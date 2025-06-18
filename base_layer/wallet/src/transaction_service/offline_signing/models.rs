@@ -9,7 +9,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures, Transaction},
+        transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction},
         transaction_protocol::TransactionMetadata,
     },
 };

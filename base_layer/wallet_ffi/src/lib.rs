@@ -149,7 +149,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -9022,7 +9022,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         completed.push(inbound_tx);
     }
     for tx in &outbound_transactions {
-        let mut outbound_tx = CompletedTransaction::from(tx.clone());
+        let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
         outbound_tx.source_address = wallet_address.clone();
         completed.push(outbound_tx);
     }
@@ -9319,7 +9319,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
             },
         };
         if let Some(tx) = outbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-            let mut outbound_tx = CompletedTransaction::from(tx.clone());
+            let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
             outbound_tx.source_address = address;
             transaction = Some(outbound_tx);
         } else {
@@ -12805,7 +12805,6 @@ mod test {
                         sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
                             .unwrap(),
                         sender_one_sided: false,
-                        amount: MicroMinotari::from(123456),
                         fee: MicroMinotari::from(123),
                         tx_type,
                         user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -12818,6 +12817,7 @@ mod test {
                         fee: MicroMinotari::from(123),
                         tx_type,
                         user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                        sent_output_hashes: vec![],
                     },
                 ] {
                     let wallet_output = (*alice_wallet).runtime.block_on(create_test_input(

@@ -44,7 +44,7 @@ use crate::{
     transactions::{
         tari_amount::{MicroMinotari, Minotari},
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             CoinBaseExtra,
             KernelFeatures,
             OutputFeatures,
@@ -66,7 +66,8 @@ use crate::{
     },
 };
 
-const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
+/// The average amount of blocks per day based on the target block time
+pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
 
 /// Token unlock schedule
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

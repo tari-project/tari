@@ -616,21 +616,13 @@ pub async fn start_wallet(
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
         // NOTE: https://github.com/tari-project/tari/issues/5227
         debug!("revalidating all transactions");
-        if let Err(e) = wallet.transaction_service.revalidate_all_transactions().await {
-            error!(target: LOG_TARGET, "Failed to revalidate all transactions: {}", e);
+        if let Err(e) = wallet.transaction_service.revalidate_rejected_transactions().await {
+            error!(target: LOG_TARGET, "Failed to revalidate rejected transactions: {}", e);
         }
 
         debug!("restarting transaction protocols");
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
             error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
-        }
-
-        debug!("validating transactions");
-        if let Err(e) = wallet.transaction_service.validate_transactions().await {
-            error!(
-                target: LOG_TARGET,
-                "Problem validating and restarting transaction protocols: {}", e
-            );
         }
 
         // validate transaction outputs

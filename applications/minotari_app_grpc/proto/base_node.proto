@@ -228,9 +228,13 @@ message NetworkDifficultyResponse {
 
 // A generic single value response for a specific height
 message ValueAtHeightResponse {
-    uint64 circulating_supply = 1;
-    uint64 spendable_supply = 2;
+    // uint64 circulating_supply = 1;    // No longer used
+    // uint64 spendable_supply = 2;      // No longer used
     uint64 height = 3;
+    uint64 mined_rewards = 4;
+    uint64 spendable_rewards = 5;
+    uint64 spendable_pre_mine = 6;
+    uint64 total_spendable = 7;
 }
 
 // A generic uint value

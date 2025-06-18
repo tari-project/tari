@@ -44,7 +44,7 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        encrypted_data::PaymentId,
+        payment_id::PaymentId,
         EncryptedData,
         KernelFeatures,
         RangeProofType,

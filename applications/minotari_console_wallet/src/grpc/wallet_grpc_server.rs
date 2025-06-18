@@ -124,7 +124,7 @@ use tari_core::{
     transactions::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CodeTemplateRegistration,
             OutputFeatures,
             OutputType,
@@ -187,6 +187,10 @@ impl WalletGrpcServer {
             rules,
             debouncer: Arc::new(Mutex::new(debouncer)),
         })
+    }
+
+    pub async fn start_balance_debouncer_event_monitor(&self) {
+        self.debouncer.lock().await.start_event_monitor_if_needed().await
     }
 
     fn get_transaction_service(&self) -> TransactionServiceHandle {
@@ -1289,6 +1293,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_all_completed_transactions(
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
@@ -1335,7 +1340,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             usize::MAX
         };
         let mut transactions: Vec<TransactionInfo> = Vec::new();
-        for txn in completed_transactions.into_iter().skip(offset).take(limit) {
+        for txn in completed_transactions
+            .into_iter()
+            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status as u32))) != 0)
+            .skip(offset)
+            .take(limit)
+        {
             let output_commitments: Vec<Vec<u8>> = txn
                 .transaction
                 .body

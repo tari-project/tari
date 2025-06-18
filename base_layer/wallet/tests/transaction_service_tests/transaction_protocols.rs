@@ -82,7 +82,7 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::schema_to_transaction,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},

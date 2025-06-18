@@ -4,7 +4,7 @@
 
 In its simplest form you can run the tests from the project route with `cargo +nightly test --release --test cucumber`
 
-**Note:** Any linker issues, try and older version of the nightly toolchain, e.g.  `cargo +nightly-2024-07-07 test ...`
+**Note:** Any linker issues, try and older version of the nightly toolchain, e.g.  `cargo +nightly-2025-01-01 test ...`
 
 - To run a specific test, add `-- --name <Test Name>` to the command line
 

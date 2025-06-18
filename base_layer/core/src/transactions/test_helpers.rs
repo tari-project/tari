@@ -43,7 +43,7 @@ use crate::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -678,9 +678,11 @@ pub async fn spend_utxos(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
 ) -> (Transaction, Vec<WalletOutput>) {
-    let (mut stx_protocol, outputs) = create_stx_protocol(schema, key_manager).await;
+    let (mut stx_protocol, mut outputs) = create_stx_protocol(schema, key_manager).await;
     stx_protocol.finalize(key_manager).await.unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
+    let change_output = stx_protocol.get_finalized_change_output().unwrap().unwrap();
+    outputs.push(change_output);
     (txn, outputs)
 }
 
@@ -693,9 +695,6 @@ pub async fn create_stx_protocol(
     let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
 
     let stx_protocol = stx_builder.build().await.unwrap();
-    let change_output = stx_protocol.get_change_output().unwrap().unwrap();
-
-    outputs.push(change_output);
     (stx_protocol, outputs)
 }
 

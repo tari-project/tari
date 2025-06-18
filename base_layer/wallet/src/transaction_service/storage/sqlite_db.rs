@@ -56,7 +56,7 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::payment_id::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -970,6 +970,34 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
+    // Exclude coinbases as they are validated from the OMS service, and we use these fields to know which tx to
+    // extract, thus we should not wipe it out. Coinbases can also not be mined in a different height so the data will
+    // never be wrong.
+    fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let result = diesel::update(completed_transactions::table)
+            .filter(completed_transactions::status.eq(TransactionStatus::Rejected as i32))
+            .set((
+                completed_transactions::cancelled.eq::<Option<i32>>(None),
+                completed_transactions::mined_height.eq::<Option<i64>>(None),
+                completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+            ))
+            .execute(&mut conn)?;
+        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
+
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -1541,7 +1569,6 @@ struct OutboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     sent_output_hashes: Option<Vec<u8>>,
-    change_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
 }
 
@@ -1722,7 +1749,6 @@ impl OutboundTransactionSql {
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
             sent_output_hashes: Some(fixedhash_vec_to_bytes(&o.sent_output_hashes)),
-            change_output_hashes: Some(fixedhash_vec_to_bytes(&o.change_output_hashes)),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1776,7 +1802,6 @@ impl OutboundTransaction {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
             sent_output_hashes: bytes_to_fixedhash_vec(&o.sent_output_hashes.unwrap_or_default()),
-            change_output_hashes: bytes_to_fixedhash_vec(&o.change_output_hashes.unwrap_or_default()),
         };
 
         // zeroize decrypted data
@@ -2507,7 +2532,7 @@ mod test {
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             Transaction,
         },
@@ -2634,7 +2659,6 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: vec![],
-            change_output_hashes: vec![],
         };
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2656,7 +2680,6 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 sent_output_hashes: vec![],
-                change_output_hashes: vec![],
             },
             &cipher,
         )
@@ -3048,7 +3071,6 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: vec![],
-            change_output_hashes: vec![],
         };
 
         let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone(), &cipher).unwrap();
@@ -3196,7 +3218,6 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 sent_output_hashes: vec![],
-                change_output_hashes: vec![],
             };
             let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx, &cipher).unwrap();
 

@@ -126,7 +126,7 @@ use tari_core::{
         tari_amount::*,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             KernelBuilder,
             OutputFeatures,
             RangeProofType,
@@ -4310,7 +4310,6 @@ async fn test_restarting_transaction_protocols() {
         direct_send_success: false,
         send_count: 0,
         last_send_timestamp: None,
-        change_output_hashes: vec![],
         sent_output_hashes: vec![],
     };
     bob_backend
@@ -4701,7 +4700,6 @@ async fn test_resend_on_startup() {
         direct_send_success: false,
         send_count: 1,
         last_send_timestamp: Some(Utc::now()),
-        change_output_hashes: vec![],
         sent_output_hashes: vec![],
     };
     let connection = make_wallet_database_memory_connection();
@@ -5238,7 +5236,6 @@ async fn test_transaction_timeout_cancellation() {
         direct_send_success: false,
         send_count: 1,
         last_send_timestamp: Some(Utc::now()),
-        change_output_hashes: vec![],
         sent_output_hashes: vec![],
     };
     let bob_connection = make_wallet_database_memory_connection();

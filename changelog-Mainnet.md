@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.5.0](https://github.com/tari-project/tari/compare/v4.4.1...v4.5.0) (2025-06-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* ensure payref persists during recovery (#7225)
+
+### Features
+
+* add payref to grpc outputs ([#7216](https://github.com/tari-project/tari/issues/7216)) ([0e322e1](https://github.com/tari-project/tari/commit/0e322e1f160811a676f64e784ede7983abcddcca))
+* ensure payref persists during recovery ([#7225](https://github.com/tari-project/tari/issues/7225)) ([2737a14](https://github.com/tari-project/tari/commit/2737a1404753cb416400a76e122f4839a7625dda))
+* integrated address support for Ledger ([#7198](https://github.com/tari-project/tari/issues/7198)) ([7ab0cd5](https://github.com/tari-project/tari/commit/7ab0cd5f2e440a4d42b5385d544f85253c805339))
+
+
+### Bug Fixes
+
+* fix scanner service when connectivity offline ([#7223](https://github.com/tari-project/tari/issues/7223)) ([e0ab8d1](https://github.com/tari-project/tari/commit/e0ab8d15df31520e1723d0000f555470d745a333))
+
+
+### [4.1.1](https://github.com/tari-project/tari/compare/v4.4.0...v4.1.1) (2025-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* update grpc supply query (#7137)
+
+### Features
+
+* improve wallet balance checks from external clients ([#7207](https://github.com/tari-project/tari/issues/7207)) ([58c3e41](https://github.com/tari-project/tari/commit/58c3e41f7b6cb71406a65a063a1f79f8ca50f94b))
+* update grpc supply query ([#7137](https://github.com/tari-project/tari/issues/7137)) ([4ce3977](https://github.com/tari-project/tari/commit/4ce39778950560b70af4ff67db8695a8f76a5d19))
+
+
+### Bug Fixes
+
+* add filtering flag back ([#7208](https://github.com/tari-project/tari/issues/7208)) ([5c1923f](https://github.com/tari-project/tari/commit/5c1923fff0eee745d18aa87833597791cbf8de1f))
+* migration can now correctly resume after stopping ([#7210](https://github.com/tari-project/tari/issues/7210)) ([d268f2b](https://github.com/tari-project/tari/commit/d268f2b7c98e510d400a9195f8ef6b51bc0945be))
+* only revalidated rejected transactions on startup ([#7209](https://github.com/tari-project/tari/issues/7209)) ([65af015](https://github.com/tari-project/tari/commit/65af015d4cccea527e73452c2c973223ac2aad1e))
+
 ## [4.4.0](https://github.com/tari-project/tari/compare/v4.3.1...v4.4.0) (2025-06-11)
 
 

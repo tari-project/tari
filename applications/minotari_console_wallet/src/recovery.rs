@@ -139,10 +139,14 @@ pub async fn wallet_recovery(
     loop {
         match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
-                println!("Connecting to base node {}... ", peer);
+                let msg = format!("Connecting to base node {}... ", peer);
+                println!("{}", msg);
+                debug!(target: LOG_TARGET, "{}", msg);
             },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(_, latency)) => {
-                println!("OK (latency = {:.2?})", latency);
+                let msg = format!("OK (latency = {:.2?})", latency);
+                println!("{}", msg);
+                debug!(target: LOG_TARGET, "{}", msg);
             },
             Ok(UtxoScannerEvent::Progress {
                 current_height,
@@ -150,21 +154,15 @@ pub async fn wallet_recovery(
             }) => {
                 // its going to fail if the tip height is 0, meaning if you scanned up to 0, you are done
                 let percentage_progress = (current_height * 100).checked_div(tip_height).unwrap_or(100);
-                debug!(
-                    target: LOG_TARGET,
+                let msg = format!(
                     "{}: Recovery process {}% complete (Block {} of {}).",
                     Local::now(),
                     percentage_progress,
                     current_height,
                     tip_height
                 );
-                println!(
-                    "{}: Recovery process {}% complete (Block {} of {}).",
-                    Local::now(),
-                    percentage_progress,
-                    current_height,
-                    tip_height
-                );
+                println!("{}", msg);
+                debug!(target: LOG_TARGET, "{}", msg);
             },
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,
@@ -210,6 +208,7 @@ pub async fn wallet_recovery(
                 continue;
             },
             Err(broadcast::error::RecvError::Closed) => {
+                debug!(target: LOG_TARGET, "Wallet Recovery exiting");
                 break;
             },
             Ok(UtxoScannerEvent::ScanningFailed) => {

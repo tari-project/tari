@@ -48,7 +48,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             EncryptedData,
             OutputFeatures,
@@ -305,13 +305,7 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
     status: String,
 ) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
@@ -386,13 +380,7 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
 #[then(expr = "wallet {word} detects all transactions are Broadcast")]
 async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     let num_retries = 100;
@@ -439,13 +427,7 @@ async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name:
 #[when(expr = "wallet {word} detects last transaction is Pending")]
 async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
     let tx_id = tx_ids.last().unwrap(); // get last transaction
     let num_retries = 100;
@@ -485,13 +467,7 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
 #[when(expr = "wallet {word} detects last transaction is Cancelled")]
 async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
     let tx_id = tx_ids.last().unwrap(); // get last transaction
     let num_retries = 100;
@@ -745,6 +721,22 @@ async fn wait_for_wallet_to_have_scanned_to_height(world: &mut TariWorld, wallet
     );
 }
 
+#[then(expr = "all wallets validate their transactions")]
+#[when(expr = "all wallets validate their transactions")]
+async fn all_wallets_validate_their_transactions(world: &mut TariWorld) {
+    let wallets = world.wallets.keys().cloned().collect::<Vec<_>>();
+    for wallet in &wallets {
+        let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+        let result = client.validate_all_transactions(ValidateRequest {}).await;
+        if let Err(e) = result {
+            cucumber_steps_log(format!(
+                "Error! Wallet {} failed to validate transactions, error: {:?}",
+                wallet, e
+            ));
+        }
+    }
+}
+
 #[when(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
 #[given(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
 async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, wallet: String, mechanism: String) {
@@ -856,21 +848,22 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
     ));
 }
 
+#[when(expr = "I send a one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 #[then(expr = "I send a one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     world: &mut TariWorld,
     amount: u64,
-    source_wallet: String,
-    dest_wallet: String,
+    sender: String,
+    receiver: String,
     fee: u64,
 ) {
-    let mut source_client = create_wallet_client(world, source_wallet.clone()).await.unwrap();
-    let source_wallet_address = world.get_wallet_address(&source_wallet).await.unwrap();
+    let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
-    let dest_wallet_address = world.get_wallet_address(&dest_wallet).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
-        address: dest_wallet_address.clone(),
+        address: receiver_wallet_address.clone(),
         amount,
         fee_per_gram: fee,
         payment_type: 1, // one sided transaction
@@ -878,8 +871,8 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             &format!(
                 "One sided transfer amount {} from {} to {}",
                 amount,
-                source_wallet.as_str(),
-                dest_wallet.as_str()
+                sender.as_str(),
+                receiver.as_str()
             ),
             TxType::PaymentToOther,
         )
@@ -889,7 +882,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
     };
-    let tx_res = source_client.transfer(transfer_req).await.unwrap().into_inner();
+    let tx_res = sender_client.transfer(transfer_req).await.unwrap().into_inner();
     let tx_res = tx_res.results;
 
     assert_eq!(tx_res.len(), 1usize);
@@ -899,8 +892,8 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         tx_res.is_success,
         "One sided transaction with amount {} from wallet {} to {} at fee {} failed",
         amount,
-        source_wallet.as_str(),
-        dest_wallet.as_str(),
+        sender.as_str(),
+        receiver.as_str(),
         fee
     );
 
@@ -912,7 +905,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     };
 
     for i in 0..num_retries {
-        let tx_info_res = source_client
+        let tx_info_res = sender_client
             .get_transaction_info(tx_info_req.clone())
             .await
             .unwrap()
@@ -923,8 +916,8 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         if tx_info.status == 1_i32 {
             cucumber_steps_log(format!(
                 "Wait for one sided transaction from {} to {} (DONE) with amount {} at fee {} to be broadcast",
-                source_wallet.clone(),
-                dest_wallet.clone(),
+                sender.clone(),
+                receiver.clone(),
                 amount,
                 fee
             ));
@@ -932,8 +925,8 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         } else if i % 5 == 0 {
             cucumber_steps_log(format!(
                 "Wait for one sided transaction from {} to {} with amount {} at fee {} to be broadcast",
-                source_wallet.clone(),
-                dest_wallet.clone(),
+                sender.clone(),
+                receiver.clone(),
                 amount,
                 fee
             ));
@@ -944,8 +937,8 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         if i == num_retries - 1 {
             panic!(
                 "One sided transaction from {} to {} with amount {} at fee {} failed to be broadcast",
-                source_wallet.clone(),
-                dest_wallet.clone(),
+                sender.clone(),
+                receiver.clone(),
                 amount,
                 fee
             )
@@ -955,17 +948,17 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     }
 
     // insert tx_id's to the corresponding world mapping
-    let source_tx_ids = world.wallet_tx_ids.entry(source_wallet_address.clone()).or_default();
+    let source_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
 
     source_tx_ids.push(tx_id);
 
-    let dest_tx_ids = world.wallet_tx_ids.entry(dest_wallet_address.clone()).or_default();
+    let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
 
     dest_tx_ids.push(tx_id);
 
     cucumber_steps_log(format!(
         "One sided transaction with amount {} from {} to {} at fee {} succeeded",
-        amount, source_wallet, dest_wallet, fee
+        amount, sender, receiver, fee
     ));
 }
 
@@ -1257,15 +1250,7 @@ async fn stop_all_wallets(world: &mut TariWorld) {
 #[then(expr = "I stop wallet {word}")]
 #[when(expr = "I stop wallet {word}")]
 async fn stop_wallet(world: &mut TariWorld, wallet: String) {
-    // conveniently, register wallet address
-    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     world.wallet_addresses.insert(wallet.clone(), wallet_address);
     cucumber_steps_log(format!("Stopping wallet {}", wallet.as_str()));
@@ -2318,6 +2303,7 @@ async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: St
     ));
 }
 
+#[when(expr = "I send a one-sided stealth transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 #[then(expr = "I send a one-sided stealth transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn send_one_sided_stealth_transaction(
     world: &mut TariWorld,
@@ -2327,22 +2313,9 @@ async fn send_one_sided_stealth_transaction(
     fee_per_gram: u64,
 ) {
     let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
-    let mut receiver_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
         address: receiver_wallet_address.clone(),
@@ -2874,22 +2847,9 @@ async fn multi_send_txs_from_wallet(
     fee_per_gram: u64,
 ) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let sender_wallet_address = sender_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
-    let mut receiver_wallet_client = create_wallet_client(world, receiver.clone()).await.unwrap();
-    let receiver_wallet_address = receiver_wallet_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let mut transfer_res = vec![];
 
@@ -3048,13 +3008,7 @@ async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, w
 #[then(expr = "I cancel last transaction in wallet {word}")]
 async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-    let wallet_address = client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
 
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 

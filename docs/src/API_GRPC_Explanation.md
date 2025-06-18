@@ -6,12 +6,23 @@ Below is documentation regarding various gRPC methods available for the Minotari
 - [Introduction](#introduction)
   - [General Structure](#general-structure)
   - [Tari Address Structure](#tari-address-structure-with-optional-payment-id)
+  - [Confirming Deposits using the Payment Reference (PayRef)](#confirming-deposits-using-the-payment-reference-payref)
   - [Code Generation from .proto files](#understanding-code-generation-from-proto-files)
   - [Loading the Protocol Buffer Definition](#loading-the-protocol-buffer-definition)
   - [Instantiating the Client](#instantiating-the-client)
   - [Authentication with gRPC](#authentication-with-grpc)
 - [Base Node gRPC Methods](#grpc-base-node-methods)
+  - [Get Max Height](#get-max-height)
+  - [Search for outputs associated with one or more Payment References (SearchPaymentReferences)](#search-for-outputs-associated-with-one-or-more-payment-references-searchpaymentreferences)
 - [Wallet gRPC Methods](#grpc-wallet-methods)
+  - [Get Balance](#get-balance)
+  - [Get Address](#get-address)
+  - [Get Payment ID Address](#get-payment-id-address)
+  - [Get Transactions by Payment ID](#get-transactions-by-payment-id)
+  - [Get Transaction Info](#get-transaction-info)
+  - [Send a Transaction](#send-a-transaction)
+  - [Get Transaction Info by Payment Reference (GetPaymentByReference)](#get-transaction-info-by-payment-reference-getpaymentbyreference)
+  - [Get All Payment References Associated With a Transaction (GetTransactionPayRefs)](#get-all-payment-references-associated-with-a-transaction-gettransactionpayrefs)
 - [Useful Non-gRPC Methods](#unrelated-functions-not-available-in-the-grpc-but-useful)
 
 ## Introduction
@@ -51,7 +62,6 @@ message GetBalanceResponse {
 ```
 
 ### Tari Address Structure (with Optional Payment ID)
-
 Tari addresses are an address scheme used by Tari. Each address includes the necessary information for identifying the network, verifying integrity, and optionally embedding an **encrypted payment identifier**. The [RFC-0155 TariAddress](https://rfc.tari.com/RFC-0155_TariAddress) can be reviewed for more information.
 
 > We strongly recommend the use of Emoji ID as the preferred format. This is discussed in more detail in the [encoding](#encoding) section below.
@@ -128,6 +138,13 @@ The 256 emojis used are shown below:
 | 🔋 | 🔌 | 🚰 | 🔑 | 🔔 | 🔥 | 🔦 | 🔧 | 🔨 | 🔩 | 🔪 | 🔫 | 🔬 | 🔭 | 🔮 | 🔱 |
 | 🗽 | 😂 | 😇 | 😈 | 🤑 | 😍 | 😎 | 😱 | 😷 | 🤢 | 👍 | 👶 | 🚀 | 🚁 | 🚂 | 🚚 |
 | 🚑 | 🚒 | 🚓 | 🛵 | 🚗 | 🚜 | 🚢 | 🚦 | 🚧 | 🚨 | 🚪 | 🚫 | 🚲 | 🚽 | 🚿 | 🧲 |
+
+### Confirming Deposits using the Payment Reference (PayRef)
+The **PayRef system** in Tari offers a **privacy-preserving, verifiable way for exchanges and merchants to track individual transaction outputs** on a Mimblewimble-based blockchain. It works by generating a unique identifier—called a **Payment Reference (PayRef)**—for each output based on the block it was included in and the output’s cryptographic hash. Specifically, PayRef is derived by concatenating the `block_hash` and the `output_hash`, then hashing the result with **Blake2b-256**, producing a 32-byte digest that serves as the reference.
+
+This method ensures that each PayRef is **unique, deterministic, and unlinkable to sensitive transaction data** like addresses or amounts. Both the sender and the recipient can independently compute the same PayRef once the output is confirmed in a block. Exchanges can use these PayRefs to **track incoming deposits securely**, scan the blockchain for their appearance, and even request **Merkle proofs** for verification. Since PayRef ties outputs to specific blocks, it also provides **protection against chain reorganizations**. This allows exchanges to confirm payment without compromising user privacy or requiring traditional address-based tracking.
+
+Methods for interacting with the Payment Reference are described in the [Base Node gRPC Methods](#grpc-base-node-methods) and - [Wallet gRPC Methods](#grpc-wallet-methods)
 
 ### Understanding Code Generation from `.proto` Files
 The `.proto` file, such as [`wallet.proto`][wallet-proto], acts as a **shared contract** that defines all available services, methods, and message structures for the Minotari Wallet's gRPC API. However, it is not executable code by itself.
@@ -310,6 +327,50 @@ const client = new Client('localhost:18143'); // Connect to base node
 const response = await client.getTipInfo();
 console.log('Max Height:', response.chain_height);
 ```
+
+## Search for outputs associated with one or more Payment References (SearchPaymentReferences)
+You can use the `SearchPaymentReferences` gRPC method to obtain information about outputs associated with one or more payment references ("PayRefs"). 
+
+- The `payment_reference_hex` field is defined as `repeated string`. Each entry must be a 64-character hex string (32 bytes), representing the PayRef to search for.
+- You may provide multiple PayRefs in a single request by passing an array of hex strings.
+- The optional `include_spent` boolean flag can be set to `true` to include outputs that have already been spent.
+
+**Example**
+```javascript
+const payrefResponses = client.searchPaymentReferences({
+  payment_reference_hex: ['your-payref-hex-1', 'your-payref-hex-2'],
+  include_spent: true, // Optional
+});
+for await (const resp of payrefResponses) {
+  console.log(resp);
+}
+```
+
+**Example JSON Response**
+```json
+{
+    "include_spent": false,
+    "payment_reference_bytes": ["26o3eqs/lWhaBWGbYEIF9PgKc0sDs4+v7Dp0h42CAXk="], //base64 encoded byte array
+    "payment_reference_hex": []
+}
+```
+
+#### Field Descriptions
+
+- **payment_reference_hex**: The PayRef hex string searched for.
+- **block_height**: Block height where the output was mined.
+- **block_hash**: Block hash where the output was mined (hex-encoded).
+- **mined_timestamp**: Timestamp (UTC, seconds since epoch) when the output was mined.
+- **commitment**: Hex-encoded output commitment (32 bytes).
+- **is_spent**: Boolean indicating if this output has been spent.
+- **spent_height**: Block height where the output was spent (if spent, otherwise 0).
+- **spent_block_hash**: Block hash where the output was spent (if spent, hex-encoded).
+- **revealed_amount**: Output amount, if revealed. For confidential transactions, this may be omitted.
+
+> **Note:**  
+> - If a given PayRef is not found, no response will be returned for that PayRef.
+> - If the PayRef format is invalid (not a 64-character hex string), an error will be returned for that entry.
+> - Multiple responses may be streamed, one per matched PayRef.
 
 ## gRPC Wallet Methods
 These methods are dependent on access to a wallet node and use of the [`wallet.proto`][wallet-proto] file.
@@ -548,6 +609,103 @@ Example:
        message: 'Payment for services'  // Maximum message size is 32 bytes (256 bits)
      });
      console.log('Transfer successful:', transferResponse);
+```
+
+### Get Transaction Info by Payment Reference (GetPaymentByReference)
+You can use the `GetPaymentByReference` gRPC method to retrieve detailed transaction information associated with a specific 32-byte payment reference. The `payment_reference` must be exactly 32 bytes long. This is a binary field, typically passed as a `Uint8Array` or byte buffer, not a hex string.
+
+> Note: As the Payment Reference is tied to the block, the PayRef can change if there is a reorganization. Therefore, it is recommended that a minimum of 6 block confirmations is used before confirming the transactions via PayRefs
+
+### Example:
+```javascript
+const payref = Buffer.from('a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890', 'hex');
+const request = { payment_reference: payref };
+client.getPaymentByReference(request, (err, response) => {
+if (err) console.error(err);
+else console.log('Transaction found:', response.transaction);
+});
+```
+
+### **Example JSON Response**
+```json
+{
+  "transaction": {
+    "tx_id": "1234567890",
+    "source_address": "T1a2b3c4d5e6f7g8h9i0jklmnopqrstuvwx",
+    "dest_address": "T1z9y8x7w6v5u4t3s2r1q0ponmlkjihgfedcba",
+    "status": 2,
+    "amount": "1000000000",
+    "is_cancelled": false,
+    "direction": 1,
+    "fee": "1000000",
+    "timestamp": 1714328123,
+    "excess_sig": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    "raw_payment_id": "4f3c2a1b",
+    "user_payment_id": "757365722d7061792d6964", 
+    "mined_in_block_height": 10203,
+    "output_commitments": [
+      "a1b2c3...", "d4e5f6..."
+    ],
+    "input_commitments": [
+      "123abc...", "456def..."
+    ],
+    "payment_references_sent": [
+      "abcd...", "ef01..."
+    ],
+    "payment_references_received": [
+      "1234...", "5678..."
+    ],
+    "payment_references_change": [
+      "9abc...", "def0..."
+    ]
+  }
+}
+```
+
+* If the payment reference is not found, the method returns an internal error.
+* Input and output commitments are encoded as byte arrays.
+* Be sure to handle optional fields like `mined_in_block_height`, which may be `0` if not mined yet.
+
+### Get All Payment References Associated With a Transaction (GetTransactionPayRefs)
+You can use the `GetTransactionPayRefs` gRPC method to retrieve payment references (PayRefs) associated with a specific transaction. PayRefs are 32-byte identifiers generated from transaction output hashes and the block hash in which the transaction was mined.
+
+* The `transaction_id` must be an unsigned 64-bit integer (e.g., `1234567890`). This method only accepts a single `transaction_id` per request.
+* If the transaction is not yet mined (i.e., has no associated block hash), the method will return an empty list of PayRefs.
+* The method includes payment references for all outputs related to the transaction: **sent**, **received**, and **change**.
+
+#### Example:
+```javascript
+const payRefs = await client.getTransactionPayRefs({ transaction_id: '1234567890' });
+console.log(payRefs);
+```
+
+---
+
+**Example JSON Response**
+```json
+{
+  "payment_references": [
+    "a1b2c3d4e5f6...1234567890abcdef", // 32-byte hex-encoded values
+    "abcdef123456...7890abcdef123456",
+    "fedcba987654...0f1e2d3c4b5a6978"
+  ]
+}
+```
+This method returns PayRefs only if the transaction is **mined** and has an associated `block_hash`. If the transaction does not exist:
+
+```json
+{
+  "code": 5,
+  "message": "Transaction 1234567890 not found"
+}
+```
+
+If the transaction exists but is unmined:
+
+```json
+{
+  "payment_references": []
+}
 ```
 
 ## Unrelated functions not available in the gRPC but useful

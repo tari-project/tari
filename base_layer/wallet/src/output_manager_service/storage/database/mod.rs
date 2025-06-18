@@ -207,8 +207,12 @@ where T: OutputManagerBackend + 'static
 
     /// This method is called when a transaction is finished being negotiated. This will fully encumber the outputs
     /// against a pending transaction.
-    pub fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        self.db.confirm_encumbered_outputs(tx_id)
+    pub fn confirm_encumbered_outputs(
+        &self,
+        tx_id: TxId,
+        change_outputs: Vec<DbWalletOutput>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db.confirm_encumbered_outputs(tx_id, &change_outputs)
     }
 
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished

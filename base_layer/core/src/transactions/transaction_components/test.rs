@@ -41,7 +41,7 @@ use crate::{
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             transaction_output::batch_verify_range_proofs,
             OutputFeatures,
         },

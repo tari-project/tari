@@ -29,13 +29,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{
-        encrypted_data::PaymentId,
-        OutputType,
-        TransactionError,
-        TransactionOutput,
-        WalletOutput,
-    },
+    transaction_components::{payment_id::PaymentId, OutputType, TransactionError, TransactionOutput, WalletOutput},
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 use tari_crypto::keys::SecretKey;

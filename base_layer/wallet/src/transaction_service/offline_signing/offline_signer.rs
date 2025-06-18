@@ -10,7 +10,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
@@ -110,11 +110,9 @@ where
             payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
         let payment_id = match payment_id {
-            PaymentId::Open { .. } | PaymentId::Empty => PaymentId::add_sender_address(
-                payment_id,
+            PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
-                amount,
                 fee_per_gram,
                 if dest_address == self.resources.one_sided_tari_address ||
                     dest_address == self.resources.interactive_tari_address

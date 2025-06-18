@@ -551,7 +551,7 @@ where TBackend: TransactionBackend + 'static
         if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id) {
             transaction = Some(tx);
         } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id) {
-            let mut outbound_tx = CompletedTransaction::from(tx);
+            let mut outbound_tx = CompletedTransaction::from_outbound(tx, Vec::new());
             outbound_tx.source_address = self.comms_address.clone();
             transaction = Some(outbound_tx);
         } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id) {
