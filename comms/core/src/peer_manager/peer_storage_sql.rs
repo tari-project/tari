@@ -221,9 +221,7 @@ impl PeerStorageSql {
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self
-            .peer_db
-            .get_available_dial_candidates(exclude_node_ids, limit)?)
+        Ok(self.peer_db.get_available_dial_candidates(exclude_node_ids, limit)?)
     }
 
     /// Compile a list of closest `n` active peers

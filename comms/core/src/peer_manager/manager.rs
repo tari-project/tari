@@ -152,7 +152,8 @@ impl PeerManager {
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql.get_available_dial_candidates(exclude_node_ids, limit)
+        self.peer_storage_sql
+            .get_available_dial_candidates(exclude_node_ids, limit)
     }
 
     /// Return "good" peers for syncing

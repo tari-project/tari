@@ -77,7 +77,6 @@ impl ProactiveDialer {
 
         // Update metrics
 
-
         if current_connections >= target {
             debug!(
                 target: LOG_TARGET,
@@ -86,7 +85,7 @@ impl ProactiveDialer {
                 current_connections,
                 target
             );
-    
+
             return Ok(0);
         }
 
@@ -126,11 +125,9 @@ impl ProactiveDialer {
                 "({}) No healthy peer candidates available for proactive dialing",
                 task_id
             );
-    
+
             return Ok(0);
         }
-
-
 
         // Initiate concurrent dials
         let dialed_count = self.dial_peers_concurrently(candidates, task_id).await;
@@ -144,7 +141,6 @@ impl ProactiveDialer {
         );
 
         // Record final metrics
-
 
         Ok(dialed_count)
     }
@@ -291,7 +287,6 @@ impl ProactiveDialer {
             match self.connection_manager.send_dial_peer(peer.node_id.clone(), None).await {
                 Ok(_) => {
                     successful_dials += 1;
-        
                 },
                 Err(err) => {
                     warn!(

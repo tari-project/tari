@@ -37,8 +37,6 @@ pub use peer_health::{CircuitBreakerState, PeerHealthMetrics};
 
 mod proactive_dialer;
 
-
-
 mod connection_pool;
 
 mod error;
@@ -50,8 +48,6 @@ pub use manager::ConnectivityStatus;
 
 #[cfg(feature = "metrics")]
 mod metrics;
-
-
 
 mod requester;
 pub(crate) use requester::ConnectivityRequest;

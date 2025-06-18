@@ -42,9 +42,7 @@ use super::{
     connection_pool::{ConnectionPool, ConnectionStatus},
     connection_stats::PeerConnectionStats,
     error::ConnectivityError,
-
     proactive_dialer::ProactiveDialer,
-
     requester::{ConnectivityEvent, ConnectivityRequest},
     selection::ConnectivitySelection,
     ConnectivityEventTx,
@@ -101,8 +99,6 @@ impl ConnectivityManager {
             self.peer_manager.clone(),
             self.node_identity.clone(),
         );
-
-
 
         ConnectivityManagerActor {
             config: self.config,
@@ -471,8 +467,6 @@ impl ConnectivityManagerActor {
             self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
         }
 
-
-
         // Execute proactive dialing logic (if enabled)
         debug!(
             target: LOG_TARGET,
@@ -701,7 +695,6 @@ impl ConnectivityManagerActor {
         entry.set_connection_success();
 
         // Update proactive dialing success metrics
-        
     }
 
     fn mark_peer_failed(&mut self, node_id: NodeId) -> usize {
@@ -1164,8 +1157,6 @@ impl ConnectivityManagerActor {
         Ok(())
     }
 
-
-
     async fn execute_proactive_dialing(&mut self, task_id: u64) -> Result<(), ConnectivityError> {
         debug!(
             target: LOG_TARGET,
@@ -1219,8 +1210,6 @@ impl ConnectivityManagerActor {
             .filter(|stats| stats.health_metrics().circuit_breaker_state().is_open())
             .count();
 
-
-
         // Calculate average peer health score
         if !self.connection_stats.is_empty() {
             let total_health: f32 = self
@@ -1229,7 +1218,6 @@ impl ConnectivityManagerActor {
                 .map(|stats| stats.health_score(self.config.success_rate_tracking_window))
                 .sum();
             let _avg_health = total_health / self.connection_stats.len() as f32;
-
         }
     }
 

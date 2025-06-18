@@ -1135,10 +1135,7 @@ impl PeerDatabaseSql {
 
         // Exclude connected peers if provided
         if !exclude_node_ids.is_empty() {
-            let excluded_hex_ids: Vec<String> = exclude_node_ids
-                .iter()
-                .map(|node_id| node_id.to_hex())
-                .collect();
+            let excluded_hex_ids: Vec<String> = exclude_node_ids.iter().map(|node_id| node_id.to_hex()).collect();
             query = query.filter(peers::node_id.ne_all(excluded_hex_ids));
         }
 
