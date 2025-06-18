@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    path::Path,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
@@ -64,7 +60,6 @@ use tari_core::{
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
     },
-    OutputSmt,
 };
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
@@ -91,6 +86,7 @@ pub struct NodeInterfaces {
     pub local_mp_interface: LocalMempoolService,
     pub chain_metadata_handle: ChainMetadataHandle,
     pub liveness_handle: LivenessHandle,
+    pub dht: Dht,
     pub comms: CommsNode,
     pub mock_base_node_state_machine: MockBaseNodeStateMachine,
     pub state_machine_handle: StateMachineHandle,
@@ -208,12 +204,10 @@ impl BaseNodeBuilder {
         let consensus_manager = self
             .consensus_manager
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build().unwrap());
-        let smt = Arc::new(RwLock::new(OutputSmt::new()));
         let blockchain_db = create_store_with_consensus_and_validators_and_config(
             consensus_manager.clone(),
             validators,
             blockchain_db_config,
-            smt.clone(),
         );
         let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone(), consensus_manager.clone());
         let mempool = Mempool::new(
@@ -411,7 +405,7 @@ async fn setup_base_node_services(
     let chain_metadata_handle = handles.expect_handle::<ChainMetadataHandle>();
     let liveness_handle = handles.expect_handle::<LivenessHandle>();
     let state_machine_handle = handles.expect_handle::<StateMachineHandle>();
-
+    let dht_handle = handles.expect_handle::<Dht>();
     NodeInterfaces {
         node_identity,
         outbound_nci,
@@ -425,6 +419,7 @@ async fn setup_base_node_services(
         chain_metadata_handle,
         liveness_handle,
         comms,
+        dht: dht_handle,
         messaging_events,
         mock_base_node_state_machine: mock_state_machine,
         shutdown,

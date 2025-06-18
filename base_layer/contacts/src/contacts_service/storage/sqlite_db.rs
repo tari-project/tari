@@ -169,8 +169,13 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                         let stored_contact = ContactSql::find_by_node_id(&c.node_id.to_vec(), &mut conn)?;
                         let stored_address = TariAddress::from_bytes(stored_contact.address.as_slice())
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
-                        let new_address = TariAddress::combine_addresses(&stored_address, &k)
+                        let mut new_address = TariAddress::combine_addresses(&stored_address, &k)
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
+                        if !k.get_payment_id_user_data_bytes().is_empty() {
+                            new_address = new_address
+                                .with_payment_id_user_data(k.get_payment_id_user_data_bytes())
+                                .map_err(|_| ContactsServiceStorageError::ConversionError)?;
+                        }
                         ContactSql::set_address_of_node_id(&c.node_id.to_vec(), &new_address.to_vec(), &mut conn)?;
                     }
                 },
@@ -246,7 +251,7 @@ mod test {
             let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
             let url: DbConnectionUrl = db_path.try_into().unwrap();
 
-            let db = DbConnection::connect_url(&url).unwrap();
+            let db = DbConnection::connect_url(&url, Some(5)).unwrap();
             let _service = ContactsServiceSqliteDatabase::init(db.clone());
             let mut conn = db.get_pooled_connection().unwrap();
 
@@ -255,7 +260,8 @@ mod test {
             let mut contacts = Vec::new();
             for i in 0..names.len() {
                 let pub_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
-                let address = TariAddress::new_single_address_with_interactive_only(pub_key, Network::default());
+                let address =
+                    TariAddress::new_single_address_with_interactive_only(pub_key, Network::default()).unwrap();
                 contacts.push(Contact::new(names[i].clone(), address, None, None, false));
                 ContactSql::from(contacts[i].clone()).commit(&mut conn).unwrap();
             }

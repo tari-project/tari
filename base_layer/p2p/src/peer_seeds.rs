@@ -27,18 +27,21 @@ use std::{
 };
 
 use anyhow::anyhow;
+use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, UncompressedCommsPublicKey},
 };
 use tari_utilities::hex::Hex;
 
 use super::dns::DnsClientError;
 use crate::dns::DnsClient;
+
+const LOG_TARGET: &str = "tari::p2p::dns::client";
 
 #[derive(Clone)]
 pub struct DnsSeedResolver {
@@ -51,8 +54,8 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
-        let client = DnsClient::connect_secure(name_server).await?;
+    pub fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+        let client = DnsClient::connect_secure(name_server)?;
         Ok(Self { client })
     }
 
@@ -60,8 +63,8 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
-        let client = DnsClient::connect(name_server).await?;
+    pub fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
+        let client = DnsClient::connect(name_server)?;
         Ok(Self { client })
     }
 
@@ -73,7 +76,19 @@ impl DnsSeedResolver {
     /// ```
     pub async fn resolve(&mut self, addr: &str) -> Result<Vec<SeedPeer>, DnsClientError> {
         let records = self.client.query_txt(addr).await?;
-        let peers = records.into_iter().filter_map(|txt| txt.parse().ok()).collect();
+        let peers = records
+            .into_iter()
+            .filter_map(|txt| {
+                txt.parse()
+                    .inspect_err(|err| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to parse DNS seed peer string: {}. Error: {}", txt, err
+                        );
+                    })
+                    .ok()
+            })
+            .collect();
         Ok(peers)
     }
 }
@@ -109,15 +124,13 @@ impl FromStr for SeedPeer {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split("::").map(|s| s.trim());
-        let public_key = parts
-            .next()
-            .and_then(|s| UncompressedCommsPublicKey::from_hex(s).ok())
+        let (part_a, part_b) = s
+            .split_once("::")
+            .ok_or_else(|| anyhow!("Invalid seed peer string, missing '::' delimiter"))?;
+        let public_key = UncompressedCommsPublicKey::from_hex(part_a)
+            .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = parts.map(Multiaddr::from_str).collect::<Result<Vec<_>, _>>()?;
-        if addresses.is_empty() || addresses.iter().any(|a| a.is_empty()) {
-            return Err(anyhow!("Empty or invalid address in seed peer string"));
-        }
+        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{}", e))?];
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,
@@ -153,7 +166,7 @@ impl From<SeedPeer> for Peer {
             seed.public_key,
             node_id,
             MultiaddressesWithStats::from_addresses_with_source(seed.addresses, &PeerAddressSource::Config),
-            Default::default(),
+            PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
             Default::default(),
             Default::default(),
@@ -181,19 +194,6 @@ mod test {
         }
 
         #[test]
-        fn it_parses_mulitple_addresses() {
-            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
-                          onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234";
-
-            let seed = SeedPeer::from_str(sample).unwrap();
-            assert_eq!(
-                seed.public_key.to_hex(),
-                "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"
-            );
-            assert_eq!(seed.addresses.len(), 2);
-        }
-
-        #[test]
         fn it_errors_if_empty_or_blank() {
             SeedPeer::from_str("").unwrap_err();
             SeedPeer::from_str(" ").unwrap_err();
@@ -202,14 +202,6 @@ mod test {
         #[test]
         fn it_errors_if_not_a_seed_peer() {
             SeedPeer::from_str("nonsensical::garbage").unwrap_err();
-        }
-
-        #[test]
-        fn it_errors_if_trailing_delim() {
-            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::";
-            SeedPeer::from_str(sample).unwrap_err();
-            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::";
-            SeedPeer::from_str(sample).unwrap_err();
         }
 
         #[test]
@@ -231,8 +223,8 @@ mod test {
         #[tokio::test]
         #[ignore = "Useful for developer testing but will fail unless the DNS has TXT records setup correctly."]
         async fn it_returns_seeds_from_real_address() {
-            let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).await.unwrap();
-            let seeds = resolver.resolve("seeds.esmeralda.tari.com").await.unwrap();
+            let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).unwrap();
+            let seeds = resolver.resolve("seeds.nextnet.tari.com").await.unwrap();
             println!("{:?}", seeds);
             assert!(!seeds.is_empty());
         }

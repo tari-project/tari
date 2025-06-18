@@ -95,10 +95,12 @@ pub struct Cli {
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
     // For read only wallets
-    #[clap(long)]
+    #[clap(long, env = "MINOTARI_WALLET_VIEW_PRIVATE_KEY", hide_env_values = true)]
     pub view_private_key: Option<String>,
-    #[clap(long)]
+    #[clap(long, env = "MINOTARI_WALLET_SPEND_KEY", hide_env_values = true)]
     pub spend_key: Option<String>,
+    #[clap(long)]
+    pub birthday: Option<u16>,
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
@@ -172,6 +174,9 @@ pub enum CliCommands {
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
     ImportPaperWallet(ImportPaperWalletArgs),
+    ShowPayRef(ShowPayRefArgs),
+    FindPayRef(FindPayRefArgs),
+    ListTx,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -474,4 +479,14 @@ pub struct RegisterValidatorNodeArgs {
 pub struct SyncArgs {
     #[clap(short, long, default_value = "0")]
     pub sync_to_height: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ShowPayRefArgs {
+    pub transaction_id: u64,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct FindPayRefArgs {
+    pub payment_reference_hex: String,
 }

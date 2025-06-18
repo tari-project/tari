@@ -34,6 +34,9 @@ mod run_merge_miner;
 
 #[cfg(test)]
 mod test;
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 use std::io::stdout;
 
@@ -47,6 +50,11 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    #[cfg(feature = "dhat-heap")]
+    let dhat_profiler = dhat::Profiler::new_heap();
+    #[cfg(feature = "dhat-heap")]
+    println!("\n\nDHAT: Profiling enabled. Run `dhat-heap` to view the results.\n\n");
+
     let terminal_title = format!("Minotari Merge Mining Proxy - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
@@ -65,9 +73,18 @@ async fn main() -> Result<(), anyhow::Error> {
         consts::APP_VERSION
     );
     match run_merge_miner::start_merge_miner(cli).await {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            #[cfg(feature = "dhat-heap")]
+            {
+                println!("\nCtrl-C pressed, exiting...\n");
+                drop(dhat_profiler);
+            }
+            Ok(())
+        },
         Err(err) => {
             error!(target: LOG_TARGET, "Fatal error: {:?}", err);
+            #[cfg(feature = "dhat-heap")]
+            drop(dhat_profiler);
             Err(err)
         },
     }

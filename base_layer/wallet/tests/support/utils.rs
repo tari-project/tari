@@ -27,7 +27,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             OutputFeatures,
             RangeProofType,
             TransactionOutput,

@@ -66,7 +66,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
+        transaction_components::{payment_id::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
         transaction_key_manager::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
@@ -182,6 +182,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         wallet_connectivity_mock.clone(),
         key_manager.clone(),
         scanner_handle,
+        ts_handle.clone(),
     )
     .await
     .unwrap();
@@ -251,6 +252,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         connectivity,
         key_manager.clone(),
         scanner_handle,
+        ts_handle.clone(),
     )
     .await
     .unwrap();
@@ -1204,7 +1206,7 @@ async fn sending_transaction_persisted_while_offline() {
         .unwrap();
     let sender_tx_id = stp.get_tx_id().unwrap();
     oms.output_manager_handle
-        .confirm_pending_transaction(sender_tx_id)
+        .confirm_pending_transaction(sender_tx_id, None)
         .await
         .unwrap();
 

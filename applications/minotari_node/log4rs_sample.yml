@@ -129,7 +129,7 @@ loggers:
 
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
-    level: debug
+    level: info
     appenders:
       - base_layer
   minotari:

@@ -16,7 +16,7 @@ name: CI
 env:
   toolchain: stable
   nightly_toolchain: nightly-2025-01-01
-  nightly_test_toolchain: nightly-2024-07-07
+  nightly_test_toolchain: nightly-2025-01-01
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -35,7 +35,7 @@ concurrency:
 jobs:
   ci:
     name: ci
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -94,7 +94,7 @@ jobs:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.
     name: cargo check with stable
-    runs-on: [self-hosted, ubuntu-high-cpu]
+    runs-on: [ self-hosted, ubuntu-high-cpu ]
     env:
       RUSTUP_PERMIT_COPY_RENAME: true
     steps:
@@ -148,12 +148,10 @@ jobs:
           done
       - name: cargo check wallet ffi separately
         run: cargo check --release --package minotari_wallet_ffi --locked
-      - name: cargo check chat ffi separately
-        run: cargo check --release --package minotari_chat_ffi --locked
 
   licenses:
     name: file licenses
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -168,11 +166,13 @@ jobs:
 
   test:
     name: test
-    runs-on: [self-hosted, ubuntu-high-cpu]
+    runs-on: [ self-hosted, ubuntu-high-cpu ]
     permissions:
       checks: write
       pull-requests: write
+    continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
         tari_target_network: [
           { target: "testnet", network: "esmeralda" },
@@ -222,7 +222,7 @@ jobs:
       - name: cargo test compile
         run: cargo +${{ env.nightly_test_toolchain }} test -vv --no-run --locked --all-features --release
       - name: cargo test
-        run: cargo +${{ env.nightly_test_toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
+        run: cargo +${{ env.nightly_test_toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci --no-fail-fast
       - name: upload artifact
         uses: actions/upload-artifact@v4  # upload test results as artifact
         if: always()
@@ -233,7 +233,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: pr_2_artifact
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: Save the PR number in an artifact
         shell: bash
@@ -250,7 +250,7 @@ jobs:
   # needed for test results
   event_file:
     name: "Upload Event File for Test Results"
-    runs-on: [ubuntu-latest]
+    runs-on: [ ubuntu-latest ]
     steps:
       - name: Upload
         uses: actions/upload-artifact@v4

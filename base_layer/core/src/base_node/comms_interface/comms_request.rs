@@ -28,7 +28,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_utilities::hex::Hex;
 
@@ -43,7 +43,7 @@ pub struct MmrStateRequest {
 }
 
 /// API Request enum
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
     GetTargetDifficultyNextBlock(PowAlgorithm),
@@ -65,6 +65,8 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
+    FetchOutputByPayRef(FixedHash),
+    CheckOutputSpentStatus(HashOutput),
     FetchTemplateRegistrations {
         start_height: u64,
         end_height: u64,
@@ -86,7 +88,7 @@ pub enum NodeCommsRequest {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GetNewBlockTemplateRequest {
     pub algo: PowAlgorithm,
     pub max_weight: u64,
@@ -151,6 +153,12 @@ impl Display for NodeCommsRequest {
             },
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
+            },
+            FetchOutputByPayRef(payref) => {
+                write!(f, "FetchOutputByPayRef ({})", payref.to_hex())
+            },
+            CheckOutputSpentStatus(output_hash) => {
+                write!(f, "CheckOutputSpentStatus ({})", output_hash)
             },
             FetchValidatorNodeChanges { epoch, sidechain_id } => {
                 write!(

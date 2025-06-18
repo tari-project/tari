@@ -56,8 +56,7 @@ D --> E["4. mpsc channel to Pubsub connector"]
 ```mermaid
 flowchart TD
 A[start]--> B[1. MetricsLayer]
-B --> C[2. inbound DeserializeLayer]
-C --> D["3. FilterLayer(unsupported_saf_messages_filter) "]
+B --> D[2. inbound DeserializeLayer]
 D -..- N1>"dht.rs line 383"]
 D--> E["4. FilterLayer(discard_expired_messages)"]
 E -..- N2>"dht.rs line 437"]
@@ -66,11 +65,7 @@ F--> G[6. DedupLayer]
 G--> H["7. FilterLayer(filter_messages_to_rebroadcast)"]
 H -..- N3>"dht.rs line 406"]
 H-->I[8. MessageLoggingLayer]
-I-->J["9. saf StoreLayer"]
-J-->K["10. saf ForwardLayer"]
-K-->L["11. saf MessageHandlerLayer"]
-L-->M["12. saf DhtHandlerLayer"]
-M-->Z[end]
+I-->Z[end]
    N1:::note
    N2:::note
    N3:::note

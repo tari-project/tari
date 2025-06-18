@@ -25,14 +25,12 @@ use std::{
     path::PathBuf,
     ptr::null,
     sync::{Arc, Mutex},
-    time::SystemTime,
 };
 
-use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
+use tari_core::transactions::transaction_components::payment_id::PaymentId;
 
 use super::ffi::{
     Balance,
@@ -58,29 +56,31 @@ pub struct WalletFFI {
     pub name: String,
     pub port: u64,
     pub base_dir: PathBuf,
+    pub log_path: String,
     pub wallet: Arc<Mutex<ffi::Wallet>>,
 }
 
 impl WalletFFI {
-    fn spawn(name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
-        let port = get_port(18000..18499).unwrap();
+    fn spawn(world: &mut TariWorld, name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
+        let port = get_port(world, 18000..18499).unwrap();
         let transport_config =
             ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
         let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_port_{}", name, port));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
         let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir);
-        let log_path = base_dir_path
+        let log_path: String = base_dir_path
             .join("logs")
             .join("ffi_wallet.log")
             .as_os_str()
             .to_str()
             .unwrap()
             .into();
-        let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
+        let wallet = ffi::Wallet::create(comms_config, log_path.clone(), seed_words_ptr);
         Self {
             name,
             port,
             base_dir: base_dir_path,
+            log_path,
             wallet,
         }
     }
@@ -177,16 +177,16 @@ impl WalletFFI {
             .send_transaction(dest, amount, fee_per_gram, payment_id, one_sided)
     }
 
-    pub fn restart(&mut self) {
+    pub fn restart(&mut self, port: u64) {
         self.wallet.lock().unwrap().destroy();
-        let port = get_port(18000..18499).unwrap();
         let transport_config =
             ffi::TransportConfig::create_tcp(CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw());
-        let now: DateTime<Utc> = SystemTime::now().into();
-        let base_dir = format!("./log/ffi_wallets/{}", now.format("%Y%m%d-%H%M%S"));
-        let comms_config = ffi::CommsConfig::create(port, transport_config, base_dir.clone());
-        let log_path = format!("{}/log/ffi_wallet.log", base_dir);
-        self.wallet = ffi::Wallet::create(comms_config, log_path, null());
+        let comms_config = ffi::CommsConfig::create(
+            port,
+            transport_config,
+            self.base_dir.as_os_str().to_str().unwrap().into(),
+        );
+        self.wallet = ffi::Wallet::create(comms_config, self.log_path.clone(), null());
     }
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
@@ -200,6 +200,7 @@ impl WalletFFI {
 
 pub fn spawn_wallet_ffi(world: &mut TariWorld, wallet_name: String, seed_words_ptr: *const c_void) {
     let wallet_ffi = WalletFFI::spawn(
+        world,
         wallet_name.clone(),
         seed_words_ptr,
         world.current_base_dir.clone().expect("Base dir on world"),
@@ -226,7 +227,7 @@ pub fn create_contact(alias: String, address: String) -> ffi::Contact {
 }
 
 pub fn create_seed_words(words: Vec<&str>) -> ffi::SeedWords {
-    let seed_words = ffi::SeedWords::create();
+    let seed_words = ffi::SeedWords::create_empty_seed_words();
     for word in words {
         seed_words.push_word(word.to_string());
     }

@@ -19,11 +19,25 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
+    collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::{Arc, RwLock},
 };
+
+use tari_common_types::payment_reference::generate_payment_reference;
+
+// Helper functions for FixedHash <-> Vec<u8> conversion
+fn fixedhash_vec_to_bytes(hashes: &[FixedHash]) -> Vec<u8> {
+    hashes.iter().flat_map(|h| h.as_slice().iter().copied()).collect()
+}
+
+fn bytes_to_fixedhash_vec(bytes: &[u8]) -> Vec<FixedHash> {
+    bytes
+        .chunks_exact(32)
+        .filter_map(|chunk| FixedHash::try_from(chunk).ok())
+        .collect()
+}
 
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -40,16 +54,16 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::payment_id::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
 use zeroize::Zeroize;
 
 use crate::{
-    schema::{completed_transactions, inbound_transactions, outbound_transactions},
+    schema::{completed_transactions, inbound_transactions, outbound_transactions, payrefs},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     transaction_service::{
         error::{TransactionKeyError, TransactionStorageError},
@@ -956,6 +970,34 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
+    // Exclude coinbases as they are validated from the OMS service, and we use these fields to know which tx to
+    // extract, thus we should not wipe it out. Coinbases can also not be mined in a different height so the data will
+    // never be wrong.
+    fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let result = diesel::update(completed_transactions::table)
+            .filter(completed_transactions::status.eq(TransactionStatus::Rejected as i32))
+            .set((
+                completed_transactions::cancelled.eq::<Option<i32>>(None),
+                completed_transactions::mined_height.eq::<Option<i64>>(None),
+                completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+            ))
+            .execute(&mut conn)?;
+        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
+
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -967,6 +1009,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     tx_id,
                 )));
             },
+            Err(e) => return Err(e),
+        }
+        match PayrefSql::delete_by_tx_id(tx_id, &mut conn) {
+            Ok(_) => {},
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {},
             Err(e) => return Err(e),
         }
         if start.elapsed().as_millis() > 0 {
@@ -1024,7 +1071,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
-        let mut one_sided = CompletedTransactionSql::index_by_status_and_cancelled(
+        let mut results = HashMap::new();
+
+        let one_sided = CompletedTransactionSql::index_by_status_and_cancelled(
             TransactionStatus::OneSidedUnconfirmed,
             false,
             &mut conn,
@@ -1034,7 +1083,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        let mut coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
+        for tx in one_sided {
+            results.insert(tx.tx_id, tx);
+        }
+
+        let coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
             TransactionStatus::CoinbaseUnconfirmed,
             false,
             &mut conn,
@@ -1044,8 +1097,75 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        coinbases.append(&mut one_sided);
-        Ok(coinbases)
+        for tx in coinbases {
+            results.insert(tx.tx_id, tx);
+        }
+
+        let not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        for tx in not_validated {
+            results.insert(tx.tx_id, tx);
+        }
+
+        Ok(results.into_values().collect())
+    }
+
+    fn find_completed_transactions_filter_addresses(
+        &self,
+        source_address: Option<TariAddress>,
+        destination_address: Option<TariAddress>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        let mut query = completed_transactions::table.into_boxed();
+        if let Some(source_address) = source_address {
+            query = query.filter(completed_transactions::source_address.eq(source_address.to_vec()));
+        }
+        if let Some(destination_address) = destination_address {
+            query = query.filter(completed_transactions::destination_address.eq(destination_address.to_vec()));
+        }
+
+        query
+            .load::<CompletedTransactionSql>(&mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
+
+    fn find_completed_transactions_filter_payment_id_block_hash(
+        &self,
+        payment_id: Option<Vec<u8>>,
+        block_hash: Option<FixedHash>,
+        block_height: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        let mut query = completed_transactions::table.into_boxed();
+        if let Some(id) = payment_id {
+            query = query.filter(completed_transactions::user_payment_id.eq(id));
+        }
+        if let Some(hash) = block_hash {
+            query = query.filter(completed_transactions::mined_in_block.eq(hash.to_vec()));
+        }
+        if let Some(height) = block_height {
+            query = query.filter(completed_transactions::mined_height.eq(height as i64));
+        }
+
+        query
+            .load::<CompletedTransactionSql>(&mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 
     fn fetch_unmined_coinbase_transactions_from_height(
@@ -1067,6 +1187,26 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
         Ok(coinbases)
+    }
+
+    fn get_transaction_with_payref(
+        &self,
+        payref: &FixedHash,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        let payref = PayrefSql::find_by_payref(&payref.to_vec(), &mut conn)?;
+        if payref.is_none() {
+            return Ok(None);
+        }
+        let tx_id = (payref.expect("Already checked").tx_id as u64).into();
+        let tx = match CompletedTransactionSql::find(tx_id, &mut conn) {
+            Ok(c) => Some(CompletedTransaction::try_from(c, &cipher)?),
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
+            Err(e) => return Err(e),
+        };
+        Ok(tx)
     }
 
     fn fetch_confirmed_detected_transactions_from_height(
@@ -1152,6 +1292,8 @@ struct InboundTransactionSql {
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
+    received_output_hashes: Option<Vec<u8>>,
+    user_payment_id: Option<Vec<u8>>,
 }
 
 impl InboundTransactionSql {
@@ -1327,6 +1469,12 @@ impl InboundTransactionSql {
     fn try_from(i: InboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let receiver_protocol_bytes = bincode::serialize(&i.receiver_protocol)
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
+        let user_payment_id = i.payment_id.user_data_as_bytes();
+        let user_payment_id = if user_payment_id.is_empty() {
+            None
+        } else {
+            Some(user_payment_id)
+        };
         let i = Self {
             tx_id: i.tx_id.as_u64() as i64,
             source_address: i.source_address.to_vec(),
@@ -1338,6 +1486,8 @@ impl InboundTransactionSql {
             send_count: i.send_count as i32,
             last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(i.payment_id.to_bytes()),
+            user_payment_id,
+            received_output_hashes: Some(fixedhash_vec_to_bytes(&i.received_output_hashes)),
         };
         i.encrypt(cipher).map_err(TransactionStorageError::AeadError)
     }
@@ -1388,6 +1538,7 @@ impl InboundTransaction {
             send_count: i.send_count as u32,
             last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
+            received_output_hashes: bytes_to_fixedhash_vec(&i.received_output_hashes.unwrap_or_default()),
         })
     }
 }
@@ -1417,6 +1568,8 @@ struct OutboundTransactionSql {
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
+    sent_output_hashes: Option<Vec<u8>>,
+    user_payment_id: Option<Vec<u8>>,
 }
 
 impl OutboundTransactionSql {
@@ -1576,6 +1729,12 @@ impl OutboundTransactionSql {
     fn try_from(o: OutboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let sender_protocol_bytes = bincode::serialize(&o.sender_protocol)
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
+        let user_payment_id = o.payment_id.user_data_as_bytes();
+        let user_payment_id = if user_payment_id.is_empty() {
+            None
+        } else {
+            Some(user_payment_id)
+        };
         let outbound_tx = Self {
             tx_id: o.tx_id.as_u64() as i64,
             destination_address: o.destination_address.to_vec(),
@@ -1588,6 +1747,8 @@ impl OutboundTransactionSql {
             send_count: o.send_count as i32,
             last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
             payment_id: Some(o.payment_id.to_bytes()),
+            user_payment_id,
+            sent_output_hashes: Some(fixedhash_vec_to_bytes(&o.sent_output_hashes)),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1640,6 +1801,7 @@ impl OutboundTransaction {
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
+            sent_output_hashes: bytes_to_fixedhash_vec(&o.sent_output_hashes.unwrap_or_default()),
         };
 
         // zeroize decrypted data
@@ -1682,6 +1844,10 @@ pub struct CompletedTransactionSql {
     transaction_signature_nonce: Vec<u8>,
     transaction_signature_key: Vec<u8>,
     payment_id: Option<Vec<u8>>,
+    pub sent_output_hashes: Option<Vec<u8>>,
+    pub received_output_hashes: Option<Vec<u8>>,
+    pub change_output_hashes: Option<Vec<u8>>,
+    user_payment_id: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {
@@ -1746,6 +1912,47 @@ impl CompletedTransactionSql {
         Ok(query
             .filter(completed_transactions::status.eq(status as i32))
             .filter(completed_transactions::mined_height.ge(block_height))
+            .load::<CompletedTransactionSql>(conn)?)
+    }
+
+    /// Fetches completed transactions that have a mismatched mined status.
+    ///
+    /// This method finds transactions that have been marked as confirmed or unconfirmed
+    /// but are missing their mined height information, indicating a mismatch between
+    /// the transaction status and mining data.
+    ///
+    /// # Arguments
+    /// * `cancelled` - Whether to fetch cancelled (true) or non-cancelled (false) transactions
+    /// * `conn` - Database connection
+    ///
+    /// # Returns
+    /// Vector of transactions with mismatched mined status
+    pub fn fetch_transactions_with_not_mined_height(
+        cancelled: bool,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        let mut query = completed_transactions::table.into_boxed();
+        query = if cancelled {
+            query.filter(completed_transactions::cancelled.is_not_null())
+        } else {
+            query.filter(completed_transactions::cancelled.is_null())
+        };
+
+        Ok(query
+            .filter(
+                completed_transactions::status
+                    // Include transactions with confirmed/unconfirmed statuses that may have mismatched mined data
+                    .eq(TransactionStatus::Imported as i32)
+                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::OneSidedConfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32))
+                    .or(completed_transactions::status.eq(TransactionStatus::CoinbaseConfirmed as i32)),
+            )
+            .filter(
+                completed_transactions::mined_height
+                    .is_null()
+                    .or(completed_transactions::mined_height.eq::<Option<i64>>(None)),
+            )
             .load::<CompletedTransactionSql>(conn)?)
     }
 
@@ -1852,6 +2059,11 @@ impl CompletedTransactionSql {
         mined_timestamp: u64,
         conn: &mut SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
+        // First, get the existing transaction
+        let existing_tx = completed_transactions::table
+            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+            .first::<CompletedTransactionSql>(conn)?;
+
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
             TransactionStorageError::UnexpectedResult(format!(
                 "Could not create timestamp mined_timestamp: {}",
@@ -1883,10 +2095,57 @@ impl CompletedTransactionSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
+        let sent = match existing_tx.sent_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in sent {
+            let pay_ref = generate_payment_reference(&mined_in_block, &output);
+            let pay_ref_sql = PayrefSql {
+                output_hash: output.to_vec(),
+                tx_id: tx_id.as_u64() as i64,
+                payref: pay_ref.to_vec(),
+            };
+            pay_ref_sql.commit_or_update(conn)?;
+        }
+
+        let received = match existing_tx.received_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in received {
+            let pay_ref = generate_payment_reference(&mined_in_block, &output);
+            let pay_ref_sql = PayrefSql {
+                output_hash: output.to_vec(),
+                tx_id: tx_id.as_u64() as i64,
+                payref: pay_ref.to_vec(),
+            };
+            pay_ref_sql.commit_or_update(conn)?;
+        }
+
+        let change = match existing_tx.change_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in change {
+            let pay_ref = generate_payment_reference(&mined_in_block, &output);
+            let pay_ref_sql = PayrefSql {
+                output_hash: output.to_vec(),
+                tx_id: tx_id.as_u64() as i64,
+                payref: pay_ref.to_vec(),
+            };
+            pay_ref_sql.commit_or_update(conn)?;
+        }
+
         Ok(())
     }
 
     pub fn set_as_unmined(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        // First, get the existing transaction
+        let existing_tx = completed_transactions::table
+            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+            .first::<CompletedTransactionSql>(conn)?;
+
         let (current_status, current_mined_height) = *completed_transactions::table
             .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
             .select((completed_transactions::status, completed_transactions::mined_height))
@@ -1926,8 +2185,27 @@ impl CompletedTransactionSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-        // Ideally the outputs should be marked unmined here as well, but because of the separation of classes,
-        // that will be done in the outputs service.
+        let sent = match existing_tx.sent_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in sent {
+            PayrefSql::delete(output.as_ref(), conn)?;
+        }
+        let received = match existing_tx.received_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in received {
+            PayrefSql::delete(output.as_ref(), conn)?;
+        }
+        let change = match existing_tx.change_output_hashes.as_ref() {
+            Some(bytes) => bytes_to_fixedhash_vec(bytes),
+            _ => vec![],
+        };
+        for output in change {
+            PayrefSql::delete(output.as_ref(), conn)?;
+        }
 
         Ok(())
     }
@@ -1948,6 +2226,12 @@ impl CompletedTransactionSql {
     fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let transaction_bytes =
             bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
+        let user_payment_id = c.payment_id.user_data_as_bytes();
+        let user_payment_id = if user_payment_id.is_empty() {
+            None
+        } else {
+            Some(user_payment_id)
+        };
         let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
             source_address: c.source_address.to_vec(),
@@ -1968,6 +2252,10 @@ impl CompletedTransactionSql {
             transaction_signature_nonce: c.transaction_signature.get_compressed_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id: Some(c.payment_id.to_bytes()),
+            user_payment_id,
+            sent_output_hashes: Some(fixedhash_vec_to_bytes(&c.sent_output_hashes)),
+            received_output_hashes: Some(fixedhash_vec_to_bytes(&c.received_output_hashes)),
+            change_output_hashes: Some(fixedhash_vec_to_bytes(&c.change_output_hashes)),
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2035,10 +2323,7 @@ impl CompletedTransaction {
             Err(_) => Signature::default(),
         };
         let mined_in_block = match c.mined_in_block {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(_) => None,
-            },
+            Some(v) => v.try_into().ok(),
             None => None,
         };
 
@@ -2065,6 +2350,9 @@ impl CompletedTransaction {
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
+            sent_output_hashes: bytes_to_fixedhash_vec(&c.sent_output_hashes.unwrap_or_default()),
+            received_output_hashes: bytes_to_fixedhash_vec(&c.received_output_hashes.unwrap_or_default()),
+            change_output_hashes: bytes_to_fixedhash_vec(&c.change_output_hashes.unwrap_or_default()),
         };
 
         // zeroize sensitive data
@@ -2090,6 +2378,9 @@ pub struct UpdateCompletedTransactionSql {
     mined_timestamp: Option<NaiveDateTime>,
     transaction_signature_nonce: Option<Vec<u8>>,
     transaction_signature_key: Option<Vec<u8>>,
+    sent_output_hashes: Option<Option<Vec<u8>>>,
+    received_output_hashes: Option<Option<Vec<u8>>>,
+    change_output_hashes: Option<Option<Vec<u8>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2164,6 +2455,62 @@ impl UnconfirmedTransactionInfoSql {
     }
 }
 
+#[derive(Clone, Debug, Queryable, Insertable, PartialEq, AsChangeset)]
+#[diesel(table_name = payrefs)]
+pub struct PayrefSql {
+    output_hash: Vec<u8>,
+    payref: Vec<u8>,
+    tx_id: i64,
+}
+
+#[derive(AsChangeset)]
+#[diesel(table_name = payrefs)]
+pub struct UpdatePayrefSql {
+    payref: Option<Vec<u8>>,
+    tx_id: Option<i64>,
+}
+
+impl PayrefSql {
+    pub fn commit(self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        diesel::insert_into(payrefs::table).values(self).execute(conn)?;
+        Ok(())
+    }
+
+    pub fn commit_or_update(self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        let res = diesel::insert_into(payrefs::table)
+            .values(self.clone())
+            .on_conflict(payrefs::output_hash)
+            .do_update()
+            .set(self)
+            .execute(conn);
+        res?;
+        Ok(())
+    }
+
+    pub fn delete(hash: &[u8], conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        diesel::delete(payrefs::table.filter(payrefs::output_hash.eq(hash))).execute(conn)?;
+
+        Ok(())
+    }
+
+    pub fn delete_by_tx_id(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        diesel::delete(payrefs::table.filter(payrefs::tx_id.eq(tx_id.as_u64() as i64))).execute(conn)?;
+
+        Ok(())
+    }
+
+    pub fn find_by_payref(
+        payref: &[u8],
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<PayrefSql>, TransactionStorageError> {
+        let result = payrefs::table
+            .filter(payrefs::payref.eq(payref))
+            .first::<PayrefSql>(conn)
+            .optional()?;
+        Ok(result)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::{mem::size_of, time::Duration};
@@ -2185,7 +2532,7 @@ mod test {
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             Transaction,
         },
@@ -2269,7 +2616,7 @@ mod test {
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
-            .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
+            .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
             .with_input(input)
             .await
             .unwrap()
@@ -2296,7 +2643,8 @@ mod test {
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),
             destination_address: address,
@@ -2304,17 +2652,19 @@ mod test {
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
         };
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let outbound_tx2 = OutboundTransactionSql::try_from(
             OutboundTransaction {
                 tx_id: 2u64.into(),
@@ -2323,12 +2673,13 @@ mod test {
                 fee: stp.get_fee_amount().unwrap(),
                 sender_protocol: stp.clone(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
+                sent_output_hashes: vec![],
             },
             &cipher,
         )
@@ -2382,37 +2733,41 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let inbound_tx1 = InboundTransaction {
             tx_id: 2u64.into(),
             source_address: address,
             amount,
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         };
         let address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let inbound_tx2 = InboundTransaction {
             tx_id: 3u64.into(),
             source_address: address,
             amount,
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         };
 
         InboundTransactionSql::try_from(inbound_tx1.clone(), &cipher)
@@ -2454,12 +2809,14 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let completed_tx1 = CompletedTransaction {
             tx_id: 2u64.into(),
             source_address,
@@ -2473,23 +2830,28 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
+            received_output_hashes: vec![],
+            change_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let completed_tx2 = CompletedTransaction {
             tx_id: 3u64.into(),
             source_address,
@@ -2503,12 +2865,15 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
+            received_output_hashes: vec![],
+            change_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -2661,19 +3026,21 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let inbound_tx = InboundTransaction {
             tx_id: 1u64.into(),
             source_address,
             amount: MicroMinotari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         };
         let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone(), &cipher).unwrap();
         inbound_tx_sql.commit(&mut conn).unwrap();
@@ -2688,7 +3055,8 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let outbound_tx = OutboundTransaction {
             tx_id: 2u64.into(),
             destination_address,
@@ -2696,12 +3064,13 @@ mod test {
             fee: MicroMinotari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
         };
 
         let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone(), &cipher).unwrap();
@@ -2717,12 +3086,14 @@ mod test {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let destination_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let completed_tx = CompletedTransaction {
             tx_id: 3u64.into(),
             source_address,
@@ -2742,12 +3113,15 @@ mod test {
             direction: TransactionDirection::Unknown,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
+            received_output_hashes: vec![],
+            change_output_hashes: vec![],
             transaction_signature: Signature::default(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -2804,19 +3178,21 @@ mod test {
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let inbound_tx = InboundTransaction {
                 tx_id: 1u64.into(),
                 source_address,
                 amount: MicroMinotari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
+                received_output_hashes: vec![],
             };
             let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx, &cipher).unwrap();
 
@@ -2826,7 +3202,8 @@ mod test {
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let outbound_tx = OutboundTransaction {
                 tx_id: 2u64.into(),
                 destination_address,
@@ -2834,12 +3211,13 @@ mod test {
                 fee: MicroMinotari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
                 last_send_timestamp: None,
+                sent_output_hashes: vec![],
             };
             let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx, &cipher).unwrap();
 
@@ -2849,12 +3227,14 @@ mod test {
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let destination_address = TariAddress::new_dual_address_with_default_features(
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let completed_tx = CompletedTransaction {
                 tx_id: 3u64.into(),
                 source_address,
@@ -2874,12 +3254,15 @@ mod test {
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
                 last_send_timestamp: None,
+                sent_output_hashes: vec![],
+                received_output_hashes: vec![],
+                change_output_hashes: vec![],
                 transaction_signature: Signature::default(),
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -2991,12 +3374,14 @@ mod test {
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let destination_address = TariAddress::new_dual_address_with_default_features(
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
-            );
+            )
+            .unwrap();
             let completed_tx = CompletedTransaction {
                 tx_id: TxId::from(i as u64),
                 source_address,
@@ -3016,12 +3401,15 @@ mod test {
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
                 last_send_timestamp: None,
+                sent_output_hashes: vec![],
+                received_output_hashes: vec![],
+                change_output_hashes: vec![],
                 transaction_signature: Signature::default(),
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open("Yo!", TxType::PaymentToOther),
+                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

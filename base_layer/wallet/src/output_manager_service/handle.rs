@@ -32,7 +32,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             OutputFeatures,
             Transaction,
             TransactionOutput,
@@ -56,17 +56,17 @@ use crate::output_manager_service::{
     storage::models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     UtxoSelectionCriteria,
 };
-
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
     GetBalance,
+    GetBalancePaymentId(Vec<u8>),
     AddOutput((Box<WalletOutput>, Option<SpendingPriority>)),
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
-    ConfirmPendingTransaction(TxId),
+    ConfirmPendingTransaction(TxId, Option<Vec<WalletOutput>>),
     EncumberAggregateUtxo {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
@@ -165,6 +165,7 @@ impl fmt::Display for OutputManagerRequest {
         use OutputManagerRequest::*;
         match self {
             GetBalance => write!(f, "GetBalance"),
+            GetBalancePaymentId(_) => write!(f, "GetBalance for user payment id"),
             AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value),
             AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
             AddUnvalidatedOutput((t, v, _)) => {
@@ -223,7 +224,7 @@ impl fmt::Display for OutputManagerRequest {
                 output_hash
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
-            ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
+            ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction { payment_id, .. } => write!(f, "PrepareToSendTransaction ({})", payment_id),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
@@ -497,6 +498,17 @@ impl OutputManagerHandle {
         }
     }
 
+    pub async fn get_balance_for_payment_id(&mut self, payment_id: Vec<u8>) -> Result<Balance, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetBalancePaymentId(payment_id))
+            .await??
+        {
+            OutputManagerResponse::Balance(b) => Ok(b),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn revalidate_all_outputs(&mut self) -> Result<u64, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::RevalidateTxos).await?? {
             OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
@@ -600,10 +612,14 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn confirm_pending_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+    pub async fn confirm_pending_transaction(
+        &mut self,
+        tx_id: TxId,
+        change_outputs: Option<Vec<WalletOutput>>,
+    ) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ConfirmPendingTransaction(tx_id))
+            .call(OutputManagerRequest::ConfirmPendingTransaction(tx_id, change_outputs))
             .await??
         {
             OutputManagerResponse::PendingTransactionConfirmed => Ok(()),
@@ -935,6 +951,7 @@ impl OutputManagerHandle {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,

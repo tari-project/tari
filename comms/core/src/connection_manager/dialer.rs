@@ -230,7 +230,7 @@ where
     ) {
         let node_id = dial_state.peer().node_id.clone();
         #[cfg(feature = "metrics")]
-        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
+        metrics::pending_connections(ConnectionDirection::Outbound).inc();
 
         match dial_result {
             Ok((conn, peer_identity)) => {
@@ -275,7 +275,7 @@ where
 
         let _ = self
             .peer_manager
-            .add_peer(dial_state.peer().clone())
+            .add_or_update_peer(dial_state.peer().clone())
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "Could not update peer data: {}", e);
@@ -285,7 +285,7 @@ where
             });
 
         #[cfg(feature = "metrics")]
-        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
+        metrics::pending_connections(ConnectionDirection::Outbound).dec();
 
         self.cancel_dial(&node_id);
     }
@@ -644,7 +644,7 @@ where
                     .upgrade_socket(socket, ConnectionDirection::Outbound)
                     .await
                     .map_err(|err| {
-                        warn!(
+                        debug!(
                             target: LOG_TARGET,
                             "Dial - failed to upgrade noise: {} on address: {} ({})",
                             node_id,

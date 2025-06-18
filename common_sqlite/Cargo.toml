@@ -10,7 +10,7 @@ license.workspace = true
 [dependencies]
 tari_utilities = { workspace = true }
 
-diesel = { version = "2.2.4", features = [
+diesel = { version = "2.2.10", features = [
     "sqlite",
     "r2d2",
     "serde_json",
@@ -19,9 +19,11 @@ diesel = { version = "2.2.4", features = [
 ] }
 diesel_migrations = "2.2"
 log = "0.4.6"
+rand = "0.8"
 serde = "1.0.90"
+serde_json = "1.0.133"
 thiserror = "1.0.26"
-tokio = { version = "1.36", features = ["sync", "macros", "rt"] }
+tokio = { version = "1.44", features = ["sync", "macros", "rt"] }
+lazy_static = "1.5.0"
 
 [dev-dependencies]
-tari_test_utils = { workspace = true }

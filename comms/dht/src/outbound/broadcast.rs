@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, task::Poll};
+use std::{sync::Arc, task::Poll, time::Duration};
 
 use chrono::{DateTime, Utc};
 use futures::{
@@ -84,7 +84,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(config.saf.msg_validity)
+            message_validity_window: chrono::Duration::from_std(Duration::from_secs(3 * 60 * 60))
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
         }
@@ -616,7 +616,7 @@ mod test {
             PeerFeatures::COMMUNICATION_NODE,
         ));
 
-        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
         let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
 
         let mock_state = dht_mock.get_shared_state();
@@ -664,7 +664,7 @@ mod test {
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         );
-        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
         task::spawn(dht_mock.run());
         let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let spy = service_spy();
@@ -706,7 +706,7 @@ mod test {
             "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
             PeerFeatures::COMMUNICATION_NODE,
         );
-        let (dht_requester, dht_mock) = create_dht_actor_mock(10);
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
         task::spawn(dht_mock.run());
         let (dht_discover_requester, discovery_mock) = create_dht_discovery_mock(Duration::from_secs(10));
         let dht_discovery_state = discovery_mock.get_shared_state();

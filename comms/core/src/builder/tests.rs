@@ -24,8 +24,8 @@ use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
 
 use bytes::Bytes;
 use futures::stream::FuturesUnordered;
+use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -42,7 +42,11 @@ use crate::{
     multiaddr::{Multiaddr, Protocol},
     multiplexing::Substream,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{Peer, PeerFeatures},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        Peer,
+        PeerFeatures,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{
@@ -62,7 +66,7 @@ async fn spawn_node(
 ) -> (
     CommsNode,
     mpsc::Receiver<InboundMessage>,
-    mpsc::Sender<OutboundMessage>,
+    mpsc::UnboundedSender<OutboundMessage>,
     MessagingEventSender,
 ) {
     let addr = format!("/memory/{}", memsocket::acquire_next_memsocket_port())
@@ -72,7 +76,10 @@ async fn spawn_node(
     node_identity.add_public_address(addr.clone());
 
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection, &node_identity.to_peer()).unwrap();
 
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings.
@@ -81,7 +88,7 @@ async fn spawn_node(
         .with_shutdown_signal(shutdown_sig)
         // </IrrelevantCalls>
         .with_listener_address(addr)
-        .with_peer_storage(HashmapDatabase::new(), None)
+        .with_peer_storage(peers_db)
 
         .with_node_identity(node_identity)
         .build()
@@ -146,7 +153,7 @@ async fn peer_to_peer_custom_protocols() {
     let node_identity2 = comms_node2.node_identity();
     comms_node1
         .peer_manager()
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(
@@ -208,7 +215,6 @@ async fn peer_to_peer_custom_protocols() {
     comms_node1.wait_until_shutdown().await;
     comms_node2.wait_until_shutdown().await;
 }
-
 #[tokio::test]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
@@ -222,22 +228,25 @@ async fn peer_to_peer_messaging() {
 
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
-    comms_node1
-        .peer_manager()
-        .add_peer(Peer::new(
-            node_identity2.public_key().clone(),
-            node_identity2.node_id().clone(),
-            MultiaddressesWithStats::from_addresses_with_source(
-                node_identity2.public_addresses(),
-                &PeerAddressSource::Config,
-            ),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-        ))
-        .await
-        .unwrap();
+
+    let mut peer = Peer::new(
+        node_identity2.public_key().clone(),
+        node_identity2.node_id().clone(),
+        MultiaddressesWithStats::from_addresses_with_source(
+            node_identity2.public_addresses(),
+            &PeerAddressSource::Config,
+        ),
+        Default::default(),
+        PeerFeatures::COMMUNICATION_NODE,
+        Default::default(),
+        Default::default(),
+    );
+    let addresses: Vec<_> = peer.addresses.address_iter().cloned().collect();
+    for addr in &addresses {
+        peer.addresses.mark_last_seen_now(addr);
+    }
+
+    comms_node1.peer_manager().add_or_update_peer(peer).await.unwrap();
 
     // Send NUM_MSGS messages from node 1 to node 2
     let mut replies = FuturesUnordered::new();
@@ -249,7 +258,7 @@ async fn peer_to_peer_messaging() {
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             reply_tx.into(),
         );
-        outbound_tx1.send(outbound_msg).await.unwrap();
+        outbound_tx1.send(outbound_msg).unwrap();
     }
 
     let messages1_to_2 = collect_recv!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
@@ -269,7 +278,7 @@ async fn peer_to_peer_messaging() {
             node_identity1.node_id().clone(),
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
         );
-        outbound_tx2.send(outbound_msg).await.unwrap();
+        outbound_tx2.send(outbound_msg).unwrap();
     }
 
     let messages2_to_1 = collect_recv!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
@@ -314,7 +323,7 @@ async fn peer_to_peer_messaging_simultaneous() {
     let node_identity2 = comms_node2.node_identity().clone();
     comms_node1
         .peer_manager()
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(
@@ -330,7 +339,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         .unwrap();
     comms_node2
         .peer_manager()
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity1.public_key().clone(),
             node_identity1.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(
@@ -357,7 +366,7 @@ async fn peer_to_peer_messaging_simultaneous() {
                 node_identity2.node_id().clone(),
                 format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             );
-            outbound_tx1.send(outbound_msg).await.unwrap();
+            outbound_tx1.send(outbound_msg).unwrap();
         }
     });
 
@@ -367,7 +376,7 @@ async fn peer_to_peer_messaging_simultaneous() {
                 node_identity1.node_id().clone(),
                 format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
             );
-            outbound_tx2.send(outbound_msg).await.unwrap();
+            outbound_tx2.send(outbound_msg).unwrap();
         }
     });
 

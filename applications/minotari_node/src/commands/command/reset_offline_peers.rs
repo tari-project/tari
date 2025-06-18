@@ -26,27 +26,20 @@ use clap::Parser;
 
 use super::{CommandContext, HandleCommand};
 
-/// Clear offline flag from all peers
+/// Clear offline flag from all non-wallet peers
 #[derive(Debug, Parser)]
 pub struct Args {}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.reset_offline_peers().await
+        self.reset_offline_non_wallet_peers().await
     }
 }
 
 impl CommandContext {
-    pub async fn reset_offline_peers(&self) -> Result<(), Error> {
-        let num_updated = self
-            .comms
-            .peer_manager()
-            .update_each(|mut peer| {
-                peer.addresses.reset_connection_attempts();
-                Some(peer)
-            })
-            .await?;
+    pub async fn reset_offline_non_wallet_peers(&self) -> Result<(), Error> {
+        let num_updated = self.comms.peer_manager().reset_offline_non_wallet_peers().await?;
 
         println!("{} peer(s) were unmarked as offline.", num_updated);
         Ok(())

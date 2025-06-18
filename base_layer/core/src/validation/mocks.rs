@@ -23,10 +23,12 @@
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
-    RwLock,
 };
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{CompressedCommitment, FixedHash},
+};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
@@ -43,7 +45,6 @@ use crate::{
     test_helpers::create_consensus_rules,
     transactions::transaction_components::Transaction,
     validation::{error::ValidationError, DifficultyCalculator, FinalHorizonStateValidation},
-    OutputSmt,
 };
 
 #[derive(Clone)]
@@ -72,7 +73,7 @@ impl MockValidator {
 }
 
 impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
-    fn validate_body(&self, _: &B, block: &Block, _: Arc<RwLock<OutputSmt>>) -> Result<Block, ValidationError> {
+    fn validate_body(&self, _: &B, block: &Block) -> Result<Block, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(block.clone())
         } else {
@@ -84,13 +85,7 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
 }
 
 impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
-    fn validate_body_with_metadata(
-        &self,
-        _: &B,
-        _: &ChainBlock,
-        _: &ChainMetadata,
-        _: Arc<RwLock<OutputSmt>>,
-    ) -> Result<(), ValidationError> {
+    fn validate_body_with_metadata(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -122,6 +117,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         _: &BlockHeader,
         _: &[EpochTime],
         _: Option<Difficulty>,
+        _: FixedHash,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             // this assumes consensus rules are the same as the test rules which is a little brittle

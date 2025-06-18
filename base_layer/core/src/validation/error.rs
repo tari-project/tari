@@ -228,6 +228,8 @@ impl ValidationError {
             err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
+            err @ ValidationError::CovenantTooLarge { .. } |
+            err @ ValidationError::InvalidSerializedPublicKey(_) |
             err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
             err @ ValidationError::SidechainProofInvalid(_) |
             err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
@@ -235,9 +237,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
-            err @ ValidationError::CovenantTooLarge { .. } |
-            err @ ValidationError::OutputSpendRuleDisallow { .. } |
-            err @ ValidationError::InvalidSerializedPublicKey(_) => Some(BanReason {
+            err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),

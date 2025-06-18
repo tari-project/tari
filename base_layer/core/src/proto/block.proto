@@ -97,9 +97,12 @@ message HistoricalBlock {
 message BlockHeaderAccumulatedData {
     // The achieved difficulty for solving the current block using the specified proof of work algorithm.
     uint64 achieved_difficulty = 1;
-    // The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
+    // The total accumulated difficulty for Monero RandomX proof of work for all blocks since Genesis,
     // but not including this block, tracked separately.
-    bytes accumulated_randomx_difficulty = 2;
+    bytes accumulated_monero_randomx_difficulty = 2;
+    // The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
+    // but not including this block, tracked separately.
+    bytes accumulated_tari_randomx_difficulty = 8;
     // The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     // but not including this block, tracked separately.
     bytes accumulated_sha3x_difficulty = 3;

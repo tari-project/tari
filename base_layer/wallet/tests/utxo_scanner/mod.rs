@@ -47,8 +47,9 @@ use minotari_wallet::{
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{chain_metadata, tari_address::TariAddress, types::BlockHash};
 use tari_comms::{
+    connectivity::ConnectivityStatus,
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::{
@@ -101,6 +102,7 @@ pub struct UtxoScannerTestInterface {
     _temp_dir: TempDir,
 }
 
+#[allow(clippy::too_many_lines)]
 async fn setup(
     key_manager: MemoryDbKeyManager,
     mode: UtxoScannerMode,
@@ -136,6 +138,9 @@ async fn setup(
     let comms_connectivity_mock_state = connectivity_mock.get_shared_state();
     comms_connectivity_mock_state
         .add_active_connection(rpc_server_connection)
+        .await;
+    comms_connectivity_mock_state
+        .set_connectivity_status(ConnectivityStatus::Online(1))
         .await;
     task::spawn(connectivity_mock.run());
 
@@ -198,12 +203,13 @@ async fn setup(
         view_key.pub_key,
         node_identity.public_key().clone(),
         Network::default(),
-    );
+    )
+    .unwrap();
     let scanner_service = scanner_service_builder
         .build_with_resources::<WalletSqliteDatabase, WalletConnectivityMock, MemoryDbKeyManager>(
             wallet_db.clone(),
             comms_connectivity,
-            wallet_connectivity_mock,
+            wallet_connectivity_mock.clone(),
             oms_handle,
             ts_handle,
             tari_address,
@@ -213,6 +219,7 @@ async fn setup(
             base_node_service_handle,
             one_sided_message_watch_receiver,
             recovery_message_watch_receiver,
+            14,
         )
         .await;
 
@@ -297,7 +304,7 @@ async fn generate_block_headers_and_utxos(
 
 #[tokio::test]
 async fn test_utxo_scanner_recovery() {
-    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
     let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
@@ -321,13 +328,17 @@ async fn test_utxo_scanner_recovery() {
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
-    let chain_metadata = ChainMetadata {
-        best_block_height: NUM_BLOCKS - 1,
-        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata = chain_metadata::ChainMetadata::new(
+        NUM_BLOCKS - 1,
+        BlockHash::try_from(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()).unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
+
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
         is_synced: true,
@@ -420,13 +431,16 @@ async fn test_utxo_scanner_recovery_with_restart() {
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
-    let chain_metadata = ChainMetadata {
-        best_block_height: NUM_BLOCKS - 1,
-        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata: ChainMetadata = chain_metadata::ChainMetadata::new(
+        NUM_BLOCKS - 1,
+        BlockHash::try_from(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()).unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata.clone()),
         is_synced: true,
@@ -557,13 +571,16 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
-    let chain_metadata = ChainMetadata {
-        best_block_height: NUM_BLOCKS - 1,
-        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata: ChainMetadata = chain_metadata::ChainMetadata::new(
+        NUM_BLOCKS - 1,
+        BlockHash::try_from(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()).unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata.clone()),
         is_synced: true,
@@ -637,13 +654,16 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         .rpc_service_state
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface2.rpc_service_state.set_blocks(block_headers.clone());
-    let chain_metadata = ChainMetadata {
-        best_block_height: 9,
-        best_block_hash: block_headers.get(&9).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata: ChainMetadata = chain_metadata::ChainMetadata::new(
+        9,
+        BlockHash::try_from(block_headers.get(&9).unwrap().clone().hash().to_vec()).unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
     test_interface2
         .rpc_service_state
         .set_tip_info_response(TipInfoResponse {
@@ -762,18 +782,24 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
-    let chain_metadata = ChainMetadata {
-        best_block_height: 800 + NUM_BLOCKS - 1,
-        best_block_hash: block_headers
-            .get(&(800 + NUM_BLOCKS - 1))
-            .unwrap()
-            .clone()
-            .hash()
-            .to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata: ChainMetadata = chain_metadata::ChainMetadata::new(
+        800 + NUM_BLOCKS - 1,
+        BlockHash::try_from(
+            block_headers
+                .get(&(800 + NUM_BLOCKS - 1))
+                .unwrap()
+                .clone()
+                .hash()
+                .to_vec(),
+        )
+        .unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
         is_synced: true,
@@ -835,6 +861,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
     let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(
         key_manager.clone(),
@@ -865,13 +892,16 @@ async fn test_utxo_scanner_one_sided_payments() {
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
-    let chain_metadata = ChainMetadata {
-        best_block_height: NUM_BLOCKS - 1,
-        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata = chain_metadata::ChainMetadata::new(
+        NUM_BLOCKS - 1,
+        BlockHash::try_from(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()).unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
         is_synced: true,
@@ -970,13 +1000,16 @@ async fn test_utxo_scanner_one_sided_payments() {
         .scanner_handle
         .set_one_sided_payment_message("new one-sided message".to_string());
 
-    let chain_metadata = ChainMetadata {
-        best_block_height: NUM_BLOCKS,
-        best_block_hash: block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata: ChainMetadata = chain_metadata::ChainMetadata::new(
+        NUM_BLOCKS,
+        BlockHash::try_from(block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec()).unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
 
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata.clone()),
@@ -1041,13 +1074,16 @@ async fn test_birthday_timestamp_over_chain() {
     test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
-    let chain_metadata = ChainMetadata {
-        best_block_height: NUM_BLOCKS - 1,
-        best_block_hash: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
-        accumulated_difficulty: Vec::new(),
-        pruned_height: 0,
-        timestamp: 0,
-    };
+    let chain_metadata: ChainMetadata = chain_metadata::ChainMetadata::new(
+        NUM_BLOCKS - 1,
+        BlockHash::try_from(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()).unwrap(),
+        0,
+        0,
+        5000.into(),
+        0,
+    )
+    .expect("failed to create new chain metadata")
+    .into();
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
         is_synced: true,

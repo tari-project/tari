@@ -1,43 +1,29 @@
-//  Copyright 2020, The Tari Project
-//
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
-//
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
-//
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
-//
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
-//
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// Copyright 2025 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
 
 #[cfg(feature = "base_node")]
 mod service;
 #[cfg(feature = "base_node")]
 pub mod sync_utxos_by_block_task;
 
+pub mod models;
+
+#[cfg(feature = "base_node")]
+pub mod query_service;
+
+use std::{error::Error, fmt::Debug};
+
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
+#[cfg(feature = "base_node")]
+use url::Url;
 
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
-#[cfg(feature = "base_node")]
 use crate::{
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::service::MempoolHandle,
-};
-use crate::{
+    blocks::BlockHeader,
     proto,
     proto::{
         base_node::{
@@ -45,6 +31,7 @@ use crate::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
+            GetWalletQueryHttpServiceAddressResponse,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures,
@@ -60,8 +47,27 @@ use crate::{
         types::{Signature, Transaction},
     },
 };
+#[cfg(feature = "base_node")]
+use crate::{
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    mempool::service::MempoolHandle,
+};
 
-#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
+/// Trait that a base node wallet query service must implement.
+/// Please note that this service is to fetch data, so read-only queries.
+#[async_trait::async_trait]
+pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
+    type Error: Error + 'static;
+
+    async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Self::Error>;
+
+    async fn get_header_by_height(&self, height: u64) -> Result<BlockHeader, Self::Error>;
+
+    async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error>;
+}
+
+#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient
+)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn submit_transaction(
@@ -119,6 +125,12 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<GetMempoolFeePerGramStatsRequest>,
     ) -> Result<Response<GetMempoolFeePerGramStatsResponse>, RpcStatus>;
+
+    #[rpc(method = 13)]
+    async fn get_wallet_query_http_service_address(
+        &self,
+        request: Request<()>,
+    ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]
@@ -126,6 +138,12 @@ pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,
     state_machine: StateMachineHandle,
+    wallet_query_service_address: Option<Url>,
 ) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>> {
-    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool, state_machine))
+    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(
+        db,
+        mempool,
+        state_machine,
+        wallet_query_service_address,
+    ))
 }

@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use core::iter;
 use std::{
     cmp,
     convert::TryFrom,
@@ -159,7 +158,7 @@ impl GreetingRpc for GreetingService {
     async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Vec<u8>, RpcStatus> {
         self.inc_call_count();
         let size = usize::try_from(request.into_message()).unwrap();
-        Ok(iter::repeat(0).take(size).collect())
+        Ok(std::iter::repeat_n(0, size).collect())
     }
 
     async fn slow_stream(&self, request: Request<SlowStreamRequest>) -> Result<Streaming<Vec<u8>>, RpcStatus> {
@@ -171,7 +170,7 @@ impl GreetingRpc for GreetingService {
         } = request.into_message();
 
         let (tx, rx) = mpsc::channel(1);
-        let item = iter::repeat(0u8).take(item_size as usize).collect::<Vec<_>>();
+        let item = std::iter::repeat_n(0u8, item_size as usize).collect::<Vec<_>>();
         tokio::spawn(async move {
             for _ in 0..num_items {
                 time::sleep(Duration::from_millis(delay_ms)).await;

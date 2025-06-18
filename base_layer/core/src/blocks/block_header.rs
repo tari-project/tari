@@ -82,6 +82,8 @@ pub enum BlockHeaderValidationError {
     InvalidHeight { expected: u64, actual: u64 },
     #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
     InvalidPreviousHash { expected: BlockHash, actual: BlockHash },
+    #[error("Invalid block POW algorithm: {0}")]
+    InvalidPowAlgorithm(String),
 }
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block

@@ -23,30 +23,49 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-use std::{iter, path::Path, sync::Arc};
+use std::sync::Arc;
 
 use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use rand::{rngs::OsRng, Rng};
 use tari_common::configuration::Network;
+use tari_common_sqlite::connection::DbConnection;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_comms::PeerManager;
+use tari_comms::{
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
+    types::CommsPublicKey,
+    PeerManager,
+};
 use tari_crypto::keys::SecretKey;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, Transaction, WalletOutput},
+        transaction_components::{
+            payment_id::{PaymentId, TxType},
+            CoinBaseExtra,
+            RangeProofType,
+            Transaction,
+            WalletOutput,
+        },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
     },
 };
@@ -80,11 +99,13 @@ pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (Tar
         CompressedPublicKey::from_secret_key(&wallet_private_view_key),
         CompressedPublicKey::from_secret_key(&wallet_private_spend_key),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     (script_key_id, wallet_payment_address)
 }
 
-pub async fn create_block(
+pub async fn create_block<TDB: BlockchainBackend>(
+    db: &BlockchainDatabase<TDB>,
     rules: &ConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
@@ -121,7 +142,10 @@ pub async fn create_block(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
-        PaymentId::Empty,
+        PaymentId::Open {
+            user_data: vec![],
+            tx_type: TxType::Coinbase,
+        },
     )
     .await
     .unwrap();
@@ -143,10 +167,32 @@ pub async fn create_block(
         .timestamp
         .checked_add(EpochTime::from(spec.block_time))
         .unwrap();
+    let mut block = apply_mmr_to_block(db, block);
+
     block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_wallet_output)
+}
+
+pub fn apply_mmr_to_block<TDB: BlockchainBackend>(db: &BlockchainDatabase<TDB>, block: Block) -> Block {
+    let res = block.clone();
+    let (mut block, mmr_roots) = match db.calculate_mmr_roots(block) {
+        Ok(mmr_roots) => mmr_roots,
+        Err(_) => {
+            // Sometimes the block is not at the tip, so we can't calculate the MMR roots.
+            // Tests should set the mmr elsewhere.
+            return res;
+        },
+    };
+    //     block.header.input_mr = mmr_roots.input_mr;
+    block.header.output_mr = mmr_roots.output_mr;
+    //     block.header.output_smt_size = mmr_roots.output_smt_size;
+    //     block.header.kernel_mr = mmr_roots.kernel_mr;
+    //     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
+    //     block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    //     block.header.validator_node_size = mmr_roots.validator_node_size;
+    block
 }
 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {
@@ -162,24 +208,29 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     Err("Could not mine to difficulty in 20000 iterations".to_string())
 }
 
-pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
-    let peer_database_name = {
-        let mut rng = rand::thread_rng();
-        iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric) as char)
-            .take(8)
-            .collect::<String>()
-    };
-    std::fs::create_dir_all(&data_path).unwrap();
-    let datastore = LMDBBuilder::new()
-        .set_path(data_path)
-        .set_env_config(Default::default())
-        .set_max_number_of_databases(1)
-        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
-    Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
+fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
+
+pub fn create_peer_manager() -> Arc<PeerManager> {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    let peers_db = PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap();
+    Arc::new(PeerManager::new(peers_db).unwrap())
 }
 
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {

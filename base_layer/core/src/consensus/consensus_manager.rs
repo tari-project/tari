@@ -27,6 +27,7 @@ use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::{
+    blocks::pre_mine::pre_mine_spendable_at_height,
     blocks::ChainBlock,
     consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
     proof_of_work::PowAlgorithm,
@@ -41,6 +42,13 @@ use crate::{
     proof_of_work::DifficultyAdjustmentError,
     transactions::{tari_amount::MicroMinotari, transaction_components::TransactionKernel},
 };
+
+/// A simple struct to hold the maturity and effective height
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct MaturityTranche {
+    pub maturity: u64,
+    pub effective_from_height: u64,
+}
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
@@ -110,6 +118,11 @@ impl ConsensusManager {
         constants
     }
 
+    /// Get the vector of consensus constants applicable for all heights
+    pub fn consensus_constants_vec(&self) -> &[ConsensusConstants] {
+        &self.inner.consensus_constants
+    }
+
     /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
     /// height
     #[cfg(feature = "base_node")]
@@ -159,6 +172,77 @@ impl ConsensusManager {
     /// This is the currently configured chain network.
     pub fn network(&self) -> NetworkConsensus {
         self.inner.network
+    }
+
+    /// Get the maturity tranches from the consensus manager
+    pub fn get_maturity_tranches(&self) -> Vec<MaturityTranche> {
+        self.consensus_constants_vec()
+            .iter()
+            .map(|c| MaturityTranche {
+                maturity: c.coinbase_min_maturity(),
+                effective_from_height: c.effective_from_height(),
+            })
+            .collect::<Vec<_>>()
+    }
+
+    /// Get the total spendable block rewards and pre-mine at the specified height
+    #[cfg(feature = "base_node")]
+    pub fn total_tokens_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        let spendable_rewards = self.block_rewards_spendable_at_height(height)?;
+        let spendable_pre_mine = self.pre_mine_spendable_at_height(height)?;
+        spendable_rewards
+            .checked_add(spendable_pre_mine)
+            .ok_or_else(|| "total_tokens_spendable_at_height overflowed u128".to_string())
+    }
+
+    /// Get the total spendable pre-mine at the specified height
+    #[cfg(feature = "base_node")]
+    pub fn pre_mine_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        pre_mine_spendable_at_height(height, self.network().as_network())
+    }
+
+    /// Get the total mined block rewards at the specified height (excluding pre-mine)
+    pub fn block_rewards_mined_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        Ok(self.get_total_emission_at(height) - self.consensus_constants(height).pre_mine_value())
+    }
+
+    /// Get the total spendable block rewards circulation at the specified height (excluding pre-mine)
+    pub fn block_rewards_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        // Example initial maturity schedule up to 3 weeks ( | height | (maturity) |):
+        // | 0 -> 5040 - 1 | (720) |
+        //                 | 5040 -> 10080 - 1 | (540) |
+        //                                     | 10080 -> 15120 - 1 | (360) |
+        //                                                          | 15120 -> | (180) |
+
+        let maturity_tranches = self.get_maturity_tranches();
+
+        let last_effective_tranche = maturity_tranches
+            .iter()
+            .filter(|v| v.effective_from_height <= height)
+            .max_by_key(|v| v.effective_from_height)
+            .ok_or_else(|| format!("Last effective maturity tranche for height {} not found", height))?;
+        let last_effective_index = maturity_tranches
+            .iter()
+            .position(|v| v == last_effective_tranche)
+            .ok_or_else(|| format!("Last effective maturity tranche index for height {} not found", height))?;
+        let previous_effective_tranch = maturity_tranches[last_effective_index.saturating_sub(1)].clone();
+
+        // We have to adjust the matured rewards at height to account for the effective from height of the last
+        // effective tranche
+        let emission_schedule = self.emission_schedule();
+        let matured_rewards_at_height = if last_effective_tranche.maturity < previous_effective_tranch.maturity &&
+            height < last_effective_tranche.effective_from_height + previous_effective_tranch.maturity
+        {
+            emission_schedule
+                .supply_at_block(height.saturating_sub(previous_effective_tranch.maturity))
+                .saturating_sub(self.consensus_constants(height).pre_mine_value())
+        } else {
+            emission_schedule
+                .supply_at_block(height.saturating_sub(last_effective_tranche.maturity))
+                .saturating_sub(self.consensus_constants(height).pre_mine_value())
+        };
+
+        Ok(matured_rewards_at_height)
     }
 }
 
@@ -256,7 +340,9 @@ impl ConsensusManagerBuilder {
                     .then()
                     .by_height()
                     .then()
-                    .by_randomx_difficulty()
+                    .by_tari_randomx_difficulty()
+                    .then()
+                    .by_monero_randomx_difficulty()
                     .then()
                     .by_sha3x_difficulty()
                     .build()
@@ -270,4 +356,86 @@ impl ConsensusManagerBuilder {
 pub enum ConsensusBuilderError {
     #[error("Cannot set a genesis block with a network other than LocalNet")]
     CannotSetGenesisBlock,
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::blocks::pre_mine::BLOCKS_PER_DAY;
+
+    #[test]
+    fn test_supply_at_block() {
+        let network = Network::MainNet;
+        let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+        for (height, mined, spendable, pre_mine, total) in [
+            (
+                0,
+                MicroMinotari::from_str("        0.000000 T"), // mined
+                MicroMinotari::from_str("        0.000000 T"), // spendable
+                MicroMinotari::from_str("756000002.000000 T"), // pre_mine
+                MicroMinotari::from_str("756000002.000000 T"), // total
+            ),
+            (
+                1000,
+                MicroMinotari::from_str(" 13946753.809464 T"), // mined
+                MicroMinotari::from_str("  3906326.802521 T"), // spendable
+                MicroMinotari::from_str("756000002.000000 T"), // pre_mine
+                MicroMinotari::from_str("759906328.802521 T"), // total
+            ),
+            (
+                10000,
+                MicroMinotari::from_str("138917413.875832 T"), // mined
+                MicroMinotari::from_str("131447021.355866 T"), // spendable
+                MicroMinotari::from_str("756000002.000000 T"), // pre_mine
+                MicroMinotari::from_str("887447023.355866 T"), // total
+            ),
+            (
+                180 * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("1709098961.342784 T"), // mined
+                MicroMinotari::from_str("1706857672.130454 T"), // spendable
+                MicroMinotari::from_str(" 867125003.916666 T"), // pre_mine
+                MicroMinotari::from_str("2573982676.047120 T"), // total
+            ),
+            (
+                (180 + 20) * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("1887258043.208972 T"), // mined
+                MicroMinotari::from_str("1885044943.492867 T"), // spendable
+                MicroMinotari::from_str(" 867125003.916666 T"), // pre_mine
+                MicroMinotari::from_str("2752169947.409533 T"), // total
+            ),
+            (
+                365 * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("3274120131.965798 T"), // mined
+                MicroMinotari::from_str("3272126467.754857 T"), // spendable
+                MicroMinotari::from_str("1652875003.416662 T"), // pre_mine
+                MicroMinotari::from_str("4925001471.171519 T"), // total
+            ),
+            (
+                (365 + 20) * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("3432595650.489607 T"), // mined
+                MicroMinotari::from_str("3430627060.613596 T"), // spendable
+                MicroMinotari::from_str("1652875003.416662 T"), // pre_mine
+                MicroMinotari::from_str("5083502064.030258 T"), // total
+            ),
+            (
+                (365 + 200) * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("4772127517.495734 T"), // mined
+                MicroMinotari::from_str("4770370867.355004 T"), // spendable
+                MicroMinotari::from_str("2946125002.916658 T"), // pre_mine
+                MicroMinotari::from_str("7716495870.271662 T"), // total
+            ),
+        ] {
+            let mined_rewards = consensus_manager.block_rewards_mined_at_height(height).unwrap();
+            let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height).unwrap();
+            let total_spendable = consensus_manager.total_tokens_spendable_at_height(height).unwrap();
+            let pre_mine_spendable = consensus_manager.pre_mine_spendable_at_height(height).unwrap();
+
+            assert_eq!(mined_rewards, mined.unwrap());
+            assert_eq!(spendable_rewards, spendable.unwrap());
+            assert_eq!(pre_mine_spendable, pre_mine.unwrap());
+            assert_eq!(total_spendable, total.unwrap());
+        }
+    }
 }

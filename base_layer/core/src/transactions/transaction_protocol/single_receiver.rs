@@ -159,7 +159,7 @@ mod test {
             tari_amount::*,
             test_helpers::TestParams,
             transaction_components::{
-                encrypted_data::PaymentId,
+                payment_id::PaymentId,
                 EncryptedData,
                 OutputFeatures,
                 TransactionKernel,

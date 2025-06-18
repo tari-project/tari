@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{convert::TryFrom, sync::Arc};
 
+use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
@@ -28,19 +29,10 @@ use tari_common_types::{
 };
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
-    chain_storage::{
-        calculate_validator_node_mr,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-    },
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, SmtHasher},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
-    input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_mmr,
-    kernel_mr_hash_from_pruned_mmr,
-    output_mr_hash_from_smt,
-    proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
@@ -59,15 +51,9 @@ use tari_core::{
         transaction_key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface, TxoStage},
     },
     KernelMmr,
-    OutputSmt,
-    PrunedInputMmr,
-    PrunedKernelMmr,
     PrunedOutputMmr,
 };
-use tari_mmr::{
-    pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{NodeKey, ValueHash},
-};
+use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_script::script;
 use tari_utilities::ByteArray;
 
@@ -154,31 +140,6 @@ async fn genesis_template(
     (block, output)
 }
 
-#[test]
-fn print_new_genesis_block_values() {
-    let validator_node_mr = calculate_validator_node_mr(&[]).unwrap();
-
-    // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
-    let kernel_mr = kernel_mr_hash_from_mmr(&KernelMmr::new(Vec::new())).unwrap();
-    let kernel_mr_pruned = kernel_mr_hash_from_pruned_mmr(&PrunedKernelMmr::new(PrunedHashSet::default())).unwrap();
-    assert_eq!(kernel_mr, kernel_mr_pruned);
-    let input_mr = input_mr_hash_from_pruned_mmr(&PrunedInputMmr::new(PrunedHashSet::default())).unwrap();
-    let output_mr = output_mr_hash_from_smt(&mut OutputSmt::new()).unwrap();
-
-    // Note: This is printed in the same order as needed for 'fn get_xxxx_genesis_block_raw()'
-    println!();
-    println!("Genesis block constants");
-    println!();
-    println!("header output_mr:           {}", output_mr);
-    println!("header output_mmr_size:     0");
-    println!("header kernel_mr:           {}", kernel_mr);
-    println!("header kernel_mmr_size:     0");
-    println!("header validator_node_mr:   {}", validator_node_mr);
-    println!("header input_mr:            {}", input_mr);
-    println!("header total_kernel_offset: {}", FixedHash::zero());
-    println!("header total_script_offset: {}", FixedHash::zero());
-}
-
 /// Create a genesis block returning it with the spending key for the coinbase utxo
 ///
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
@@ -205,17 +166,23 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let mut header = BlockHeader::from(header);
     let kernel_mmr = KernelMmr::new(kernel_hashes);
     header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr)?;
-    let mut mmr = OutputSmt::new();
+    let mock_store = MockTreeStore::new(true);
+    let jmt = JellyfishMerkleTree::<_, SmtHasher>::new(&mock_store);
     let mut output_mr = PrunedOutputMmr::new(PrunedHashSet::default());
+    let mut batch = vec![];
     for output in body.outputs() {
         output_mr.push(output.hash().to_vec()).unwrap();
-        let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
-        let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
-        mmr.insert(smt_key, smt_node).unwrap();
+        if !output.is_burned() {
+            let smt_key = KeyHash(output.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+            let smt_value = output.smt_hash(header.height);
+
+            batch.push((smt_key, Some(smt_value.to_vec())));
+        }
     }
     header.output_smt_size = body.outputs().len() as u64;
 
-    header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
+    let (root, _) = jmt.put_value_set(batch, 0).unwrap();
+    header.output_mr = FixedHash::try_from(root.0.as_slice()).unwrap();
     header.block_output_mr = FixedHash::try_from(output_mr.get_merkle_root().unwrap()).unwrap();
     Ok(Block { header, body })
 }
@@ -236,7 +203,8 @@ pub async fn create_genesis_block_with_coinbase_value(
             total_kernel_offset: Default::default(),
             achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
@@ -277,7 +245,8 @@ pub async fn create_genesis_block_with_utxos(
             total_kernel_offset: Default::default(),
             achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1.into(),
-            accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
@@ -602,7 +571,10 @@ pub async fn construct_chained_blocks<B: BlockchainBackend>(
     let mut prev_block = block0;
     let mut blocks = Vec::new();
     for _i in 0..n {
-        let (block, _) = append_block(db, &prev_block, vec![], consensus, Difficulty::min(), key_manager)
+        let diff = consensus
+            .consensus_constants(prev_block.height() + 1)
+            .min_pow_difficulty(PowAlgorithm::Sha3x);
+        let (block, _) = append_block(db, &prev_block, vec![], consensus, diff, key_manager)
             .await
             .unwrap();
         prev_block = block.clone();

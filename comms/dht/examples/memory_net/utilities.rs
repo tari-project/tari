@@ -32,11 +32,17 @@ use std::{
 use futures::future;
 use once_cell::sync::Lazy;
 use rand::{distributions, rngs::OsRng, Rng};
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
-    connectivity::ConnectivitySelection,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{
@@ -55,17 +61,11 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::OutboundEncryption,
-    store_forward::SafConfig,
-    DbConnectionUrl,
     Dht,
     DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
-};
-use tari_test_utils::{paths::create_temporary_data_path, random, streams::convert_unbounded_mpsc_to_stream};
+use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
 use tokio::{
     runtime,
     sync::{broadcast, mpsc},
@@ -74,7 +74,7 @@ use tokio::{
 };
 use tower::ServiceBuilder;
 
-use crate::memory_net::DrainBurst;
+use crate::memory_net::{create_test_peer, DrainBurst};
 
 pub static MEMORYNET_MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/1.0");
 pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
@@ -202,6 +202,7 @@ pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
                 .peer_manager()
                 .exists_node_id(wallet.node_identity().node_id())
                 .await
+                .unwrap()
             {
                 num_known += 1;
             }
@@ -376,195 +377,6 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         nodes.len() - 1
     );
     (num_successes, nodes.len() - 1)
-}
-
-#[allow(clippy::too_many_lines)]
-pub async fn do_store_and_forward_message_propagation(
-    wallet: TestNode,
-    wallets: &[TestNode],
-    nodes: &[TestNode],
-    messaging_tx: NodeEventTx,
-    messaging_rx: &mut NodeEventRx,
-    num_neighbouring_nodes: usize,
-    num_random_nodes: usize,
-    propagation_factor: usize,
-    quiet_mode: bool,
-) -> (usize, TestNode, usize, usize) {
-    banner!(
-        "{} chosen at random to be receive messages from other nodes using store and forward",
-        wallet,
-    );
-    let wallets_peers = wallet.comms.peer_manager().all().await.unwrap();
-    let node_identity = wallet.comms.node_identity().clone();
-
-    let neighbours = wallet
-        .comms
-        .connectivity()
-        .select_connections(ConnectivitySelection::closest_to(
-            wallet.node_identity().node_id().clone(),
-            num_neighbouring_nodes,
-            vec![],
-        ))
-        .await
-        .unwrap()
-        .into_iter()
-        .filter_map(
-            // If a node is not found in the node list it must be the seed node - should probably assert that this is
-            // the case
-            |p| nodes.iter().find(|n| n.node_identity().node_id() == p.peer_node_id()),
-        )
-        .collect::<Vec<_>>();
-
-    let neighbour_subs = neighbours.iter().map(|n| n.messaging_events.subscribe());
-
-    banner!(
-        "{} has {} neighbours ({})",
-        wallet,
-        neighbours.len(),
-        neighbours
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    banner!("😴 {} is going offline", wallet);
-    wallet.shutdown().await;
-
-    banner!(
-        "🎤 All other wallets are going to attempt to broadcast messages to {} ({})",
-        get_name(node_identity.node_id()),
-        node_identity.public_key(),
-    );
-
-    let start = Instant::now();
-    for wallet in wallets {
-        let secret_message = format!("My name is wiki wiki {}", wallet);
-        let send_states = wallet
-            .dht
-            .outbound_requester()
-            .closest_broadcast(
-                node_identity.public_key().clone(),
-                OutboundEncryption::encrypt_for(node_identity.public_key().clone()),
-                vec![],
-                OutboundDomainMessage::new(&123i32, secret_message.clone()),
-            )
-            .await
-            .unwrap();
-        let (success, failed) = send_states.wait_all().await;
-        println!(
-            "{} sent {}/{} messages",
-            wallet,
-            success.len(),
-            success.len() + failed.len(),
-        );
-    }
-
-    for (idx, mut s) in neighbour_subs.into_iter().enumerate() {
-        let neighbour = neighbours[idx].name.clone();
-        task::spawn(async move {
-            let msg = time::timeout(Duration::from_secs(2), s.recv()).await;
-            match msg {
-                Ok(Ok(evt)) => {
-                    if let MessagingEvent::MessageReceived(_, tag) = &evt {
-                        println!("{} received propagated SAF message ({})", neighbour, tag);
-                    }
-                },
-                Ok(Err(err)) => {
-                    println!("{}", err);
-                },
-                Err(_) => println!("{} did not receive the SAF message", neighbour),
-            }
-        });
-    }
-
-    banner!("⏰ Waiting a few seconds for messages to propagate around the network...");
-    time::sleep(Duration::from_secs(5)).await;
-
-    let mut total_messages = drain_messaging_events(messaging_rx, false).await;
-
-    banner!("🤓 {} is coming back online", get_name(node_identity.node_id()));
-    let (tx, ims_rx) = mpsc::channel(1);
-    let shutdown = Shutdown::new();
-    let (comms, dht, messaging_events) = setup_comms_dht(
-        node_identity,
-        create_peer_storage(),
-        tx,
-        num_neighbouring_nodes,
-        num_random_nodes,
-        propagation_factor,
-        wallets_peers,
-        true,
-        shutdown.to_signal(),
-    )
-    .await;
-    let mut wallet = TestNode::new(
-        comms,
-        dht,
-        vec![],
-        ims_rx,
-        messaging_tx,
-        messaging_events,
-        quiet_mode,
-        shutdown,
-    );
-    let mut connectivity = wallet.comms.connectivity();
-
-    connectivity
-        .wait_for_connectivity(Duration::from_secs(10))
-        .await
-        .unwrap();
-    take_a_break(nodes.len()).await;
-    let connections = wallet.comms.connectivity().get_active_connections().await.unwrap();
-    println!(
-        "{} has {} connections to {}",
-        wallet,
-        connections.len(),
-        connections
-            .iter()
-            .map(|p| get_name(p.peer_node_id()))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-
-    let mut num_msgs = 0;
-    let mut succeeded = 0;
-    loop {
-        let result = time::timeout(Duration::from_secs(10), wallet.ims_rx.as_mut().unwrap().recv()).await;
-        num_msgs += 1;
-        match result {
-            Ok(msg) => {
-                let msg = msg.unwrap();
-                let secret_msg = msg
-                    .decryption_result
-                    .unwrap()
-                    .decode_part::<String>(1)
-                    .unwrap()
-                    .unwrap();
-                banner!(
-                    "🎉 Wallet {} received propagated message '{}' from store and forward in {:.2?}",
-                    wallet,
-                    secret_msg,
-                    start.elapsed()
-                );
-                succeeded += 1;
-            },
-            Err(err) => {
-                banner!(
-                    "💩 Failed to receive message after {:.0?} using store and forward '{}'",
-                    start.elapsed(),
-                    err
-                );
-            },
-        };
-
-        if num_msgs == wallets.len() {
-            break;
-        }
-    }
-
-    total_messages += drain_messaging_events(messaging_rx, false).await;
-
-    (total_messages, wallet, succeeded, num_msgs)
 }
 
 pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: bool) -> usize {
@@ -823,19 +635,9 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     ))
 }
 
-fn create_peer_storage() -> CommsDatabase {
-    let database_name = random::string(8);
-    let datastore = LMDBBuilder::new()
-        .set_path(create_temporary_data_path().to_str().unwrap())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database(&database_name, lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-
-    let peer_database = datastore.get_handle(&database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    PeerStorage::new_indexed(peer_database).unwrap().into()
+fn create_peer_storage() -> PeerDatabaseSql {
+    let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+    PeerDatabaseSql::new(db_connection, &create_test_peer()).unwrap()
 }
 
 pub async fn make_node(
@@ -880,7 +682,6 @@ pub async fn make_node_from_node_identities(
         num_random_nodes,
         propagation_factor,
         seed_peers.clone(),
-        false,
         shutdown.to_signal(),
     )
     .await;
@@ -905,11 +706,10 @@ async fn setup_comms_dht(
     num_random_nodes: usize,
     propagation_factor: usize,
     seed_peers: Vec<Peer>,
-    saf_auto_request: bool,
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender) {
     // Create inbound and outbound channels
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let comms = CommsBuilder::new()
         .allow_test_addresses()
@@ -918,12 +718,12 @@ async fn setup_comms_dht(
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_min_connectivity(1)
-        .with_peer_storage(storage,None)
+        .with_peer_storage(storage)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
         .unwrap();
     for peer in seed_peers {
-        comms.peer_manager().add_peer(peer).await.unwrap();
+        comms.peer_manager().add_or_update_peer(peer).await.unwrap();
     }
 
     let db_name = iter::repeat(())
@@ -935,10 +735,6 @@ async fn setup_comms_dht(
         .with_config(DhtConfig {
             // Use MemoryShared because a Memory connection only seems to work on MacOs
             database_url: DbConnectionUrl::MemoryShared(db_name),
-            saf: SafConfig {
-                auto_request: saf_auto_request,
-                ..Default::default()
-            },
             auto_join: false,
             discovery_request_timeout: Duration::from_secs(15),
             num_neighbouring_nodes,

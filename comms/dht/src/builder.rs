@@ -24,23 +24,17 @@
 
 use std::{sync::Arc, time::Duration};
 
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
-use crate::{
-    dht::DhtInitializationError,
-    outbound::DhtOutboundRequest,
-    version::DhtProtocolVersion,
-    DbConnectionUrl,
-    Dht,
-    DhtConfig,
-};
+use crate::{dht::DhtInitializationError, outbound::DhtOutboundRequest, version::DhtProtocolVersion, Dht, DhtConfig};
 
 /// Builder for the DHT.
 ///
 /// ```rust
-/// # use tari_comms_dht::{DbConnectionUrl, Dht};
+/// use tari_comms_dht::Dht;
 /// let builder = Dht::builder()
 ///     .mainnet()
 ///     .with_database_url(DbConnectionUrl::Memory);
@@ -49,7 +43,7 @@ use crate::{
 #[derive(Debug, Clone, Default)]
 pub struct DhtBuilder {
     config: DhtConfig,
-    outbound_tx: Option<mpsc::Sender<DhtOutboundRequest>>,
+    outbound_tx: Option<mpsc::UnboundedSender<DhtOutboundRequest>>,
 }
 
 impl DhtBuilder {
@@ -81,14 +75,8 @@ impl DhtBuilder {
         self
     }
 
-    /// Sets whether SAF messages are automatically requested on every new connection to a SAF node.
-    pub fn set_auto_store_and_forward_requests(&mut self, enabled: bool) -> &mut Self {
-        self.config.saf.auto_request = enabled;
-        self
-    }
-
     /// Sets the mpsc sender that is hooked up to the outbound messaging pipeline.
-    pub fn with_outbound_sender(&mut self, outbound_tx: mpsc::Sender<DhtOutboundRequest>) -> &mut Self {
+    pub fn with_outbound_sender(&mut self, outbound_tx: mpsc::UnboundedSender<DhtOutboundRequest>) -> &mut Self {
         self.outbound_tx = Some(outbound_tx);
         self
     }
@@ -121,7 +109,6 @@ impl DhtBuilder {
     /// The number of neighbouring peers that the DHT should try maintain connections to.
     pub fn with_num_neighbouring_nodes(&mut self, n: usize) -> &mut Self {
         self.config.num_neighbouring_nodes = n;
-        self.config.saf.num_neighbouring_nodes = n;
         self
     }
 

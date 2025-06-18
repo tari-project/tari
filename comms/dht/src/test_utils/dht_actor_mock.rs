@@ -39,8 +39,8 @@ use crate::{
     storage::DhtMetadataKey,
 };
 
-pub fn create_dht_actor_mock(buf_size: usize) -> (DhtRequester, DhtActorMock) {
-    let (tx, rx) = mpsc::channel(buf_size);
+pub fn create_dht_actor_mock() -> (DhtRequester, DhtActorMock) {
+    let (tx, rx) = mpsc::unbounded_channel();
     (DhtRequester::new(tx), DhtActorMock::new(rx))
 }
 
@@ -77,12 +77,12 @@ impl DhtMockState {
 }
 
 pub struct DhtActorMock {
-    receiver: mpsc::Receiver<DhtRequest>,
+    receiver: mpsc::UnboundedReceiver<DhtRequest>,
     state: DhtMockState,
 }
 
 impl DhtActorMock {
-    pub fn new(receiver: mpsc::Receiver<DhtRequest>) -> Self {
+    pub fn new(receiver: mpsc::UnboundedReceiver<DhtRequest>) -> Self {
         Self {
             receiver,
             state: DhtMockState::default(),

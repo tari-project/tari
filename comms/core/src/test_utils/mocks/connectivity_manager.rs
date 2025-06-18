@@ -297,6 +297,7 @@ impl ConnectivityManagerMock {
             },
             WaitStarted(reply) => reply.send(()).unwrap(),
             GetNodeIdentity(_) => unimplemented!(),
+            GetSeeds(_) => unimplemented!(),
             GetAllowList(reply) => {
                 let _result = reply.send(vec![]);
             },

@@ -4,7 +4,7 @@
 # Set to false to disable the base node GRPC server (default = true)
 grpc_enabled = false
 
-# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
+# The socket to expose for the gRPC base node server (default = "http://127.0.0.1:18142")
 #grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # gRPC authentication method (default = "none")
@@ -52,4 +52,5 @@ grpc_server_allow_methods = [
     #"get_shard_key",
     #"get_template_registrations",
     #"get_side_chain_utxos",
+    #"search_payment_references",
 ]

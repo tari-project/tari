@@ -12,8 +12,9 @@ message ChainMetadata {
     uint64 best_block_height = 1;
     // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
     bytes best_block_hash = 2;
-    // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-    bytes accumulated_difficulty = 5;
+    // The current geometric mean of the pow of the chain tip, or `None` if there is no chain, split its into u256_low and u256 high for old node compatibility
+    bytes accumulated_difficulty_low = 5;
+    bytes accumulated_difficulty_high = 8;
     // The effective height of the pruning horizon. This indicates from what height
     // a full block can be provided (exclusive).
     // If `pruned_height` is equal to the `best_block_height` no blocks can be provided.

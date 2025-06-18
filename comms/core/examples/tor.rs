@@ -1,27 +1,40 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
+use std::{
+    collections::HashMap,
+    convert::identity,
+    env,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    process,
+    sync::Arc,
+};
 
 use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
 use rand::{rngs::OsRng, thread_rng, RngCore};
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
+    peer_manager::{
+        database::{PeerDatabaseSql, MIGRATIONS},
+        NodeId,
+        NodeIdentity,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+    },
     pipeline,
     pipeline::SinkService,
     protocol::{messaging::MessagingProtocolExtension, ProtocolId},
     tor,
+    types::CommsPublicKey,
     CommsBuilder,
     CommsNode,
-};
-use tari_storage::{
-    lmdb_store::{LMDBBuilder, LMDBConfig},
-    LMDBWrapper,
 };
 use tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
@@ -29,7 +42,6 @@ use tokio::{
     runtime,
     sync::{broadcast, mpsc},
 };
-
 // Tor example for tari_comms.
 //
 // _Note:_ A running tor proxy with `ControlPort` set is required for this example to work.
@@ -100,7 +112,7 @@ async fn run() -> Result<(), Error> {
     // Let's add node 2 as a peer to node 1
     comms_node1
         .peer_manager()
-        .add_peer(Peer::new(
+        .add_or_update_peer(Peer::new(
             node_identity2.public_key().clone(),
             node_identity2.node_id().clone(),
             MultiaddressesWithStats::from_addresses_with_source(
@@ -115,12 +127,10 @@ async fn run() -> Result<(), Error> {
         .await?;
 
     // This kicks things off
-    outbound_tx1
-        .send(OutboundMessage::new(
-            comms_node2.node_identity().node_id().clone(),
-            Bytes::from_static(b"START"),
-        ))
-        .await?;
+    outbound_tx1.send(OutboundMessage::new(
+        comms_node2.node_identity().node_id().clone(),
+        Bytes::from_static(b"START"),
+    ))?;
 
     let executor = runtime::Handle::current();
 
@@ -148,24 +158,44 @@ async fn run() -> Result<(), Error> {
     Ok(())
 }
 
+pub fn create_test_peer() -> Peer {
+    let mut rng = rand::rngs::OsRng;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
+    let node_id = NodeId::from_key(&pk);
+    let addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec!["/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap()],
+        &PeerAddressSource::Config,
+    );
+    Peer::new(
+        pk,
+        node_id,
+        addresses,
+        PeerFlags::default(),
+        PeerFeatures::empty(),
+        Default::default(),
+        Default::default(),
+    )
+}
+
 async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     control_port_addr: Multiaddr,
     database_path: &Path,
     port_mapping: P,
     tor_identity: Option<tor::TorIdentity>,
-) -> Result<(CommsNode, mpsc::Receiver<InboundMessage>, mpsc::Sender<OutboundMessage>), Error> {
-    let datastore = LMDBBuilder::new()
-        .set_path(database_path.to_str().unwrap())
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database("peerdb", lmdb_zero::db::CREATE)
-        .build()
-        .unwrap();
-    let peer_database = datastore.get_handle("peerdb").unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+) -> Result<
+    (
+        CommsNode,
+        mpsc::UnboundedReceiver<InboundMessage>,
+        mpsc::UnboundedSender<OutboundMessage>,
+    ),
+    Error,
+> {
+    let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
+    let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer())?;
 
-    let (inbound_tx, inbound_rx) = mpsc::channel(10);
-    let (outbound_tx, outbound_rx) = mpsc::channel(10);
+    let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
+    let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
 
     let mut hs_builder = tor::HiddenServiceBuilder::new()
         .with_port_mapping(port_mapping)
@@ -186,7 +216,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)
         .with_listener_address(hs_controller.proxied_address())
-        .with_peer_storage(peer_database, None)
+        .with_peer_storage(peer_database)
         .build()
         .unwrap();
 
@@ -218,8 +248,8 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 
 async fn start_ping_ponger(
     dest_node_id: NodeId,
-    mut inbound_rx: mpsc::Receiver<InboundMessage>,
-    outbound_tx: mpsc::Sender<OutboundMessage>,
+    mut inbound_rx: mpsc::UnboundedReceiver<InboundMessage>,
+    outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
 ) -> Result<usize, Error> {
     let mut inflight_pings = HashMap::new();
     let mut counter = 0;
@@ -236,7 +266,7 @@ async fn start_ping_ponger(
                 let id = thread_rng().next_u64();
                 inflight_pings.insert(id, Utc::now().naive_utc());
                 let msg = make_msg(&dest_node_id, &format!("PING {}", id));
-                outbound_tx.send(msg).await?;
+                outbound_tx.send(msg)?;
             },
             Some("PING") => {
                 let id = msg_parts.next().ok_or_else(|| anyhow!("Received PING without id"))?;
@@ -244,7 +274,7 @@ async fn start_ping_ponger(
                 let msg_str = format!("PONG {}", id);
                 let msg = make_msg(&dest_node_id, &msg_str);
 
-                outbound_tx.send(msg).await?;
+                outbound_tx.send(msg)?;
             },
 
             Some("PONG") => {
@@ -261,7 +291,7 @@ async fn start_ping_ponger(
                 let new_id = thread_rng().next_u64();
                 inflight_pings.insert(new_id, Utc::now().naive_utc());
                 let msg = make_msg(&dest_node_id, &format!("PING {}", new_id));
-                outbound_tx.send(msg).await?;
+                outbound_tx.send(msg)?;
             },
             msg => {
                 return Err(anyhow!("Received invalid message '{:?}'", msg));

@@ -34,14 +34,20 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq, BorshSerialize, BorshDeserialize)]
 #[borsh(use_discriminant = true)]
 pub enum PowAlgorithm {
-    RandomX = 0,
+    RandomXM = 0,
     Sha3x = 1,
+    RandomXT = 2,
 }
 
 impl PowAlgorithm {
-    /// Returns true if the PoW algorithm is RandomX
-    pub fn is_randomx(&self) -> bool {
-        matches!(self, Self::RandomX)
+    /// Returns true if the PoW algorithm is merged mined monero RandomX
+    pub fn is_merged_mined_randomx(&self) -> bool {
+        matches!(self, Self::RandomXM)
+    }
+
+    /// Returns true if the PoW algorithm is solo tari RandomX
+    pub fn is_tari_randomx(&self) -> bool {
+        matches!(self, Self::RandomXT)
     }
 
     /// Returns true if the PoW algorithm is Sha3
@@ -67,8 +73,9 @@ impl TryFrom<u64> for PowAlgorithm {
 
     fn try_from(v: u64) -> Result<Self, Self::Error> {
         match v {
-            0 => Ok(PowAlgorithm::RandomX),
+            0 => Ok(PowAlgorithm::RandomXM),
             1 => Ok(PowAlgorithm::Sha3x),
+            2 => Ok(PowAlgorithm::RandomXT),
             _ => Err("Invalid PoWAlgorithm".into()),
         }
     }
@@ -79,8 +86,9 @@ impl FromStr for PowAlgorithm {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "RandomX" | "randomx" | "random_x" => Ok(Self::RandomX),
-            "sha" | "sha3" | "SHA3" => Ok(Self::Sha3x),
+            "RandomX" | "randomx" | "random_x" | "RandomXM" | "randomxm" | "monero_random_x" => Ok(Self::RandomXM),
+            "sha" | "sha3" | "SHA3" | "sha3X" | "Sha3X" | "SHA3X" => Ok(Self::Sha3x),
+            "RandomXT" | "randomxt" | "tari_random_x" => Ok(Self::RandomXT),
             other => Err(PowAlgorithmParseError::UnknownType(other.into())),
         }
     }
@@ -89,8 +97,9 @@ impl FromStr for PowAlgorithm {
 impl Display for PowAlgorithm {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
         let algo = match self {
-            PowAlgorithm::RandomX => "RandomX",
+            PowAlgorithm::RandomXM => "RandomXMonero",
             PowAlgorithm::Sha3x => "Sha3",
+            PowAlgorithm::RandomXT => "RandomXTari",
         };
         fmt.write_str(algo)
     }

@@ -433,7 +433,7 @@ where
                     proto_str
                 );
                 #[cfg(feature = "metrics")]
-                metrics::inbound_substream_counter(&node_id, &protocol).inc();
+                metrics::inbound_substream_counter(&protocol).inc();
                 let notify_fut = self
                     .protocols
                     .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
@@ -465,17 +465,17 @@ where
                         .await;
                 }
                 #[cfg(feature = "metrics")]
-                metrics::successful_connections(conn.peer_node_id(), conn.direction()).inc();
+                metrics::successful_connections(conn.direction()).inc();
                 self.publish_event(PeerConnected(conn));
             },
             PeerConnectFailed(peer, err) => {
                 #[cfg(feature = "metrics")]
-                metrics::failed_connections(&peer, ConnectionDirection::Outbound).inc();
+                metrics::failed_connections(ConnectionDirection::Outbound).inc();
                 self.publish_event(PeerConnectFailed(peer, err));
             },
             PeerInboundConnectFailed(err) => {
                 #[cfg(feature = "metrics")]
-                metrics::failed_connections(&Default::default(), ConnectionDirection::Inbound).inc();
+                metrics::failed_connections(ConnectionDirection::Inbound).inc();
                 self.publish_event(PeerInboundConnectFailed(err));
             },
             event => {
@@ -510,7 +510,7 @@ where
                 warn!(target: LOG_TARGET, "Peer not found for dial");
                 if let Some(reply) = reply {
                     let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(
-                        PeerManagerError::PeerNotFoundError,
+                        PeerManagerError::peer_not_found(&node_id),
                     )));
                 }
             },

@@ -37,9 +37,11 @@ use rand::rngs::OsRng;
 use tari_common::{
     configuration::{CommonConfig, MultiaddrList},
     network_check::set_network_if_choice_valid,
+    MAX_GRPC_MESSAGE_SIZE,
 };
+use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
 use tokio::task;
@@ -92,7 +94,9 @@ pub async fn spawn_base_node_with_config(
     peers: Vec<String>,
     mut base_node_config: BaseNodeConfig,
 ) {
-    std::env::set_var("TARI_NETWORK", "localnet");
+    unsafe {
+        std::env::set_var("TARI_NETWORK", "localnet");
+    }
     set_network_if_choice_valid(Network::LocalNet).unwrap();
 
     let port: u64;
@@ -109,8 +113,8 @@ pub async fn spawn_base_node_with_config(
         base_node_identity = node_ps.identity.clone();
     } else {
         // each spawned base node will use different ports
-        port = get_port(18000..18499).unwrap();
-        grpc_port = get_port(18500..18999).unwrap();
+        port = get_port(world, 18000..18499).unwrap();
+        grpc_port = get_port(world, 18500..18999).unwrap();
         // create a new temporary directory
         temp_dir_path = world
             .current_base_dir
@@ -218,7 +222,12 @@ pub async fn spawn_base_node_with_config(
 
 impl BaseNodeProcess {
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {
-        Ok(BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port)).await?)
+        Ok(
+            BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port))
+                .await?
+                .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+                .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
+        )
     }
 
     pub fn kill(&mut self) {

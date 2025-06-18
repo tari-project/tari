@@ -68,7 +68,7 @@ Feature: Wallet Monitoring
     # Then node NODE_A1 is at height 10
     # Then wallet WALLET_A1 detects exactly 7 coinbase transactions as CoinbaseConfirmed
     #     # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
-    # And I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
+    # And I multi-send 7 one-sided transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
     # When mining node MINING_A mines 10 blocks with min difficulty 20 and max difficulty 9999999999
     # Then node SEED_A is at height 20
     # Then node NODE_A1 is at height 20
@@ -90,7 +90,7 @@ Feature: Wallet Monitoring
     # Then node NODE_B1 is at height 10
     # Then wallet WALLET_B1 detects exactly 7 coinbase transactions as CoinbaseConfirmed
     #     # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
-    # And I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
+    # And I multi-send 7 one-sided transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
     # When mining node MINING_B mines 10 blocks with min difficulty 1 and max difficulty 2
     # Then node SEED_B is at height 20
     # Then node NODE_B1 is at height 20

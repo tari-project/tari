@@ -43,7 +43,7 @@ use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     consensus::ConsensusManager,
-    proof_of_work::{monero_rx, monero_rx::FixedByteArray, randomx_difficulty, randomx_factory::RandomXFactory},
+    proof_of_work::{monero_randomx_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
 };
 use tari_utilities::hex::Hex;
 use tokio::time::timeout;
@@ -228,7 +228,7 @@ impl InnerService {
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
                 trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
-                let diff = randomx_difficulty(
+                let diff = monero_randomx_difficulty(
                     &tari_header,
                     &self.randomx_factory,
                     self.consensus_manager.get_genesis_block().hash(),

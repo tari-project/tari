@@ -19,13 +19,13 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{convert::TryFrom, sync::Arc, thread, time::Instant};
 
 use futures::stream::StreamExt;
 use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
+    conversions::transaction_output::grpc_output_with_payref,
     tari_rpc::{
         base_node_client::BaseNodeClient,
         pow_algo::PowAlgos,
@@ -35,7 +35,6 @@ use minotari_app_grpc::{
         PowAlgo,
         SubmitBlockRequest,
         SubmitBlockResponse,
-        TransactionOutput as GrpcTransactionOutput,
     },
 };
 use minotari_app_utilities::parse_miner_input::{
@@ -50,15 +49,23 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
     load_configuration,
     DefaultConfigLoader,
+    MAX_GRPC_MESSAGE_SIZE,
 };
-use tari_common_types::{tari_address::TariAddress, types::UncompressedPublicKey};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{FixedHash, UncompressedPublicKey},
+};
 use tari_core::{
     blocks::BlockHeader,
     consensus::ConsensusManager,
+    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     transactions::{
         generate_coinbase,
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra},
+        transaction_components::{
+            payment_id::{PaymentId, TxType},
+            CoinBaseExtra,
+        },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
 };
@@ -308,7 +315,9 @@ async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient,
     let node_conn = ShaP2PoolClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    );
+    )
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
     Ok(node_conn)
 }
@@ -343,7 +352,9 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
     let node_conn = BaseNodeClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
-    );
+    )
+    .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+    .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
     Ok(node_conn)
 }
@@ -361,6 +372,7 @@ async fn verify_base_node_responses(
 struct GetNewBlockResponse {
     block: Block,
     target_difficulty: u64,
+    vm_key: FixedHash,
 }
 
 /// Gets a new block from base node or p2pool node if its enabled in config
@@ -435,7 +447,10 @@ async fn get_new_block_base_node(
         true,
         consensus_manager.consensus_constants(height),
         config.range_proof_type,
-        PaymentId::Empty,
+        PaymentId::Open {
+            user_data: vec![],
+            tx_type: TxType::Coinbase,
+        },
     )
     .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
@@ -446,16 +461,20 @@ async fn get_new_block_base_node(
         .body
         .as_mut()
         .ok_or_else(|| err_empty("new_block_template.body"))?;
-    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output.clone()).map_err(MinerError::Conversion)?;
+    let grpc_output =
+        grpc_output_with_payref(coinbase_output.clone(), None).map_err(|e| MinerError::Conversion(e.to_string()))?;
+
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());
     let target_difficulty = miner_data.target_difficulty;
 
     debug!(target: LOG_TARGET, "Asking base node to assemble the MMR roots");
     let block_result = base_node_client.get_new_block(block_template).await?.into_inner();
+
     Ok(GetNewBlockResponse {
         block: block_result.block.ok_or_else(|| err_empty("block"))?,
         target_difficulty,
+        vm_key: FixedHash::try_from(block_result.vm_key).map_err(|_| MinerError::Conversion("vm_key".to_string()))?,
     })
 }
 
@@ -485,6 +504,7 @@ async fn get_new_block_p2pool_node(
     Ok(GetNewBlockResponse {
         block,
         target_difficulty: block_result.target_difficulty,
+        vm_key: FixedHash::zero(),
     })
 }
 
@@ -540,11 +560,20 @@ async fn mining_cycle(
     let header = block.clone().header.ok_or_else(|| err_empty("block.header"))?;
 
     debug!(target: LOG_TARGET, "Initializing miner");
+
+    let rx_factory = if config.proof_of_work_algo == PowAlgorithm::RandomXT {
+        Some(RandomXFactory::new(config.num_mining_threads))
+    } else {
+        None
+    };
+
     let mut reports = Miner::init_mining(
         header.clone(),
         block_result.target_difficulty,
         config.num_mining_threads,
         false,
+        block_result.vm_key,
+        rx_factory,
     );
     let mut reporting_timeout = Instant::now();
     let mut block_submitted = false;
@@ -608,13 +637,22 @@ async fn mining_cycle(
 }
 
 pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
-    let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
+    let mut hashrate = report.hashes as f64 / report.elapsed.as_secs() as f64;
+    let display_string = if hashrate > 1_000_000.0 {
+        hashrate /= 1_000_000.0;
+        "MH/s"
+    } else {
+        hashrate /= 1_000.0;
+        "KH/s"
+    };
     info!(
         target: LOG_TARGET,
-        "⛏ Miner {:0>2} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
+        "⛏ Miner {:0>2} reported {:.2}{} with total {:.2}{} over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
+        display_string,
         hashrate * num_mining_threads as f64,
+        display_string,
         num_mining_threads,
         report.height,
         report.target_difficulty,

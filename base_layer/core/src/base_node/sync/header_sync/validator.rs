@@ -22,8 +22,8 @@
 use std::cmp::Ordering;
 
 use log::*;
-use primitive_types::U256;
-use tari_common_types::types::HashOutput;
+use primitive_types::U512;
+use tari_common_types::types::{FixedHash, HashOutput};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
@@ -33,7 +33,14 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator, ValidationError},
+    validation::{
+        header::HeaderFullValidator,
+        tari_rx_vm_key_height,
+        DifficultyCalculator,
+        HeaderChainLinkedValidator,
+        ValidationError,
+        TARI_RX_VM_KEY_BLOCK_SWAP,
+    },
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -54,6 +61,7 @@ struct State {
     previous_accum: BlockHeaderAccumulatedData,
     previous_header: BlockHeader,
     valid_headers: Vec<ChainHeader>,
+    vm_key: Vec<(u64, FixedHash)>,
 }
 
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
@@ -88,11 +96,14 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             })?;
         debug!(
             target: LOG_TARGET,
-            "Setting header validator state ({} timestamp(s), target difficulties: {} SHA3, {} RandomX)",
+            "Setting header validator state ({} timestamp(s), target difficulties: {} SHA3, {} Monero RandomX, {} Tari RandomX)",
             timestamps.len(),
-            target_difficulties.get(PowAlgorithm::Sha3x).len(),
-            target_difficulties.get(PowAlgorithm::RandomX).len(),
+            target_difficulties.get(PowAlgorithm::Sha3x).map(|t| t.len()).unwrap_or(0),
+            target_difficulties.get(PowAlgorithm::RandomXM).map(|t| t.len()).unwrap_or(0),
+            target_difficulties.get(PowAlgorithm::RandomXT).map(|t| t.len()).unwrap_or(0),
         );
+
+        let gen_hash = *self.consensus_rules.get_genesis_block().hash();
         self.state = Some(State {
             current_height: start_header.height,
             timestamps,
@@ -101,6 +112,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             previous_header: start_header,
             // One large allocation is usually better even if it is not always used.
             valid_headers: Vec::with_capacity(HEADER_SYNC_INITIAL_MAX_HEADERS),
+            vm_key: vec![(0, gen_hash)],
         });
 
         Ok(())
@@ -110,23 +122,55 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         self.valid_headers().last()
     }
 
-    pub async fn validate(&mut self, header: BlockHeader) -> Result<U256, BlockHeaderSyncError> {
-        let state = self.state();
+    pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
         let constants = self.consensus_rules.consensus_constants(header.height);
+        if constants.effective_from_height() == header.height {
+            if let Some(&mut ref mut mut_state) = self.state.as_mut() {
+                // We need to update the target difficulties for the new algorithm
+                mut_state
+                    .target_difficulties
+                    .update_algos(&self.consensus_rules, header.height)
+                    .map_err(BlockHeaderSyncError::TargetDifficultiesError)?;
+            }
+        }
 
-        let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate(
-            constants.min_pow_difficulty(header.pow_algo()),
-            constants.max_pow_difficulty(header.pow_algo()),
-        );
+        let state = self.state();
+
+        let target_difficulty = state
+            .target_difficulties
+            .get(header.pow_algo())
+            .map_err(BlockHeaderSyncError::TargetDifficultiesError)?
+            .calculate(
+                constants.min_pow_difficulty(header.pow_algo()),
+                constants.max_pow_difficulty(header.pow_algo()),
+            );
 
         let result = {
             let txn = self.db.inner().db_read_access()?;
+            let vm_key_height = tari_rx_vm_key_height(header.height);
+            let vm_key = match txn.fetch_chain_header_by_height(vm_key_height) {
+                Ok(header) => *header.hash(),
+                Err(_) => {
+                    // header not found, lets search our cached headers
+                    let mut vm_key = None;
+                    for (height, hash) in &state.vm_key {
+                        if *height == vm_key_height {
+                            vm_key = Some(*hash);
+                            break;
+                        }
+                    }
+                    vm_key.ok_or(ChainStorageError::UnexpectedResult(
+                        "Could not find header in database or cache".to_string(),
+                    ))?
+                },
+            };
             self.validator.validate(
                 &*txn,
                 &header,
                 &state.previous_header,
                 &state.timestamps,
                 Some(target_difficulty),
+                vm_key,
             )
         };
         let achieved_target = match result {
@@ -171,7 +215,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
         state.current_height = header.height;
         // Add a "more recent" datapoint onto the target difficulty
-        state.target_difficulties.add_back(&header, target_difficulty);
+        state
+            .target_difficulties
+            .add_back(&header, target_difficulty)
+            .map_err(ChainStorageError::UnexpectedResult)?;
 
         let accumulated_data = BlockHeaderAccumulatedData::builder(&state.previous_accum)
             .with_hash(header.hash())
@@ -184,6 +231,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
 
         state.previous_accum = chain_header.accumulated_data().clone();
+        if chain_header.header().height % TARI_RX_VM_KEY_BLOCK_SWAP == 0 {
+            // we need to save the hash of this header and height
+            state.vm_key.push((chain_header.header().height, *chain_header.hash()));
+        }
         state.valid_headers.push(chain_header);
 
         Ok(total_accumulated_difficulty)
@@ -299,8 +350,12 @@ mod test {
             validator.initialize_state(&tip.header().hash()).await.unwrap();
             let state = validator.state();
             assert!(state.valid_headers.is_empty());
-            assert_eq!(state.target_difficulties.get(PowAlgorithm::Sha3x).len(), 2);
-            assert!(state.target_difficulties.get(PowAlgorithm::RandomX).is_empty());
+            assert_eq!(state.target_difficulties.get(PowAlgorithm::Sha3x).unwrap().len(), 2);
+            assert!(state
+                .target_difficulties
+                .get(PowAlgorithm::RandomXM)
+                .unwrap()
+                .is_empty());
             assert_eq!(state.timestamps.len(), 2);
             assert_eq!(state.current_height, 1);
         }
@@ -326,11 +381,13 @@ mod test {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(tip.hash()).await.unwrap();
             assert!(validator.valid_headers().is_empty());
-            let next = BlockHeader::from_previous(tip.header());
+            let mut next = BlockHeader::from_previous(tip.header());
+            next.timestamp = tip.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
             validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
-            let next = BlockHeader::from_previous(tip.header());
+            let mut next = BlockHeader::from_previous(tip.header());
+            next.timestamp = tip.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
             validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }

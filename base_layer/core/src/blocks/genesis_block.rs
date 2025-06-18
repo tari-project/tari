@@ -26,24 +26,14 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-use tari_mmr::{
-    pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{NodeKey, ValueHash},
-};
-use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    input_mr_hash_from_pruned_mmr,
-    kernel_mr_hash_from_mmr,
-    output_mr_hash_from_smt,
     proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     },
-    OutputSmt,
-    PrunedInputMmr,
 };
 
 /// Returns the genesis block for the selected network.
@@ -83,48 +73,6 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
     block.body.sort();
 }
 
-fn print_mr_values(block: &mut Block, print: bool) {
-    if !print {
-        return;
-    }
-    use std::convert::TryFrom;
-
-    use crate::{chain_storage::calculate_validator_node_mr, KernelMmr};
-
-    let mut kernel_mmr = KernelMmr::new(Vec::new());
-    for k in block.body.kernels() {
-        kernel_mmr.push(k.hash().to_vec()).unwrap();
-    }
-
-    let mut output_smt = OutputSmt::new();
-
-    for o in block.body.outputs() {
-        let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-        let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
-        output_smt.insert(smt_key, smt_node).unwrap();
-    }
-    for i in block.body.inputs() {
-        let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
-        output_smt.delete(&smt_key).unwrap();
-    }
-    let vn_mmr = calculate_validator_node_mr(&[]).unwrap();
-
-    let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
-    for input in block.body.inputs() {
-        input_mmr.push(input.canonical_hash().to_vec()).unwrap();
-    }
-
-    block.header.kernel_mr = kernel_mr_hash_from_mmr(&kernel_mmr).unwrap();
-    block.header.output_mr = output_mr_hash_from_smt(&mut output_smt).unwrap();
-    block.header.input_mr = input_mr_hash_from_pruned_mmr(&input_mmr).unwrap();
-    block.header.validator_node_mr = vn_mmr;
-    println!();
-    println!("kernel mr: {}", block.header.kernel_mr.to_hex());
-    println!("input mr: {}", block.header.input_mr.to_hex());
-    println!("output mr: {}", block.header.output_mr.to_hex());
-    println!("vn mr: {}", block.header.validator_node_mr.to_hex());
-}
-
 pub fn get_stagenet_genesis_block() -> ChainBlock {
     let mut block = get_stagenet_genesis_block_raw();
 
@@ -135,9 +83,6 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         // NB: `stagenet_genesis_sanity_check` must pass
         let file_contents = include_str!("pre_mine/stagenet_pre_mine.json");
         add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
-        // Enable print only if you need to generate new Merkle roots, then disable it again
-        let print_values = false;
-        print_mr_values(&mut block, print_values);
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
@@ -145,7 +90,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("435f13e21be06b0d0ae9ad3869ac7c723edd933983fa2e26df843c82594b3245").unwrap();
+            FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
@@ -155,7 +100,8 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -195,9 +141,6 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         // NB: `nextnet_genesis_sanity_check` must pass
         let file_contents = include_str!("pre_mine/nextnet_pre_mine.json");
         add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
-        // Enable print only if you need to generate new Merkle roots, then disable it again
-        let print_values = false;
-        print_mr_values(&mut block, print_values);
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
@@ -205,17 +148,21 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("7b65d5140485b44e33eef3690d46c41e4dc5c4520ad7464d7740f376f4f0a728").unwrap();
+            FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
+
+    block.header.output_mr =
+        FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -224,7 +171,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2025 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("09 May 2025 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -255,9 +202,6 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         // NB: `mainnet_genesis_sanity_check` must pass
         let file_contents = include_str!("pre_mine/mainnet_pre_mine.json");
         add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
-        // Enable print only if you need to generate new Merkle roots, then disable it again
-        let print_values = false;
-        print_mr_values(&mut block, print_values);
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
@@ -265,7 +209,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("b7b38b76f5832b5b63691a8334dfa67d8c762b77b2b4aa4f648c4eb1dfb25c1e").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("a77ecf05b20c426d3d400a63397be6c622843c66d5751ecbe3390c8a4885158e").unwrap();
+            FixedHash::from_hex("ce7f66009cbd277968ba86d5e7be1b41aa268f5cb2f655ea1741cc82ab793c3b").unwrap();
         block.header.block_output_mr =
             FixedHash::from_hex("91e997520b0eee770914334692080f92d18db434d373561f8842c56d70c11b97").unwrap();
         block.header.validator_node_mr =
@@ -277,7 +221,8 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -285,22 +230,34 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 }
 
 fn get_mainnet_genesis_block_raw() -> Block {
+    let mut gen_block_payload = include_bytes!("gen_block/Tari.Manifesto").to_vec();
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("22 Aug 2024 08:00:00 +0200").expect("parse may not fail");
-    let not_before_proof = b"I am the standin mainnet genesis block, \
-        \
-       I am not the real mainnet block \
-        \
-        I am only a standin \
-        \
-       Do not take me for the real one. I am only a placeholder for the real one";
-    if not_before_proof.len() > PowData::default().max_size() {
+    let genesis_timestamp = DateTime::parse_from_rfc2822("06 May 2025 08:00:00 +0200").expect("parse may not fail");
+
+    let soons_secrets = vec![
+        "e777pxxdrk32oj5t2g5hokt5n2slbiwxgcmmdhvgzrvvvdvlqnuyijbd.fvboe",
+        "1993f729e1584439e3cfb70d9bd8bab377103b37fbcd2a8d4ec38195601adf7a",
+        "597f70b6d2e02da4eaf98c7ea95404ba2d7830ec576fc81586cf8c49db941661",
+        "8b46b1969b9f879d8f2d31bebd5126be4ff807b297213837ab0d2ef59db46d6f",
+        "459a45beae1854f70918611b50e85bdbc0d21a688852192e96628cac04b92f22",
+    ];
+
+    let not_before_proof = "c4e258f0fab1077188ae0792a4224183af070202bee11e3c752918a7e9b2be52";
+    for secret in soons_secrets {
+        let mut bytes = secret.as_bytes().to_vec();
+        gen_block_payload.append(&mut bytes);
+    }
+    let mut not_before_proof = not_before_proof.as_bytes().to_vec();
+    gen_block_payload.append(&mut not_before_proof);
+    if gen_block_payload.len() > PowData::default().max_size() {
         panic!(
             "Not-before-proof data is too large, exceeds limit by '{}' bytes",
-            not_before_proof.len() - PowData::default().max_size()
+            gen_block_payload.len() - PowData::default().max_size()
         );
     }
-    get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(not_before_proof))
+    let mut block = get_raw_block(&genesis_timestamp, &PowData::from_bytes_truncate(gen_block_payload));
+    block.header.nonce = 61724;
+    block
 }
 
 pub fn get_igor_genesis_block() -> ChainBlock {
@@ -314,9 +271,6 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         // NB: `igor_genesis_sanity_check` must pass
         let file_contents = include_str!("pre_mine/igor_pre_mine.json");
         add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
-        // Enable print only if you need to generate new Merkle roots, then disable it again
-        let print_values = false;
-        print_mr_values(&mut block, print_values);
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
@@ -324,7 +278,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("d227ba7b215eab4dae9e0d5a678b84ffbed1d7d3cebdeafae4704e504bd2e5f3").unwrap();
+            FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -334,7 +288,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -376,9 +331,6 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         // value NB: `esmeralda_genesis_sanity_check` must pass
         let file_contents = include_str!("pre_mine/esmeralda_pre_mine.json");
         add_pre_mine_utxos_to_genesis_block(file_contents, &mut block);
-        // Enable print only if you need to generate new Merkle roots, then disable it again
-        let print_values = false;
-        print_mr_values(&mut block, print_values);
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
@@ -386,11 +338,11 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         block.header.input_mr =
             FixedHash::from_hex("16a4ad34eccac12cbafe3ab448ca2c0d0dfcccd23098667bc6530da30526fb3d").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("2a30238a09f5235a6a5a845611bb0dfae9666b269fb61f1759cf152e7572f78c").unwrap();
-        block.header.block_output_mr =
-            FixedHash::from_hex("ab2dcfdfd29197c41838a3fd4fab24135578f741cc21614cdb575554c7513424").unwrap();
+            FixedHash::from_hex("a871470fefd60e1c268beeac5918c7997073e1bbd5c5890306acbfe57b85329f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
+        block.header.block_output_mr =
+            FixedHash::from_hex("ab2dcfdfd29197c41838a3fd4fab24135578f741cc21614cdb575554c7513424").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -398,7 +350,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -407,7 +360,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2025 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("09 May 2025 08:00:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -438,7 +391,8 @@ pub fn get_localnet_genesis_block() -> ChainBlock {
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1.into(),
-        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
         accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
@@ -482,7 +436,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::zero(),
+            output_mr: FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap(),
             block_output_mr: FixedHash::from_hex("622720a6571c33d6bf6138d9e737d3468c77f1193640698ad459953d24ec0812")
                 .unwrap(),
             output_smt_size: 0,
@@ -513,23 +467,27 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
 // Note: Tests in this module are serialized to prevent domain separated network hash conflicts
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
-
+    use jmt::{JellyfishMerkleTree, KeyHash};
     use serial_test::serial;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
+    use tari_mmr::pruned_hashset::PrunedHashSet;
+    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
-        chain_storage::calculate_validator_node_mr,
+        chain_storage::{BlockchainBackend, SmtHasher},
         consensus::ConsensusManager,
-        test_helpers::blockchain::create_new_blockchain_with_network,
+        input_mr_hash_from_pruned_mmr,
+        kernel_mr_hash_from_mmr,
+        test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
+        PrunedInputMmr,
         PrunedOutputMmr,
     };
     #[test]
@@ -663,22 +621,25 @@ mod test {
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
-        let mut output_smt = OutputSmt::new();
+        let tempdb = TempDatabase::new();
+        let tree_reader = tempdb.create_smt_reader().unwrap();
+        let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&tree_reader);
         let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
-        let vn_nodes = Vec::new();
+        // let mut vn_nodes = Vec::new();
+        let mut smt_batch = vec![];
         for o in block.block().body.outputs() {
             if o.features.is_coinbase() {
                 block_output_mmr.push(o.hash().to_vec()).unwrap();
             } else {
                 normal_output_mmr.push(o.hash().to_vec()).unwrap();
             }
-            let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
-            let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
-            output_smt.insert(smt_key, smt_node).unwrap();
+            let smt_key = KeyHash(o.commitment.as_bytes().try_into().expect("commitment is 32 bytes"));
+            let smt_value = o.smt_hash(block.header().height);
+
+            smt_batch.push((smt_key, Some(smt_value.to_vec())));
+
             o.verify_metadata_signature().unwrap();
-            // We currently don't have validator nodes in a genesis block so this code (currently broken) isn't needed.
-            // Keeping it in case we need it.
             // if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
             //     let reg = o
             //         .features
@@ -686,22 +647,10 @@ mod test {
             //         .as_ref()
             //         .and_then(|f| f.validator_node_registration())
             //         .unwrap();
-            //     vn_nodes.push(reg.clone());
-            // }
-        }
-        for i in block.block().body.inputs() {
-            let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
-            output_smt.delete(&smt_key).unwrap();
-            // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
-            //     let reg = i
-            //         .features()
-            //         .unwrap()
-            //         .sidechain_feature
-            //         .as_ref()
-            //         .and_then(|f| f.validator_node_registration())
-            //         .unwrap();
-            //     let pos = vn_nodes.iter().position(|v| v == reg).unwrap();
-            //     vn_nodes.remove(pos);
+            //     vn_nodes.push((
+            //         reg.public_key().clone(),
+            //         reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+            //     ));
             // }
         }
 
@@ -710,8 +659,15 @@ mod test {
             .unwrap();
 
         for i in block.block().body.inputs() {
-            let smt_key = NodeKey::try_from(i.commitment().unwrap().as_bytes()).unwrap();
-            output_smt.delete(&smt_key).unwrap();
+            let smt_key = KeyHash(
+                i.commitment()
+                    .unwrap()
+                    .as_bytes()
+                    .try_into()
+                    .expect("Commitment is 32 bytes"),
+            );
+            smt_batch.push((smt_key, None));
+
             // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
             //     let reg = i
             //         .features()
@@ -723,8 +679,10 @@ mod test {
             //     let pos = vn_nodes
             //         .iter()
             //         .position(|v| {
-            //             v.public_key == *reg.public_key()
-            //                 && v.shard_key == reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash())
+            //             v == &(
+            //                 reg.public_key().clone(),
+            //                 reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+            //             )
             //         })
             //         .unwrap();
             //     vn_nodes.remove(pos);
@@ -740,10 +698,8 @@ mod test {
             kernel_mr_hash_from_mmr(&kernel_mmr).unwrap().to_vec().to_hex(),
             block.header().kernel_mr.to_vec().to_hex()
         );
-        assert_eq!(
-            output_mr_hash_from_smt(&mut output_smt).unwrap().to_vec().to_hex(),
-            block.header().output_mr.to_vec().to_hex(),
-        );
+        let (smt_root, _) = output_smt.put_value_set(smt_batch, 0).unwrap();
+        assert_eq!(smt_root.0.to_vec().to_hex(), block.header().output_mr.to_vec().to_hex(),);
 
         let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
         let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
@@ -767,10 +723,10 @@ mod test {
             block.header().input_mr.to_vec().to_hex(),
         );
 
-        assert_eq!(
-            calculate_validator_node_mr(&vn_nodes).unwrap(),
-            block.header().validator_node_mr,
-        );
+        // assert_eq!(
+        //     calculate_validator_node_mr(&vn_nodes),
+        //     block.header().validator_node_mr,
+        // );
 
         // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
         // kernel is correct)

@@ -33,7 +33,12 @@ use tari_core::{
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
     transactions::{
         generate_coinbase,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, TransactionKernel, TransactionOutput},
+        transaction_components::{
+            payment_id::{PaymentId, TxType},
+            CoinBaseExtra,
+            TransactionKernel,
+            TransactionOutput,
+        },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
     AuxChainHashes,
@@ -89,7 +94,7 @@ impl BlockTemplateManager<'_> {
         let block = match self.p2pool_client.as_mut() {
             Some(client) => {
                 let pow_algo = PowAlgo {
-                    pow_algo: PowAlgos::Randomx.into(),
+                    pow_algo: PowAlgos::Randomxm.into(),
                 };
                 let coinbase_extra = if self.config.coinbase_extra.trim().is_empty() {
                     String::new()
@@ -210,7 +215,7 @@ impl BlockTemplateManager<'_> {
             .base_node_client
             .get_new_block_template(grpc::NewBlockTemplateRequest {
                 algo: Some(grpc::PowAlgo {
-                    pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
+                    pow_algo: grpc::pow_algo::PowAlgos::Randomxm.into(),
                 }),
                 max_weight: 0,
             })
@@ -246,7 +251,10 @@ impl BlockTemplateManager<'_> {
             true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
-            PaymentId::Empty,
+            PaymentId::Open {
+                user_data: vec![],
+                tx_type: TxType::Coinbase,
+            },
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))

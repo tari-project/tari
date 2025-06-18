@@ -59,8 +59,8 @@ fn setup_connectivity_manager(
     ConnectionManagerMockState,
     Shutdown,
 ) {
-    let peer_manager = build_peer_manager();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
     let (cm_requester, mock) = create_connection_manager_mock();
     let cm_mock_state = mock.get_shared_state();
     tokio::spawn(mock.run());
@@ -97,7 +97,7 @@ async fn add_test_peers(peer_manager: &PeerManager, n: usize) -> Vec<Peer> {
     let mut peers = Vec::with_capacity(n);
     for peer in peer_iter {
         peers.push(peer.clone());
-        peer_manager.add_peer(peer).await.unwrap();
+        peer_manager.add_or_update_peer(peer).await.unwrap();
     }
     peers
 }
@@ -148,24 +148,22 @@ async fn online_then_offline_then_online() {
     let peers = add_test_peers(&peer_manager, 8).await;
     let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
     for peer in &clients {
-        peer_manager.add_peer(peer.to_peer()).await.unwrap();
+        peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
     }
 
-    let client_connections = future::join_all(
-        clients
-            .iter()
-            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer.to_peer())),
-    )
+    let client_connections = future::join_all(clients.iter().map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(value.to_peer(), peer.to_peer()).await }
+    }))
     .await
     .into_iter()
     .map(|(conn, _, _, _)| conn)
     .collect::<Vec<_>>();
 
-    let connections = future::join_all(
-        (0..5)
-            .map(|i| peers[i].clone())
-            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer)),
-    )
+    let connections = future::join_all((0..5).map(|i| peers[i].clone()).map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(value.to_peer(), peer).await }
+    }))
     .await
     .into_iter()
     .map(|(conn, _, _, _)| conn)
@@ -173,11 +171,13 @@ async fn online_then_offline_then_online() {
 
     connectivity
         .dial_many_peers(peers.iter().map(|p| p.node_id.clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 
     connectivity
         .dial_many_peers(clients.iter().map(|p| p.node_id().clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 
@@ -323,12 +323,10 @@ async fn peer_selection() {
         setup_connectivity_manager(config);
     let peers = add_test_peers(&peer_manager, 10).await;
 
-    let connections = future::join_all(
-        peers
-            .iter()
-            .cloned()
-            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
-    )
+    let connections = future::join_all(peers.iter().cloned().map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
+    }))
     .await
     .into_iter()
     .map(|(_, _, conn, _)| conn)
@@ -336,6 +334,7 @@ async fn peer_selection() {
 
     connectivity
         .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 
@@ -386,12 +385,10 @@ async fn pool_management() {
         setup_connectivity_manager(config);
     let peers = add_test_peers(&peer_manager, 10).await;
 
-    let connections = future::join_all(
-        peers
-            .iter()
-            .cloned()
-            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
-    )
+    let connections = future::join_all(peers.iter().cloned().map(|peer| {
+        let value = node_identity.clone();
+        async move { create_peer_connection_mock_pair(peer, value.to_peer()).await }
+    }))
     .await
     .into_iter()
     .map(|(_, _, conn, _)| conn)
@@ -399,6 +396,7 @@ async fn pool_management() {
 
     connectivity
         .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .await
         .collect::<Vec<_>>()
         .await;
 

@@ -66,6 +66,7 @@ pub struct NewOutputSql {
     pub source: i32,
     pub spending_priority: i32,
     pub payment_id: Option<Vec<u8>>,
+    pub user_payment_id: Option<Vec<u8>>,
 }
 
 impl NewOutputSql {
@@ -77,6 +78,13 @@ impl NewOutputSql {
     ) -> Result<Self, OutputManagerStorageError> {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.wallet_output.covenant, &mut covenant)?;
+
+        let user_payment_id = output.payment_id.user_data_as_bytes();
+        let user_payment_id = if user_payment_id.is_empty() {
+            None
+        } else {
+            Some(user_payment_id)
+        };
 
         let output = Self {
             commitment: output.commitment.to_vec(),
@@ -113,6 +121,7 @@ impl NewOutputSql {
             source: output.source as i32,
             spending_priority: output.spending_priority.into(),
             payment_id: Some(output.payment_id.to_bytes()),
+            user_payment_id,
         };
 
         Ok(output)

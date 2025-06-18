@@ -56,7 +56,7 @@ pub async fn register_merge_mining_proxy_process(
         name: merge_mining_proxy_name.clone(),
         base_node_name,
         wallet_name,
-        port: get_port(18000..18499).unwrap(),
+        port: get_port(world, 18000..18499).unwrap(),
         origin_submission,
         id: 0,
     };
@@ -69,7 +69,9 @@ pub async fn register_merge_mining_proxy_process(
 
 impl MergeMiningProxyProcess {
     pub async fn start(&self, world: &mut TariWorld) {
-        std::env::set_var("TARI_NETWORK", "localnet");
+        unsafe {
+            std::env::set_var("TARI_NETWORK", "localnet");
+        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
 
         let temp_dir = tempdir().unwrap();

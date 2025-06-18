@@ -11,7 +11,7 @@ license.workspace = true
 [dependencies]
 log = { version = "0.4.14", optional = true }
 once_cell = "1.8.0"
-prometheus = "0.13.0"
+prometheus = "0.14.0"
 
 futures = { version = "0.3.15", default-features = false, optional = true }
 reqwest = { version = "0.11.4", default-features = false, optional = true }

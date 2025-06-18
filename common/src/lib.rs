@@ -77,3 +77,6 @@ pub const DEFAULT_MINER_LOG_CONFIG: &str = "config/log4rs_miner.yml";
 pub const DEFAULT_COLLECTIBLES_LOG_CONFIG: &str = "config/log4rs_collectibles.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";
+/// Maximum gRPC message size for clients and servers:
+///   2MiB (coinbases) + 4MiB (transaction payload) + 2MiB (spare capacity) = 8 MiB
+pub const MAX_GRPC_MESSAGE_SIZE: usize = 8 * 1024 * 1024;

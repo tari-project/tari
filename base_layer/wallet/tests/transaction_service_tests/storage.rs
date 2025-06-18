@@ -53,7 +53,7 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             RangeProofType,
             Transaction,
@@ -91,7 +91,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_payment_id(PaymentId::open("Yo!", TxType::PaymentToOther))
+        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -132,7 +132,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         outbound_txs.push(OutboundTransaction {
             tx_id,
             destination_address: address,
@@ -140,12 +141,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open(messages[i], TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
         });
         assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
 
@@ -244,7 +246,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let tx_id = TxId::from(i);
         inbound_txs.push(InboundTransaction {
             tx_id,
@@ -252,12 +255,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i],
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open(messages[i], TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         });
         assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
         db.add_pending_inbound_transaction(tx_id, inbound_txs[i].clone())
@@ -314,12 +318,14 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         let dest_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
-        );
+        )
+        .unwrap();
         completed_txs.push(CompletedTransaction {
             tx_id: outbound_txs[i].tx_id,
             source_address,
@@ -343,7 +349,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open(messages[i], TxType::PaymentToOther),
+            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            sent_output_hashes: vec![],
+            change_output_hashes: vec![],
+            received_output_hashes: vec![],
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -354,7 +363,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     }
 
-    let retrieved_completed_txs = db.get_completed_transactions().unwrap();
+    let retrieved_completed_txs = db.get_completed_transactions(None, None, None).unwrap();
     assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
 
     for i in 0..messages.len() {
@@ -412,7 +421,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found completed tx");
     }
 
-    let completed_txs = db.get_completed_transactions().unwrap();
+    let completed_txs = db.get_completed_transactions(None, None, None).unwrap();
     let num_completed_txs = completed_txs.len();
     assert_eq!(db.get_cancelled_completed_transactions().unwrap().len(), 0);
 
@@ -420,7 +429,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(db.get_cancelled_completed_transaction(cancelled_tx_id).is_err());
     db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown)
         .unwrap();
-    let completed_txs = db.get_completed_transactions().unwrap();
+    let completed_txs = db.get_completed_transactions(None, None, None).unwrap();
     assert_eq!(completed_txs.len(), num_completed_txs - 1);
 
     db.get_cancelled_completed_transaction(cancelled_tx_id)
@@ -440,7 +449,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     db.add_pending_inbound_transaction(
         999u64.into(),
         InboundTransaction::new(
@@ -449,7 +459,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            PaymentId::open("To be cancelled", TxType::PaymentToOther),
+            PaymentId::open_from_string("To be cancelled", TxType::PaymentToOther),
             Utc::now(),
         ),
     )
@@ -492,7 +502,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
-    );
+    )
+    .unwrap();
     db.add_pending_outbound_transaction(
         998u64.into(),
         OutboundTransaction::new(
@@ -502,7 +513,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             stp.get_fee_amount().unwrap(),
             stp,
             TransactionStatus::Pending,
-            PaymentId::open("To be cancelled", TxType::PaymentToOther),
+            PaymentId::open_from_string("To be cancelled", TxType::PaymentToOther),
             Utc::now(),
             false,
         ),
@@ -599,7 +610,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(5),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        PaymentId::open("message", TxType::PaymentToOther),
+        PaymentId::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 
@@ -628,7 +639,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(6),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        PaymentId::open("message", TxType::PaymentToOther),
+        PaymentId::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 
@@ -657,7 +668,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(7),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        PaymentId::open("message", TxType::PaymentToOther),
+        PaymentId::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 

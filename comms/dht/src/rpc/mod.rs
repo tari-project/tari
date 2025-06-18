@@ -25,8 +25,6 @@
 #[cfg(test)]
 mod mock;
 #[cfg(test)]
-pub(crate) use mock::DhtRpcServiceMock;
-#[cfg(test)]
 mod test;
 
 mod service;

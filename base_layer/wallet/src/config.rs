@@ -121,6 +121,8 @@ pub struct WalletConfig {
     /// responsiveness of the wallet with slightly delayed balance updates
     #[serde(with = "serializers::seconds")]
     pub balance_enquiry_cooldown_period: Duration,
+    // How many days do we need to start scanning before our actual birthday
+    pub birthday_offset: u16,
 }
 
 impl Default for WalletConfig {
@@ -160,6 +162,7 @@ impl Default for WalletConfig {
             use_libtor: true,
             identity_file: None,
             balance_enquiry_cooldown_period: Duration::from_secs(5),
+            birthday_offset: 2,
         }
     }
 }

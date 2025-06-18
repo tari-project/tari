@@ -22,6 +22,7 @@
 
 use std::ops::{Deref, DerefMut};
 
+use tari_common::MAX_GRPC_MESSAGE_SIZE;
 use tonic::{
     codegen::{http::uri::InvalidUri, InterceptedService},
     transport::Endpoint,
@@ -48,7 +49,9 @@ impl WalletGrpcClient<tonic::transport::Channel> {
             client: Client::<tonic::transport::Channel>::with_interceptor(
                 channel,
                 ClientAuthenticationInterceptor::create(&GrpcAuthentication::None)?,
-            ),
+            )
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
         })
     }
 
@@ -58,7 +61,9 @@ impl WalletGrpcClient<tonic::transport::Channel> {
             client: Client::<tonic::transport::Channel>::with_interceptor(
                 channel,
                 ClientAuthenticationInterceptor::create(auth_config)?,
-            ),
+            )
+            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
+            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
         })
     }
 }

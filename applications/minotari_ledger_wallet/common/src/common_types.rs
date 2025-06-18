@@ -304,8 +304,52 @@ mod test {
         ];
 
         for (expected_byte, branch) in &mappings {
-            assert_eq!(branch.as_byte(), *expected_byte);
-            assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+            match branch {
+                Branch::DataEncryption => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::MetadataEphemeralNonce => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::CommitmentMask => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::Nonce => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::KernelNonce => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::SenderOffset => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::OneSidedSenderOffset => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::Spend => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::RandomKey => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::PreMine => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+                Branch::CodeTemplateAuthor => {
+                    assert_eq!(branch.as_byte(), *expected_byte);
+                    assert_eq!(Branch::from_byte(*expected_byte), Some(*branch));
+                },
+            }
         }
     }
 }

@@ -40,7 +40,7 @@ use crate::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -54,7 +54,6 @@ use crate::{
             KernelFeatures,
             TransactionMetadata,
         },
-        weight::TransactionWeight,
     },
 };
 
@@ -405,14 +404,6 @@ where KM: TransactionKeyManagerInterface
                             .own_address
                             .clone();
 
-                        let weight_without_change = TransactionWeight::latest().calculate(
-                            1,
-                            num_inputs,
-                            num_outputs,
-                            features_and_scripts_size_without_change,
-                        );
-                        let weight_of_change =
-                            TransactionWeight::latest().calculate(0, 0, 1, change_features_and_scripts_size);
                         let sender_one_sided = !self
                             .change
                             .as_ref()
@@ -426,24 +417,20 @@ where KM: TransactionKeyManagerInterface
                             sender_one_sided,
                             amount: MicroMinotari::default(),
                             fee: fee_without_change + change_fee,
-                            weight: weight_without_change + weight_of_change,
-                            inputs_count: num_inputs,
-                            outputs_count: num_outputs + 1,
-                            tx_type: if let Some(
-                                PaymentId::Open { tx_type, .. } | PaymentId::AddressAndData { tx_type, .. },
-                            ) = self.payment_id.clone()
-                            {
-                                tx_type
-                            } else if self.kernel_features.is_burned() {
+                            tx_type: if self.kernel_features.is_burned() {
                                 TxType::Burn
                             } else {
-                                TxType::default()
+                                self.payment_id
+                                    .as_ref()
+                                    .map(|pay_id| pay_id.get_type())
+                                    .unwrap_or_default()
                             },
-                            user_data: if let Some(data) = self.payment_id.clone() {
-                                data.user_data_as_bytes()
-                            } else {
-                                vec![]
-                            },
+                            user_data: self
+                                .payment_id
+                                .as_ref()
+                                .map(|pay_id| pay_id.user_data_as_bytes())
+                                .unwrap_or_default(),
+                            sent_output_hashes: Vec::new(),
                         };
                         if let Some(recipient) = self.recipient.clone() {
                             payment_id.transaction_info_set_amount(recipient.amount);

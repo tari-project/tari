@@ -48,15 +48,16 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
-        randomx_difficulty,
+        monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
+        tari_randomx_difficulty,
         Difficulty,
         PowAlgorithm,
         PowError,
     },
     transactions::aggregated_body::AggregateBody,
-    validation::{helpers, ValidationError},
+    validation::{helpers, tari_rx_vm_key_height, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -273,7 +274,7 @@ where B: BlockchainBackend + 'static
                 // this will wait a max of 150ms by default before returning anyway with a potential broken template
                 // We need to ensure the mempool has seen the latest base node height before we can be confident the
                 // template is correct
-                while !is_mempool_synced && start.elapsed().as_millis() < u128::from(MAX_MEMPOOL_TIMEOUT) {
+                while !is_mempool_synced && start.elapsed().as_millis() < MAX_MEMPOOL_TIMEOUT.into() {
                     if best_block_header.hash() == &last_seen_hash || last_seen_hash == FixedHash::default() {
                         is_mempool_synced = true;
                     } else {
@@ -463,6 +464,14 @@ where B: BlockchainBackend + 'static
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
+            NodeCommsRequest::FetchOutputByPayRef(payref) => {
+                let output_info = self.blockchain_db.fetch_output_by_payref(payref).await?;
+                Ok(NodeCommsResponse::OutputMinedInfo(output_info))
+            },
+            NodeCommsRequest::CheckOutputSpentStatus(output_hash) => {
+                let input_info = self.blockchain_db.fetch_input(output_hash).await?;
+                Ok(NodeCommsResponse::InputMinedInfo(input_info))
+            },
             NodeCommsRequest::FetchValidatorNodeChanges { epoch, sidechain_id } => {
                 let added_validators = self
                     .blockchain_db
@@ -473,6 +482,14 @@ where B: BlockchainBackend + 'static
                     .blockchain_db
                     .fetch_validators_exiting_in_epoch(sidechain_id.clone(), epoch)
                     .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    "Fetched {} validators activating and {} validators exiting in epoch {}",
+                    added_validators.len(),
+                    exit_validators.len(),
+                    epoch,
+                );
 
                 let mut node_changes = Vec::with_capacity(added_validators.len() + exit_validators.len());
 
@@ -599,13 +616,21 @@ where B: BlockchainBackend + 'static
                 .await?;
         }
         let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomX => randomx_difficulty(
+            PowAlgorithm::RandomXM => monero_randomx_difficulty(
                 &new_block.header,
                 &self.randomx_factory,
                 &gen_hash,
                 &self.consensus_manager,
             )?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
+            PowAlgorithm::RandomXT => {
+                let vm_key = *self
+                    .blockchain_db
+                    .fetch_chain_header(tari_rx_vm_key_height(header.height()))
+                    .await?
+                    .hash();
+                tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
+            },
         };
         if achieved < min_difficulty {
             return Err(CommsInterfaceError::InvalidBlockHeader(
@@ -636,8 +661,7 @@ where B: BlockchainBackend + 'static
                     source: ValidationError::BadBlockFound {
                         hash: block.to_hex(),
                         reason,
-                    }
-                    .into(),
+                    },
                 },
             ));
         }
@@ -988,8 +1012,12 @@ where B: BlockchainBackend + 'static
                     metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
-                PowAlgorithm::RandomX => {
-                    metrics::target_difficulty_randomx()
+                PowAlgorithm::RandomXM => {
+                    metrics::target_difficulty_monero_randomx()
+                        .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+                },
+                PowAlgorithm::RandomXT => {
+                    metrics::target_difficulty_tari_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }

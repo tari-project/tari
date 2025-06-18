@@ -89,7 +89,7 @@ pub enum ChainStorageError {
         source: MerkleProofError,
     },
     #[error("Validation error: {source}")]
-    ValidationError { source: Box<ValidationError> },
+    ValidationError { source: ValidationError },
     #[error("The MMR root for {0} in the provided block header did not match the MMR root in the database")]
     MismatchedMmrRoot(MmrTree),
     #[error("An invalid block was submitted to the database: {0}")]
@@ -144,6 +144,8 @@ pub enum ChainStorageError {
     MrHashError(#[from] MrHashError),
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
+    #[error("JellyfishMerkleTree error: {0}")]
+    JellyfishMerkleTreeError(anyhow::Error),
 }
 
 impl ChainStorageError {
@@ -198,7 +200,8 @@ impl ChainStorageError {
             _err @ ChainStorageError::FromKeyBytesFailed(_) |
             _err @ ChainStorageError::InvalidChainMetaData(_) |
             _err @ ChainStorageError::OutOfRange |
-            _err @ ChainStorageError::MrHashError(_) => None,
+            _err @ ChainStorageError::MrHashError(_) |
+            _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
         }
     }
 }
@@ -211,7 +214,7 @@ impl From<ByteArrayError> for ChainStorageError {
 
 impl From<ValidationError> for ChainStorageError {
     fn from(err: ValidationError) -> Self {
-        Self::ValidationError { source: Box::new(err) }
+        Self::ValidationError { source: err }
     }
 }
 

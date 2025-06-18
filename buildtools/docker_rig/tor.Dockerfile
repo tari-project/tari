@@ -1,6 +1,6 @@
 # Package build
 
-ARG ALPINE_VERSION=3.21
+ARG ALPINE_VERSION=3.22
 
 FROM alpine:$ALPINE_VERSION
 
@@ -9,10 +9,10 @@ ARG BUILDPLATFORM
 ARG VERSION=1.0.1
 
 # https://pkgs.alpinelinux.org/packages?name=tor&branch=v3.18&repo=community&arch=&maintainer=
-ARG TOR_VERSION=0.4.8.14-r0
+ARG TOR_VERSION=0.4.8.16-r0
 
 # Install tor with a minimum version
-RUN apk add --no-cache grep curl tor>$TOR_VERSION
+RUN apk add --no-cache grep curl tor>${TOR_VERSION}
 
 ENV dockerfile_version=$VERSION
 ENV dockerfile_build_arch=$BUILDPLATFORM

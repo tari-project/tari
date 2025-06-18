@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{encrypted_data::PaymentId, BuildInfo, OutputFeatures, TemplateType},
+    transaction_components::{payment_id::PaymentId, BuildInfo, OutputFeatures, TemplateType},
 };
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};

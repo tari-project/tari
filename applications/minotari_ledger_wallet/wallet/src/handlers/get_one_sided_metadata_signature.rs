@@ -21,8 +21,10 @@ use ledger_device_sdk::ui::{
 };
 use minotari_ledger_wallet_common::{
     get_public_spend_key_bytes_from_tari_dual_address,
+    get_payment_id_bytes_from_tari_dual_address,
     tari_dual_address_display,
-    TARI_DUAL_ADDRESS_SIZE,
+    TARI_DUAL_ADDRESS_MIN_SIZE,
+    TARI_DUAL_ADDRESS_MAX_SIZE,
 };
 use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
@@ -53,6 +55,12 @@ use crate::{
 pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
+    // Validate minimum required data size early
+    // Minimum: account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) + address_size(2) + min_address(67) + message(32) = 171
+    if data.len() < 171 {
+        return Err(AppSW::WrongApduLength);
+    }
+
     let mut account_bytes = [0u8; 8];
     account_bytes.clone_from_slice(&data[0..8]);
     let account = u64::from_le_bytes(account_bytes);
@@ -76,10 +84,24 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let commitment_mask: RistrettoSecretKey = get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[40..72])?.into();
 
-    let mut receiver_address_bytes = [0u8; TARI_DUAL_ADDRESS_SIZE]; // 67 bytes
-    receiver_address_bytes.clone_from_slice(&data[72..139]);
+    // Parse variable-length address
+    if data.len() < 74 {
+        return Err(AppSW::WrongApduLength);
+    }
+    let address_size_bytes = &data[72..74]; 
+    let address_size = u16::from_le_bytes([address_size_bytes[0], address_size_bytes[1]]) as usize;
 
-    let receiver_address = match tari_dual_address_display(&receiver_address_bytes) {
+    if address_size < TARI_DUAL_ADDRESS_MIN_SIZE || address_size > TARI_DUAL_ADDRESS_MAX_SIZE {
+        return Err(AppSW::WrongApduLength);
+    }
+
+    let address_end = 74 + address_size;
+    if data.len() < address_end {
+        return Err(AppSW::WrongApduLength);
+    }
+    let receiver_address_bytes = &data[74..address_end];
+
+    let receiver_address = match tari_dual_address_display(receiver_address_bytes) {
         Ok(address) => address,
         Err(e) => {
             #[cfg(not(any(target_os = "stax", target_os = "flex")))]
@@ -97,24 +119,49 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         },
     };
 
+    // Update subsequent data offset calculations
+    let metadata_signature_message_common_start = address_end;
+    let metadata_signature_message_common_end = metadata_signature_message_common_start + 32;
+    if data.len() < metadata_signature_message_common_end {
+        return Err(AppSW::WrongApduLength);
+    }
     let mut metadata_signature_message_common = [0u8; 32];
-    metadata_signature_message_common.clone_from_slice(&data[139..171]);
+    metadata_signature_message_common.clone_from_slice(&data[metadata_signature_message_common_start..metadata_signature_message_common_end]);
 
-    let fields = [
-        Field {
-            name: "Amount",
-            value: &format!("{}", value.to_string()),
-        },
-        Field {
-            name: "Receiver",
-            value: &format!("{}", receiver_address),
-        },
-    ];
+    // Extract payment ID if present
+    let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(receiver_address_bytes)
+        .map_err(|_| AppSW::MetadataSignatureFail)?;
+
+    let mut fields = Vec::new();
+    fields.push(Field {
+        name: "Amount",
+        value: &format!("{}", value.to_string()),
+    });
+    fields.push(Field {
+        name: "Receiver",
+        value: &format!("{}", receiver_address),
+    });
+
+    // Add payment ID field if present
+    let payment_id_display = if !payment_id_bytes.is_empty() {
+        format!("{} bytes", payment_id_bytes.len())
+    } else {
+        String::new()
+    };
+
+    if !payment_id_bytes.is_empty() {
+        fields.push(Field {
+            name: "Payment ID",
+            value: &payment_id_display,
+        });
+    }
+
+    let fields_array = fields.as_slice();
 
     #[cfg(not(any(target_os = "stax", target_os = "flex")))]
     {
         let review = MultiFieldReview::new(
-            &fields,
+            fields_array,
             &["Review ", "Transaction"],
             Some(&EYE),
             "Approve",
@@ -137,7 +184,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             .glyph(&TARI);
 
         //
-        if !review.show(&fields[0..2]) {
+        if !review.show(fields_array) {
             return Err(AppSW::UserCancelled);
         }
     }

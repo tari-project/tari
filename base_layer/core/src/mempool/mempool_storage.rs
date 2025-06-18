@@ -120,18 +120,16 @@ impl MempoolStorage {
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
-                    warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
                     Ok(TxStorageResponse::NotStoredOrphan)
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
-                warn!(target: LOG_TARGET, "Validation failed due to already spent input");
+                // This can happen if we get a transaction after it has been mined, but before the block has been
+                // published. In this case, we do not want to store the transaction in the mempool.
+                info!(target: LOG_TARGET, "Validation failed due to already spent input");
                 Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
-            Err(ValidationError::MaturityError) => {
-                warn!(target: LOG_TARGET, "Validation failed due to maturity error");
-                Ok(TxStorageResponse::NotStoredTimeLocked)
-            },
+            Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
                 Ok(TxStorageResponse::NotStoredConsensus)
@@ -144,8 +142,7 @@ impl MempoolStorage {
                 Ok(TxStorageResponse::NotStoredAlreadyMined)
             },
             Err(e) => {
-                eprintln!("Validation failed due to error: {}", e);
-                warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);
+                info!(target: LOG_TARGET, "Validation failed due to error: {}", e);
                 Ok(TxStorageResponse::NotStored)
             },
         }

@@ -66,7 +66,11 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
     /// This method confirms that a transaction negotiation is complete and outputs can be fully encumbered. This
     /// reserves these outputs until the transaction is confirmed or cancelled
-    fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    fn confirm_encumbered_outputs(
+        &self,
+        tx_id: TxId,
+        change_outputs_to_update: &[DbWalletOutput],
+    ) -> Result<(), OutputManagerStorageError>;
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
     /// transaction negotiation
     fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError>;
@@ -87,6 +91,12 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance
     fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
+    /// Return the available, time locked, pending incoming and pending outgoing balance only matching the payment id
+    fn get_balance_payment_id(
+        &self,
+        tip: Option<u64>,
+        payment_id: Vec<u8>,
+    ) -> Result<Balance, OutputManagerStorageError>;
     /// Import unvalidated output
     fn add_unvalidated_output(&self, output: DbWalletOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     fn fetch_unspent_outputs_for_spending(

@@ -32,11 +32,12 @@ use std::{cmp, fmt, fmt::Display, sync::Arc, time::Instant};
 use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use log::*;
+use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
+    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
     types::CommsPublicKey,
     PeerConnection,
 };
@@ -59,7 +60,7 @@ use crate::{
     discovery::DhtDiscoveryError,
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
-    storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
+    storage::{DhtDatabase, DhtMetadataKey},
     DhtConfig,
     DhtDiscoveryRequester,
 };
@@ -174,25 +175,24 @@ impl Display for DhtRequest {
 /// DHT actor requester
 #[derive(Clone)]
 pub struct DhtRequester {
-    sender: mpsc::Sender<DhtRequest>,
+    sender: mpsc::UnboundedSender<DhtRequest>,
 }
 
 impl DhtRequester {
-    pub(crate) fn new(sender: mpsc::Sender<DhtRequest>) -> Self {
+    pub(crate) fn new(sender: mpsc::UnboundedSender<DhtRequest>) -> Self {
         Self { sender }
     }
 
     /// Send a Join message to the network
     pub async fn send_join(&mut self) -> Result<(), DhtActorError> {
-        self.sender.send(DhtRequest::SendJoin).await.map_err(Into::into)
+        self.sender.send(DhtRequest::SendJoin).map_err(Into::into)
     }
 
     /// Select peers by [BroadcastStrategy](crate::broadcast_strategy::BroadcastStrategy]
     pub async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::SelectPeers(broadcast_strategy, reply_tx))
-            .await?;
+            .send(DhtRequest::SelectPeers(broadcast_strategy, reply_tx))?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
@@ -203,13 +203,11 @@ impl DhtRequester {
         received_from: CommsPublicKey,
     ) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(DhtRequest::MsgHashCacheInsert {
-                message_hash,
-                received_from,
-                reply_tx,
-            })
-            .await?;
+        self.sender.send(DhtRequest::MsgHashCacheInsert {
+            message_hash,
+            received_from,
+            reply_tx,
+        })?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
@@ -218,8 +216,7 @@ impl DhtRequester {
     pub async fn get_message_cache_hit_count(&mut self, message_hash: Vec<u8>) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(DhtRequest::GetMsgHashHitCount(message_hash, reply_tx))
-            .await?;
+            .send(DhtRequest::GetMsgHashHitCount(message_hash, reply_tx))?;
 
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
@@ -227,7 +224,7 @@ impl DhtRequester {
     /// Returns the deserialized metadata value for the given key
     pub async fn get_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey) -> Result<Option<T>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender.send(DhtRequest::GetMetadata(key, reply_tx)).await?;
+        self.sender.send(DhtRequest::GetMetadata(key, reply_tx))?;
         match reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?? {
             Some(bytes) => T::from_binary(&bytes)
                 .map(Some)
@@ -240,7 +237,7 @@ impl DhtRequester {
     pub async fn set_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey, value: T) -> Result<(), DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let bytes = value.to_binary().map_err(DhtActorError::FailedToSerializeValue)?;
-        self.sender.send(DhtRequest::SetMetadata(key, bytes, reply_tx)).await?;
+        self.sender.send(DhtRequest::SetMetadata(key, bytes, reply_tx))?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
     }
 
@@ -248,12 +245,10 @@ impl DhtRequester {
     /// connection to the peer will be returned.
     pub async fn dial_or_discover_peer(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(DhtRequest::DialDiscoverPeer {
-                public_key,
-                reply: reply_tx,
-            })
-            .await?;
+        self.sender.send(DhtRequest::DialDiscoverPeer {
+            public_key,
+            reply: reply_tx,
+        })?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
     }
 
@@ -265,7 +260,6 @@ impl DhtRequester {
                 severity,
                 reason: reason.to_string(),
             })
-            .await
             .is_err()
         {
             debug!(target: LOG_TARGET, "DhtActor is shut down and no longer responding to requests. This is expected during shutdown.");
@@ -283,7 +277,7 @@ pub struct DhtActor {
     config: Arc<DhtConfig>,
     discovery: DhtDiscoveryRequester,
     shutdown_signal: ShutdownSignal,
-    request_rx: mpsc::Receiver<DhtRequest>,
+    request_rx: mpsc::UnboundedReceiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
 }
 
@@ -296,7 +290,7 @@ impl DhtActor {
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
-        request_rx: mpsc::Receiver<DhtRequest>,
+        request_rx: mpsc::UnboundedReceiver<DhtRequest>,
         discovery: DhtDiscoveryRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
@@ -638,7 +632,7 @@ impl DhtActor {
                     .collect::<Vec<_>>();
 
                 if candidates.is_empty() {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Broadcast requested but there are no node peer connections available"
                     );
@@ -747,8 +741,8 @@ impl DhtActor {
         };
 
         let mut filtered_peers = Vec::with_capacity(peers.len());
-        for id in &peers {
-            let addresses = peer_manager.get_peer_multi_addresses(id).await?;
+        let peer_addresses = peer_manager.get_peers_multi_addresses(&peers).await?;
+        for (id, addresses) in &peer_addresses {
             if addresses.iter().all(|addr| {
                 config
                     .excluded_dial_addresses
@@ -774,14 +768,13 @@ impl DhtActor {
 
     /// Selects at least `n` MESSAGE_PROPAGATION peers (assuming that many are known) that are closest to `node_id` as
     /// well as other peers which do not advertise the MESSAGE_PROPAGATION flag (unless excluded by some other means
-    /// e.g. `excluded` list, filter_predicate etc. The filter_predicate is called on each peer excluding them from
-    /// the final results if that returns false.
+    /// e.g. `excluded` list.
     ///
     /// This ensures that peers are selected which are able to propagate the message further while still allowing
     /// clients to propagate to non-propagation nodes if required (e.g. Discovery messages)
     async fn select_closest_peers_for_propagation(
         peer_manager: &PeerManager,
-        node_id: &NodeId,
+        region_node_id: &NodeId,
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
@@ -793,55 +786,23 @@ impl DhtActor {
         // - it has the required features
         // - it didn't recently fail to connect, and
         // - it is not in the exclusion list in closest_request
-        let mut connect_ineligable_count = 0;
-        let mut banned_count = 0;
-        let mut excluded_count = 0;
-        let mut filtered_out_node_count = 0;
-
-        let query = PeerQuery::new()
-            .select_where(|peer| {
-                if peer.is_banned() {
-                    banned_count += 1;
-                    return false;
-                }
-
-                if !peer.features.contains(features) {
-                    filtered_out_node_count += 1;
-                    return false;
-                }
-
-                if peer.is_offline() {
-                    connect_ineligable_count += 1;
-                    return false;
-                }
-
-                let is_excluded = excluded_peers.contains(&peer.node_id);
-                if is_excluded {
-                    excluded_count += 1;
-                    return false;
-                }
-
-                true
-            })
-            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
-            .limit(n);
-
-        let peers = peer_manager.perform_query(query).await?;
-        let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
-        if total_excluded > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
-                 banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
-                 explicitly excluded",
-                num_peers = peers.len(),
-                total = total_excluded,
-                banned = banned_count,
-                filtered_out = filtered_out_node_count,
-                not_connectable = connect_ineligable_count,
-                excluded = excluded_count
-            );
-        }
+        let peers = peer_manager
+            .closest_n_active_peers(
+                region_node_id,
+                n,
+                excluded_peers,
+                Some(features),
+                Some(STALE_PEER_THRESHOLD_DURATION),
+                true,
+                None,
+            )
+            .await?;
+        debug!(
+            target: LOG_TARGET,
+            "👨‍👧‍👦 Closest Peer Selection: {} peer(s) selected, {} explicitly excluded",
+            peers.len(),
+            excluded_peers.len(),
+        );
 
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
@@ -911,7 +872,7 @@ impl DiscoveryDialTask {
     }
 
     pub async fn run(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
-        if self.peer_manager.exists(&public_key).await {
+        if self.peer_manager.exists(&public_key).await? {
             let node_id = NodeId::from_public_key(&public_key);
             match self.connectivity.dial_peer(node_id).await {
                 Ok(conn) => Ok(conn),
@@ -965,41 +926,41 @@ mod test {
         ConnectivityManagerMockState,
     };
     use tari_shutdown::Shutdown;
-    use tari_test_utils::random;
 
     use super::*;
     use crate::{
         envelope::NodeDestination,
+        storage::MIGRATIONS,
         test_utils::{
             build_peer_manager,
+            build_peer_manager_with_node_identity,
             create_dht_discovery_mock,
+            create_good_standing_peer,
             make_client_identity,
             make_node_identity,
             DhtDiscoveryMockState,
         },
     };
 
-    async fn db_connection() -> DbConnection {
-        let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        conn.migrate().unwrap();
-        conn
+    fn db_connection() -> DbConnection {
+        DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap()
     }
 
     #[tokio::test]
     async fn send_join_request() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (out_tx, mut out_rx) = mpsc::channel(1);
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1031,11 +992,11 @@ mod test {
         ) {
             let node_identity = make_node_identity();
             let peer_manager = build_peer_manager();
-            let (out_tx, _) = mpsc::channel(1);
+            let (out_tx, _) = mpsc::unbounded_channel();
             let (connectivity_manager, mock) = create_connectivity_mock();
             let connectivity_mock = mock.get_shared_state();
             mock.spawn();
-            let (actor_tx, actor_rx) = mpsc::channel(1);
+            let (actor_tx, actor_rx) = mpsc::unbounded_channel();
             let requester = DhtRequester::new(actor_tx);
             let outbound_requester = OutboundMessageRequester::new(out_tx);
             let (discovery, mock) = create_dht_discovery_mock(Duration::from_secs(10));
@@ -1043,7 +1004,7 @@ mod test {
             mock.spawn();
             DhtActor::new(
                 Arc::new(DhtConfig::default_local_test()),
-                db_connection().await,
+                db_connection(),
                 node_identity.clone(),
                 peer_manager.clone(),
                 connectivity_manager,
@@ -1083,7 +1044,7 @@ mod test {
             let (mut dht, node_identity, connectivity_mock, discovery_mock, peer_manager) =
                 setup(shutdown.to_signal()).await;
             let peer = make_peer();
-            peer_manager.add_peer(peer.clone()).await.unwrap();
+            peer_manager.add_or_update_peer(peer.clone()).await.unwrap();
             let (conn1, _, _, _) = create_peer_connection_mock_pair(node_identity.to_peer(), peer.clone()).await;
             connectivity_mock.add_active_connection(conn1).await;
 
@@ -1110,15 +1071,15 @@ mod test {
         let peer_manager = build_peer_manager();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
-        let (out_tx, _) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1154,8 +1115,8 @@ mod test {
         let peer_manager = build_peer_manager();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
-        let (out_tx, _) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
@@ -1168,7 +1129,7 @@ mod test {
                 excluded_dial_addresses: vec![].into(),
                 ..Default::default()
             }),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,
@@ -1240,32 +1201,34 @@ mod test {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_select_peers() {
         let node_identity = make_node_identity();
-        let peer_manager = build_peer_manager();
+        let this_peer = create_good_standing_peer(node_identity.as_ref());
+        let peer_manager = build_peer_manager_with_node_identity(&node_identity);
 
         let client_node_identity = make_client_identity();
-        peer_manager.add_peer(client_node_identity.to_peer()).await.unwrap();
+        let client_peer = create_good_standing_peer(client_node_identity.as_ref());
+        peer_manager.add_or_update_peer(client_peer.clone()).await.unwrap();
 
         let (connectivity_manager, mock) = create_connectivity_mock();
         let connectivity_manager_mock_state = mock.get_shared_state();
         mock.spawn();
 
         let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
-        let (conn_in, _, conn_out, _) =
-            create_peer_connection_mock_pair(client_node_identity.to_peer(), node_identity.to_peer()).await;
+        let (conn_in, _, conn_out, _) = create_peer_connection_mock_pair(client_peer.clone(), this_peer.clone()).await;
         connectivity_manager_mock_state.add_active_connection(conn_in).await;
 
-        peer_manager.add_peer(make_node_identity().to_peer()).await.unwrap();
+        let other_peer = create_good_standing_peer(make_node_identity().as_ref());
+        peer_manager.add_or_update_peer(other_peer).await.unwrap();
 
-        let (out_tx, _) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             Arc::clone(&node_identity),
-            peer_manager,
+            peer_manager.clone(),
             connectivity_manager,
             outbound_requester,
             actor_rx,
@@ -1354,8 +1317,8 @@ mod test {
     async fn get_and_set_metadata() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (out_tx, _out_rx) = mpsc::channel(1);
-        let (actor_tx, actor_rx) = mpsc::channel(1);
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let mut requester = DhtRequester::new(actor_tx);
@@ -1364,7 +1327,7 @@ mod test {
         let mut shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Arc::new(DhtConfig::default_local_test()),
-            db_connection().await,
+            db_connection(),
             node_identity,
             peer_manager,
             connectivity_manager,

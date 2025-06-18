@@ -138,9 +138,9 @@ impl MempoolInboundHandlers {
             Ok(tx_storage) => {
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
-                    metrics::inbound_transactions(source_peer.as_ref()).inc();
+                    metrics::inbound_transactions().inc();
                 } else {
-                    metrics::rejected_inbound_transactions(source_peer.as_ref()).inc();
+                    metrics::rejected_inbound_transactions().inc();
                 }
                 self.update_pool_size_metrics().await;
 

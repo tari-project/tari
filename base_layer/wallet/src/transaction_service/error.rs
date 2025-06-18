@@ -192,18 +192,18 @@ pub enum TransactionServiceError {
     TransactionTooLarge { got: usize, expected: usize },
     #[error("Pending Transaction was oversized")]
     Oversized,
-    #[error("Error signing sidechain data: `{0}`")]
-    SidechainSigningError(String),
-    #[error("Invalid data for a burn transaction: `{0}`")]
-    InvalidBurnTransaction(String),
-    #[error("Invalid data for field {field}")]
-    InvalidDataError { field: String },
     #[error("Transaction has invalid address: `{0}`")]
     InvalidAddress(String),
     #[error("Transaction is not supported: `{0}`")]
     NotSupported(String),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Tari address error: `{0}`")]
+    TariAddressError(#[from] TariAddressError),
+    #[error("Error signing sidechain data: `{0}`")]
+    SidechainSigningError(String),
+    #[error("Invalid data for a burn transaction: `{0}`")]
+    InvalidBurnTransaction(String),
     #[error("Invalid validator node signature")]
     InvalidValidatorNodeSignature,
 }

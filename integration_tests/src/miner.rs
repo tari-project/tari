@@ -20,15 +20,11 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, time::Duration};
+use std::time::Duration;
 
-use minotari_app_grpc::tari_rpc::{
-    pow_algo::PowAlgos,
-    Block,
-    NewBlockTemplate,
-    NewBlockTemplateRequest,
-    PowAlgo,
-    TransactionOutput as GrpcTransactionOutput,
+use minotari_app_grpc::{
+    conversions::transaction_output::grpc_output_with_payref,
+    tari_rpc::{pow_algo::PowAlgos, Block, NewBlockTemplate, NewBlockTemplateRequest, PowAlgo},
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{run_miner, Cli};
@@ -41,7 +37,12 @@ use tari_core::{
     transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, CoinBaseExtra, RangeProofType, WalletOutput},
+        transaction_components::{
+            payment_id::{PaymentId, TxType},
+            CoinBaseExtra,
+            RangeProofType,
+            WalletOutput,
+        },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
     },
 };
@@ -86,7 +87,9 @@ impl MinerProcess {
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
     ) {
-        std::env::set_var("TARI_NETWORK", "localnet");
+        unsafe {
+            std::env::set_var("TARI_NETWORK", "localnet");
+        }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
 
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
@@ -296,13 +299,16 @@ async fn create_block_template_with_coinbase(
         stealth_payment,
         consensus_manager.consensus_constants(height),
         RangeProofType::BulletProofPlus,
-        PaymentId::Empty,
+        PaymentId::Open {
+            user_data: vec![],
+            tx_type: TxType::Coinbase,
+        },
     )
     .await
     .unwrap();
     let body = block_template.body.as_mut().unwrap();
 
-    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output).unwrap();
+    let grpc_output = grpc_output_with_payref(coinbase_output, None).unwrap();
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());
 

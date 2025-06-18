@@ -57,6 +57,7 @@ async fn create_next_block(
 ) -> (Arc<Block>, WalletOutput) {
     let rules = db.rules();
     let (block, output) = create_block(
+        db,
         rules,
         prev_block,
         BlockSpec::new()
@@ -72,7 +73,7 @@ async fn create_next_block(
     (Arc::new(block), output)
 }
 
-fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
+pub fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
@@ -587,8 +588,10 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use rand::rngs::OsRng;
-    use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
-    use tari_mmr::sparse_merkle_tree::SparseMerkleTree;
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{CompressedPublicKey, FixedHash},
+    };
 
     use super::*;
     use crate::{
@@ -597,16 +600,14 @@ mod validator_node_merkle_root {
             transaction_components::{OutputFeatures, ValidatorNodeSignature},
             transaction_key_manager::create_memory_db_key_manager,
         },
-        ValidatorNodeMerkleHasherBlake256,
     };
 
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let mut vn_mmr = SparseMerkleTree::<ValidatorNodeMerkleHasherBlake256>::new();
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
-        assert_eq!(blocks[0].header.validator_node_mr.as_slice(), vn_mmr.hash().as_slice());
+        assert_eq!(blocks[0].header.validator_node_mr, FixedHash::zero());
     }
 
     #[tokio::test]
@@ -698,5 +699,6 @@ mod validator_node_merkle_root {
 
         let tip = db.fetch_tip_header().unwrap();
         assert_eq!(tip.header().validator_node_mr, merkle_root);
+        assert_ne!(tip.header().validator_node_mr, FixedHash::zero());
     }
 }

@@ -22,7 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    sync::{atomic::AtomicBool, Arc},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -30,7 +30,6 @@ use futures::StreamExt;
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_utilities::hex::Hex;
-use tokio::task;
 
 use super::error::BlockSyncError;
 use crate::{
@@ -318,12 +317,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let task_block = block.clone();
             let db = self.db.inner().clone();
             let validator = self.block_validator.clone();
-            let res = task::spawn_blocking(move || {
+            let res = {
                 let txn = db.db_read_access()?;
-                let smt = db.smt().clone();
-                validator.validate_body(&*txn, &task_block, smt)
-            })
-            .await?;
+                validator.validate_body(&*txn, &task_block)
+            };
 
             let block = match res {
                 Ok(block) => block,
@@ -364,11 +361,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             );
 
             let timer = Instant::now();
-            let allow_smt_change = Arc::new(AtomicBool::new(true));
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
-                .insert_tip_block_body(block.clone(), self.db.inner().smt(), allow_smt_change.clone())
+                .insert_tip_block_body(block.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,
@@ -391,13 +387,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
             debug!(
                 target: LOG_TARGET,
-                "Block body #{} added in {:.0?}, Tot_acc_diff {}, Monero {}, SHA3 {}, latency: {:.2?}",
+                "Block body #{} added in {:.0?}, Tot_acc_diff {}, MoneroRX {}, TariRx {}, SHA3 {}, latency: {:.2?}",
                 block.height(),
                 timer.elapsed(),
                 block
                     .accumulated_data()
                     .total_accumulated_difficulty,
-                block.accumulated_data().accumulated_randomx_difficulty,
+                block.accumulated_data().accumulated_monero_randomx_difficulty,
+                block.accumulated_data().accumulated_tari_randomx_difficulty,
                 block.accumulated_data().accumulated_sha3x_difficulty,
                 latency
             );

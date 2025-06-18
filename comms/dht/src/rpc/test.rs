@@ -84,7 +84,7 @@ mod get_closer_peers {
             let good_address = good_addresses.addresses()[0].address().clone();
             good_addresses.mark_last_seen_now(&good_address);
 
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
         let req = GetCloserPeersRequest {
             n: 15,
@@ -127,7 +127,7 @@ mod get_closer_peers {
             let good_address = good_addresses.addresses()[0].address().clone();
             good_addresses.mark_last_seen_now(&good_address);
 
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
         let req = GetCloserPeersRequest {
             n: 5,
@@ -156,7 +156,7 @@ mod get_closer_peers {
             let good_address = good_addresses.addresses()[0].address().clone();
             good_addresses.mark_last_seen_now(&good_address);
 
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
         let excluded_peer = peers.last().unwrap();
         let req = GetCloserPeersRequest {
@@ -227,7 +227,7 @@ mod get_peers {
             let good_address = good_addresses.addresses()[0].address().clone();
             good_addresses.mark_last_seen_now(&good_address);
 
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
         let req = GetPeersRequest {
             n: 5,
@@ -265,7 +265,7 @@ mod get_peers {
             let good_address = good_addresses.addresses()[0].address().clone();
             good_addresses.mark_last_seen_now(&good_address);
 
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
         let req = GetPeersRequest {
             n: 3,
@@ -303,7 +303,7 @@ mod get_peers {
             let good_address = good_addresses.addresses()[0].address().clone();
             good_addresses.mark_last_seen_now(&good_address);
 
-            peer_manager.add_peer(peer).await.unwrap();
+            peer_manager.add_or_update_peer(peer).await.unwrap();
         }
         let req = GetPeersRequest {
             n: 2,

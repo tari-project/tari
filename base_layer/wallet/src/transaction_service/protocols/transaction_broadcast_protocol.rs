@@ -204,7 +204,13 @@ where
             .await
         {
             Ok(r) => match TxSubmissionResponse::try_from(r) {
-                Ok(r) => r,
+                Ok(r) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Transaction (TxId: {}) submission response from Base Node: {:?}", self.tx_id, r
+                    );
+                    r
+                },
                 Err(_) => {
                     trace!(target: LOG_TARGET, "Could not convert proto TxSubmission Response");
                     return Ok(false);

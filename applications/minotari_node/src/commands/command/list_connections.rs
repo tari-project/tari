@@ -54,12 +54,26 @@ impl CommandContext {
             "Info",
         ]);
         let peer_manager = self.comms.peer_manager();
-        for conn in conns {
-            let peer = peer_manager
-                .find_by_node_id(conn.peer_node_id())
-                .await
-                .expect("Unexpected peer database error")
-                .expect("Peer not found");
+        let node_ids = conns
+            .iter()
+            .map(|conn| conn.peer_node_id())
+            .cloned()
+            .collect::<Vec<_>>();
+        let peers = match peer_manager.get_peers_by_node_ids(&node_ids).await {
+            Ok(val) => val,
+            Err(e) => {
+                println!("Error: Unexpected peer database error: {}", e);
+                return;
+            },
+        };
+        if peers.len() != node_ids.len() {
+            println!("\nError: Peer manager returned fewer peers than requested\n");
+        }
+        for peer in peers {
+            let conn = match conns.iter().find(|conn| conn.peer_node_id() == &peer.node_id) {
+                None => continue,
+                Some(val) => val,
+            };
 
             let chain_height = peer
                 .get_metadata(1)
