@@ -34,7 +34,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             TransactionKernel,
             TransactionOutput,

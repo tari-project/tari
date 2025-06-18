@@ -180,7 +180,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     });
 
     for v in &pending_txs {
-        db.confirm_encumbered_outputs(v.tx_id).unwrap();
+        db.confirm_encumbered_outputs(v.tx_id, Vec::new()).unwrap();
     }
 
     let balance = db.get_balance(None).unwrap();
@@ -464,7 +464,7 @@ pub async fn test_raw_custom_queries_regression() {
         pending_txs.push(pending_tx);
     }
     for v in &pending_txs {
-        db.confirm_encumbered_outputs(v.tx_id).unwrap();
+        db.confirm_encumbered_outputs(v.tx_id, Vec::new()).unwrap();
     }
 
     // Custom query test section
@@ -614,7 +614,7 @@ pub async fn test_short_term_encumberance() {
     db.encumber_outputs(2u64.into(), unspent_outputs[0..=2].to_vec(), vec![])
         .unwrap();
 
-    db.confirm_encumbered_outputs(TxId::from(2u64)).unwrap();
+    db.confirm_encumbered_outputs(TxId::from(2u64), Vec::new()).unwrap();
     db.clear_short_term_encumberances().unwrap();
 
     let balance = db.get_balance(None).unwrap();

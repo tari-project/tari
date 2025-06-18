@@ -41,7 +41,7 @@ use crate::{
     transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             KernelBuilder,
             KernelFeatures,
@@ -798,7 +798,7 @@ mod test {
             generate_coinbase_with_wallet_output,
             tari_amount::MicroMinotari,
             transaction_components::{
-                encrypted_data::{PaymentId, TxType},
+                payment_id::{PaymentId, TxType},
                 CoinBaseExtra,
                 KernelBuilder,
                 RangeProofType,

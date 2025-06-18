@@ -835,7 +835,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+    fn confirm_encumbered_outputs(
+        &self,
+        tx_id: TxId,
+        change_outputs_to_update: &[DbWalletOutput],
+    ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -847,6 +851,29 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::ShortTermEncumberedToBeReceived,
                 OutputStatus::EncumberedToBeReceived,
             )?;
+            // Update the change outputs to be correct
+            for output in change_outputs_to_update {
+                let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, conn)?;
+                db_output.update(
+                    // Note: Only the `ephemeral_pubkey` and `u_y` portion needs to be updated at this time as the rest
+                    // was already correct
+                    UpdateOutput {
+                        metadata_signature_ephemeral_commitment: Some(
+                            output.wallet_output.metadata_signature.ephemeral_commitment().to_vec(),
+                        ),
+                        metadata_signature_ephemeral_pubkey: Some(
+                            output.wallet_output.metadata_signature.ephemeral_pubkey().to_vec(),
+                        ),
+                        metadata_signature_u_a: Some(output.wallet_output.metadata_signature.u_a().to_vec()),
+                        metadata_signature_u_x: Some(output.wallet_output.metadata_signature.u_x().to_vec()),
+                        metadata_signature_u_y: Some(output.wallet_output.metadata_signature.u_y().to_vec()),
+                        encrypted_data: Some(output.wallet_output.encrypted_data.to_byte_vec()),
+                        hash: Some(output.hash.to_vec()),
+                        ..Default::default()
+                    },
+                    conn,
+                )?;
+            }
 
             update_outputs_with_tx_id_and_status_to_new_status(
                 conn,
@@ -1291,6 +1318,7 @@ pub struct UpdateOutput {
     mined_height: Option<Option<u64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
     last_validation_timestamp: Option<Option<NaiveDateTime>>,
+    encrypted_data: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -1307,6 +1335,7 @@ pub struct UpdateOutputSql {
     metadata_signature_u_y: Option<Vec<u8>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
+    encrypted_data: Option<Vec<u8>>,
     last_validation_timestamp: Option<Option<NaiveDateTime>>,
 }
 
@@ -1325,6 +1354,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             mined_height: u.mined_height.map(|t| t.map(|h| h as i64)),
             mined_in_block: u.mined_in_block,
+            encrypted_data: u.encrypted_data,
             last_validation_timestamp: u.last_validation_timestamp,
         }
     }

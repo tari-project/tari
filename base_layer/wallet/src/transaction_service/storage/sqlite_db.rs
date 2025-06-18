@@ -56,7 +56,7 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::payment_id::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -1569,7 +1569,6 @@ struct OutboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     sent_output_hashes: Option<Vec<u8>>,
-    change_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
 }
 
@@ -1750,7 +1749,6 @@ impl OutboundTransactionSql {
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
             sent_output_hashes: Some(fixedhash_vec_to_bytes(&o.sent_output_hashes)),
-            change_output_hashes: Some(fixedhash_vec_to_bytes(&o.change_output_hashes)),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1804,7 +1802,6 @@ impl OutboundTransaction {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
             sent_output_hashes: bytes_to_fixedhash_vec(&o.sent_output_hashes.unwrap_or_default()),
-            change_output_hashes: bytes_to_fixedhash_vec(&o.change_output_hashes.unwrap_or_default()),
         };
 
         // zeroize decrypted data
@@ -2535,7 +2532,7 @@ mod test {
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             Transaction,
         },
@@ -2662,7 +2659,6 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: vec![],
-            change_output_hashes: vec![],
         };
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2684,7 +2680,6 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 sent_output_hashes: vec![],
-                change_output_hashes: vec![],
             },
             &cipher,
         )
@@ -3076,7 +3071,6 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: vec![],
-            change_output_hashes: vec![],
         };
 
         let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone(), &cipher).unwrap();
@@ -3224,7 +3218,6 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 sent_output_hashes: vec![],
-                change_output_hashes: vec![],
             };
             let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx, &cipher).unwrap();
 

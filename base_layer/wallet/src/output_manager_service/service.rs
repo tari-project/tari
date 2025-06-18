@@ -55,7 +55,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -407,9 +407,12 @@ where
                 .fee_estimate(amount, selection_criteria, fee_per_gram, num_kernels, num_outputs)
                 .await
                 .map(OutputManagerResponse::FeeEstimate),
-            OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
-                .confirm_encumberance(tx_id)
-                .map(|_| OutputManagerResponse::PendingTransactionConfirmed),
+            OutputManagerRequest::ConfirmPendingTransaction(tx_id, change) => {
+                let change_outputs = change.unwrap_or(Vec::new());
+                self.confirm_encumberance(tx_id, change_outputs)
+                    .await
+                    .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
+            },
             OutputManagerRequest::CancelTransaction(tx_id) => self
                 .cancel_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
@@ -875,7 +878,6 @@ where
         };
         let payment_id = PaymentId::AddressAndData {
             sender_address: single_round_sender_data.sender_address.clone(),
-            amount: single_round_sender_data.amount,
             fee: single_round_sender_data.metadata.fee,
             sender_one_sided: false,
             tx_type: TxType::PaymentToOther,
@@ -1139,7 +1141,7 @@ where
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbWalletOutput>::new();
         if input_selection.requires_change_output() {
-            let wallet_output = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output = stp.get_pre_finalized_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
@@ -1276,7 +1278,9 @@ where
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         let tx_id = stp.get_tx_id()?;
-        if let Some(wallet_output) = stp.get_change_output()? {
+
+        stp.finalize(&self.resources.key_manager).await?;
+        if let Some(wallet_output) = stp.get_finalized_change_output()? {
             db_outputs.push(
                 DbWalletOutput::from_wallet_output(
                     wallet_output,
@@ -1293,8 +1297,6 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize(&self.resources.key_manager).await?;
-
         Ok((tx_id, stp.into_transaction()?))
     }
 
@@ -1540,7 +1542,7 @@ where
         // but the returned value is not used
         let _single_round_sender_data = stp.build_single_round_message(&self.resources.key_manager).await?;
 
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         // Prepare receiver part of the transaction
 
@@ -1883,7 +1885,7 @@ where
         // but the returned value is not used
         let _single_round_sender_data = stp.build_single_round_message(&self.resources.key_manager).await?;
 
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         // Prepare receiver part of the transaction
 
@@ -1937,7 +1939,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.one_sided_tari_address.clone(),
             true,
-            amount,
             fee,
             Some(TxType::PaymentToOther),
         );
@@ -2092,8 +2093,11 @@ where
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
+        let fee = stp.get_fee_amount()?;
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+        stp.finalize(&self.resources.key_manager).await?;
         if input_selection.requires_change_output() {
-            let wallet_output = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output = stp.get_finalized_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
@@ -2118,10 +2122,8 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
-        self.confirm_encumberance(tx_id)?;
-        let fee = stp.get_fee_amount()?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(&self.resources.key_manager).await?;
         let tx = stp.into_transaction()?;
 
         Ok((fee, tx))
@@ -2129,9 +2131,26 @@ where
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
     /// made official
-    fn confirm_encumberance(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
-        self.resources.db.confirm_encumbered_outputs(tx_id)?;
-
+    async fn confirm_encumberance(
+        &mut self,
+        tx_id: TxId,
+        change_outputs: Vec<WalletOutput>,
+    ) -> Result<(), OutputManagerError> {
+        let mut change = Vec::new();
+        for output in change_outputs {
+            change.push(
+                DbWalletOutput::from_wallet_output(
+                    output,
+                    &self.resources.key_manager,
+                    None,
+                    OutputSource::default(),
+                    Some(tx_id),
+                    None,
+                )
+                .await?,
+            );
+        }
+        self.resources.db.confirm_encumbered_outputs(tx_id, change)?;
         Ok(())
     }
 
@@ -2581,7 +2600,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         trace!(
             target: LOG_TARGET,
@@ -2762,10 +2781,19 @@ where
             tx_id
         );
 
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin split transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
+        stp.finalize(&self.resources.key_manager).await?;
+
         // again, to obtain output for leftover change
         if has_leftover_change {
             // obtaining output for the `change`
-            let wallet_output_for_change = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output_for_change = stp.get_finalized_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a `change` output metadata signature available".to_string(),
                 )
@@ -2789,16 +2817,13 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         trace!(
             target: LOG_TARGET,
             "finalizing coin split transaction (tx_id={}).",
             tx_id
         );
-
-        // finalizing transaction
-        stp.finalize(&self.resources.key_manager).await?;
 
         let value = if has_leftover_change {
             total_split_amount
@@ -2826,7 +2851,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
-            amount,
             fee,
             Some(TxType::PaymentToSelf),
         );
@@ -2988,7 +3012,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), vec![output])?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         trace!(
             target: LOG_TARGET,
@@ -3191,28 +3215,25 @@ where
 
                 let tx_id = stp.get_tx_id()?;
 
-                let wallet_output = stp.get_change_output()?.ok_or_else(|| {
-                    OutputManagerError::BuildError(
-                        "There should be a change output metadata signature available".to_string(),
-                    )
-                })?;
-                let change_output = DbWalletOutput::from_wallet_output(
-                    wallet_output,
-                    &self.resources.key_manager,
-                    None,
-                    OutputSource::AtomicSwap,
-                    Some(tx_id),
-                    None,
-                )
-                .await?;
-                outputs.push(change_output);
-
                 trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
-                self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
-                self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
                 stp.finalize(&self.resources.key_manager).await?;
+                if let Some(wallet_output) = stp.get_finalized_change_output()? {
+                    let change_output = DbWalletOutput::from_wallet_output(
+                        wallet_output,
+                        &self.resources.key_manager,
+                        None,
+                        OutputSource::AtomicSwap,
+                        Some(tx_id),
+                        None,
+                    )
+                    .await?;
+                    outputs.push(change_output);
+                }
+
+                self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
+                self.confirm_encumberance(tx_id, Vec::new()).await?;
                 let tx = stp.into_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -3277,31 +3298,27 @@ where
 
         let tx_id = stp.get_tx_id()?;
 
-        let wallet_output = stp.get_change_output()?.ok_or_else(|| {
-            OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
-        })?;
-
-        let change_output = DbWalletOutput::from_wallet_output(
-            wallet_output,
-            &self.resources.key_manager,
-            None,
-            OutputSource::HtlcRefund,
-            Some(tx_id),
-            None,
-        )
-        .await?;
-        outputs.push(change_output);
-
         trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({}).", tx_id);
 
         let fee = stp.get_fee_amount()?;
 
         stp.finalize(&self.resources.key_manager).await?;
-
+        if let Some(wallet_output) = stp.get_finalized_change_output()? {
+            let change_output = DbWalletOutput::from_wallet_output(
+                wallet_output,
+                &self.resources.key_manager,
+                None,
+                OutputSource::HtlcRefund,
+                Some(tx_id),
+                None,
+            )
+            .await?;
+            outputs.push(change_output);
+        }
         let tx = stp.into_transaction()?;
 
         self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
         Ok((tx_id, fee, amount - fee, tx))
     }
 

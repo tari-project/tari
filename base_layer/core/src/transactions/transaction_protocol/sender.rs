@@ -45,7 +45,7 @@ use crate::{
     transactions::{
         tari_amount::*,
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             KernelBuilder,
             OutputFeatures,
             Transaction,
@@ -214,14 +214,17 @@ impl SenderTransactionProtocol {
 
     /// Method to determine if we are in the SenderState::FinalizedTransaction state
     pub fn is_finalized(&self) -> bool {
-        matches!(&self.state, SenderState::FinalizedTransaction(_))
+        matches!(&self.state, SenderState::FinalizedTransaction { .. })
     }
 
     /// Returns the finalized transaction if the protocol is in the Finalised state. Otherwise it returns an
     /// `InvalidStateError`.
     pub fn get_transaction(&self) -> Result<&Transaction, TPE> {
         match &self.state {
-            SenderState::FinalizedTransaction(tx) => Ok(tx),
+            SenderState::FinalizedTransaction {
+                final_transaction: tx,
+                change_output: _,
+            } => Ok(tx),
             _ => Err(TPE::InvalidStateError),
         }
     }
@@ -231,7 +234,10 @@ impl SenderTransactionProtocol {
     /// [get_transaction].
     pub fn into_transaction(self) -> Result<Transaction, TPE> {
         match self.state {
-            SenderState::FinalizedTransaction(tx) => Ok(tx),
+            SenderState::FinalizedTransaction {
+                final_transaction: tx,
+                change_output: _,
+            } => Ok(tx),
             _ => Err(TPE::InvalidStateError),
         }
     }
@@ -278,7 +284,7 @@ impl SenderTransactionProtocol {
                 .as_ref()
                 .map(|data| data.amount)
                 .unwrap_or(MicroMinotari::zero())),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
@@ -301,7 +307,7 @@ impl SenderTransactionProtocol {
                 }
                 Ok(amount)
             },
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
@@ -317,23 +323,46 @@ impl SenderTransactionProtocol {
                 .as_ref()
                 .map(|output| output.output.value)
                 .unwrap_or(MicroMinotari::zero())),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction {
+                final_transaction: _,
+                change_output: change,
+            } => Ok(change
+                .as_ref()
+                .as_ref()
+                .map(|o| o.output.value)
+                .unwrap_or(MicroMinotari::zero())),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
 
     /// Returns the change output for a non-finalized transaction. If the transaction is finalized, or failed, an error
     /// is returned.
-    pub fn get_change_output(&self) -> Result<Option<WalletOutput>, TPE> {
+    pub fn get_pre_finalized_change_output(&self) -> Result<Option<WalletOutput>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => {
-                Ok(info.change_output.as_ref().map(|output| output.output.clone()))
+                Ok(info.change_output.as_ref().as_ref().map(|output| output.output.clone()))
             },
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
+        }
+    }
+
+    /// Returns the change output for finalized transaction. If the transaction is not finalized, or failed, an error
+    /// is returned.
+    pub fn get_finalized_change_output(&self) -> Result<Option<WalletOutput>, TPE> {
+        match &self.state {
+            SenderState::Initializing(_) |
+            SenderState::Finalizing(_) |
+            SenderState::SingleRoundMessageReady(_) |
+            SenderState::CollectingSingleSignature(_) |
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction {
+                final_transaction: _,
+                change_output,
+            } => Ok(change_output.as_ref().as_ref().map(|o| o.output.clone())),
         }
     }
 
@@ -345,7 +374,7 @@ impl SenderTransactionProtocol {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok(info.inputs.clone()),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
@@ -361,7 +390,7 @@ impl SenderTransactionProtocol {
                     .as_ref()
                     .map(|data| data.recipient_sender_offset_key_id.clone())
             }),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
@@ -376,7 +405,7 @@ impl SenderTransactionProtocol {
                     v.recipient_sender_offset_key_id = key_id;
                 }
             },
-            SenderState::FinalizedTransaction(_) | SenderState::Failed(_) => return Err(TPE::InvalidStateError),
+            SenderState::FinalizedTransaction { .. } | SenderState::Failed(_) => return Err(TPE::InvalidStateError),
         }
 
         Ok(())
@@ -389,9 +418,10 @@ impl SenderTransactionProtocol {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok(info.metadata.fee),
-            SenderState::FinalizedTransaction(info) => {
-                Ok(info.body.kernels().first().ok_or(TPE::InvalidStateError)?.fee)
-            },
+            SenderState::FinalizedTransaction {
+                final_transaction: txn,
+                change_output: _,
+            } => Ok(txn.body.kernels().first().ok_or(TPE::InvalidStateError)?.fee),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
@@ -633,7 +663,7 @@ impl SenderTransactionProtocol {
     async fn build_transaction<KM: TransactionKeyManagerInterface>(
         info: &RawTransactionInfo,
         key_manager: &KM,
-    ) -> Result<Transaction, TPE> {
+    ) -> Result<(Transaction, Option<OutputPair>), TPE> {
         let mut tx_builder = TransactionBuilder::new();
         let (total_public_nonce, total_public_excess) = if info.recipient_data.is_none() {
             // we dont have a recipient and thus we have not yet calculated the sender_nonce and sender_offset_excess
@@ -649,6 +679,43 @@ impl SenderTransactionProtocol {
                 CompressedPublicKey::new_from_pk(total_public_nonce),
                 CompressedPublicKey::new_from_pk(total_public_excess),
             )
+        };
+
+        // lets update our change if any
+        let change_output = if let Some(change) = &info.change_output {
+            let mut sent_hashes = Vec::new();
+            if let Some(sent_output) = &info.recipient_output {
+                sent_hashes.push(sent_output.hash());
+            }
+
+            let mut payment_id = change.output.payment_id.clone();
+            payment_id.transaction_info_set_sent_output_hashes(sent_hashes);
+            let encrypted_data = key_manager
+                .encrypt_data_for_recovery(
+                    &change.output.spending_key_id,
+                    None,
+                    change.output.value.as_u64(),
+                    payment_id,
+                )
+                .await?;
+            let mut change_output = change.output.clone();
+            change_output
+                .change_encrypted_data(
+                    encrypted_data,
+                    change
+                        .sender_offset_key_id
+                        .as_ref()
+                        .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?,
+                    key_manager,
+                )
+                .await?;
+            Some(OutputPair {
+                output: change_output,
+                kernel_nonce: change.kernel_nonce.clone(),
+                sender_offset_key_id: change.sender_offset_key_id.clone(),
+            })
+        } else {
+            None
         };
 
         let mut offset = info.recipient_partial_kernel_offset.clone();
@@ -718,7 +785,7 @@ impl SenderTransactionProtocol {
         if let Some(recipient_data) = &info.recipient_data {
             sender_offset_keys.push(recipient_data.recipient_sender_offset_key_id.clone());
         }
-        if let Some(change) = &info.change_output {
+        if let Some(change) = &change_output {
             tx_builder.add_output(change.output.to_transaction_output(key_manager).await?);
             signature = &signature +
                 &key_manager
@@ -763,7 +830,8 @@ impl SenderTransactionProtocol {
             .with_signature(Signature::new_from_schnorr(signature))
             .build()?;
         tx_builder.with_kernel(kernel);
-        tx_builder.build().map_err(TPE::from)
+        let tx = tx_builder.build().map_err(TPE::from)?;
+        Ok((tx, change_output))
     }
 
     /// Performs sanity checks on the collected transaction pieces prior to building the final Transaction instance
@@ -799,8 +867,11 @@ impl SenderTransactionProtocol {
                     return Err(e);
                 }
                 match Self::build_transaction(info, key_manager).await {
-                    Ok(transaction) => {
-                        self.state = SenderState::FinalizedTransaction(transaction);
+                    Ok((transaction, change_output)) => {
+                        self.state = SenderState::FinalizedTransaction {
+                            final_transaction: transaction,
+                            change_output: Box::new(change_output),
+                        };
                         Ok(())
                     },
                     Err(e) => {
@@ -842,9 +913,10 @@ impl SenderTransactionProtocol {
                 }
                 Ok(commitments)
             },
-            SenderState::FinalizedTransaction(txn) => {
-                Ok(txn.body.outputs().iter().map(|o| o.commitment.clone()).collect())
-            },
+            SenderState::FinalizedTransaction {
+                final_transaction: txn,
+                change_output: _,
+            } => Ok(txn.body.outputs().iter().map(|o| o.commitment.clone()).collect()),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
@@ -864,7 +936,10 @@ impl SenderTransactionProtocol {
                 }
                 Ok(commitments)
             },
-            SenderState::FinalizedTransaction(txn) => Ok(txn
+            SenderState::FinalizedTransaction {
+                final_transaction: txn,
+                change_output: _,
+            } => Ok(txn
                 .body
                 .inputs()
                 .iter()
@@ -911,7 +986,10 @@ pub(super) enum SenderState {
     /// here
     Finalizing(Box<RawTransactionInfo>),
     /// The final transaction is ready to be broadcast
-    FinalizedTransaction(Transaction),
+    FinalizedTransaction {
+        final_transaction: Transaction,
+        change_output: Box<Option<OutputPair>>,
+    },
     /// An unrecoverable failure has occurred and the transaction must be abandoned
     Failed(TPE),
 }
@@ -962,11 +1040,15 @@ impl fmt::Display for SenderState {
                 info.inputs.len(),
                 info.outputs.len()
             ),
-            FinalizedTransaction(txn) => write!(
+            FinalizedTransaction {
+                final_transaction: txn,
+                change_output,
+            } => write!(
                 f,
-                "FinalizedTransaction({} input(s), {} output(s))",
+                "FinalizedTransaction({} input(s), {} output(s)) with change output: {}",
                 txn.body.inputs().len(),
-                txn.body.outputs().len()
+                txn.body.outputs().len(),
+                change_output.is_some(),
             ),
             Failed(err) => write!(f, "Failed({:?})", err),
         }
@@ -994,7 +1076,7 @@ mod test {
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
-                encrypted_data::PaymentId,
+                payment_id::PaymentId,
                 EncryptedData,
                 OutputFeatures,
                 TransactionOutput,
@@ -1039,7 +1121,7 @@ mod test {
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.get_change_output(),
+            stp.get_pre_finalized_change_output(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(

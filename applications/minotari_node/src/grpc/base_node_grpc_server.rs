@@ -31,6 +31,7 @@ use either::Either;
 use futures::{channel::mpsc, SinkExt};
 use log::*;
 use minotari_app_grpc::{
+    conversions::transaction_output::grpc_output_with_payref,
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
@@ -66,7 +67,7 @@ use tari_core::{
     transactions::{
         generate_coinbase_with_wallet_output,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             KernelBuilder,
             RangeProofType,
@@ -2172,7 +2173,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
             for output in outputs {
-                match output.try_into() {
+                match grpc_output_with_payref(output, None) {
                     Ok(output) => {
                         let resp = tari_rpc::FetchMatchingUtxosResponse { output: Some(output) };
                         if tx.send(Ok(resp)).await.is_err() {
@@ -2916,7 +2917,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let sidechain_outputs = utxos
                     .into_iter()
                     .filter(|u| u.features.output_type.is_sidechain_type() || u.is_burned_to_sidechain())
-                    .map(TryInto::try_into)
+                    .map(|o| grpc_output_with_payref(o, Some(header_hash)))
                     .collect::<Result<Vec<_>, _>>();
 
                 match sidechain_outputs {
