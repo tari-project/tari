@@ -194,7 +194,7 @@ impl PaymentId {
             PaymentId::Open { .. } => vec![PTag::Open as u8],
             PaymentId::AddressAndData { .. } => vec![PTag::AddressAndData as u8],
             PaymentId::TransactionInfo { .. } => vec![PTag::TransactionInfo as u8],
-            PaymentId::Raw { .. } => vec![PTag::Raw as u8],
+            PaymentId::Raw(_) => vec![PTag::Raw as u8],
         }
     }
 

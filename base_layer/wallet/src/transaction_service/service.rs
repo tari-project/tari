@@ -1636,12 +1636,6 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id, None)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
         // Prepare receiver part of the transaction
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
