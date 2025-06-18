@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use log::*;
 
@@ -198,16 +198,8 @@ impl ProactiveDialer {
         count: usize,
         task_id: u64,
     ) -> Result<Vec<Peer>, ConnectivityError> {
-        // Get all known communication peers
-        let all_peers = self
-            .peer_manager
-            .all(None)
-            .await
-            .map_err(ConnectivityError::PeerManagerError)?;
-
-        // Filter for communication nodes not currently connected or connecting
-        let mut candidates = Vec::new();
-        let currently_managed: HashSet<NodeId> = pool
+        // Get currently managed node IDs (connected or connecting)
+        let currently_managed: Vec<NodeId> = pool
             .all()
             .iter()
             .filter(|state| {
@@ -219,23 +211,18 @@ impl ProactiveDialer {
             .map(|state| state.node_id().clone())
             .collect();
 
-        for peer in all_peers {
-            // Skip if not a communication node
-            if !peer.features.is_node() {
-                continue;
-            }
+        // Get available dial candidates using SQL-based filtering
+        let candidates = self
+            .peer_manager
+            .get_available_dial_candidates(&currently_managed, Some(count * 3)) // Get 3x more for health scoring
+            .await
+            .map_err(ConnectivityError::PeerManagerError)?;
 
-            // Skip if already connected or connecting
-            if currently_managed.contains(&peer.node_id) {
-                continue;
-            }
-
-            // Skip if banned
-            if peer.is_banned() {
-                continue;
-            }
-
-            // Check circuit breaker state if we have stats
+        // Apply health-based filtering and ranking
+        let mut final_candidates = Vec::new();
+        for peer in candidates {
+            // The SQL query already filtered for communication nodes, non-banned, non-deleted
+            // Just need to check circuit breaker state
             if let Some(stats) = connection_stats.get(&peer.node_id) {
                 if !stats.should_allow_connection(self.config.circuit_breaker_retry_interval) {
                     trace!(
@@ -248,11 +235,11 @@ impl ProactiveDialer {
                 }
             }
 
-            candidates.push(peer);
+            final_candidates.push(peer);
         }
 
         // Sort by health score if available, otherwise by distance
-        candidates.sort_by(|a, b| {
+        final_candidates.sort_by(|a, b| {
             let health_a = connection_stats
                 .get(&a.node_id)
                 .map(|s| s.health_score(self.config.success_rate_tracking_window))
@@ -277,16 +264,16 @@ impl ProactiveDialer {
         });
 
         // Take the top candidates
-        candidates.truncate(count);
+        final_candidates.truncate(count);
 
         debug!(
             target: LOG_TARGET,
             "({}) Selected {} healthy peer candidates for dialing",
             task_id,
-            candidates.len()
+            final_candidates.len()
         );
 
-        Ok(candidates)
+        Ok(final_candidates)
     }
 
     /// Dial multiple peers concurrently

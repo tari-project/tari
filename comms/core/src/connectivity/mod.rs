@@ -37,7 +37,7 @@ pub use peer_health::{CircuitBreakerState, PeerHealthMetrics};
 
 mod proactive_dialer;
 
-mod peer_discovery_bridge;
+
 
 mod connection_pool;
 
@@ -51,26 +51,7 @@ pub use manager::ConnectivityStatus;
 #[cfg(feature = "metrics")]
 mod metrics;
 
-#[cfg(feature = "metrics")]
 pub mod proactive_dialing_metrics;
-
-#[cfg(not(feature = "metrics"))]
-pub mod proactive_dialing_metrics {
-    // Stub implementations when metrics feature is disabled
-    pub fn increment_proactive_dials_attempted() {}
-    pub fn increment_proactive_dials_successful() {}
-    pub fn increment_proactive_dials_failed() {}
-    pub fn increment_circuit_breaker_state_changes() {}
-    pub fn increment_peer_discovery_attempts() {}
-    pub fn increment_peer_discovery_peers_found(_count: usize) {}
-    pub fn set_circuit_breaker_open_peers(_count: usize) {}
-    pub fn set_target_connections_achieved(_achieved: bool) {}
-    pub fn set_available_peer_candidates(_count: usize) {}
-    pub fn set_average_peer_health_score(_score: f32) {}
-    pub fn set_connection_success_rate(_rate: f32) {}
-    pub fn set_dialing_multiplier_applied(_multiplier: f32) {}
-    pub fn observe_proactive_dialing_execution_time(_duration: std::time::Duration) {}
-}
 
 mod requester;
 pub(crate) use requester::ConnectivityRequest;

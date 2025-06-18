@@ -37,7 +37,6 @@ pub fn proactive_dials_attempted() -> &'static IntCounter {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn proactive_dials_successful() -> &'static IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
@@ -49,7 +48,6 @@ pub fn proactive_dials_successful() -> &'static IntCounter {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn proactive_dials_failed() -> &'static IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
@@ -61,7 +59,6 @@ pub fn proactive_dials_failed() -> &'static IntCounter {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn circuit_breaker_state_changes() -> &'static IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
@@ -73,7 +70,6 @@ pub fn circuit_breaker_state_changes() -> &'static IntCounter {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn circuit_breaker_open_peers() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
@@ -85,7 +81,6 @@ pub fn circuit_breaker_open_peers() -> &'static IntGauge {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn target_connections_achieved() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
@@ -97,7 +92,6 @@ pub fn target_connections_achieved() -> &'static IntGauge {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn available_peer_candidates() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
@@ -109,7 +103,6 @@ pub fn available_peer_candidates() -> &'static IntGauge {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn average_peer_health_score() -> &'static Gauge {
     static METER: Lazy<Gauge> = Lazy::new(|| {
         tari_metrics::register_gauge(
@@ -121,7 +114,6 @@ pub fn average_peer_health_score() -> &'static Gauge {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn peer_discovery_attempts() -> &'static IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
@@ -133,7 +125,6 @@ pub fn peer_discovery_attempts() -> &'static IntCounter {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn peer_discovery_peers_found() -> &'static IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
@@ -145,7 +136,6 @@ pub fn peer_discovery_peers_found() -> &'static IntCounter {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn proactive_dialing_execution_time() -> &'static Histogram {
     static METER: Lazy<Histogram> = Lazy::new(|| {
         tari_metrics::register_histogram(
@@ -157,7 +147,6 @@ pub fn proactive_dialing_execution_time() -> &'static Histogram {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn connection_success_rate() -> &'static Gauge {
     static METER: Lazy<Gauge> = Lazy::new(|| {
         tari_metrics::register_gauge(
@@ -169,7 +158,6 @@ pub fn connection_success_rate() -> &'static Gauge {
     &METER
 }
 
-#[cfg(feature = "metrics")]
 pub fn dialing_multiplier_applied() -> &'static Gauge {
     static METER: Lazy<Gauge> = Lazy::new(|| {
         tari_metrics::register_gauge(
@@ -181,38 +169,7 @@ pub fn dialing_multiplier_applied() -> &'static Gauge {
     &METER
 }
 
-// Non-metrics versions for when metrics feature is disabled
-#[cfg(not(feature = "metrics"))]
-mod stubs {
-    #[allow(dead_code)]
-    pub fn proactive_dials_attempted() {}
-    #[allow(dead_code)]
-    pub fn proactive_dials_successful() {}
-    #[allow(dead_code)]
-    pub fn proactive_dials_failed() {}
-    #[allow(dead_code)]
-    pub fn circuit_breaker_state_changes() {}
-    #[allow(dead_code)]
-    pub fn circuit_breaker_open_peers(_value: i64) {}
-    #[allow(dead_code)]
-    pub fn target_connections_achieved(_value: i64) {}
-    #[allow(dead_code)]
-    pub fn available_peer_candidates(_value: i64) {}
-    #[allow(dead_code)]
-    pub fn average_peer_health_score(_value: f64) {}
-    #[allow(dead_code)]
-    pub fn peer_discovery_attempts() {}
-    #[allow(dead_code)]
-    pub fn peer_discovery_peers_found(_value: i64) {}
-    #[allow(dead_code)]
-    pub fn proactive_dialing_execution_time(_duration: std::time::Duration) {}
-    #[allow(dead_code)]
-    pub fn connection_success_rate(_value: f64) {}
-    #[allow(dead_code)]
-    pub fn dialing_multiplier_applied(_value: f64) {}
-}
 
-// Stubs are imported individually when needed
 
 // Helper functions for easy metric updates
 #[cfg(feature = "metrics")]
@@ -284,7 +241,7 @@ pub fn set_dialing_multiplier_applied(multiplier: f32) {
     dialing_multiplier_applied().set(f64::from(multiplier));
 }
 
-// Non-feature implementations for when metrics are disabled
+// Stub functions when metrics feature is disabled
 #[cfg(not(feature = "metrics"))]
 pub fn increment_proactive_dials_attempted() {}
 
@@ -296,6 +253,12 @@ pub fn increment_proactive_dials_failed() {}
 
 #[cfg(not(feature = "metrics"))]
 pub fn increment_circuit_breaker_state_changes() {}
+
+#[cfg(not(feature = "metrics"))]
+pub fn increment_peer_discovery_attempts() {}
+
+#[cfg(not(feature = "metrics"))]
+pub fn increment_peer_discovery_peers_found(_count: usize) {}
 
 #[cfg(not(feature = "metrics"))]
 pub fn set_circuit_breaker_open_peers(_count: usize) {}
@@ -310,16 +273,12 @@ pub fn set_available_peer_candidates(_count: usize) {}
 pub fn set_average_peer_health_score(_score: f32) {}
 
 #[cfg(not(feature = "metrics"))]
-pub fn increment_peer_discovery_attempts() {}
-
-#[cfg(not(feature = "metrics"))]
-pub fn increment_peer_discovery_peers_found(_count: usize) {}
-
-#[cfg(not(feature = "metrics"))]
-pub fn observe_proactive_dialing_execution_time(_duration: std::time::Duration) {}
-
-#[cfg(not(feature = "metrics"))]
 pub fn set_connection_success_rate(_rate: f32) {}
 
 #[cfg(not(feature = "metrics"))]
 pub fn set_dialing_multiplier_applied(_multiplier: f32) {}
+
+#[cfg(not(feature = "metrics"))]
+pub fn observe_proactive_dialing_execution_time(_duration: std::time::Duration) {}
+
+
