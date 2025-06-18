@@ -65,7 +65,10 @@ mod domain_hashing {
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
     use tari_hashing::ValidatorNodeMerkleHashDomain;
     use tari_mmr::{
-        error::MerkleMountainRangeError, pruned_hashset::PrunedHashSet, sparse_merkle_tree::SparseMerkleTree, Hash,
+        error::MerkleMountainRangeError,
+        pruned_hashset::PrunedHashSet,
+        sparse_merkle_tree::SparseMerkleTree,
+        Hash,
         MerkleMountainRange,
     };
 

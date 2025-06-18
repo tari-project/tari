@@ -32,15 +32,32 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            BuildInfo, CodeTemplateRegistration, ConfidentialOutputData, SideChainFeature, SideChainFeatureData,
-            SideChainId, TemplateType, ValidatorNodeExit, ValidatorNodeRegistration, ValidatorNodeSignature,
+            BuildInfo,
+            CodeTemplateRegistration,
+            ConfidentialOutputData,
+            SideChainFeature,
+            SideChainFeatureData,
+            SideChainId,
+            TemplateType,
+            ValidatorNodeExit,
+            ValidatorNodeRegistration,
+            ValidatorNodeSignature,
         },
     },
 };
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
-    ChainLink, CommandCommitProof, CommandCommitProofV1, CommitProofElement, EvictNodeAtom, EvictionProof,
-    QuorumCertificate, QuorumDecision, ShardGroup, SidechainBlockCommitProof, SidechainBlockHeader,
+    ChainLink,
+    CommandCommitProof,
+    CommandCommitProofV1,
+    CommitProofElement,
+    EvictNodeAtom,
+    EvictionProof,
+    QuorumCertificate,
+    QuorumDecision,
+    ShardGroup,
+    SidechainBlockCommitProof,
+    SidechainBlockHeader,
     ValidatorQcSignature,
 };
 use tari_utilities::ByteArray;

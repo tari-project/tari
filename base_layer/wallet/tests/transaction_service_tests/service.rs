@@ -34,13 +34,18 @@ use chrono::{Days, Duration as ChronoDuration, Utc};
 use digest::consts::U32;
 use futures::{
     channel::{mpsc, mpsc::Sender},
-    FutureExt, SinkExt,
+    FutureExt,
+    SinkExt,
 };
 use minotari_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
-        create_wallet_connectivity_mock, BaseNodePeerManager, WalletConnectivityHandle, WalletConnectivityInitializer,
-        WalletConnectivityInterface, WalletConnectivityMock,
+        create_wallet_connectivity_mock,
+        BaseNodePeerManager,
+        WalletConnectivityHandle,
+        WalletConnectivityInitializer,
+        WalletConnectivityInterface,
+        WalletConnectivityMock,
     },
     output_manager_service::{
         config::OutputManagerServiceConfig,
@@ -51,7 +56,8 @@ use minotari_wallet::{
             models::KnownOneSidedPaymentScript,
             sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
         },
-        OutputManagerServiceInitializer, UtxoSelectionCriteria,
+        OutputManagerServiceInitializer,
+        UtxoSelectionCriteria,
     },
     storage::{
         database::WalletDatabase,
@@ -59,7 +65,9 @@ use minotari_wallet::{
         sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     },
     test_utils::{
-        create_consensus_constants, make_wallet_database_connection, make_wallet_database_memory_connection,
+        create_consensus_constants,
+        make_wallet_database_connection,
+        make_wallet_database_memory_connection,
         random_string,
     },
     transaction_service::{
@@ -95,10 +103,14 @@ use tari_comms::{
     },
     test_utils::node_identity::build_node_identity,
     types::CommsDHKE,
-    CommsNode, PeerConnection,
+    CommsNode,
+    PeerConnection,
 };
 use tari_comms_dht::outbound::mock::{
-    create_outbound_service_mock, MockBehaviour, OutboundServiceMockState, ResponseType,
+    create_outbound_service_mock,
+    MockBehaviour,
+    OutboundServiceMockState,
+    ResponseType,
 };
 use tari_core::{
     base_node::{
@@ -115,17 +127,28 @@ use tari_core::{
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             encrypted_data::{PaymentId, TxType},
-            KernelBuilder, OutputFeatures, RangeProofType, Transaction,
+            KernelBuilder,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager, storage::sqlite_db::TransactionKeyManagerSqliteDatabase, MemoryDbKeyManager,
-            TariKeyId, TransactionKeyManagerInitializer, TransactionKeyManagerInterface,
+            create_memory_db_key_manager,
+            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInitializer,
+            TransactionKeyManagerInterface,
         },
         transaction_protocol::{
-            proto::protocol as proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage,
+            proto::protocol as proto,
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
             TransactionMetadata,
         },
-        CryptoFactories, ReceiverTransactionProtocol, SenderTransactionProtocol,
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
     ConfidentialOutputHasher,
 };
@@ -5570,8 +5593,8 @@ async fn transaction_service_tx_broadcast() {
     let tx1_fee = alice_completed_tx1.fee;
 
     assert!(
-        alice_completed_tx1.status == TransactionStatus::Completed
-            || alice_completed_tx1.status == TransactionStatus::Broadcast
+        alice_completed_tx1.status == TransactionStatus::Completed ||
+            alice_completed_tx1.status == TransactionStatus::Broadcast
     );
 
     let _transactions = alice_ts_interface
@@ -5676,8 +5699,8 @@ async fn transaction_service_tx_broadcast() {
         .expect("Transaction must be in collection");
 
     assert!(
-        alice_completed_tx2.status == TransactionStatus::Completed
-            || alice_completed_tx2.status == TransactionStatus::Broadcast
+        alice_completed_tx2.status == TransactionStatus::Completed ||
+            alice_completed_tx2.status == TransactionStatus::Broadcast
     );
 
     let _transactions = alice_ts_interface

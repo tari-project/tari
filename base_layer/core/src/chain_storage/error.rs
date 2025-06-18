@@ -161,47 +161,47 @@ impl ChainStorageError {
         match self {
             ChainStorageError::ProofOfWorkError { source: e } => e.get_ban_reason(),
             ChainStorageError::ValidationError { source: e } => e.get_ban_reason(),
-            err @ ChainStorageError::UnspendableInput
-            | err @ ChainStorageError::MerkleMountainRangeError { .. }
-            | err @ ChainStorageError::MismatchedMmrRoot(_)
-            | err @ ChainStorageError::TransactionError(_)
-            | err @ ChainStorageError::SMTError(_)
-            | err @ ChainStorageError::InvalidSerializedPublicKey(_) => Some(BanReason {
+            err @ ChainStorageError::UnspendableInput |
+            err @ ChainStorageError::MerkleMountainRangeError { .. } |
+            err @ ChainStorageError::MismatchedMmrRoot(_) |
+            err @ ChainStorageError::TransactionError(_) |
+            err @ ChainStorageError::SMTError(_) |
+            err @ ChainStorageError::InvalidSerializedPublicKey(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
-            _err @ ChainStorageError::AccessError(_)
-            | _err @ ChainStorageError::CorruptedDatabase(_)
-            | _err @ ChainStorageError::UnexpectedResult(_)
-            | _err @ ChainStorageError::InvalidOperation(_)
-            | _err @ ChainStorageError::UnspendError
-            | _err @ ChainStorageError::DataInconsistencyDetected { .. }
-            | _err @ ChainStorageError::CriticalError(_)
-            | _err @ ChainStorageError::InsertError { .. }
-            | _err @ ChainStorageError::InvalidQuery(_)
-            | _err @ ChainStorageError::InvalidArguments { .. }
-            | _err @ ChainStorageError::ValueNotFound { .. }
-            | _err @ ChainStorageError::MerkleProofError { .. }
-            | _err @ ChainStorageError::InvalidBlock(_)
-            | _err @ ChainStorageError::BlockingTaskSpawnError(_)
-            | _err @ ChainStorageError::LmdbError { .. }
-            | _err @ ChainStorageError::CannotAcquireFileLock
-            | _err @ ChainStorageError::IoError(_)
-            | _err @ ChainStorageError::CannotCalculateNonTipMmr(_)
-            | _err @ ChainStorageError::KeyExists { .. }
-            | _err @ ChainStorageError::DbResizeRequired(_)
-            | _err @ ChainStorageError::DbTransactionTooLarge(_)
-            | _err @ ChainStorageError::DatabaseResyncRequired(_)
-            | _err @ ChainStorageError::BlockError(_)
-            | _err @ ChainStorageError::AddBlockOperationLocked
-            | _err @ ChainStorageError::ConversionError(_)
-            | _err @ ChainStorageError::FixedHashSizeError(_)
-            | _err @ ChainStorageError::CompositeKeyLengthExceeded
-            | _err @ ChainStorageError::FromKeyBytesFailed(_)
-            | _err @ ChainStorageError::InvalidChainMetaData(_)
-            | _err @ ChainStorageError::OutOfRange
-            | _err @ ChainStorageError::MrHashError(_)
-            | _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
+            _err @ ChainStorageError::AccessError(_) |
+            _err @ ChainStorageError::CorruptedDatabase(_) |
+            _err @ ChainStorageError::UnexpectedResult(_) |
+            _err @ ChainStorageError::InvalidOperation(_) |
+            _err @ ChainStorageError::UnspendError |
+            _err @ ChainStorageError::DataInconsistencyDetected { .. } |
+            _err @ ChainStorageError::CriticalError(_) |
+            _err @ ChainStorageError::InsertError { .. } |
+            _err @ ChainStorageError::InvalidQuery(_) |
+            _err @ ChainStorageError::InvalidArguments { .. } |
+            _err @ ChainStorageError::ValueNotFound { .. } |
+            _err @ ChainStorageError::MerkleProofError { .. } |
+            _err @ ChainStorageError::InvalidBlock(_) |
+            _err @ ChainStorageError::BlockingTaskSpawnError(_) |
+            _err @ ChainStorageError::LmdbError { .. } |
+            _err @ ChainStorageError::CannotAcquireFileLock |
+            _err @ ChainStorageError::IoError(_) |
+            _err @ ChainStorageError::CannotCalculateNonTipMmr(_) |
+            _err @ ChainStorageError::KeyExists { .. } |
+            _err @ ChainStorageError::DbResizeRequired(_) |
+            _err @ ChainStorageError::DbTransactionTooLarge(_) |
+            _err @ ChainStorageError::DatabaseResyncRequired(_) |
+            _err @ ChainStorageError::BlockError(_) |
+            _err @ ChainStorageError::AddBlockOperationLocked |
+            _err @ ChainStorageError::ConversionError(_) |
+            _err @ ChainStorageError::FixedHashSizeError(_) |
+            _err @ ChainStorageError::CompositeKeyLengthExceeded |
+            _err @ ChainStorageError::FromKeyBytesFailed(_) |
+            _err @ ChainStorageError::InvalidChainMetaData(_) |
+            _err @ ChainStorageError::OutOfRange |
+            _err @ ChainStorageError::MrHashError(_) |
+            _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
         }
     }
 }

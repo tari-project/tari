@@ -42,7 +42,12 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
+            encrypted_data::PaymentId,
+            BuildInfo,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            TemplateType,
+            Transaction,
             TransactionOutput,
         },
     },
@@ -60,7 +65,11 @@ use crate::{
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
-            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
         },
     },
     OperationId,

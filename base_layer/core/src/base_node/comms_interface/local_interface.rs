@@ -22,25 +22,28 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use crate::{
-    base_node::comms_interface::{
-        comms_request::GetNewBlockTemplateRequest, comms_response::ValidatorNodeChange, error::CommsInterfaceError,
-        BlockEvent, NodeCommsRequest, NodeCommsResponse,
-    },
-    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{InputMinedInfo, OutputMinedInfo},
-    chain_storage::{TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
-    proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
-};
-use tari_common_types::types::FixedHash;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
+
+use crate::{
+    base_node::comms_interface::{
+        comms_request::GetNewBlockTemplateRequest,
+        comms_response::ValidatorNodeChange,
+        error::CommsInterfaceError,
+        BlockEvent,
+        NodeCommsRequest,
+        NodeCommsResponse,
+    },
+    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::{InputMinedInfo, OutputMinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
+    proof_of_work::{Difficulty, PowAlgorithm},
+    transactions::transaction_components::{TransactionKernel, TransactionOutput},
+};
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;

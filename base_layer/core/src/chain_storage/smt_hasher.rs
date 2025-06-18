@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ValidatorNodeMerkleHasherBlake256;
 use blake2::Blake2b;
-use digest::consts::U32;
-use digest::FixedOutput;
+use digest::{consts::U32, FixedOutput};
 use jmt::SimpleHasher;
 use tari_crypto::{
     hash_domain,
     hashing::{AsFixedBytes, DomainSeparatedHasher},
 };
+
+use crate::ValidatorNodeMerkleHasherBlake256;
 
 hash_domain!(OutputSmtHashDomain, "com.tari.base_layer.core.output_smt", 1);
 pub type OutputSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;

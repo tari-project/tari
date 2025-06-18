@@ -26,9 +26,9 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::epoch::VnEpoch;
-use tari_common_types::types::{
-    BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature,
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_utilities::hex::Hex;
 

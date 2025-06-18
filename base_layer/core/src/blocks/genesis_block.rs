@@ -478,14 +478,17 @@ mod test {
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{BlockchainBackend, SmtHasher},
         consensus::ConsensusManager,
-        input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr,
+        input_mr_hash_from_pruned_mmr,
+        kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr, PrunedInputMmr, PrunedOutputMmr,
+        KernelMmr,
+        PrunedInputMmr,
+        PrunedOutputMmr,
     };
     #[test]
     #[serial]

@@ -30,7 +30,9 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
-        create_block, default_coinbase_entities, BlockSpec,
+        create_block,
+        default_coinbase_entities,
+        BlockSpec,
     },
     transactions::{
         tari_amount::T,
@@ -583,6 +585,14 @@ mod clear_all_pending_headers {
 }
 
 mod validator_node_merkle_root {
+    use std::convert::TryFrom;
+
+    use rand::rngs::OsRng;
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{CompressedPublicKey, FixedHash},
+    };
+
     use super::*;
     use crate::{
         chain_storage::calculate_validator_node_mr,
@@ -591,10 +601,6 @@ mod validator_node_merkle_root {
             transaction_key_manager::create_memory_db_key_manager,
         },
     };
-    use rand::rngs::OsRng;
-    use std::convert::TryFrom;
-    use tari_common_types::types::FixedHash;
-    use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
 
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {

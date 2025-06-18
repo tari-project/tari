@@ -3,13 +3,12 @@
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
     epoch::VnEpoch,
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_sidechain::ShardGroup;
 
-use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry};
-use super::{ValidatorNodeRegistrationInfo};
+use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{

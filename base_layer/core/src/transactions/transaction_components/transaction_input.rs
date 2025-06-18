@@ -34,7 +34,12 @@ use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
-    ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput,
+    ComAndPubSignature,
+    CommitmentFactory,
+    CompressedCommitment,
+    CompressedPublicKey,
+    FixedHash,
+    HashOutput,
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_hashing::TransactionHashDomain;
@@ -48,7 +53,10 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
-            transaction_output::TransactionOutput, EncryptedData, OutputFeatures, TransactionError,
+            transaction_output::TransactionOutput,
+            EncryptedData,
+            OutputFeatures,
+            TransactionError,
         },
     },
 };
@@ -533,9 +541,9 @@ impl Display for TransactionInput {
 
 impl PartialEq<Self> for TransactionInput {
     fn eq(&self, other: &Self) -> bool {
-        self.output_hash() == other.output_hash()
-            && self.script_signature == other.script_signature
-            && self.input_data == other.input_data
+        self.output_hash() == other.output_hash() &&
+            self.script_signature == other.script_signature &&
+            self.input_data == other.input_data
     }
 }
 
