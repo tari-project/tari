@@ -1,6 +1,25 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+## [4.5.0-rc.0](https://github.com/tari-project/tari/compare/v4.4.1-rc.0...v4.5.0-rc.0) (2025-06-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* ensure payref persists during recovery (#7225)
+
+### Features
+
+* add payref to grpc outputs ([#7216](https://github.com/tari-project/tari/issues/7216)) ([0e322e1](https://github.com/tari-project/tari/commit/0e322e1f160811a676f64e784ede7983abcddcca))
+* ensure payref persists during recovery ([#7225](https://github.com/tari-project/tari/issues/7225)) ([2737a14](https://github.com/tari-project/tari/commit/2737a1404753cb416400a76e122f4839a7625dda))
+* integrated address support for Ledger ([#7198](https://github.com/tari-project/tari/issues/7198)) ([7ab0cd5](https://github.com/tari-project/tari/commit/7ab0cd5f2e440a4d42b5385d544f85253c805339))
+
+
+### Bug Fixes
+
+* fix scanner service when connectivity offline ([#7223](https://github.com/tari-project/tari/issues/7223)) ([e0ab8d1](https://github.com/tari-project/tari/commit/e0ab8d15df31520e1723d0000f555470d745a333))
+
 ### [4.1.1-rc.0](https://github.com/tari-project/tari/compare/v4.4.0-rc.0...v4.1.1-rc.0) (2025-06-12)
 
 
