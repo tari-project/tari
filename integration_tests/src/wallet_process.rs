@@ -32,6 +32,7 @@ use tari_common::{
     network_check::set_network_if_choice_valid,
 };
 use tari_common_sqlite::connection::DbConnectionUrl;
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
@@ -51,6 +52,7 @@ pub struct WalletProcess {
     pub temp_dir_path: PathBuf,
     pub base_node_name: Option<String>,
     pub peer_seeds: Vec<String>,
+    is_running: bool,
 }
 
 impl Drop for WalletProcess {
@@ -79,6 +81,9 @@ pub async fn spawn_wallet(
     let mut wallet_config: WalletConfig;
 
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
+        if wallet_ps.is_running() {
+            panic!("Wallet {} is already running", wallet_name);
+        }
         port = wallet_ps.port;
         grpc_port = wallet_ps.grpc_port;
         temp_dir_path = wallet_ps.temp_dir_path.clone();
@@ -187,6 +192,25 @@ pub async fn spawn_wallet(
         }
     });
 
+    wait_for_service(port).await;
+    wait_for_service(grpc_port).await;
+
+    let wallet_addr = format!("http://127.0.0.1:{}", grpc_port);
+    let mut wallet_client = WalletGrpcClient::connect(wallet_addr.as_str()).await.unwrap();
+    if let Some((_, _, request)) = base_node {
+        let _resp = wallet_client.set_base_node(request).await.unwrap();
+    }
+    let wallet_address_bytes = wallet_client
+        .get_address(minotari_wallet_grpc_client::grpc::Empty {})
+        .await
+        .unwrap()
+        .into_inner()
+        .interactive_address;
+    let tari_address = TariAddress::from_bytes(&wallet_address_bytes).unwrap();
+    world
+        .wallet_addresses
+        .insert(wallet_name.clone(), tari_address.to_base58());
+
     // make the new wallet able to be referenced by other processes
     world.wallets.insert(wallet_name.clone(), WalletProcess {
         config: wallet_config,
@@ -197,22 +221,8 @@ pub async fn spawn_wallet(
         base_node_name,
         kill_signal: shutdown,
         peer_seeds,
+        is_running: true,
     });
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    wait_for_service(port).await;
-    wait_for_service(grpc_port).await;
-
-    if let Some((_, _, hacky_request)) = base_node {
-        let mut wallet_client = create_wallet_client(world, wallet_name.clone())
-            .await
-            .expect("wallet grpc client");
-
-        let _resp = wallet_client.set_base_node(hacky_request).await.unwrap();
-    }
-
-    tokio::time::sleep(Duration::from_secs(2)).await;
 }
 
 pub fn get_default_cli() -> Cli {
@@ -263,7 +273,12 @@ impl WalletProcess {
         Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
     }
 
+    pub fn is_running(&self) -> bool {
+        self.is_running
+    }
+
     pub fn kill(&mut self) {
         self.kill_signal.trigger();
+        self.is_running = !self.kill_signal.is_triggered();
     }
 }

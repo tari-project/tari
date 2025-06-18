@@ -36,7 +36,8 @@ Feature: Wallet FFI
 
         When mining node OTHER_MINER mines 12 blocks
         When I wait for wallet OTHER_WALLET to have scanned to height 12
-        Then I send a one-sided stealth transaction of 10000123 uT from wallet OTHER_WALLET to wallet MY_WALLET at fee 1
+#        Then I send a one-sided stealth transaction of 10000123 uT from wallet OTHER_WALLET to wallet MY_WALLET at fee 1
+        Then I send an interactive transaction of 10000123 uT from wallet OTHER_WALLET to wallet MY_WALLET at fee 1
 
         When mining node MY_MINER mines 12 blocks
         When I wait for wallet MY_WALLET to have scanned to height 24

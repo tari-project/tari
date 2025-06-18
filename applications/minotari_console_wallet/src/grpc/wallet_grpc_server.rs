@@ -135,6 +135,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
+    time::{sleep, timeout, Duration},
 };
 use tonic::{Request, Response, Status};
 
@@ -834,15 +835,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?;
-                    let wallet_tx = self
-                        .get_transaction_service()
-                        .get_any_transaction(tx_id)
-                        .await
-                        .map_err(|e| Status::internal(format!("{:?}", e)))?
-                        .ok_or_else(|| {
-                            error!(target: LOG_TARGET, "Transaction {} not found", tx_id);
-                            Status::not_found(format!("Transaction {} not found", tx_id))
-                        })?;
+                    // The transaction is only persisted after it has been sent via comms, so we need to wait
+                    let wallet_tx = timeout(Duration::from_secs(30), async {
+                        loop {
+                            let tx = self
+                                .get_transaction_service()
+                                .get_any_transaction(tx_id)
+                                .await
+                                .map_err(|e| Status::internal(format!("{:?}", e)));
+
+                            if let Ok(Some(tx)) = tx {
+                                break tx;
+                            }
+                            sleep(Duration::from_millis(100)).await;
+                        }
+                    })
+                    .await
+                    .map_err(|_| {
+                        error!(target: LOG_TARGET, "Transaction {} not found within timeout", tx_id);
+                        Status::not_found(format!("Transaction {} not found within timeout", tx_id))
+                    })?;
                     let final_tx = convert_wallet_transaction_into_transaction_info(
                         wallet_tx,
                         &wallet_address,
