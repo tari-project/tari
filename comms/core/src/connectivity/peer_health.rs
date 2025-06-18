@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{connectivity::proactive_dialing_metrics, utils::datetime::format_duration};
+use crate::utils::datetime::format_duration;
 
 /// Circuit breaker state for peer connections
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -101,7 +101,6 @@ impl PeerHealthMetrics {
         // Transition circuit breaker state on successful connection
         if self.circuit_breaker_state == CircuitBreakerState::HalfOpen {
             self.circuit_breaker_state = CircuitBreakerState::Closed;
-            proactive_dialing_metrics::increment_circuit_breaker_state_changes();
         }
     }
 
@@ -116,7 +115,6 @@ impl PeerHealthMetrics {
             self.circuit_breaker_state = CircuitBreakerState::Open {
                 opened_at: Instant::now(),
             };
-            proactive_dialing_metrics::increment_circuit_breaker_state_changes();
         }
     }
 
@@ -134,7 +132,7 @@ impl PeerHealthMetrics {
         if let CircuitBreakerState::Open { opened_at } = &self.circuit_breaker_state {
             if opened_at.elapsed() >= retry_interval {
                 self.circuit_breaker_state = CircuitBreakerState::HalfOpen;
-                proactive_dialing_metrics::increment_circuit_breaker_state_changes();
+
                 return true;
             }
         }

@@ -28,7 +28,6 @@ use super::{
     config::ConnectivityConfig,
     connection_pool::{ConnectionPool, ConnectionStatus},
     error::ConnectivityError,
-    proactive_dialing_metrics,
 };
 use crate::{
     connection_manager::ConnectionManagerRequester,
@@ -67,7 +66,7 @@ impl ProactiveDialer {
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
         task_id: u64,
     ) -> Result<usize, ConnectivityError> {
-        let start_time = std::time::Instant::now();
+        let _start_time = std::time::Instant::now();
 
         if !self.config.proactive_dialing_enabled {
             return Ok(0);
@@ -77,7 +76,7 @@ impl ProactiveDialer {
         let target = self.config.target_connection_count;
 
         // Update metrics
-        proactive_dialing_metrics::set_target_connections_achieved(current_connections >= target);
+
 
         if current_connections >= target {
             debug!(
@@ -87,7 +86,7 @@ impl ProactiveDialer {
                 current_connections,
                 target
             );
-            proactive_dialing_metrics::observe_proactive_dialing_execution_time(start_time.elapsed());
+    
             return Ok(0);
         }
 
@@ -105,10 +104,7 @@ impl ProactiveDialer {
         let success_rate = self.calculate_recent_success_rate(connection_stats);
         let dial_count = self.calculate_dial_count(needed, success_rate);
 
-        // Update metrics
-        proactive_dialing_metrics::set_connection_success_rate(success_rate);
-        let actual_multiplier = dial_count as f32 / needed as f32;
-        proactive_dialing_metrics::set_dialing_multiplier_applied(actual_multiplier);
+        let _actual_multiplier = dial_count as f32 / needed as f32;
 
         debug!(
             target: LOG_TARGET,
@@ -130,12 +126,11 @@ impl ProactiveDialer {
                 "({}) No healthy peer candidates available for proactive dialing",
                 task_id
             );
-            proactive_dialing_metrics::observe_proactive_dialing_execution_time(start_time.elapsed());
+    
             return Ok(0);
         }
 
-        // Update candidate metrics
-        proactive_dialing_metrics::set_available_peer_candidates(candidates.len());
+
 
         // Initiate concurrent dials
         let dialed_count = self.dial_peers_concurrently(candidates, task_id).await;
@@ -149,7 +144,7 @@ impl ProactiveDialer {
         );
 
         // Record final metrics
-        proactive_dialing_metrics::observe_proactive_dialing_execution_time(start_time.elapsed());
+
 
         Ok(dialed_count)
     }
@@ -296,7 +291,7 @@ impl ProactiveDialer {
             match self.connection_manager.send_dial_peer(peer.node_id.clone(), None).await {
                 Ok(_) => {
                     successful_dials += 1;
-                    proactive_dialing_metrics::increment_proactive_dials_attempted();
+        
                 },
                 Err(err) => {
                     warn!(
@@ -306,7 +301,6 @@ impl ProactiveDialer {
                         peer.node_id.short_str(),
                         err
                     );
-                    proactive_dialing_metrics::increment_proactive_dials_failed();
                 },
             }
         }

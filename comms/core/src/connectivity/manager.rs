@@ -44,7 +44,7 @@ use super::{
     error::ConnectivityError,
 
     proactive_dialer::ProactiveDialer,
-    proactive_dialing_metrics,
+
     requester::{ConnectivityEvent, ConnectivityRequest},
     selection::ConnectivitySelection,
     ConnectivityEventTx,
@@ -701,7 +701,7 @@ impl ConnectivityManagerActor {
         entry.set_connection_success();
 
         // Update proactive dialing success metrics
-        proactive_dialing_metrics::increment_proactive_dials_successful();
+        
     }
 
     fn mark_peer_failed(&mut self, node_id: NodeId) -> usize {
@@ -1213,13 +1213,13 @@ impl ConnectivityManagerActor {
     }
 
     fn update_circuit_breaker_metrics(&self) {
-        let circuit_breaker_open_count = self
+        let _circuit_breaker_open_count = self
             .connection_stats
             .values()
             .filter(|stats| stats.health_metrics().circuit_breaker_state().is_open())
             .count();
 
-        proactive_dialing_metrics::set_circuit_breaker_open_peers(circuit_breaker_open_count);
+
 
         // Calculate average peer health score
         if !self.connection_stats.is_empty() {
@@ -1228,8 +1228,8 @@ impl ConnectivityManagerActor {
                 .values()
                 .map(|stats| stats.health_score(self.config.success_rate_tracking_window))
                 .sum();
-            let avg_health = total_health / self.connection_stats.len() as f32;
-            proactive_dialing_metrics::set_average_peer_health_score(avg_health);
+            let _avg_health = total_health / self.connection_stats.len() as f32;
+
         }
     }
 
