@@ -1141,7 +1141,9 @@ impl PeerDatabaseSql {
 
         // Apply limit if specified
         if let Some(limit) = limit {
-            query = query.limit(limit as i64);
+            // Safely convert usize to i64, using try_into with fallback to i64::MAX
+            let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+            query = query.limit(limit_i64);
         }
 
         let results = query.load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
