@@ -1607,7 +1607,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
-            amount,
             fee_per_gram,
             None,
         );
@@ -1845,7 +1844,6 @@ where
             PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
-                amount,
                 fee_per_gram,
                 if dest_address == self.resources.one_sided_tari_address ||
                     dest_address == self.resources.interactive_tari_address
@@ -2195,7 +2193,6 @@ where
         let payment_id = PaymentId::AddressAndData {
             sender_address: self.resources.interactive_tari_address.clone(),
             sender_one_sided: true,
-            amount,
             fee: stp.get_fee_amount().unwrap_or_default(),
             tx_type: TxType::PaymentToOther,
             user_data: vec![],
@@ -2369,7 +2366,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
-            amount,
             fee_per_gram,
             Some(TxType::Burn),
         );

@@ -878,7 +878,6 @@ where
         };
         let payment_id = PaymentId::AddressAndData {
             sender_address: single_round_sender_data.sender_address.clone(),
-            amount: single_round_sender_data.amount,
             fee: single_round_sender_data.metadata.fee,
             sender_one_sided: false,
             tx_type: TxType::PaymentToOther,
@@ -1940,7 +1939,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.one_sided_tari_address.clone(),
             true,
-            amount,
             fee,
             Some(TxType::PaymentToOther),
         );
@@ -2853,7 +2851,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
-            amount,
             fee,
             Some(TxType::PaymentToSelf),
         );
