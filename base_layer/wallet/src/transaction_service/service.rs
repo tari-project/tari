@@ -3830,29 +3830,23 @@ where
         {
             (
                 match tx_type {
-                    TxType::PaymentToOther | TxType::Burn => TransactionDirection::Outbound,
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
+                    TxType::PaymentToOther |
+                    TxType::Burn |
                     TxType::CodeTemplateRegistration |
+                    TxType::ValidatorNodeRegistration |
+                    TxType::CoinSplit |
+                    TxType::PaymentToSelf => TransactionDirection::Outbound,
+                    TxType::CoinJoin |
                     TxType::ClaimAtomicSwap |
                     TxType::HtlcAtomicSwapRefund |
                     TxType::ImportedUtxoNoneRewindable |
                     TxType::Coinbase => TransactionDirection::Inbound,
                 },
                 amount,
-                match tx_type {
-                    TxType::PaymentToOther | TxType::ImportedUtxoNoneRewindable => recipient_address.clone(),
-                    TxType::Burn => TariAddress::default(),
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
-                    TxType::CodeTemplateRegistration |
-                    TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund |
-                    TxType::Coinbase => self.resources.one_sided_tari_address.clone(),
+                if tx_type == TxType::Burn {
+                    TariAddress::default()
+                } else {
+                    recipient_address.clone()
                 },
             )
         } else {
