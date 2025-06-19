@@ -169,6 +169,12 @@ where
             sender_address: single_round_sender_data.sender_address,
         };
 
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id, None)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
         Ok(PrepareOneSidedTransactionForSigningResult {
             version: get_supported_version(),
             tx_id,

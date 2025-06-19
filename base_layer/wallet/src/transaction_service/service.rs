@@ -4169,7 +4169,6 @@ where
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
         let amount = request.request.info.recipient.amount;
         let payment_id = request.request.info.payment_id;
-        let change_outputs = request.request.info.change_output.map(|o| vec![o.output_pair.output]);
 
         let _result = self
             .event_publisher
@@ -4177,11 +4176,6 @@ where
 
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
 
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id, change_outputs)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new_with_output_hashes(
