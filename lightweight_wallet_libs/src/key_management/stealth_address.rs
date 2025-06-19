@@ -6,14 +6,19 @@
 //! This module provides stealth address generation and key recovery capabilities
 //! for private transactions in the Tari network.
 
-use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-use curve25519_dalek::ristretto::RistrettoPoint;
-use curve25519_dalek::scalar::Scalar;
-use blake2::Blake2b512;
-use blake2::digest::Digest;
-use crate::data_structures::types::{PrivateKey, CompressedPublicKey};
-use crate::errors::KeyManagementError;
-use crate::key_management::KeyDerivationPath;
+use blake2::{Blake2b, Blake2b512, Digest};
+use curve25519_dalek::{
+    constants::RISTRETTO_BASEPOINT_POINT,
+    ristretto::{CompressedRistretto, RistrettoPoint},
+    scalar::Scalar,
+    traits::Identity,
+};
+use digest::consts::U32;
+use crate::{
+    data_structures::types::{CompressedPublicKey, PrivateKey},
+    errors::KeyManagementError,
+    key_management::KeyDerivationPath,
+};
 
 /// Domain separator for stealth address operations
 const STEALTH_ADDRESS_DOMAIN: &[u8] = b"TARI_STEALTH_ADDRESS";
@@ -43,30 +48,130 @@ impl StealthAddress {
         }
     }
 
-    /// Get the stealth address as a hex string
-    pub fn to_hex(&self) -> String {
-        format!(
-            "{}:{}",
-            self.public_key.to_hex(),
-            self.ephemeral_public_key.to_hex()
-        )
+    /// Generate a stealth address from recipient public key and sender's ephemeral private key
+    pub fn generate(
+        recipient_public_key: &CompressedPublicKey,
+        sender_ephemeral_private_key: &PrivateKey,
+    ) -> Self {
+        // Compute ephemeral public key
+        let ephemeral_public_key = CompressedPublicKey::from_private_key(sender_ephemeral_private_key);
+        // Perform ECDH to get shared secret: r * P
+        let recipient_point = recipient_public_key.decompress().unwrap_or_else(|| RistrettoPoint::identity());
+        let shared_point = sender_ephemeral_private_key.0 * recipient_point;
+        let shared_secret = shared_point.compress().to_bytes();
+        // Derive the stealth public key: P_stealth = P + H(shared_secret) * G
+        let mut hasher = Blake2b::<U32>::new();
+        hasher.update(b"TARI_STEALTH_PUBKEY");
+        hasher.update(recipient_public_key.as_bytes());
+        hasher.update(&shared_secret);
+        let result = hasher.finalize();
+        let mut tweak_bytes = [0u8; 32];
+        tweak_bytes.copy_from_slice(result.as_slice());
+        let tweak = Scalar::from_bytes_mod_order(tweak_bytes);
+        let p_stealth = recipient_point + tweak * RISTRETTO_BASEPOINT_POINT;
+        let stealth_public_key = CompressedPublicKey::from_point(&p_stealth);
+        Self::new(stealth_public_key, ephemeral_public_key, None)
     }
 
-    /// Create a stealth address from hex string
-    pub fn from_hex(hex: &str) -> Result<Self, KeyManagementError> {
-        let parts: Vec<&str> = hex.split(':').collect();
-        if parts.len() != 2 {
-            return Err(KeyManagementError::InvalidPublicKey(
-                "Invalid stealth address format".to_string()
-            ));
+    /// Recover private key from recipient private key, recipient public key, and sender's ephemeral public key
+    pub fn recover_private_key(
+        recipient_private_key: &PrivateKey,
+        recipient_public_key: &CompressedPublicKey,
+        sender_ephemeral_public_key: &CompressedPublicKey,
+    ) -> PrivateKey {
+        // Compute shared secret: S = a*R
+        let ephemeral_point = sender_ephemeral_public_key.decompress().unwrap_or_else(|| RistrettoPoint::identity());
+        let shared_point = recipient_private_key.0 * ephemeral_point;
+        let shared_secret = shared_point.compress().to_bytes();
+        // Derive tweak: tweak = H(P || S)
+        let mut hasher = Blake2b::<U32>::new();
+        hasher.update(b"TARI_STEALTH_PUBKEY");
+        hasher.update(recipient_public_key.as_bytes());
+        hasher.update(&shared_secret);
+        let result = hasher.finalize();
+        let mut tweak_bytes = [0u8; 32];
+        tweak_bytes.copy_from_slice(result.as_slice());
+        let tweak = Scalar::from_bytes_mod_order(tweak_bytes);
+        // Compute stealth private key: a_stealth = a + tweak
+        let a_stealth = recipient_private_key.0 + tweak;
+        PrivateKey(a_stealth)
+    }
+
+    /// Convert to hex string
+    pub fn to_hex(&self) -> String {
+        let mut hex = String::new();
+        hex.push_str(&self.public_key.to_hex());
+        hex.push_str(&self.ephemeral_public_key.to_hex());
+        if let Some(path) = &self.derivation_path {
+            hex.push_str(&path.to_string());
         }
+        hex
+    }
 
-        let public_key = CompressedPublicKey::from_hex(parts[0])
-            .map_err(|e| KeyManagementError::InvalidPublicKey(e.to_string()))?;
-        let ephemeral_public_key = CompressedPublicKey::from_hex(parts[1])
-            .map_err(|e| KeyManagementError::InvalidPublicKey(e.to_string()))?;
-
+    /// Create from hex string
+    pub fn from_hex(hex: &str) -> Result<Self, KeyManagementError> {
+        if hex.len() < 128 { // 32 bytes each for public key and ephemeral public key
+            return Err(KeyManagementError::stealth_address_recovery_failed(&format!("Invalid hex length: {}", hex.len())));
+        }
+        
+        let public_key_hex = &hex[..64];
+        let ephemeral_public_key_hex = &hex[64..128];
+        
+        let public_key = CompressedPublicKey::from_hex(public_key_hex)
+            .map_err(|e| KeyManagementError::stealth_address_recovery_failed(&e.to_string()))?;
+        let ephemeral_public_key = CompressedPublicKey::from_hex(ephemeral_public_key_hex)
+            .map_err(|e| KeyManagementError::stealth_address_recovery_failed(&e.to_string()))?;
+        
         Ok(Self::new(public_key, ephemeral_public_key, None))
+    }
+
+    /// Derive shared secret from public keys (for sender)
+    fn derive_shared_secret(
+        recipient_public_key: &CompressedPublicKey,
+        ephemeral_public_key: &CompressedPublicKey,
+    ) -> [u8; 32] {
+        // This is a simplified version - in practice, you'd need the ephemeral private key
+        // For now, we'll use a hash of both public keys
+        let mut hasher = Blake2b::<U32>::new();
+        hasher.update(b"TARI_STEALTH_ECDH");
+        hasher.update(recipient_public_key.as_bytes());
+        hasher.update(ephemeral_public_key.as_bytes());
+        let result = hasher.finalize();
+        let mut shared_secret = [0u8; 32];
+        shared_secret.copy_from_slice(result.as_slice());
+        shared_secret
+    }
+
+    /// Derive shared secret from private key and public key (for recipient)
+    fn derive_shared_secret_from_private_key(
+        recipient_private_key: &PrivateKey,
+        ephemeral_public_key: &CompressedPublicKey,
+    ) -> [u8; 32] {
+        // Perform ECDH: recipient_private_key * ephemeral_public_key
+        let ephemeral_point = ephemeral_public_key.decompress().unwrap_or_else(|| {
+            // Fallback to identity point if decompression fails
+            RistrettoPoint::identity()
+        });
+        let shared_point = recipient_private_key.0 * ephemeral_point;
+        let mut shared_secret = [0u8; 32];
+        shared_secret.copy_from_slice(shared_point.compress().to_bytes().as_slice());
+        shared_secret
+    }
+
+    /// Derive stealth private key
+    fn derive_stealth_private_key(
+        recipient_private_key: &PrivateKey,
+        shared_secret: &[u8; 32],
+    ) -> PrivateKey {
+        // Use Blake2b to derive the stealth private key
+        let mut hasher = Blake2b::<U32>::new();
+        hasher.update(b"TARI_STEALTH_PRIVKEY");
+        hasher.update(recipient_private_key.as_bytes());
+        hasher.update(shared_secret);
+        let result = hasher.finalize();
+        let mut stealth_key_bytes = [0u8; 32];
+        stealth_key_bytes.copy_from_slice(result.as_slice());
+        PrivateKey::new(stealth_key_bytes)
     }
 }
 
@@ -96,7 +201,7 @@ impl StealthAddressManager {
         let P_stealth = P + h * RISTRETTO_BASEPOINT_POINT;
         let stealth_public_key = CompressedPublicKey::from_point(&P_stealth);
         let ephemeral_public_key = CompressedPublicKey(R);
-        Ok(StealthAddress::new(stealth_public_key, ephemeral_public_key, None))
+        Ok(StealthAddress::new(stealth_public_key, ephemeral_public_key.clone(), None))
     }
 
     /// Recover the private key for a stealth address
@@ -151,16 +256,28 @@ mod tests {
 
     #[test]
     fn test_stealth_address_generation_and_recovery() {
-        // Generate recipient keypair
-        let recipient_private = PrivateKey::random();
-        let recipient_public = CompressedPublicKey::from_point(&(recipient_private.0 * RISTRETTO_BASEPOINT_POINT));
-        // Generate stealth address
-        let stealth_address = StealthAddressManager::generate_stealth_address(&PrivateKey::random(), &recipient_public).unwrap();
-        // Recipient recovers stealth private key
-        let recovered_private = StealthAddressManager::recover_stealth_private_key(&recipient_private, &stealth_address.ephemeral_public_key).unwrap();
-        // Check that the public key matches the stealth address
-        let recovered_public = CompressedPublicKey::from_point(&(recovered_private.0 * RISTRETTO_BASEPOINT_POINT));
-        assert_eq!(recovered_public, stealth_address.public_key);
+        // Generate a random private key for the recipient
+        let recipient_private_key = PrivateKey::random();
+        let recipient_public_key = CompressedPublicKey::from_private_key(&recipient_private_key);
+        // Generate a random ephemeral private key for the sender
+        let sender_ephemeral_private_key = PrivateKey::random();
+        let sender_ephemeral_public_key = CompressedPublicKey::from_private_key(&sender_ephemeral_private_key);
+        // Sender generates the stealth address using their ephemeral private key and the recipient's public key
+        let stealth_address = StealthAddress::generate(
+            &recipient_public_key,
+            &sender_ephemeral_private_key,
+        );
+        // Receiver recovers the private key using their private key, their public key, and the sender's ephemeral public key
+        let recovered_private_key = StealthAddress::recover_private_key(
+            &recipient_private_key,
+            &recipient_public_key,
+            &sender_ephemeral_public_key,
+        );
+        // The recovered private key should be different from the original recipient private key
+        assert_ne!(recovered_private_key.as_bytes(), recipient_private_key.as_bytes());
+        // But the public key derived from the recovered private key should match the stealth address
+        let recovered_public_key = CompressedPublicKey::from_private_key(&recovered_private_key);
+        assert_eq!(recovered_public_key.as_bytes(), stealth_address.public_key.as_bytes());
     }
 
     #[test]

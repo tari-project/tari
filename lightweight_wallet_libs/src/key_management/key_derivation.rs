@@ -5,12 +5,13 @@
 
 use blake2::{Blake2b, Digest};
 use digest::consts::U64;
-use zeroize::Zeroize;
 use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
-use curve25519_dalek::scalar::Scalar;
+use zeroize::Zeroize;
 
-use crate::data_structures::types::{PrivateKey, CompressedPublicKey};
-use crate::errors::KeyManagementError;
+use crate::{
+    data_structures::types::{CompressedPublicKey, PrivateKey},
+    errors::KeyManagementError,
+};
 use crate::key_management::{KeyManager, KeyDerivationPath, DerivedKeyPair};
 
 /// Domain separator for key derivation

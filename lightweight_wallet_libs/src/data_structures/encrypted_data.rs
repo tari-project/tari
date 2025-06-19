@@ -85,7 +85,7 @@ impl EncryptedData {
         // Encode the value and mask
         let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + payment_id.get_size()]);
         bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
-        bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
+        bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(&mask.as_bytes());
         bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&payment_id.to_bytes());
 
         // Produce a secure random nonce

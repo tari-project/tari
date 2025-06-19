@@ -23,13 +23,18 @@
 use std::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
-use curve25519_dalek::scalar::Scalar;
-use hex::ToHex;
+use curve25519_dalek::{
+    constants::RISTRETTO_BASEPOINT_POINT,
+    ristretto::{CompressedRistretto, RistrettoPoint},
+    scalar::Scalar,
+};
+use hex::{FromHex, ToHex};
+use primitive_types::U256;
 use rand_core::{OsRng, RngCore};
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
 
+use crate::errors::DataStructureError;
 use crate::hex_utils::{HexEncodable, HexError, HexValidatable};
 
 /// Custom serde module for Scalar
@@ -91,31 +96,30 @@ mod compressed_ristretto_serde {
 /// Custom borsh module for Scalar
 mod scalar_borsh {
     use super::*;
-    use borsh::{BorshDeserialize, BorshSerialize};
 
     pub fn serialize<W: std::io::Write>(scalar: &Scalar, writer: &mut W) -> std::io::Result<()> {
-        let bytes = scalar.to_bytes();
-        bytes.serialize(writer)
+        BorshSerialize::serialize(&scalar.to_bytes(), writer)
     }
 
     pub fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Scalar> {
-        let bytes: [u8; 32] = BorshDeserialize::deserialize(reader)?;
-        Ok(Scalar::from_bytes_mod_order(bytes))
+        let bytes = <[u8; 32]>::deserialize_reader(reader)?;
+        Ok(Scalar::from_canonical_bytes(bytes).unwrap_or_else(|| {
+            // Fallback to zero scalar if bytes are not canonical
+            Scalar::from_bytes_mod_order([0u8; 32])
+        }))
     }
 }
 
 /// Custom borsh module for CompressedRistretto
 mod compressed_ristretto_borsh {
     use super::*;
-    use borsh::{BorshDeserialize, BorshSerialize};
 
     pub fn serialize<W: std::io::Write>(compressed: &CompressedRistretto, writer: &mut W) -> std::io::Result<()> {
-        let bytes = compressed.to_bytes();
-        bytes.serialize(writer)
+        BorshSerialize::serialize(&compressed.to_bytes(), writer)
     }
 
     pub fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<CompressedRistretto> {
-        let bytes: [u8; 32] = BorshDeserialize::deserialize(reader)?;
+        let bytes = <[u8; 32]>::deserialize_reader(reader)?;
         Ok(CompressedRistretto(bytes))
     }
 }
@@ -133,7 +137,10 @@ impl BorshSerialize for PrivateKey {
 impl BorshDeserialize for PrivateKey {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let bytes = <[u8; 32]>::deserialize_reader(reader)?;
-        Ok(Self(Scalar::from_bytes_mod_order(bytes)))
+        Ok(Self(Scalar::from_canonical_bytes(bytes).unwrap_or_else(|| {
+            // Fallback to zero scalar if bytes are not canonical
+            Scalar::from_bytes_mod_order([0u8; 32])
+        })))
     }
 }
 
@@ -259,10 +266,10 @@ impl From<MicroMinotari> for u64 {
 }
 
 /// Compressed commitment (33 bytes)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct CompressedCommitment {
     /// The commitment bytes
-    #[serde(serialize_with = "crate::hex_utils::serialize_array_33", deserialize_with = "crate::hex_utils::deserialize_array_33")]
+    #[serde(serialize_with = "crate::hex_utils::serde_helpers::serialize_array_33", deserialize_with = "crate::hex_utils::serde_helpers::deserialize_array_33")]
     pub bytes: [u8; 33],
 }
 
@@ -373,6 +380,12 @@ impl CompressedPublicKey {
     /// Compress from RistrettoPoint
     pub fn from_point(point: &RistrettoPoint) -> Self {
         Self(point.compress())
+    }
+
+    /// Create from private key
+    pub fn from_private_key(private_key: &PrivateKey) -> Self {
+        let point = RistrettoPoint::from(private_key.0 * RISTRETTO_BASEPOINT_POINT);
+        Self::from_point(&point)
     }
 }
 

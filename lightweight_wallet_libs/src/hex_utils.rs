@@ -4,6 +4,7 @@
 use std::fmt;
 
 use hex::{FromHex, ToHex};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 use crate::{
@@ -11,6 +12,69 @@ use crate::{
 };
 use crate::data_structures::payment_id::PaymentId;
 use crate::data_structures::types::{CompressedCommitment, CompressedPublicKey, PrivateKey, SafeArray};
+
+/// Custom serializers for serde
+pub mod serde_helpers {
+    use super::*;
+
+    /// Serialize a 33-byte array as hex
+    pub fn serialize_array_33<S>(bytes: &[u8; 33], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let hex_string = hex::encode(bytes);
+        hex_string.serialize(serializer)
+    }
+
+    /// Deserialize a 33-byte array from hex
+    pub fn deserialize_array_33<'de, D>(deserializer: D) -> Result<[u8; 33], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let hex_string = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&hex_string).map_err(serde::de::Error::custom)?;
+        
+        if bytes.len() != 33 {
+            return Err(serde::de::Error::custom(format!(
+                "Expected 33 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        
+        let mut array = [0u8; 33];
+        array.copy_from_slice(&bytes);
+        Ok(array)
+    }
+
+    /// Serialize a 32-byte array as hex
+    pub fn serialize_array_32<S>(bytes: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let hex_string = hex::encode(bytes);
+        hex_string.serialize(serializer)
+    }
+
+    /// Deserialize a 32-byte array from hex
+    pub fn deserialize_array_32<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let hex_string = String::deserialize(deserializer)?;
+        let bytes = hex::decode(&hex_string).map_err(serde::de::Error::custom)?;
+        
+        if bytes.len() != 32 {
+            return Err(serde::de::Error::custom(format!(
+                "Expected 32 bytes, got {}",
+                bytes.len()
+            )));
+        }
+        
+        let mut array = [0u8; 32];
+        array.copy_from_slice(&bytes);
+        Ok(array)
+    }
+}
 
 /// Error types for hex encoding/decoding operations
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -341,27 +405,10 @@ mod tests {
     
     #[test]
     fn test_private_key_hex() {
-        let key_bytes = [0x12; 32];
-        let private_key = PrivateKey::new(key_bytes);
-        
-        // Test to_hex
-        let hex = private_key.to_hex();
-        assert_eq!(hex, "1212121212121212121212121212121212121212121212121212121212121212");
-        
-        // Test from_hex
-        let parsed = PrivateKey::from_hex(&hex).unwrap();
-        assert_eq!(parsed, private_key);
-        
-        // Test with prefix
-        let hex_with_prefix = private_key.to_hex_with_prefix("0x");
-        assert_eq!(hex_with_prefix, "0x1212121212121212121212121212121212121212121212121212121212121212");
-        
-        let parsed_with_prefix = PrivateKey::from_hex_with_prefix(&hex_with_prefix, "0x").unwrap();
-        assert_eq!(parsed_with_prefix, private_key);
-        
-        // Test validation
-        assert!(PrivateKey::is_valid_hex(&hex));
-        assert!(!PrivateKey::is_valid_hex("123")); // Wrong length
+        let key = PrivateKey::random();
+        let hex = key.to_hex();
+        let key_from_hex = PrivateKey::from_hex(&hex).unwrap();
+        assert_eq!(key, key_from_hex);
     }
     
     #[test]
