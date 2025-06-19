@@ -12,7 +12,7 @@ pub struct MarshalOutputPair {
     pub output_pair: OutputPair,
     pub encrypted_kernel_nonce: String,
     pub encrypted_sender_offset_key: Option<String>,
-    pub encrypted_output_spending_key: String,
+    pub encrypted_output_commitment_mask: String,
 }
 
 impl MarshalOutputPair {
@@ -21,18 +21,18 @@ impl MarshalOutputPair {
         output_pair: OutputPair,
     ) -> Result<Self, TransactionServiceError> {
         let encrypted_kernel_nonce = MarshalOutputPair::encrypt_key(key_manager, &output_pair.kernel_nonce).await?;
-        let encrypted_sender_offset_key_id = match &output_pair.sender_offset_key_id {
+        let encrypted_sender_offset_key = match &output_pair.sender_offset_key_id {
             Some(key) => Some(MarshalOutputPair::encrypt_key(key_manager, key).await?),
             None => None,
         };
-        let encrypted_output_spending_key_id =
+        let encrypted_output_commitment_mask =
             MarshalOutputPair::encrypt_key(key_manager, &output_pair.output.spending_key_id).await?;
 
         Ok(MarshalOutputPair {
             output_pair,
             encrypted_kernel_nonce,
-            encrypted_sender_offset_key: encrypted_sender_offset_key_id,
-            encrypted_output_spending_key: encrypted_output_spending_key_id,
+            encrypted_sender_offset_key,
+            encrypted_output_commitment_mask,
         })
     }
 
@@ -47,7 +47,7 @@ impl MarshalOutputPair {
                 Some(MarshalOutputPair::import_encrypted_key(key_manager, sender_offset_key_id).await?);
         }
         self.output_pair.output.spending_key_id =
-            MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_spending_key).await?;
+            MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_commitment_mask).await?;
         Ok(())
     }
 
