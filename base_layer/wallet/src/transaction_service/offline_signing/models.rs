@@ -73,8 +73,6 @@ pub struct PaymentRecipient {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OneSidedTransactionInfo {
-    // Tip height
-    pub last_seen_tip_height: Option<u64>,
     /// Payment ID
     pub payment_id: PaymentId,
     /// Recipient

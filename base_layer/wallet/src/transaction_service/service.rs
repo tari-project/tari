@@ -671,11 +671,7 @@ where
             } => {
                 self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
                 let dest_pubkey = destination.public_spend_key().clone();
-                let mut offline_signing = OfflineSigner::new(
-                    self.resources.clone(),
-                    self.consensus_manager.clone(),
-                    self.last_seen_tip_height,
-                );
+                let mut offline_signing = OfflineSigner::new(self.resources.clone());
                 offline_signing
                     .prepare_one_sided_transaction_for_signing(
                         destination,
@@ -690,11 +686,7 @@ where
                     .map(TransactionServiceResponse::OneSidedTransactionPreparedForSigning)
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
-                let offline_signing = OfflineSigner::new(
-                    self.resources.clone(),
-                    self.consensus_manager.clone(),
-                    self.last_seen_tip_height,
-                );
+                let offline_signing = OfflineSigner::new(self.resources.clone());
                 offline_signing
                     .sign_locked_transaction(request)
                     .await

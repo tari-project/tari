@@ -4,7 +4,6 @@ use tari_common_types::{
     transaction::TxId,
 };
 use tari_core::{
-    consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
@@ -43,8 +42,6 @@ const LOG_TARGET: &str = "wallet::transaction_service::offline_signing::offline_
 
 pub struct OfflineSigner<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-    consensus_manager: ConsensusManager,
-    last_seen_tip_height: Option<u64>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -54,16 +51,8 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
     TKeyManagerInterface: TransactionKeyManagerInterface,
 {
-    pub fn new(
-        resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-        consensus_manager: ConsensusManager,
-        last_seen_tip_height: Option<u64>,
-    ) -> Self {
-        OfflineSigner {
-            resources,
-            consensus_manager,
-            last_seen_tip_height,
-        }
+    pub fn new(resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>) -> Self {
+        OfflineSigner { resources }
     }
 
     pub async fn prepare_one_sided_transaction_for_signing(
@@ -149,7 +138,6 @@ where
         };
 
         let info = OneSidedTransactionInfo {
-            last_seen_tip_height: self.last_seen_tip_height,
             payment_id,
             recipient: PaymentRecipient {
                 amount,
@@ -186,7 +174,7 @@ where
         &self,
         request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
-        let signer = OneSidedSigner::new(&self.resources.transaction_key_manager_service, &self.consensus_manager);
+        let signer = OneSidedSigner::new(&self.resources.transaction_key_manager_service);
         let signed_transaction = signer
             .sign_transaction(request.tx_id.clone(), request.info.clone())
             .await?;

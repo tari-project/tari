@@ -4,7 +4,6 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, Signature, UncompressedPublicKey},
 };
 use tari_core::{
-    consensus::ConsensusManager,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
         tari_amount::MicroMinotari,
@@ -14,16 +13,10 @@ use tari_core::{
             TransactionBuilder,
             TransactionKernel,
             TransactionKernelVersion,
-            TransactionOutputVersion,
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::{
-            recipient::RecipientSignedMessage,
-            sender::SingleRoundSenderData,
-            single_receiver::SingleReceiverTransactionProtocol,
-            TransactionProtocolError as TPE,
-        },
+        transaction_protocol::{recipient::RecipientSignedMessage, TransactionProtocolError as TPE},
     },
 };
 use tari_script::push_pubkey_script;
@@ -35,7 +28,8 @@ use crate::transaction_service::{
 
 struct SignedMessage {
     pub signed_data: RecipientSignedMessage,
-    pub sender_info: SingleRoundSenderData,
+    pub sender_public_nonce: CompressedPublicKey,
+    pub sender_public_excess: CompressedPublicKey,
     pub sender_offset_key_id: TariKeyId,
     pub sent_hashes: Vec<FixedHash>,
     pub change_hashes: Vec<FixedHash>,
@@ -43,15 +37,11 @@ struct SignedMessage {
 
 pub struct OneSidedSigner<'a, KM: TransactionKeyManagerInterface> {
     key_manager: &'a KM,
-    consensus_manager: &'a ConsensusManager,
 }
 
 impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
-    pub fn new(key_manager: &'a KM, consensus_manager: &'a ConsensusManager) -> Self {
-        Self {
-            key_manager,
-            consensus_manager,
-        }
+    pub fn new(key_manager: &'a KM) -> Self {
+        Self { key_manager }
     }
 
     pub async fn sign_transaction(
@@ -63,10 +53,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let signed_message = self.sign_message(tx_id, &info).await?;
         let transaction = self
             .build_transaction(
-                &info,
-                &signed_message.signed_data,
+                info,
+                signed_message.signed_data,
                 signed_message.sender_offset_key_id,
-                &signed_message.sender_info,
+                signed_message.sender_public_nonce,
+                signed_message.sender_public_excess,
             )
             .await?;
         Ok(SignedTransaction {
@@ -211,39 +202,67 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             None => vec![],
         };
 
-        let (public_nonce, public_excess) = self.calculate_total_nonce_and_total_public_excess(info).await?;
-        let output_version = TransactionOutputVersion::get_current_version();
+        let (sender_public_nonce, sender_public_excess) =
+            self.calculate_total_nonce_and_total_public_excess(info).await?;
         let kernel_version = TransactionKernelVersion::get_current_version();
-        let sender_info = SingleRoundSenderData {
+
+        let transaction_output = output.to_transaction_output(self.key_manager).await?;
+        let public_nonce = self
+            .key_manager
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+            .await?;
+        let tx_meta = if output.is_burned() {
+            let mut meta = info.metadata.clone();
+            meta.burn_commitment = Some(transaction_output.commitment().clone());
+            meta
+        } else {
+            info.metadata.clone()
+        };
+        let public_excess = self
+            .key_manager
+            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &public_nonce.key_id)
+            .await?;
+
+        let kernel_message = TransactionKernel::build_kernel_signature_message(
+            &kernel_version,
+            tx_meta.fee,
+            tx_meta.lock_height,
+            &tx_meta.kernel_features,
+            &tx_meta.burn_commitment,
+        );
+        let total_nonce = &sender_public_nonce.to_public_key()? + &public_nonce.pub_key.to_public_key()?;
+        let total_excess = &sender_public_excess.to_public_key()? + &public_excess.to_public_key()?;
+        let signature = self
+            .key_manager
+            .get_partial_txo_kernel_signature(
+                &output.spending_key_id,
+                &public_nonce.key_id,
+                &CompressedPublicKey::new_from_pk(total_nonce),
+                &CompressedPublicKey::new_from_pk(total_excess),
+                &kernel_version,
+                &kernel_message,
+                &tx_meta.kernel_features,
+                TxoStage::Output,
+            )
+            .await?;
+        let offset = self
+            .key_manager
+            .get_txo_private_kernel_offset(&output.spending_key_id, &public_nonce.key_id)
+            .await?;
+
+        let signed_data = RecipientSignedMessage {
             tx_id,
-            amount: info.recipient.amount,
-            public_excess,
-            public_nonce,
-            metadata: info.metadata.clone(),
-            payment_id: info.payment_id.clone(),
-            features: info.recipient.output_features.clone(),
-            script: script.clone(),
-            sender_offset_public_key: info.recipient.sender_offset_public_key.clone(),
-            ephemeral_public_nonce: info.recipient.ephemeral_public_key_nonce.clone(),
-            covenant: info.recipient.covenant.clone(),
-            minimum_value_promise: info.recipient.minimum_value_promise,
-            output_version,
-            kernel_version,
-            sender_address: info.sender_address.clone(),
+            output: transaction_output,
+            public_spend_key: public_excess,
+            partial_signature: signature,
+            tx_metadata: tx_meta,
+            offset,
         };
 
-        let tip_height = info.last_seen_tip_height.unwrap_or(0);
-        let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
-        let signed_data = SingleReceiverTransactionProtocol::create(
-            &sender_info.clone(),
-            output,
-            self.key_manager,
-            consensus_constants,
-        )
-        .await?;
         Ok(SignedMessage {
             signed_data,
-            sender_info,
+            sender_public_nonce,
+            sender_public_excess,
             sender_offset_key_id: sender_offset_key.key_id,
             sent_hashes,
             change_hashes,
@@ -252,20 +271,21 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
     async fn build_transaction(
         &self,
-        info: &OneSidedTransactionInfo,
-        signed_message: &RecipientSignedMessage,
+        info: OneSidedTransactionInfo,
+        signed_message: RecipientSignedMessage,
         sender_offset_key_id: TariKeyId,
-        sender_info: &SingleRoundSenderData,
+        sender_public_nonce: CompressedPublicKey,
+        sender_public_excess: CompressedPublicKey,
     ) -> Result<Transaction, TPE> {
         let mut tx_builder = TransactionBuilder::new();
 
-        let total_public_nonce = &sender_info.public_nonce.to_public_key()? +
+        let total_public_nonce = &sender_public_nonce.to_public_key()? +
             signed_message
                 .partial_signature
                 .get_compressed_public_nonce()
                 .to_public_key()?;
         let total_public_excess =
-            &sender_info.public_excess.to_public_key()? + &signed_message.public_spend_key.to_public_key()?;
+            &sender_public_excess.to_public_key()? + &signed_message.public_spend_key.to_public_key()?;
         let total_public_nonce = CompressedPublicKey::new_from_pk(total_public_nonce);
         let total_public_excess = CompressedPublicKey::new_from_pk(total_public_excess);
 
