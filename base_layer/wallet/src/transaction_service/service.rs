@@ -4175,17 +4175,7 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
-        let fee = request
-            .signed_transaction
-            .transaction
-            .body
-            .kernels()
-            .first()
-            .ok_or(TransactionServiceProtocolError::new(
-                tx_id,
-                TransactionServiceError::InvalidStateError,
-            ))?
-            .fee;
+        let fee = request.signed_transaction.transaction.body.get_total_fee()?;
 
         self.resources
             .output_manager_service
