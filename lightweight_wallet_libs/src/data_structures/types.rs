@@ -197,8 +197,12 @@ impl PrivateKey {
 
 impl Zeroize for PrivateKey {
     fn zeroize(&mut self) {
+        // Overwrite the scalar's memory directly
+        use zeroize::Zeroize;
         let mut bytes = self.0.to_bytes();
         bytes.zeroize();
+        // Overwrite the scalar with zero scalar
+        self.0 = curve25519_dalek::scalar::Scalar::from_bytes_mod_order([0u8; 32]);
     }
 }
 

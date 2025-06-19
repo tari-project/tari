@@ -31,6 +31,7 @@ pub mod stealth_address;
 
 use crate::data_structures::types::PrivateKey;
 use crate::errors::KeyManagementError;
+use zeroize::Zeroize;
 
 /// Key derivation path for deterministic key generation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -198,12 +199,27 @@ impl ImportedPrivateKey {
     }
 }
 
+impl Zeroize for ImportedPrivateKey {
+    fn zeroize(&mut self) {
+        self.private_key.zeroize();
+        // Clear label and derivation path for additional security
+        self.label = None;
+        self.derivation_path = None;
+    }
+}
+
+impl Drop for ImportedPrivateKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
 pub use seed_phrase::mnemonic_to_master_key;
 pub use key_derivation::LightweightKeyManager;
 pub use stealth_address::{StealthAddress, StealthAddressManager};
 
 /// Key store for managing both derived and imported keys
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct KeyStore {
     /// Derived keys from seed phrase
     derived_keys: Vec<DerivedKeyPair>,
@@ -304,6 +320,49 @@ impl KeyStore {
     pub fn update_key_index(&mut self, new_index: u64) {
         self.current_key_index = new_index;
     }
+
+    /// Clear all keys from the store (secure)
+    pub fn clear(&mut self) {
+        // Zeroize all private keys before clearing
+        for key_pair in &mut self.derived_keys {
+            key_pair.private_key.zeroize();
+        }
+        for imported_key in &mut self.imported_keys {
+            imported_key.zeroize();
+        }
+        
+        self.derived_keys.clear();
+        self.imported_keys.clear();
+        self.current_key_index = 0;
+    }
+
+    /// Get a copy of the key store with zeroized sensitive data
+    pub fn clone_public_only(&self) -> Self {
+        Self {
+            derived_keys: Vec::new(), // Don't clone private keys
+            imported_keys: Vec::new(), // Don't clone private keys
+            current_key_index: self.current_key_index,
+        }
+    }
+}
+
+impl Zeroize for KeyStore {
+    fn zeroize(&mut self) {
+        self.clear();
+    }
+}
+
+impl Drop for KeyStore {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl Clone for KeyStore {
+    fn clone(&self) -> Self {
+        // Only clone public data, not private keys
+        self.clone_public_only()
+    }
 }
 
 impl Default for KeyStore {
@@ -312,9 +371,140 @@ impl Default for KeyStore {
     }
 }
 
+impl Zeroize for DerivedKeyPair {
+    fn zeroize(&mut self) {
+        self.private_key.zeroize();
+    }
+}
+
+impl Drop for DerivedKeyPair {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+/// Secure key buffer for temporary key operations
+pub struct SecureKeyBuffer {
+    /// The key data
+    data: Vec<u8>,
+}
+
+impl SecureKeyBuffer {
+    /// Create a new secure key buffer
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { data }
+    }
+
+    /// Create a new secure key buffer with specified capacity
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(capacity),
+        }
+    }
+
+    /// Get the key data as a slice
+    pub fn as_slice(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Get the key data as a mutable slice
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.data
+    }
+
+    /// Get the length of the key data
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Check if the buffer is empty
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Resize the buffer
+    pub fn resize(&mut self, new_len: usize, value: u8) {
+        self.data.resize(new_len, value);
+    }
+
+    /// Clear the buffer
+    pub fn clear(&mut self) {
+        self.data.clear();
+    }
+
+    /// Extend the buffer with data
+    pub fn extend_from_slice(&mut self, other: &[u8]) {
+        self.data.extend_from_slice(other);
+    }
+}
+
+impl Zeroize for SecureKeyBuffer {
+    fn zeroize(&mut self) {
+        self.data.zeroize();
+    }
+}
+
+impl Drop for SecureKeyBuffer {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl From<Vec<u8>> for SecureKeyBuffer {
+    fn from(data: Vec<u8>) -> Self {
+        Self::new(data)
+    }
+}
+
+impl From<&[u8]> for SecureKeyBuffer {
+    fn from(data: &[u8]) -> Self {
+        Self::new(data.to_vec())
+    }
+}
+
+/// Secure key operations trait
+pub trait SecureKeyOps {
+    /// Securely copy key data
+    fn secure_copy(&self) -> Self;
+    
+    /// Securely compare with another key
+    fn secure_compare(&self, other: &Self) -> bool;
+    
+    /// Securely clear the key data
+    fn secure_clear(&mut self);
+}
+
+impl SecureKeyOps for PrivateKey {
+    fn secure_copy(&self) -> Self {
+        Self::new(self.as_bytes())
+    }
+    
+    fn secure_compare(&self, other: &Self) -> bool {
+        // Use constant-time comparison to prevent timing attacks
+        let self_bytes = self.as_bytes();
+        let other_bytes = other.as_bytes();
+        
+        if self_bytes.len() != other_bytes.len() {
+            return false;
+        }
+        
+        let mut result = 0u8;
+        for (a, b) in self_bytes.iter().zip(other_bytes.iter()) {
+            result |= a ^ b;
+        }
+        
+        result == 0
+    }
+    
+    fn secure_clear(&mut self) {
+        self.zeroize();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_structures::types::CompressedPublicKey;
 
     #[test]
     fn test_key_derivation_path_creation() {
@@ -456,9 +646,156 @@ mod tests {
     #[test]
     fn test_key_store_update_index() {
         let mut store = KeyStore::new();
-        assert_eq!(store.current_key_index(), 0);
+        store.update_key_index(42);
+        assert_eq!(store.current_key_index(), 42);
+    }
+
+    #[test]
+    fn test_secure_key_buffer() {
+        let data = vec![1, 2, 3, 4, 5];
+        let mut buffer = SecureKeyBuffer::new(data.clone());
         
-        store.update_key_index(5);
-        assert_eq!(store.current_key_index(), 5);
+        assert_eq!(buffer.as_slice(), &data);
+        assert_eq!(buffer.len(), 5);
+        assert!(!buffer.is_empty());
+        
+        buffer.clear();
+        assert!(buffer.is_empty());
+        assert_eq!(buffer.len(), 0);
+    }
+
+    #[test]
+    fn test_secure_key_buffer_with_capacity() {
+        let buffer = SecureKeyBuffer::with_capacity(32);
+        assert_eq!(buffer.len(), 0);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_secure_key_buffer_resize() {
+        let mut buffer = SecureKeyBuffer::new(vec![1, 2, 3]);
+        buffer.resize(5, 0);
+        assert_eq!(buffer.len(), 5);
+        assert_eq!(buffer.as_slice(), &[1, 2, 3, 0, 0]);
+    }
+
+    #[test]
+    fn test_secure_key_buffer_extend() {
+        let mut buffer = SecureKeyBuffer::new(vec![1, 2, 3]);
+        buffer.extend_from_slice(&[4, 5, 6]);
+        assert_eq!(buffer.as_slice(), &[1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn test_secure_key_ops() {
+        let key1 = PrivateKey::new([1u8; 32]);
+        let key2 = PrivateKey::new([1u8; 32]);
+        let key3 = PrivateKey::new([2u8; 32]);
+        
+        // Test secure copy
+        let key1_copy = key1.secure_copy();
+        assert!(key1.secure_compare(&key1_copy));
+        
+        // Test secure compare
+        assert!(key1.secure_compare(&key2));
+        assert!(!key1.secure_compare(&key3));
+        
+        // Test secure clear
+        let mut key_to_clear = key1.secure_copy();
+        key_to_clear.secure_clear();
+        // After clearing, the key should be zeroized
+        assert_eq!(key_to_clear.as_bytes(), [0u8; 32]);
+    }
+
+    #[test]
+    fn test_imported_private_key_zeroization() {
+        let private_key = PrivateKey::new([1u8; 32]);
+        let mut imported = ImportedPrivateKey::new(private_key, Some("test".to_string()));
+        
+        // Verify the key exists
+        assert_eq!(imported.private_key.as_bytes(), [1u8; 32]);
+        assert_eq!(imported.label, Some("test".to_string()));
+        
+        // Zeroize the key
+        imported.zeroize();
+        
+        // Verify the key is zeroized and metadata is cleared
+        assert_eq!(imported.private_key.as_bytes(), [0u8; 32]);
+        assert_eq!(imported.label, None);
+        assert_eq!(imported.derivation_path, None);
+    }
+
+    #[test]
+    fn test_derived_key_pair_zeroization() {
+        let private_key = PrivateKey::new([1u8; 32]);
+        let public_key = CompressedPublicKey::from_private_key(&private_key);
+        let path = KeyDerivationPath::tari_standard(0, 0, 0);
+        let mut key_pair = DerivedKeyPair::new(private_key, public_key, 0, path);
+        
+        // Verify the key exists
+        assert_eq!(key_pair.private_key.as_bytes(), [1u8; 32]);
+        
+        // Zeroize the key
+        key_pair.zeroize();
+        
+        // Verify the key is zeroized
+        assert_eq!(key_pair.private_key.as_bytes(), [0u8; 32]);
+    }
+
+    #[test]
+    fn test_key_store_secure_clone() {
+        let mut store = KeyStore::new();
+        let key_bytes = [1u8; 32];
+        store.import_private_key_from_bytes(key_bytes, Some("test_key".to_string())).unwrap();
+        
+        // Clone the store
+        let cloned_store = store.clone();
+        
+        // Verify that the cloned store doesn't contain private keys
+        assert_eq!(cloned_store.imported_key_count(), 0);
+        assert_eq!(cloned_store.derived_key_count(), 0);
+        assert_eq!(cloned_store.total_key_count(), 0);
+        
+        // But the original store still has the key
+        assert_eq!(store.imported_key_count(), 1);
+        assert_eq!(store.total_key_count(), 1);
+    }
+
+    #[test]
+    fn test_key_store_clear() {
+        let mut store = KeyStore::new();
+        let key_bytes = [1u8; 32];
+        store.import_private_key_from_bytes(key_bytes, Some("test_key".to_string())).unwrap();
+        
+        // Verify the key exists
+        assert_eq!(store.imported_key_count(), 1);
+        
+        // Clear the store
+        store.clear();
+        
+        // Verify the store is empty
+        assert_eq!(store.imported_key_count(), 0);
+        assert_eq!(store.derived_key_count(), 0);
+        assert_eq!(store.total_key_count(), 0);
+        assert_eq!(store.current_key_index(), 0);
+    }
+
+    #[test]
+    fn test_secure_key_buffer_zeroization() {
+        let data = vec![1, 2, 3, 4, 5];
+        let mut buffer = SecureKeyBuffer::new(data);
+        
+        // Verify the data exists
+        assert_eq!(buffer.as_slice(), &[1, 2, 3, 4, 5]);
+        
+        // Zeroize the buffer
+        buffer.zeroize();
+        
+        // Verify the buffer is zeroized
+        assert_eq!(buffer.as_slice(), &[] as &[u8]);
+        
+        // Now clear the buffer
+        buffer.clear();
+        assert_eq!(buffer.as_slice(), &[] as &[u8]);
     }
 } 
