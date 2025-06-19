@@ -798,4 +798,54 @@ mod tests {
         buffer.clear();
         assert_eq!(buffer.as_slice(), &[] as &[u8]);
     }
+
+    #[test]
+    fn test_custom_key_derivation_paths() {
+        use crate::key_management::key_derivation::LightweightKeyManager;
+        // Use a fixed master key for determinism
+        let master_key = [42u8; 32];
+        let km = LightweightKeyManager::new(master_key);
+
+        // Tari standard path
+        let tari_path = KeyDerivationPath::tari_standard(0, 0, 0);
+        let tari_key = km.derive_key_pair(&tari_path).unwrap();
+
+        // Custom BIP-44 path (purpose 44, coin_type 1, account 2, change 1, address_index 5)
+        let custom_path = KeyDerivationPath::new(44, 1, 2, 1, 5);
+        let custom_key = km.derive_key_pair(&custom_path).unwrap();
+
+        // Another custom path
+        let custom_path2 = KeyDerivationPath::new(49, 2, 0, 0, 0);
+        let custom_key2 = km.derive_key_pair(&custom_path2).unwrap();
+
+        // Keys from different paths must be unique
+        assert_ne!(tari_key.private_key, custom_key.private_key);
+        assert_ne!(tari_key.private_key, custom_key2.private_key);
+        assert_ne!(custom_key.private_key, custom_key2.private_key);
+
+        // Keys from the same path must be deterministic
+        let custom_key_repeat = km.derive_key_pair(&custom_path).unwrap();
+        assert_eq!(custom_key.private_key, custom_key_repeat.private_key);
+        assert_eq!(custom_key.public_key, custom_key_repeat.public_key);
+    }
+
+    #[test]
+    fn test_key_derivation_path_to_from_string() {
+        // Custom path
+        let path = KeyDerivationPath::new(44, 1, 2, 1, 5);
+        let path_str = path.to_string();
+        let parsed = KeyDerivationPath::from_string(&path_str).unwrap();
+        assert_eq!(path, parsed);
+    }
+
+    // ---
+    // Documentation Example:
+    // ---
+    // Deriving a key from a custom BIP-44 path:
+    //
+    // let master_key = [0u8; 32];
+    // let key_manager = LightweightKeyManager::new(master_key);
+    // let custom_path = KeyDerivationPath::new(44, 1, 2, 1, 5); // m/44'/1'/2'/1/5
+    // let key_pair = key_manager.derive_key_pair(&custom_path).unwrap();
+    // println!("Custom derived public key: {}", key_pair.public_key);
 } 

@@ -30,6 +30,7 @@ pub mod data_structures;
 pub mod errors;
 pub mod hex_utils;
 pub mod key_management;
+pub mod wasm;
 
 // Re-export main types for convenience
 pub use data_structures::encrypted_data::EncryptedData;
@@ -73,4 +74,5 @@ pub use key_management::{
     StealthAddress,
     StealthAddressManager,
     mnemonic_to_master_key,
-}; 
+};
+pub use wasm::*; 
