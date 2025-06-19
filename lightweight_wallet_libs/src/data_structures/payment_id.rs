@@ -277,12 +277,7 @@ impl PaymentId {
                 data,
                 ..
             } => {
-                let len = 1 + 1 + address.len() + Self::SIZE_META_DATA + 1 + data.len();
-                if len < Self::PADDING_SIZE {
-                    Self::PADDING_SIZE
-                } else {
-                    len
-                }
+                1 + 1 + address.len() + 1 + data.len()
             },
             PaymentId::TransactionInfo {
                 tx_id: _,
@@ -350,6 +345,7 @@ impl PaymentId {
                 bytes.push(5); // Tag for AddressAndData
                 bytes.push(address.len() as u8);
                 bytes.extend_from_slice(address);
+                bytes.push(data.len() as u8); // Add data length
                 bytes.extend_from_slice(data);
             },
             PaymentId::TransactionInfo {

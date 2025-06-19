@@ -8,9 +8,15 @@
 //! and handle various payment ID types.
 
 pub mod encrypted_data_decryption;
+pub mod payment_id_extraction;
 
 pub use encrypted_data_decryption::{
     EncryptedDataDecryptor,
     DecryptionResult,
     DecryptionOptions,
+};
+
+pub use payment_id_extraction::{
+    PaymentIdExtractor,
+    PaymentIdExtractionResult,
 }; 
