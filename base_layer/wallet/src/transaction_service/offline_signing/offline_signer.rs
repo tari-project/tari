@@ -143,7 +143,6 @@ where
                 amount,
                 output_features,
                 script,
-                covenant: single_round_sender_data.covenant,
                 address: dest_address,
                 use_stealth_address,
             },

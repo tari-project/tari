@@ -59,7 +59,6 @@ pub struct PaymentRecipient {
     pub amount: MicroMinotari,
     pub output_features: OutputFeatures,
     pub script: TariScript,
-    pub covenant: Covenant,
     pub address: TariAddress,
     pub use_stealth_address: bool,
 }
