@@ -1,13 +1,10 @@
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction},
-        transaction_protocol::TransactionMetadata,
-    },
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction},
+    transaction_protocol::TransactionMetadata,
 };
 use tari_script::TariScript;
 
