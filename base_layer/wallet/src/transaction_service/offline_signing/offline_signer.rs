@@ -167,7 +167,7 @@ where
             outputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, output).await?);
         }
 
-        let change_output = match stp.get_full_change_output()? {
+        let change_output = match stp.get_pre_finalized_full_change_output()? {
             Some(change_output) => {
                 Some(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, change_output).await?)
             },

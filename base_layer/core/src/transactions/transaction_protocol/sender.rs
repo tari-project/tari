@@ -352,7 +352,7 @@ impl SenderTransactionProtocol {
 
     /// Returns full change output for a non-finalized transaction. If the transaction is finalized, or failed, an error
     /// is returned.
-    pub fn get_full_change_output(&self) -> Result<Option<OutputPair>, TPE> {
+    pub fn get_pre_finalized_full_change_output(&self) -> Result<Option<OutputPair>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
