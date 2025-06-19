@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 use std::fmt;
+use std::ops::{Add, Sub, Mul};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use curve25519_dalek::{
@@ -222,6 +223,90 @@ impl HexEncodable for PrivateKey {
 }
 
 impl HexValidatable for PrivateKey {}
+
+impl Add for PrivateKey {
+    type Output = PrivateKey;
+    fn add(self, rhs: PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 + rhs.0)
+    }
+}
+
+impl<'a> Add<&'a PrivateKey> for PrivateKey {
+    type Output = PrivateKey;
+    fn add(self, rhs: &'a PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 + rhs.0)
+    }
+}
+
+impl<'a> Add<PrivateKey> for &'a PrivateKey {
+    type Output = PrivateKey;
+    fn add(self, rhs: PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 + rhs.0)
+    }
+}
+
+impl<'a, 'b> Add<&'a PrivateKey> for &'b PrivateKey {
+    type Output = PrivateKey;
+    fn add(self, rhs: &'a PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 + rhs.0)
+    }
+}
+
+impl Sub for PrivateKey {
+    type Output = PrivateKey;
+    fn sub(self, rhs: PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 - rhs.0)
+    }
+}
+
+impl<'a> Sub<&'a PrivateKey> for PrivateKey {
+    type Output = PrivateKey;
+    fn sub(self, rhs: &'a PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 - rhs.0)
+    }
+}
+
+impl<'a> Sub<PrivateKey> for &'a PrivateKey {
+    type Output = PrivateKey;
+    fn sub(self, rhs: PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 - rhs.0)
+    }
+}
+
+impl<'a, 'b> Sub<&'a PrivateKey> for &'b PrivateKey {
+    type Output = PrivateKey;
+    fn sub(self, rhs: &'a PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 - rhs.0)
+    }
+}
+
+impl Mul for PrivateKey {
+    type Output = PrivateKey;
+    fn mul(self, rhs: PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 * rhs.0)
+    }
+}
+
+impl<'a> Mul<&'a PrivateKey> for PrivateKey {
+    type Output = PrivateKey;
+    fn mul(self, rhs: &'a PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 * rhs.0)
+    }
+}
+
+impl<'a> Mul<PrivateKey> for &'a PrivateKey {
+    type Output = PrivateKey;
+    fn mul(self, rhs: PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 * rhs.0)
+    }
+}
+
+impl<'a, 'b> Mul<&'a PrivateKey> for &'b PrivateKey {
+    type Output = PrivateKey;
+    fn mul(self, rhs: &'a PrivateKey) -> PrivateKey {
+        PrivateKey(self.0 * rhs.0)
+    }
+}
 
 /// Micro Minotari amount (smallest unit)
 #[derive(

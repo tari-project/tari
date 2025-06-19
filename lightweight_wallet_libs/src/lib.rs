@@ -79,6 +79,7 @@ pub use key_management::{
 pub use wasm::*;
 pub use validation::{
     LightweightBulletProofPlusValidator,
+    LightweightRevealedValueValidator,
     RangeProofStatement,
     RangeProofValidationResult,
 }; 
