@@ -143,7 +143,6 @@ where
                 amount,
                 output_features,
                 script,
-                sender_offset_public_key: single_round_sender_data.sender_offset_public_key,
                 covenant: single_round_sender_data.covenant,
                 minimum_value_promise: single_round_sender_data.minimum_value_promise,
                 ephemeral_public_key_nonce: single_round_sender_data.ephemeral_public_nonce,

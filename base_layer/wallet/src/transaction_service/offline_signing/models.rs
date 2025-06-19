@@ -63,7 +63,6 @@ pub struct PaymentRecipient {
     pub amount: MicroMinotari,
     pub output_features: OutputFeatures,
     pub script: TariScript,
-    pub sender_offset_public_key: CompressedPublicKey,
     pub covenant: Covenant,
     pub minimum_value_promise: MicroMinotari,
     pub ephemeral_public_key_nonce: CompressedPublicKey,
