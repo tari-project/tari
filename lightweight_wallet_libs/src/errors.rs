@@ -200,6 +200,12 @@ pub enum ValidationError {
     #[error("Signature validation failed: {0}")]
     SignatureValidationFailed(String),
     
+    #[error("Metadata signature validation failed: {0}")]
+    MetadataSignatureValidationFailed(String),
+    
+    #[error("Script signature validation failed: {0}")]
+    ScriptSignatureValidationFailed(String),
+    
     #[error("Commitment validation failed: {0}")]
     CommitmentValidationFailed(String),
     
@@ -242,11 +248,8 @@ pub enum ValidationError {
     #[error("Consensus validation failed: {0}")]
     ConsensusValidationFailed(String),
     
-    #[error("Script signature validation failed: {0}")]
-    ScriptSignatureValidationFailed(String),
-    
-    #[error("Metadata signature validation failed: {0}")]
-    MetadataSignatureValidationFailed(String),
+    #[error("Minimum value promise validation failed: {0}")]
+    MinimumValuePromiseValidationFailed(String),
 }
 
 /// Errors related to key management operations
@@ -569,6 +572,11 @@ impl ValidationError {
     /// Create a commitment validation error
     pub fn commitment_validation_failed(details: &str) -> Self {
         ValidationError::CommitmentValidationFailed(details.to_string())
+    }
+    
+    /// Create a minimum value promise validation error
+    pub fn minimum_value_promise_validation_failed(details: &str) -> Self {
+        ValidationError::MinimumValuePromiseValidationFailed(details.to_string())
     }
 }
 

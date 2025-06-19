@@ -8,7 +8,9 @@
 
 pub mod batch;
 pub mod commitment;
+pub mod encrypted_data;
 pub mod metadata_signature;
+pub mod minimum_value_promise;
 pub mod range_proofs;
 pub mod script_signature;
 
@@ -37,4 +39,16 @@ pub use script_signature::{
     ScriptSignatureValidationResult,
 };
 
-pub use commitment::LightweightCommitmentValidator; 
+pub use commitment::LightweightCommitmentValidator;
+
+pub use encrypted_data::{
+    LightweightEncryptedDataValidator,
+    EncryptedDataValidationResult,
+    validate_encrypted_data_comprehensive,
+};
+
+pub use minimum_value_promise::{
+    LightweightMinimumValuePromiseValidator,
+    MinimumValuePromiseValidationOptions,
+    MinimumValuePromiseValidationResult,
+}; 
