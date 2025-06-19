@@ -31,6 +31,7 @@ pub mod errors;
 pub mod hex_utils;
 pub mod key_management;
 pub mod validation;
+pub mod extraction;
 pub mod wasm;
 
 // Re-export main types for convenience
