@@ -82,9 +82,8 @@ pub use validation::{
     LightweightRevealedValueValidator,
     RangeProofStatement,
     RangeProofValidationResult,
-};
-
-pub mod validation {
-    pub mod range_proofs;
-    pub mod metadata_signature;
-} 
+    LightweightMetadataSignatureValidator,
+    MetadataSignatureValidationResult,
+    LightweightScriptSignatureValidator,
+    ScriptSignatureValidationResult,
+}; 

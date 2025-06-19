@@ -534,6 +534,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake2b_simd"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06e903a20b159e944f91ec8499fe1e55651480c541ea0a584f5d967c49ad9d99"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "constant_time_eq",
+]
+
+[[package]]
 name = "blake3"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3851,6 +3862,7 @@ name = "lightweight_wallet_libs"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "blake2b_simd",
  "borsh",
  "chacha20poly1305",
  "curve25519-dalek",

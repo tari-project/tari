@@ -145,7 +145,7 @@ impl LightweightMetadataSignatureValidator {
         hasher.update(b"metadata_signature");
         hasher.update(ephemeral_pubkey_bytes);
         hasher.update(ephemeral_commitment_bytes);
-        hasher.update(output.sender_offset_public_key().as_bytes());
+        hasher.update(&output.sender_offset_public_key().as_bytes());
         hasher.update(output.commitment().as_bytes());
         hasher.update(&metadata_message);
         
@@ -212,7 +212,7 @@ impl LightweightMetadataSignatureValidator {
         hasher.update(&[version]);
         hasher.update(&features.bytes());
         hasher.update(&covenant.bytes);
-        hasher.update(&encrypted_data.to_bytes());
+        hasher.update(&encrypted_data.as_bytes());
         hasher.update(&minimum_value_promise.as_u64().to_le_bytes());
         
         let hash = hasher.finalize();

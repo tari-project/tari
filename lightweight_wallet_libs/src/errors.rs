@@ -241,6 +241,12 @@ pub enum ValidationError {
     
     #[error("Consensus validation failed: {0}")]
     ConsensusValidationFailed(String),
+    
+    #[error("Script signature validation failed: {0}")]
+    ScriptSignatureValidationFailed(String),
+    
+    #[error("Metadata signature validation failed: {0}")]
+    MetadataSignatureValidationFailed(String),
 }
 
 /// Errors related to key management operations
@@ -542,17 +548,27 @@ impl SerializationError {
 impl ValidationError {
     /// Create a range proof validation error
     pub fn range_proof_validation_failed(details: &str) -> Self {
-        Self::RangeProofValidationFailed(details.to_string())
+        ValidationError::RangeProofValidationFailed(details.to_string())
     }
     
     /// Create a signature validation error
     pub fn signature_validation_failed(details: &str) -> Self {
-        Self::SignatureValidationFailed(details.to_string())
+        ValidationError::SignatureValidationFailed(details.to_string())
+    }
+    
+    /// Create a metadata signature validation error
+    pub fn metadata_signature_validation_failed(details: &str) -> Self {
+        ValidationError::MetadataSignatureValidationFailed(details.to_string())
+    }
+    
+    /// Create a script signature validation error
+    pub fn script_signature_validation_failed(details: &str) -> Self {
+        ValidationError::ScriptSignatureValidationFailed(details.to_string())
     }
     
     /// Create a commitment validation error
     pub fn commitment_validation_failed(details: &str) -> Self {
-        Self::CommitmentValidationFailed(details.to_string())
+        ValidationError::CommitmentValidationFailed(details.to_string())
     }
 }
 

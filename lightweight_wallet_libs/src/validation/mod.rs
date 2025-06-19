@@ -1,11 +1,28 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! UTXO validation module for lightweight wallets
+//! Validation modules for lightweight wallets
 //! 
-//! This module provides lightweight validation functionality for UTXOs,
-//! including range proof validation, signature verification, and commitment integrity checks.
+//! This module provides lightweight validation for various cryptographic components
+//! without requiring the full Tari crypto stack.
 
 pub mod range_proofs;
+pub mod metadata_signature;
+pub mod script_signature;
 
-pub use range_proofs::*; 
+pub use range_proofs::{
+    LightweightBulletProofPlusValidator,
+    LightweightRevealedValueValidator,
+    RangeProofStatement,
+    RangeProofValidationResult,
+};
+
+pub use metadata_signature::{
+    LightweightMetadataSignatureValidator,
+    MetadataSignatureValidationResult,
+};
+
+pub use script_signature::{
+    LightweightScriptSignatureValidator,
+    ScriptSignatureValidationResult,
+}; 

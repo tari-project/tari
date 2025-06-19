@@ -73,6 +73,13 @@ pub struct LightweightOutputFeatures {
     pub range_proof_type: LightweightRangeProofType,
 }
 
+impl LightweightOutputFeatures {
+    /// Get the serialized bytes of the output features
+    pub fn bytes(&self) -> Vec<u8> {
+        borsh::to_vec(self).unwrap_or_default()
+    }
+}
+
 impl Default for LightweightOutputFeatures {
     fn default() -> Self {
         Self {
@@ -143,6 +150,13 @@ impl Default for LightweightCovenant {
 pub struct LightweightExecutionStack {
     /// Stack items as bytes
     pub items: Vec<Vec<u8>>,
+}
+
+impl LightweightExecutionStack {
+    /// Get the serialized bytes of the execution stack
+    pub fn bytes(&self) -> Vec<u8> {
+        borsh::to_vec(&self.items).unwrap_or_default()
+    }
 }
 
 impl Default for LightweightExecutionStack {
