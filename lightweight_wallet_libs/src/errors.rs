@@ -192,7 +192,7 @@ pub enum SerializationError {
 }
 
 /// Errors related to validation operations
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum ValidationError {
     #[error("Range proof validation failed: {0}")]
     RangeProofValidationFailed(String),

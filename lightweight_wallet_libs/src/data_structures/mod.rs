@@ -27,6 +27,7 @@ pub mod payment_id;
 pub mod types;
 pub mod wallet_output;
 pub mod transaction_output;
+pub mod transaction_input;
 
 #[cfg(test)]
 mod serialization_tests; 
