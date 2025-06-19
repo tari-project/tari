@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::key_management::{key_derivation::LightweightKeyManager, KeyDerivationPath};
+use crate::key_management::{key_derivation::LightweightKeyManager, KeyDerivationPath, KeyManager};
 
 /// Derive a public key from a master key and BIP-44 path, returning it as a hex string.
 #[wasm_bindgen]
