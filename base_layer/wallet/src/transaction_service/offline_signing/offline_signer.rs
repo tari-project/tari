@@ -145,7 +145,6 @@ where
                 script,
                 covenant: single_round_sender_data.covenant,
                 minimum_value_promise: single_round_sender_data.minimum_value_promise,
-                ephemeral_public_key_nonce: single_round_sender_data.ephemeral_public_nonce,
                 address: dest_address,
                 use_stealth_address,
             },

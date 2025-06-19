@@ -1,10 +1,6 @@
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tari_common_types::{
-    tari_address::TariAddress,
-    transaction::TxId,
-    types::{CompressedPublicKey, FixedHash},
-};
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
 use tari_core::{
     covenants::Covenant,
     transactions::{
@@ -65,7 +61,6 @@ pub struct PaymentRecipient {
     pub script: TariScript,
     pub covenant: Covenant,
     pub minimum_value_promise: MicroMinotari,
-    pub ephemeral_public_key_nonce: CompressedPublicKey,
     pub address: TariAddress,
     pub use_stealth_address: bool,
 }
