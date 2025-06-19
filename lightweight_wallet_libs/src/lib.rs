@@ -86,4 +86,5 @@ pub use validation::{
     MetadataSignatureValidationResult,
     LightweightScriptSignatureValidator,
     ScriptSignatureValidationResult,
+    LightweightCommitmentValidator,
 }; 

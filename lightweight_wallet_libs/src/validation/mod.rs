@@ -9,6 +9,7 @@
 pub mod range_proofs;
 pub mod metadata_signature;
 pub mod script_signature;
+pub mod commitment;
 
 pub use range_proofs::{
     LightweightBulletProofPlusValidator,
@@ -25,4 +26,6 @@ pub use metadata_signature::{
 pub use script_signature::{
     LightweightScriptSignatureValidator,
     ScriptSignatureValidationResult,
-}; 
+};
+
+pub use commitment::LightweightCommitmentValidator; 
