@@ -2,7 +2,6 @@ use log::*;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
-    wallet_types::WalletType,
 };
 use tari_core::{
     consensus::ConsensusManager,
@@ -67,30 +66,6 @@ where
         }
     }
 
-    fn verify_send(
-        &self,
-        address: &TariAddress,
-        sending_method: TariAddressFeatures,
-    ) -> Result<(), TransactionServiceError> {
-        if address.network() != self.resources.interactive_tari_address.network() {
-            return Err(TransactionServiceError::InvalidNetwork);
-        }
-        if !address.features().contains(sending_method) {
-            return Err(TransactionServiceError::InvalidAddress(format!(
-                "Address does not support feature {} ",
-                sending_method
-            )));
-        }
-        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
-            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
-        {
-            return Err(TransactionServiceError::NotSupported(
-                "Interactive transactions are not supported on Ledger wallets".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
     pub async fn prepare_one_sided_transaction_for_signing(
         &mut self,
         dest_address: TariAddress,
@@ -124,7 +99,6 @@ where
             ),
             _ => payment_id,
         };
-        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // For a stealth transaction, the script is not provided because the public key that should be included
         // is not known at this stage. This will only be known later. For now,
