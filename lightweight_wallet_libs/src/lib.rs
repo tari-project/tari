@@ -30,6 +30,7 @@ pub mod data_structures;
 pub mod errors;
 pub mod hex_utils;
 pub mod key_management;
+pub mod validation;
 pub mod wasm;
 
 // Re-export main types for convenience
@@ -75,4 +76,9 @@ pub use key_management::{
     StealthAddressManager,
     mnemonic_to_master_key,
 };
-pub use wasm::*; 
+pub use wasm::*;
+pub use validation::{
+    LightweightBulletProofPlusValidator,
+    RangeProofStatement,
+    RangeProofValidationResult,
+}; 
