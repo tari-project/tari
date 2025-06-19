@@ -13,10 +13,15 @@ use tari_core::{
             TransactionBuilder,
             TransactionKernel,
             TransactionKernelVersion,
+            WalletOutput,
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::{recipient::RecipientSignedMessage, TransactionProtocolError as TPE},
+        transaction_protocol::{
+            recipient::RecipientSignedMessage,
+            sender::OutputPair,
+            TransactionProtocolError as TPE,
+        },
     },
 };
 use tari_script::push_pubkey_script;
@@ -51,7 +56,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     ) -> Result<SignedTransaction, TransactionServiceError> {
         self.marshal_output_pairs(&mut info).await?;
         let signed_message = self.sign_message(tx_id, &info).await?;
-        let transaction = self
+        let (transaction, change_output) = self
             .build_transaction(
                 info,
                 signed_message.signed_data,
@@ -64,6 +69,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             transaction,
             sent_hashes: signed_message.sent_hashes,
             change_hashes: signed_message.change_hashes,
+            change_output,
         })
     }
 
@@ -276,7 +282,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         sender_offset_key_id: TariKeyId,
         sender_public_nonce: CompressedPublicKey,
         sender_public_excess: CompressedPublicKey,
-    ) -> Result<Transaction, TPE> {
+    ) -> Result<(Transaction, Option<WalletOutput>), TPE> {
         let mut tx_builder = TransactionBuilder::new();
 
         let total_public_nonce = &sender_public_nonce.to_public_key()? +
@@ -377,44 +383,41 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
 
         sender_offset_keys.push(sender_offset_key_id);
 
-        if let Some(change) = &info.change_output {
-            tx_builder.add_output(
-                change
-                    .output_pair
-                    .output
-                    .to_transaction_output(self.key_manager)
-                    .await?,
-            );
-            signature = &signature +
-                &self
-                    .key_manager
-                    .get_partial_txo_kernel_signature(
-                        &change.output_pair.output.spending_key_id,
-                        &change.output_pair.kernel_nonce,
-                        &total_public_nonce,
-                        &total_public_excess,
-                        &kernel_version,
-                        &kernel_message,
-                        &info.metadata.kernel_features,
-                        TxoStage::Output,
-                    )
-                    .await?
-                    .to_schnorr_signature()?;
-            offset = offset +
-                &self
-                    .key_manager
-                    .get_txo_private_kernel_offset(
-                        &change.output_pair.output.spending_key_id,
-                        &change.output_pair.kernel_nonce,
-                    )
+        let change_output = match &info.change_output {
+            Some(change) => {
+                let change = self
+                    .lock_sent_output_in_payment_id(&change.output_pair, signed_message.output.hash())
                     .await?;
-            let sender_offset_key_id = change
-                .output_pair
-                .sender_offset_key_id
-                .clone()
-                .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
-            sender_offset_keys.push(sender_offset_key_id);
-        }
+                tx_builder.add_output(change.output.to_transaction_output(self.key_manager).await?);
+                signature = &signature +
+                    &self
+                        .key_manager
+                        .get_partial_txo_kernel_signature(
+                            &change.output.spending_key_id,
+                            &change.kernel_nonce,
+                            &total_public_nonce,
+                            &total_public_excess,
+                            &kernel_version,
+                            &kernel_message,
+                            &info.metadata.kernel_features,
+                            TxoStage::Output,
+                        )
+                        .await?
+                        .to_schnorr_signature()?;
+                offset = offset +
+                    &self
+                        .key_manager
+                        .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
+                        .await?;
+                let sender_offset_key_id = change
+                    .sender_offset_key_id
+                    .clone()
+                    .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+                sender_offset_keys.push(sender_offset_key_id);
+                Some(change.output)
+            },
+            None => None,
+        };
 
         tx_builder.add_output(signed_message.output.clone());
         let script_offset = self
@@ -435,6 +438,41 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .with_signature(Signature::new_from_schnorr(signature))
             .build()?;
         tx_builder.with_kernel(kernel);
-        tx_builder.build().map_err(TPE::from)
+        let transaction = tx_builder.build().map_err(TPE::from)?;
+        Ok((transaction, change_output))
+    }
+
+    async fn lock_sent_output_in_payment_id(
+        &self,
+        change: &OutputPair,
+        output_hash: FixedHash,
+    ) -> Result<OutputPair, TPE> {
+        let mut payment_id = change.output.payment_id.clone();
+        payment_id.transaction_info_set_sent_output_hashes(vec![output_hash]);
+        let encrypted_data = self
+            .key_manager
+            .encrypt_data_for_recovery(
+                &change.output.spending_key_id,
+                None,
+                change.output.value.as_u64(),
+                payment_id,
+            )
+            .await?;
+        let mut change_output = change.output.clone();
+        change_output
+            .change_encrypted_data(
+                encrypted_data,
+                change
+                    .sender_offset_key_id
+                    .as_ref()
+                    .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?,
+                self.key_manager,
+            )
+            .await?;
+        Ok(OutputPair {
+            output: change_output,
+            kernel_nonce: change.kernel_nonce.clone(),
+            sender_offset_key_id: change.sender_offset_key_id.clone(),
+        })
     }
 }

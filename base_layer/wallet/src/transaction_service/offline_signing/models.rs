@@ -3,7 +3,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction},
+    transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction, WalletOutput},
     transaction_protocol::TransactionMetadata,
 };
 use tari_script::TariScript;
@@ -97,6 +97,7 @@ pub struct SignedTransaction {
     pub transaction: Transaction,
     pub sent_hashes: Vec<FixedHash>,
     pub change_hashes: Vec<FixedHash>,
+    pub change_output: Option<WalletOutput>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -4161,12 +4161,30 @@ where
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
         let amount = request.request.info.recipient.amount;
         let payment_id = request.request.info.payment_id;
+        // Use original keys generated in this wallet (they correspond to keys with the same values)
+        let change = match (
+            request.signed_transaction.change_output,
+            request.request.info.change_output,
+        ) {
+            (Some(change), Some(original)) => {
+                let mut change = change.clone();
+                change.spending_key_id = original.output_pair.output.spending_key_id;
+                Some(vec![change])
+            },
+            _ => None,
+        };
 
         let _result = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id, change)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         self.submit_transaction(
             transaction_broadcast_join_handles,
