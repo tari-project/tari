@@ -76,6 +76,18 @@ pub enum LightweightWalletError {
     
     #[error("Internal error: {0}")]
     InternalError(String),
+    
+    #[error("Connection error: {0}")]
+    ConnectionError(String),
+    
+    #[error("gRPC error: {0}")]
+    GrpcError(String),
+    
+    #[error("Data error: {0}")]
+    DataError(String),
+    
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
 }
 
 /// Errors related to data structure operations
@@ -637,4 +649,7 @@ impl EncryptionError {
     pub fn authentication_failed(details: &str) -> Self {
         Self::AuthenticationFailed(details.to_string())
     }
-} 
+}
+
+/// Result type for lightweight wallet operations
+pub type LightweightWalletResult<T> = Result<T, LightweightWalletError>; 

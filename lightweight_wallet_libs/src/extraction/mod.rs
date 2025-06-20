@@ -54,4 +54,57 @@ pub use special_output_handling::{
     SpecialOutputHandler,
     SpecialOutputHandlingResult,
     SpecialOutputType,
-}; 
+};
+
+pub use corruption_detection::{
+    CorruptionDetector,
+    CorruptionDetectionResult,
+    CorruptionType,
+};
+
+use crate::{
+    data_structures::{transaction_output::LightweightTransactionOutput, wallet_output::LightweightWalletOutput},
+    errors::LightweightWalletResult,
+};
+
+/// Configuration for wallet output extraction
+#[derive(Debug, Clone)]
+pub struct ExtractionConfig {
+    /// Whether to enable key derivation
+    pub enable_key_derivation: bool,
+    /// Whether to validate range proofs
+    pub validate_range_proofs: bool,
+    /// Whether to validate signatures
+    pub validate_signatures: bool,
+    /// Whether to handle special outputs
+    pub handle_special_outputs: bool,
+    /// Whether to detect corruption
+    pub detect_corruption: bool,
+}
+
+impl Default for ExtractionConfig {
+    fn default() -> Self {
+        Self {
+            enable_key_derivation: true,
+            validate_range_proofs: true,
+            validate_signatures: true,
+            handle_special_outputs: true,
+            detect_corruption: true,
+        }
+    }
+}
+
+/// Extract a wallet output from a transaction output
+pub fn extract_wallet_output(
+    transaction_output: &LightweightTransactionOutput,
+    config: &ExtractionConfig,
+) -> LightweightWalletResult<LightweightWalletOutput> {
+    // This is a placeholder implementation
+    // In a real implementation, this would use the various extractors
+    // to decrypt data, extract payment IDs, validate proofs, etc.
+    
+    // For now, return an error indicating this is not implemented
+    Err(crate::errors::LightweightWalletError::OperationNotSupported(
+        "extract_wallet_output not yet implemented".to_string()
+    ))
+} 

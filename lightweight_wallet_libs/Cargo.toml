@@ -42,9 +42,13 @@ rand = "0.8"
 # Parallel processing
 rayon = { version = "1.8", optional = true }
 
+# Async support for scanning
+async-trait = "0.1"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+
 [dev-dependencies]
 # Test dependencies
-tokio = { version = "1.0", features = ["full"] }
 serde_json = "1.0"
 wasm-bindgen-test = "0.3"
 

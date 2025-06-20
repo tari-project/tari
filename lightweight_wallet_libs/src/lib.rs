@@ -12,10 +12,12 @@ pub mod hex_utils;
 pub mod validation;
 pub mod extraction;
 pub mod key_management;
+pub mod scanning;
 
 pub use data_structures::*;
 pub use errors::*;
 pub use hex_utils::*;
 pub use validation::*;
 pub use extraction::*;
-pub use key_management::*; 
+pub use key_management::*;
+pub use scanning::*; 
