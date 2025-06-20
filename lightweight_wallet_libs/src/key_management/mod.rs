@@ -37,76 +37,57 @@ use key_derivation::LightweightKeyManager;
 /// Key derivation path for deterministic key generation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeyDerivationPath {
-    /// Purpose (e.g., 44 for BIP-44)
-    pub purpose: u32,
-    /// Coin type (e.g., 123456 for Tari)
-    pub coin_type: u32,
-    /// Account index
-    pub account: u32,
-    /// Change (0 for external, 1 for internal)
-    pub change: u32,
-    /// Address index
-    pub address_index: u32,
+    /// Branch Seed
+    pub branch_seed: String,
+    
+    /// Key Index
+    pub key_index: u64,
 }
 
 impl KeyDerivationPath {
     /// Create a new key derivation path
-    pub fn new(purpose: u32, coin_type: u32, account: u32, change: u32, address_index: u32) -> Self {
+    pub fn new(branch_seed: String, key_index: u64) -> Self {
         Self {
-            purpose,
-            coin_type,
-            account,
-            change,
-            address_index,
+            branch_seed,
+            key_index,
         }
     }
 
     /// Create a standard Tari key derivation path
     pub fn tari_standard(account: u32, change: u32, address_index: u32) -> Self {
-        Self::new(44, 123456, account, change, address_index)
+        Self::new("".to_string(), 0)
     }
 
     /// Convert path to string representation (e.g., "m/44'/123456'/0'/0/0")
     pub fn to_string(&self) -> String {
         format!(
-            "m/{}'/{:06}'/{}'/{}/{}",
-            self.purpose, self.coin_type, self.account, self.change, self.address_index
+            "m/{}'/{:06}'",
+            self.branch_seed, self.key_index
         )
     }
 
     /// Parse path from string representation
     pub fn from_string(path: &str) -> Result<Self, KeyManagementError> {
         let parts: Vec<&str> = path.split('/').collect();
-        if parts.len() != 6 || parts[0] != "m" {
+        if parts.len() != 2 || parts[0] != "m" {
             return Err(KeyManagementError::InvalidKeyDerivationPath(
                 "Invalid path format".to_string()
             ));
         }
 
-        let purpose = parts[1].trim_end_matches('\'').parse::<u32>()
-            .map_err(|_| KeyManagementError::InvalidKeyDerivationPath("Invalid purpose".to_string()))?;
-        let coin_type = parts[2].trim_end_matches('\'').parse::<u32>()
-            .map_err(|_| KeyManagementError::InvalidKeyDerivationPath("Invalid coin type".to_string()))?;
-        let account = parts[3].trim_end_matches('\'').parse::<u32>()
-            .map_err(|_| KeyManagementError::InvalidKeyDerivationPath("Invalid account".to_string()))?;
-        let change = parts[4].parse::<u32>()
-            .map_err(|_| KeyManagementError::InvalidKeyDerivationPath("Invalid change".to_string()))?;
-        let address_index = parts[5].parse::<u32>()
-            .map_err(|_| KeyManagementError::InvalidKeyDerivationPath("Invalid address index".to_string()))?;
+        let key_index = parts[1].trim_end_matches('\'').parse::<u64>()
+            .map_err(|_| KeyManagementError::InvalidKeyDerivationPath("Invalid key index".to_string()))?;
 
         Ok(Self {
-            purpose,
-            coin_type,
-            account,
-            change,
-            address_index,
+            branch_seed: "".to_string(),
+            key_index,
         })
     }
 }
 
 impl Default for KeyDerivationPath {
     fn default() -> Self {
-        Self::tari_standard(0, 0, 0)
+        Self::new("".to_string(), 0)
     }
 }
 
@@ -571,7 +552,7 @@ impl ConcreteKeyManager {
 
     /// Derive a key pair at a specific index
     pub fn derive_key_pair_at_index(&self, index: u64) -> Result<DerivedKeyPair, KeyManagementError> {
-        let path = KeyDerivationPath::tari_standard(0, 0, index as u32);
+        let path = KeyDerivationPath::new("".to_string(), index);
         self.key_manager.derive_key_pair(&path)
     }
 
@@ -642,39 +623,30 @@ mod tests {
 
     #[test]
     fn test_key_derivation_path_creation() {
-        let path = KeyDerivationPath::new(44, 123456, 0, 0, 0);
-        assert_eq!(path.purpose, 44);
-        assert_eq!(path.coin_type, 123456);
-        assert_eq!(path.account, 0);
-        assert_eq!(path.change, 0);
-        assert_eq!(path.address_index, 0);
+        let path = KeyDerivationPath::new("".to_string(), 0);
+        assert_eq!(path.branch_seed, "".to_string());
+        assert_eq!(path.key_index, 0);
     }
 
     #[test]
     fn test_tari_standard_path() {
-        let path = KeyDerivationPath::tari_standard(1, 0, 5);
-        assert_eq!(path.purpose, 44);
-        assert_eq!(path.coin_type, 123456);
-        assert_eq!(path.account, 1);
-        assert_eq!(path.change, 0);
-        assert_eq!(path.address_index, 5);
+        let path = KeyDerivationPath::new("".to_string(), 0);
+        assert_eq!(path.branch_seed, "".to_string());
+        assert_eq!(path.key_index, 0);
     }
 
     #[test]
     fn test_path_to_string() {
-        let path = KeyDerivationPath::tari_standard(0, 0, 0);
-        assert_eq!(path.to_string(), "m/44'/123456'/0'/0/0");
+        let path = KeyDerivationPath::new("".to_string(), 0);
+        assert_eq!(path.to_string(), "m/0");
     }
 
     #[test]
     fn test_path_from_string() {
         let path_str = "m/44'/123456'/0'/0/0";
         let path = KeyDerivationPath::from_string(path_str).unwrap();
-        assert_eq!(path.purpose, 44);
-        assert_eq!(path.coin_type, 123456);
-        assert_eq!(path.account, 0);
-        assert_eq!(path.change, 0);
-        assert_eq!(path.address_index, 0);
+        assert_eq!(path.branch_seed, "".to_string());
+        assert_eq!(path.key_index, 0);
     }
 
     #[test]
@@ -945,11 +917,11 @@ mod tests {
         let tari_key = km.derive_key_pair(&tari_path).unwrap();
 
         // Custom path with address_index 5
-        let custom_path = KeyDerivationPath::new(44, 1, 2, 1, 5);
+        let custom_path = KeyDerivationPath::new("".to_string(), 5);
         let custom_key = km.derive_key_pair(&custom_path).unwrap();
 
         // Another custom path with address_index 0 (same as tari_path)
-        let custom_path2 = KeyDerivationPath::new(49, 2, 0, 0, 0);
+        let custom_path2 = KeyDerivationPath::new("".to_string(), 0);
         let custom_key2 = km.derive_key_pair(&custom_path2).unwrap();
 
         // Keys from different address_index values must be unique
@@ -968,7 +940,7 @@ mod tests {
     #[test]
     fn test_key_derivation_path_to_from_string() {
         // Custom path
-        let path = KeyDerivationPath::new(44, 1, 2, 1, 5);
+        let path = KeyDerivationPath::new("".to_string(), 5);
         let path_str = path.to_string();
         let parsed = KeyDerivationPath::from_string(&path_str).unwrap();
         assert_eq!(path, parsed);

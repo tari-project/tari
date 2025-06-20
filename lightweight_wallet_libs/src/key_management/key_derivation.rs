@@ -102,7 +102,7 @@ impl LightweightKeyManager {
 impl KeyManager for LightweightKeyManager {
     fn derive_key_pair(&self, path: &KeyDerivationPath) -> Result<DerivedKeyPair, KeyManagementError> {
         // For compatibility, use the address_index as the key_index
-        let key_index = path.address_index as u64;
+        let key_index = path.key_index;
         let private_key = self.derive_private_key_internal(key_index)?;
         let public_key = self.derive_public_key_from_private(&private_key)?;
         
@@ -116,7 +116,7 @@ impl KeyManager for LightweightKeyManager {
 
     fn derive_private_key(&self, path: &KeyDerivationPath) -> Result<PrivateKey, KeyManagementError> {
         // For compatibility, use the address_index as the key_index
-        let key_index = path.address_index as u64;
+        let key_index = path.key_index;
         self.derive_private_key_internal(key_index)
     }
 
@@ -127,7 +127,7 @@ impl KeyManager for LightweightKeyManager {
 
     fn next_key_pair(&mut self) -> Result<DerivedKeyPair, KeyManagementError> {
         self.current_key_index += 1;
-        let path = KeyDerivationPath::tari_standard(0, 0, self.current_key_index as u32);
+        let path = KeyDerivationPath::new("".to_string(), self.current_key_index);
         self.derive_key_pair(&path)
     }
 
@@ -177,7 +177,7 @@ mod tests {
     fn test_key_derivation() {
         let master_key = [1u8; 32];
         let km = LightweightKeyManager::new(master_key);
-        let path = KeyDerivationPath::tari_standard(0, 0, 0);
+        let path = KeyDerivationPath::new("".to_string(), 0);
         
         let key_pair = km.derive_key_pair(&path).unwrap();
         assert_eq!(key_pair.key_index, 0);
@@ -188,7 +188,7 @@ mod tests {
     fn test_deterministic_derivation() {
         let master_key = [1u8; 32];
         let km = LightweightKeyManager::new(master_key);
-        let path = KeyDerivationPath::tari_standard(0, 0, 0);
+        let path = KeyDerivationPath::new("".to_string(), 0);
         
         let key_pair1 = km.derive_key_pair(&path).unwrap();
         let key_pair2 = km.derive_key_pair(&path).unwrap();
@@ -201,8 +201,8 @@ mod tests {
     fn test_different_paths_different_keys() {
         let master_key = [1u8; 32];
         let km = LightweightKeyManager::new(master_key);
-        let path1 = KeyDerivationPath::tari_standard(0, 0, 0);
-        let path2 = KeyDerivationPath::tari_standard(0, 0, 1);
+        let path1 = KeyDerivationPath::new("".to_string(), 0);
+        let path2 = KeyDerivationPath::new("".to_string(), 1);
         
         let key_pair1 = km.derive_key_pair(&path1).unwrap();
         let key_pair2 = km.derive_key_pair(&path2).unwrap();
@@ -217,7 +217,7 @@ mod tests {
         let km1 = LightweightKeyManager::with_branch_seed(master_key, "branch1".to_string());
         let km2 = LightweightKeyManager::with_branch_seed(master_key, "branch2".to_string());
         
-        let path = KeyDerivationPath::tari_standard(0, 0, 0);
+        let path = KeyDerivationPath::new("".to_string(), 0);
         let key_pair1 = km1.derive_key_pair(&path).unwrap();
         let key_pair2 = km2.derive_key_pair(&path).unwrap();
         

@@ -58,7 +58,7 @@ async fn main() -> LightweightWalletResult<()> {
     // Create a key store with some imported keys (example)
     let mut key_store = KeyStore::new();
     
-    let test_imported_key = LightweightKeyManager::from_mnemonic("gate sound fault steak act victory vacuum night injury lion section share pass food damage venue smart vicious cinnamon eternal invest shoulder green file", None)?; 
+    let test_imported_key = ImportedPrivateKey::from_seed_phrase("gate sound fault steak act victory vacuum night injury lion section share pass food damage venue smart vicious cinnamon eternal invest shoulder green file", None, KeyDerivationPath::default());
     key_store.add_imported_key(test_imported_key).unwrap();
 
     // Configure wallet scanning
