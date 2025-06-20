@@ -34,6 +34,11 @@ curve25519-dalek = { version = "4.1", features = ["alloc"] }
 rand_core = "0.6"
 wasm-bindgen = "0.2"
 
+# Address dependencies
+bs58 = "0.5"
+lazy_static = "1.4"
+rand = "0.8"
+
 # Parallel processing
 rayon = { version = "1.8", optional = true }
 

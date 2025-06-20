@@ -242,50 +242,6 @@ pub fn validate_output_batch_parallel(
     }
 }
 
-/// Validate transaction inputs in batch (for completeness)
-pub fn validate_input_batch(
-    inputs: &[crate::data_structures::transaction_input::TransactionInput],
-    options: &BatchValidationOptions,
-) -> BatchValidationResult {
-    let mut results = Vec::with_capacity(inputs.len());
-
-    for (index, input) in inputs.iter().enumerate() {
-        let mut errors = Vec::new();
-        let mut is_valid = true;
-
-        // Validate script signature
-        if options.validate_signatures {
-            if let Err(e) = validate_script_signature(input) {
-                errors.push(e);
-                is_valid = false;
-                if !options.continue_on_error || errors.len() >= options.max_errors_per_output {
-                    results.push(OutputValidationResult {
-                        index,
-                        is_valid,
-                        errors,
-                    });
-                    continue;
-                }
-            }
-        }
-
-        results.push(OutputValidationResult {
-            index,
-            is_valid,
-            errors,
-        });
-    }
-
-    let summary = BatchValidationSummary::new(&results);
-    let is_valid = summary.invalid_outputs == 0;
-
-    BatchValidationResult {
-        is_valid,
-        results,
-        summary,
-    }
-}
-
 // Helper functions for validation
 fn validate_commitment_integrity(output: &LightweightTransactionOutput) -> Result<(), ValidationError> {
     // Basic commitment validation
@@ -344,17 +300,6 @@ fn validate_metadata_signature(output: &LightweightTransactionOutput) -> Result<
     if signature_bytes.iter().all(|&b| b == 0) {
         return Err(ValidationError::metadata_signature_validation_failed(
             "Metadata signature cannot be all zeros",
-        ));
-    }
-    
-    Ok(())
-}
-
-fn validate_script_signature(input: &crate::data_structures::transaction_input::TransactionInput) -> Result<(), ValidationError> {
-    // Basic script signature validation
-    if input.script_signature.iter().all(|&b| b == 0) {
-        return Err(ValidationError::script_signature_validation_failed(
-            "Script signature cannot be all zeros",
         ));
     }
     

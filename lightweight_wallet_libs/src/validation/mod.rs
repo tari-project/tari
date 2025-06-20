@@ -15,8 +15,11 @@ pub mod range_proofs;
 pub mod script_signature;
 
 pub use batch::{
-    BatchValidationOptions, BatchValidationResult, BatchValidationSummary, OutputValidationResult,
-    validate_input_batch, validate_output_batch,
+    validate_output_batch,
+    BatchValidationResult,
+    BatchValidationOptions,
+    OutputValidationResult,
+    BatchValidationSummary,
 };
 
 #[cfg(feature = "parallel")]

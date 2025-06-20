@@ -140,6 +140,9 @@ pub enum DataStructureError {
     
     #[error("Invalid data format: {0}")]
     InvalidDataFormat(String),
+    
+    #[error("Invalid address: {0}")]
+    InvalidAddress(String),
 }
 
 /// Errors related to serialization and deserialization
@@ -523,6 +526,11 @@ impl DataStructureError {
     /// Create a missing field error
     pub fn missing_field(field: &str) -> Self {
         Self::MissingField(field.to_string())
+    }
+    
+    /// Create an invalid address error
+    pub fn invalid_address(address: &str) -> Self {
+        Self::InvalidAddress(address.to_string())
     }
 }
 
