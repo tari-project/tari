@@ -1100,7 +1100,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let transactions = transaction_service
-            .get_completed_transactions(payment_id, block_hash, block_height)
+            .get_completed_transactions(payment_id, block_hash, block_height, 0)
             .await
             .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
         debug!(
@@ -1206,6 +1206,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<GetAllCompletedTransactionsRequest>,
     ) -> Result<Response<GetAllCompletedTransactionsResponse>, Status> {
         let start = std::time::Instant::now();
+        let req = request.into_inner();
         trace!(
             target: LOG_TARGET,
             "GetAllCompletedTransactions: Incoming GRPC request"
@@ -1213,7 +1214,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
 
         let mut completed_transactions = transaction_service
-            .get_completed_transactions(None, None, None)
+            .get_completed_transactions(None, None, None, req.limit)
             .await
             .map_err(|err| {
                 Status::not_found(format!(
@@ -1223,7 +1224,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })?;
         completed_transactions.extend(
             transaction_service
-                .get_cancelled_completed_transactions()
+                .get_cancelled_completed_transactions(req.limit)
                 .await
                 .map_err(|err| {
                     Status::not_found(format!(
@@ -1239,7 +1240,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .expect("Should be able to compare timestamps")
         });
 
-        let req = request.into_inner();
         let offset = usize::try_from(req.offset).unwrap_or(0);
         let limit = if req.limit > 0 {
             usize::try_from(req.limit).unwrap_or(usize::MAX)
@@ -1331,7 +1331,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let transactions = transaction_service
-            .get_completed_transactions(None, None, Some(block_height))
+            .get_completed_transactions(None, None, Some(block_height), 0)
             .await
             .map_err(|err| {
                 Status::not_found(format!(

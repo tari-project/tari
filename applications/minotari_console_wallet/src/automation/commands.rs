@@ -2793,7 +2793,10 @@ pub async fn command_runner(
             ListTx => {
                 debug!(target: LOG_TARGET, "payref_debug: List all transactions command starting execution");
 
-                match transaction_service.get_completed_transactions(None, None, None).await {
+                match transaction_service
+                    .get_completed_transactions(None, None, None, 0)
+                    .await
+                {
                     Ok(txs) => {
                         debug!(target: LOG_TARGET, "ListTxs command got {} transactions", txs.len());
 
