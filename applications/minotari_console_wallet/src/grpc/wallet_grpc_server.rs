@@ -48,6 +48,7 @@ use minotari_app_grpc::tari_rpc::{
     CreateBurnTransactionResponse,
     CreateTemplateRegistrationRequest,
     CreateTemplateRegistrationResponse,
+    FeePerGramStat,
     GetAddressResponse,
     GetAllCompletedTransactionsRequest,
     GetAllCompletedTransactionsResponse,
@@ -59,6 +60,10 @@ use minotari_app_grpc::tari_rpc::{
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
     GetConnectivityRequest,
+    GetFeeEstimateRequest,
+    GetFeeEstimateResponse,
+    GetFeePerGramStatsRequest,
+    GetFeePerGramStatsResponse,
     GetIdentityRequest,
     GetIdentityResponse,
     GetPaymentByReferenceRequest,
@@ -1864,6 +1869,70 @@ impl wallet_server::Wallet for WalletGrpcServer {
             },
         }
     }
+
+    async fn get_fee_estimate(
+        &self,
+        request: Request<GetFeeEstimateRequest>,
+    ) -> Result<Response<GetFeeEstimateResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_fee_estimation: Incoming GRPC request with fee_per_gram: {}",
+            message.fee_per_gram
+        );
+
+        let mut oms = self.get_output_manager_service();
+        let fee_per_gram = message.fee_per_gram;
+        let amount = message.amount;
+        let output_count = usize::try_from(message.output_count)
+            .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?;
+        let selection_criteria = UtxoSelectionCriteria::default();
+        let fee = oms
+            .fee_estimate(
+                amount.into(),
+                selection_criteria,
+                fee_per_gram.into(),
+                1, // We assume 1 input for simplicity
+                output_count,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(GetFeeEstimateResponse {
+            estimated_fee: fee.as_u64(),
+        }))
+    }
+
+    async fn get_fee_per_gram_stats(
+        &self,
+        request: Request<GetFeePerGramStatsRequest>,
+    ) -> Result<Response<GetFeePerGramStatsResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_fee_per_gram_stats: Incoming GRPC request with count: {}",
+            message.block_count
+        );
+        let block_count = usize::try_from(message.block_count)
+            .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?;
+
+        let mut transaction_service = self.get_transaction_service();
+        let stats = transaction_service
+            .get_fee_per_gram_stats_per_block(block_count)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let mut fee_stats = Vec::new();
+        for stat in stats.stats {
+            fee_stats.push(FeePerGramStat {
+                average_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
+                min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
+                max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
+            });
+        }
+        Ok(Response::new(GetFeePerGramStatsResponse {
+            fee_per_gram_stats: fee_stats,
+        }))
+    }
 }
 
 async fn handle_completed_tx(
@@ -1913,7 +1982,8 @@ fn simple_event(event: &str) -> TransactionEvent {
         status: event.to_string(),
         direction: event.to_string(),
         amount: 0,
-        payment_id: vec![],
+        raw_payment_id: vec![],
+        user_payment_id: vec![],
     }
 }
 

@@ -1134,6 +1134,10 @@ service Wallet {
   // }
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
+
+  rpc GetFeeEstimate(GetFeeEstimateRequest) returns (GetFeeEstimateResponse);
+
+  rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
 }
 
 
@@ -1483,7 +1487,8 @@ message TransactionEvent {
   string status = 5;
   string direction = 6;
   uint64 amount = 7;
-  bytes payment_id = 9;
+  bytes raw_payment_id = 9;
+  bytes user_payment_id = 10;
 }
 
 message TransactionEventResponse {
@@ -1579,4 +1584,36 @@ enum PaymentDirection {
   PAYMENT_DIRECTION_INBOUND = 1;
   // Payment sent from this wallet
   PAYMENT_DIRECTION_OUTBOUND = 2;
+}
+
+message GetFeeEstimateRequest {
+  // The amount to send in microTari (1 T = 1_000_000 µT).
+  uint64 amount = 1;
+  // fee per gram to use for the estimate
+  uint64 fee_per_gram = 2;
+  // number of outputs to create in the transaction
+  uint64 output_count = 3;
+}
+
+message GetFeeEstimateResponse {
+  // Estimated fee for the transaction in microTari
+  uint64 estimated_fee = 1;
+}
+
+message GetFeePerGramStatsRequest {
+  // Optional: The number of recent blocks to consider for fee statistics.
+  uint64 block_count = 1;
+}
+
+message GetFeePerGramStatsResponse {
+  repeated FeePerGramStat fee_per_gram_stats = 1;
+}
+
+message FeePerGramStat {
+  // The average fee per gram over the specified number of blocks.
+  uint64 average_fee_per_gram = 1;
+  // The minimum fee per gram observed in the recent blocks.
+  uint64 min_fee_per_gram = 2;
+  // The maximum fee per gram observed in the recent blocks.
+  uint64 max_fee_per_gram = 3;
 }
