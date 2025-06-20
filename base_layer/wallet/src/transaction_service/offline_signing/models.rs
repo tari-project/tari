@@ -6,7 +6,6 @@ use tari_core::transactions::{
     transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction, WalletOutput},
     transaction_protocol::TransactionMetadata,
 };
-use tari_script::TariScript;
 
 use crate::transaction_service::{
     error::TransactionServiceError,
@@ -55,9 +54,7 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
 pub struct PaymentRecipient {
     pub amount: MicroMinotari,
     pub output_features: OutputFeatures,
-    pub script: TariScript,
     pub address: TariAddress,
-    pub use_stealth_address: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

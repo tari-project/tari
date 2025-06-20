@@ -179,14 +179,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
 
         let minimum_value_promise = MicroMinotari::zero();
-        let mut script = info.recipient.script.clone();
-        if info.recipient.use_stealth_address {
-            let script_spending_key = self
-                .key_manager
-                .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())
-                .await?;
-            script = push_pubkey_script(&script_spending_key);
-        }
+        let script_spending_key = self
+            .key_manager
+            .stealth_address_script_spending_key(&commitment_mask_key_id, info.recipient.address.public_spend_key())
+            .await?;
+        let script = push_pubkey_script(&script_spending_key);
 
         let output = WalletOutputBuilder::new(info.recipient.amount, commitment_mask_key_id.clone())
             .with_features(info.recipient.output_features.clone())

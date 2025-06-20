@@ -18,7 +18,7 @@ use tari_core::{
         transaction_protocol::TransactionMetadata,
     },
 };
-use tari_script::{push_pubkey_script, TariScript};
+use tari_script::push_pubkey_script;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -65,7 +65,6 @@ where
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        recipient_script: Option<TariScript>,
         mut payment_id: PaymentId,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Locking one sided transaction to {} with {}", dest_address, amount);
@@ -92,14 +91,7 @@ where
             _ => payment_id,
         };
 
-        // For a stealth transaction, the script is not provided because the public key that should be included
-        // is not known at this stage. This will only be known later. For now,
-        // we include a default public key to ensure that the script size is correct.
-        let (script, use_stealth_address) = match recipient_script {
-            Some(s) => (s, false),
-            None => (push_pubkey_script(&Default::default()), true),
-        };
-
+        let script = push_pubkey_script(&Default::default());
         // Prepare sender part of the transaction
         let mut stp = self
             .resources
@@ -111,7 +103,7 @@ where
                 output_features.clone(),
                 fee_per_gram,
                 TransactionMetadata::default(),
-                script.clone(),
+                script,
                 Covenant::default(),
                 MicroMinotari::zero(),
                 dest_address.clone(),
@@ -157,9 +149,7 @@ where
             recipient: PaymentRecipient {
                 amount,
                 output_features,
-                script,
                 address: dest_address,
-                use_stealth_address,
             },
             change_output,
             inputs,

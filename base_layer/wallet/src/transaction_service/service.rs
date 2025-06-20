@@ -670,7 +670,6 @@ where
                 payment_id,
             } => {
                 self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
-                let dest_pubkey = destination.public_spend_key().clone();
                 let mut offline_signing = OfflineSigner::new(self.resources.clone());
                 offline_signing
                     .prepare_one_sided_transaction_for_signing(
@@ -679,7 +678,6 @@ where
                         selection_criteria,
                         *output_features,
                         fee_per_gram,
-                        Some(push_pubkey_script(&dest_pubkey)),
                         payment_id,
                     )
                     .await
