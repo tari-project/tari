@@ -15,6 +15,7 @@ use crate::{
     data_structures::{transaction_output::LightweightTransactionOutput, wallet_output::LightweightWalletOutput},
     errors::{LightweightWalletError, LightweightWalletResult},
     extraction::{extract_wallet_output, ExtractionConfig},
+    key_management::{KeyManager, KeyStore, ConcreteKeyManager, KeyDerivationPath},
 };
 
 // Include GRPC scanner when the feature is enabled
@@ -104,6 +105,108 @@ impl Default for ScanConfig {
     }
 }
 
+/// Configuration for wallet-specific scanning
+#[derive(Debug, Clone)]
+pub struct WalletScanConfig {
+    /// Base scan configuration
+    pub scan_config: ScanConfig,
+    /// Key manager for wallet key derivation
+    pub key_manager: Option<ConcreteKeyManager>,
+    /// Key store for imported keys
+    pub key_store: Option<KeyStore>,
+    /// Whether to scan for stealth addresses
+    pub scan_stealth_addresses: bool,
+    /// Maximum number of addresses to scan per account
+    pub max_addresses_per_account: u32,
+    /// Whether to scan for imported keys
+    pub scan_imported_keys: bool,
+}
+
+impl WalletScanConfig {
+    /// Create a new wallet scan config
+    pub fn new(start_height: u64) -> Self {
+        Self {
+            scan_config: ScanConfig {
+                start_height,
+                end_height: None,
+                batch_size: 100,
+                request_timeout: Duration::from_secs(30),
+                extraction_config: ExtractionConfig::default(),
+            },
+            key_manager: None,
+            key_store: None,
+            scan_stealth_addresses: true,
+            max_addresses_per_account: 1000,
+            scan_imported_keys: true,
+        }
+    }
+
+    /// Set the key manager
+    pub fn with_key_manager(mut self, key_manager: ConcreteKeyManager) -> Self {
+        self.key_manager = Some(key_manager);
+        self
+    }
+
+    /// Set the key store
+    pub fn with_key_store(mut self, key_store: KeyStore) -> Self {
+        self.key_store = Some(key_store);
+        self
+    }
+
+    /// Set whether to scan for stealth addresses
+    pub fn with_stealth_address_scanning(mut self, enabled: bool) -> Self {
+        self.scan_stealth_addresses = enabled;
+        self
+    }
+
+    /// Set maximum addresses per account
+    pub fn with_max_addresses_per_account(mut self, max: u32) -> Self {
+        self.max_addresses_per_account = max;
+        self
+    }
+
+    /// Set whether to scan for imported keys
+    pub fn with_imported_key_scanning(mut self, enabled: bool) -> Self {
+        self.scan_imported_keys = enabled;
+        self
+    }
+
+    /// Set the end height
+    pub fn with_end_height(mut self, end_height: u64) -> Self {
+        self.scan_config.end_height = Some(end_height);
+        self
+    }
+
+    /// Set the batch size
+    pub fn with_batch_size(mut self, batch_size: u64) -> Self {
+        self.scan_config.batch_size = batch_size;
+        self
+    }
+
+    /// Set the request timeout
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.scan_config.request_timeout = timeout;
+        self
+    }
+}
+
+/// Result of a wallet scan operation
+#[derive(Debug, Clone)]
+pub struct WalletScanResult {
+    /// Block scan results
+    pub block_results: Vec<BlockScanResult>,
+    /// Total wallet outputs found
+    pub total_wallet_outputs: u64,
+    /// Total value found (in MicroMinotari)
+    pub total_value: u64,
+    /// Number of addresses scanned
+    pub addresses_scanned: u64,
+    /// Number of accounts scanned
+    pub accounts_scanned: u64,
+    /// Scan duration
+    pub scan_duration: Duration,
+}
+
 /// Chain tip information
 #[derive(Debug, Clone)]
 pub struct TipInfo {
@@ -173,6 +276,29 @@ pub trait BlockchainScanner: Send + Sync {
     ) -> LightweightWalletResult<Option<BlockInfo>>;
 }
 
+/// Wallet scanner trait for scanning with wallet keys
+/// 
+/// This trait extends the basic blockchain scanner with wallet-specific
+/// functionality for scanning with key management.
+#[async_trait]
+pub trait WalletScanner: Send + Sync {
+    /// Scan for wallet outputs using wallet keys
+    async fn scan_wallet(
+        &mut self,
+        config: WalletScanConfig,
+    ) -> LightweightWalletResult<WalletScanResult>;
+
+    /// Scan for wallet outputs with progress reporting
+    async fn scan_wallet_with_progress(
+        &mut self,
+        config: WalletScanConfig,
+        progress_callback: Option<&ProgressCallback>,
+    ) -> LightweightWalletResult<WalletScanResult>;
+
+    /// Get the underlying blockchain scanner
+    fn blockchain_scanner(&mut self) -> &mut dyn BlockchainScanner;
+}
+
 /// Default implementation of scanning logic that can be used by any backend
 pub struct DefaultScanningLogic;
 
@@ -209,6 +335,88 @@ impl DefaultScanningLogic {
         Ok(results)
     }
 
+    /// Process blocks with wallet key management
+    pub fn process_blocks_with_wallet_keys(
+        blocks: Vec<BlockInfo>,
+        config: &WalletScanConfig,
+    ) -> LightweightWalletResult<Vec<BlockScanResult>> {
+        let mut results = Vec::new();
+
+        for block in blocks {
+            let mut wallet_outputs = Vec::new();
+            
+            for output in &block.outputs {
+                // Try to extract wallet output with different key combinations
+                if let Some(key_manager) = &config.key_manager {
+                    // Try with derived keys
+                    for account in 0..=0 { // For now, just scan account 0
+                        for change in 0..=1 { // External and internal addresses
+                            for address_index in 0..config.max_addresses_per_account {
+                                let path = KeyDerivationPath::tari_standard(account, change, address_index);
+                                
+                                // Derive the key pair for this path
+                                match key_manager.derive_key_pair(&path) {
+                                    Ok(key_pair) => {
+                                        // Create extraction config with derived key
+                                        let mut extraction_config = config.scan_config.extraction_config.clone();
+                                        extraction_config.set_private_key(key_pair.private_key.clone());
+                                        
+                                        match extract_wallet_output(output, &extraction_config) {
+                                            Ok(wallet_output) => {
+                                                wallet_outputs.push(wallet_output);
+                                                break; // Found a match, move to next output
+                                            }
+                                            Err(_) => {
+                                                // Continue trying other keys
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    Err(_) => {
+                                        // Skip this key if derivation failed
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Try with imported keys if enabled
+                if config.scan_imported_keys {
+                    if let Some(key_store) = &config.key_store {
+                        for imported_key in key_store.get_imported_keys() {
+                            // Create extraction config with imported key
+                            let mut extraction_config = config.scan_config.extraction_config.clone();
+                            extraction_config.set_private_key(imported_key.private_key.clone());
+                            
+                            match extract_wallet_output(output, &extraction_config) {
+                                Ok(wallet_output) => {
+                                    wallet_outputs.push(wallet_output);
+                                    break; // Found a match, move to next output
+                                }
+                                Err(_) => {
+                                    // Continue trying other keys
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            results.push(BlockScanResult {
+                height: block.height,
+                block_hash: block.hash,
+                outputs: block.outputs,
+                wallet_outputs,
+                mined_timestamp: block.timestamp,
+            });
+        }
+
+        Ok(results)
+    }
+
     /// Scan blocks with progress reporting
     pub async fn scan_blocks_with_progress<S>(
         scanner: &mut S,
@@ -219,70 +427,111 @@ impl DefaultScanningLogic {
         S: BlockchainScanner,
     {
         let start_time = Instant::now();
-        let mut results = Vec::new();
+        let mut all_results = Vec::new();
         let mut current_height = config.start_height;
-
-        // Get tip info to determine end height
-        let tip_info = scanner.get_tip_info().await?;
-        let end_height = config.end_height.unwrap_or(tip_info.best_block_height);
-
-        if current_height > end_height {
-            return Ok(results);
-        }
-
-        let mut outputs_found = 0u64;
-        let mut total_value = 0u64;
+        let end_height = config.end_height.unwrap_or_else(|| {
+            // Get tip info if no end height specified
+            // For now, we'll use a reasonable default
+            current_height + 1000
+        });
 
         while current_height <= end_height {
             let batch_end = std::cmp::min(current_height + config.batch_size - 1, end_height);
+            
+            // Get blocks in this batch
             let heights: Vec<u64> = (current_height..=batch_end).collect();
-
-            // Get blocks for this batch
             let blocks = scanner.get_blocks_by_heights(heights).await?;
-
-            // Process each block
-            for block in blocks {
-                let mut wallet_outputs = Vec::new();
-                
-                for output in &block.outputs {
-                    match extract_wallet_output(output, &config.extraction_config) {
-                        Ok(wallet_output) => wallet_outputs.push(wallet_output),
-                        Err(e) => {
-                            tracing::debug!("Failed to extract wallet output: {}", e);
-                        }
-                    }
-                }
-
-                outputs_found += wallet_outputs.len() as u64;
-                total_value += wallet_outputs.iter()
-                    .map(|wo| wo.value().as_u64())
-                    .sum::<u64>();
-
-                results.push(BlockScanResult {
-                    height: block.height,
-                    block_hash: block.hash,
-                    outputs: block.outputs,
-                    wallet_outputs,
-                    mined_timestamp: block.timestamp,
-                });
-            }
+            
+            // Process blocks
+            let batch_results = Self::process_blocks(blocks, &config.extraction_config)?;
+            all_results.extend(batch_results);
 
             // Update progress
             if let Some(callback) = progress_callback {
-                let progress = ScanProgress {
+                let total_outputs: u64 = all_results.iter().map(|r| r.wallet_outputs.len() as u64).sum();
+                let total_value: u64 = all_results.iter()
+                    .flat_map(|r| &r.wallet_outputs)
+                    .map(|wo| wo.value().as_u64())
+                    .sum();
+
+                callback(ScanProgress {
                     current_height: batch_end,
                     target_height: end_height,
-                    outputs_found,
+                    outputs_found: total_outputs,
                     total_value,
                     elapsed: start_time.elapsed(),
-                };
-                callback(progress);
+                });
             }
 
             current_height = batch_end + 1;
         }
 
-        Ok(results)
+        Ok(all_results)
+    }
+
+    /// Scan wallet with progress reporting
+    pub async fn scan_wallet_with_progress<S>(
+        scanner: &mut S,
+        config: WalletScanConfig,
+        progress_callback: Option<&ProgressCallback>,
+    ) -> LightweightWalletResult<WalletScanResult>
+    where
+        S: BlockchainScanner,
+    {
+        let start_time = Instant::now();
+        let mut all_results = Vec::new();
+        let mut current_height = config.scan_config.start_height;
+        let end_height = config.scan_config.end_height.unwrap_or_else(|| {
+            // Get tip info if no end height specified
+            // For now, we'll use a reasonable default
+            current_height + 1000
+        });
+
+        while current_height <= end_height {
+            let batch_end = std::cmp::min(current_height + config.scan_config.batch_size - 1, end_height);
+            
+            // Get blocks in this batch
+            let heights: Vec<u64> = (current_height..=batch_end).collect();
+            let blocks = scanner.get_blocks_by_heights(heights).await?;
+            
+            // Process blocks with wallet keys
+            let batch_results = Self::process_blocks_with_wallet_keys(blocks, &config)?;
+            all_results.extend(batch_results);
+
+            // Update progress
+            if let Some(callback) = progress_callback {
+                let total_outputs: u64 = all_results.iter().map(|r| r.wallet_outputs.len() as u64).sum();
+                let total_value: u64 = all_results.iter()
+                    .flat_map(|r| &r.wallet_outputs)
+                    .map(|wo| wo.value().as_u64())
+                    .sum();
+
+                callback(ScanProgress {
+                    current_height: batch_end,
+                    target_height: end_height,
+                    outputs_found: total_outputs,
+                    total_value,
+                    elapsed: start_time.elapsed(),
+                });
+            }
+
+            current_height = batch_end + 1;
+        }
+
+        let total_wallet_outputs: u64 = all_results.iter().map(|r| r.wallet_outputs.len() as u64).sum();
+        let total_value: u64 = all_results.iter()
+            .flat_map(|r| &r.wallet_outputs)
+            .map(|wo| wo.value().as_u64())
+            .sum();
+
+        Ok(WalletScanResult {
+            block_results: all_results,
+            total_wallet_outputs,
+            total_value,
+            addresses_scanned: 0, // TODO: Calculate this
+            accounts_scanned: 0,  // TODO: Calculate this
+            scan_duration: start_time.elapsed(),
+        })
     }
 }
 

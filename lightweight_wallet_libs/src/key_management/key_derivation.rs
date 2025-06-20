@@ -42,6 +42,15 @@ impl LightweightKeyManager {
         Ok(Self::new(master_key))
     }
 
+    pub fn derive_private_key(&self, path: &KeyDerivationPath) -> Result<PrivateKey, KeyManagementError> {
+        self.derive_private_key_internal(path)
+    }
+
+    pub fn derive_public_key(&self, path: &KeyDerivationPath) -> Result<CompressedPublicKey, KeyManagementError> {
+        let private_key = self.derive_private_key(path)?;
+        self.derive_public_key_from_private(&private_key)
+    }
+
     /// Derive a private key from the master key using a derivation path
     fn derive_private_key_internal(&self, path: &KeyDerivationPath) -> Result<PrivateKey, KeyManagementError> {
         let mut hasher = Blake2b::<U64>::new();

@@ -32,11 +32,9 @@ use crate::{
     },
     errors::{LightweightWalletError, LightweightWalletResult},
     extraction::{extract_wallet_output, ExtractionConfig},
-    scanning::{BlockInfo, BlockScanResult, BlockchainScanner, ScanConfig, TipInfo},
+    scanning::{BlockInfo, BlockScanResult, BlockchainScanner, ScanConfig, TipInfo, WalletScanner, WalletScanConfig, WalletScanResult, ProgressCallback, DefaultScanningLogic},
+    key_management::{ConcreteKeyManager, KeyStore},
 };
-
-#[cfg(feature = "grpc")]
-use super::DefaultScanningLogic;
 
 #[cfg(feature = "grpc")]
 use crate::tari_rpc;
@@ -516,6 +514,29 @@ impl GrpcScannerBuilder {
         Err(crate::errors::LightweightWalletError::OperationNotSupported(
             "GRPC feature not enabled".to_string()
         ))
+    }
+}
+
+#[cfg(feature = "grpc")]
+#[async_trait::async_trait]
+impl WalletScanner for GrpcBlockchainScanner {
+    async fn scan_wallet(
+        &mut self,
+        config: WalletScanConfig,
+    ) -> LightweightWalletResult<WalletScanResult> {
+        DefaultScanningLogic::scan_wallet_with_progress(self, config, None).await
+    }
+
+    async fn scan_wallet_with_progress(
+        &mut self,
+        config: WalletScanConfig,
+        progress_callback: Option<&ProgressCallback>,
+    ) -> LightweightWalletResult<WalletScanResult> {
+        DefaultScanningLogic::scan_wallet_with_progress(self, config, progress_callback).await
+    }
+
+    fn blockchain_scanner(&mut self) -> &mut dyn BlockchainScanner {
+        self
     }
 }
 

@@ -4,12 +4,14 @@
 //! Example demonstrating how to use the GRPC blockchain scanner
 //! 
 //! This example shows how to connect to a Tari base node via GRPC
-//! and scan for wallet outputs.
+//! and scan for wallet outputs using wallet keys.
 
 #[cfg(feature = "grpc")]
 use lightweight_wallet_libs::{
-    scanning::{GrpcScannerBuilder, ScanConfig},
+    scanning::{GrpcScannerBuilder, WalletScanConfig, WalletScanner, ProgressCallback, ScanProgress},
     extraction::ExtractionConfig,
+    key_derivation::LightweightKeyManager,
+    key_management::{ConcreteKeyManager, KeyStore, ImportedPrivateKey},
     BlockchainScanner,
     errors::LightweightWalletResult,
 };
@@ -19,10 +21,12 @@ use tracing_subscriber::fmt;
 #[tokio::main]
 async fn main() -> LightweightWalletResult<()> {
     // Initialize logging
+
+    use lightweight_wallet_libs::{ImportedPrivateKey, KeyDerivationPath};
     tracing_subscriber::fmt::init();
 
-    println!("GRPC Scanner Example");
-    println!("===================");
+    println!("GRPC Wallet Scanner Example");
+    println!("===========================");
 
     // Create a GRPC scanner builder
     let builder = GrpcScannerBuilder::new()
@@ -46,50 +50,125 @@ async fn main() -> LightweightWalletResult<()> {
     println!("Current tip height: {}", tip_info.best_block_height);
     println!("Current tip hash: {}", hex::encode(&tip_info.best_block_hash));
 
-    // Configure scanning
-    let extraction_config = ExtractionConfig {
-        enable_key_derivation: true,
-        validate_range_proofs: true,
-        validate_signatures: true,
-        handle_special_outputs: true,
-        detect_corruption: true,
-    };
-
-    let scan_config = ScanConfig {
-        start_height: tip_info.best_block_height.saturating_sub(100), // Scan last 100 blocks
-        end_height: Some(tip_info.best_block_height),
-        batch_size: 10,
-        request_timeout: std::time::Duration::from_secs(30),
-        extraction_config,
-    };
-
-    println!("Scanning blocks from {} to {}", scan_config.start_height, scan_config.end_height.unwrap());
-
-    // Scan for wallet outputs
-    let results = scanner.scan_blocks(scan_config).await?;
+    // Create a key manager (example with a test key)
+    // In a real application, this would be created from a seed phrase or imported keys
+    let test_master_key = [1u8; 32]; // Example key - in real usage, this would be a proper seed
+    let key_manager = ConcreteKeyManager::new(test_master_key);
     
-    println!("Scan completed!");
-    println!("Found {} blocks with wallet outputs", results.len());
+    // Create a key store with some imported keys (example)
+    let mut key_store = KeyStore::new();
+    
+    let test_imported_key = LightweightKeyManager::from_mnemonic("gate sound fault steak act victory vacuum night injury lion section share pass food damage venue smart vicious cinnamon eternal invest shoulder green file", None)?; 
+    key_store.add_imported_key(test_imported_key).unwrap();
 
-    let total_outputs: usize = results.iter().map(|r| r.wallet_outputs.len()).sum();
-    let total_value: u64 = results.iter()
-        .flat_map(|r| &r.wallet_outputs)
-        .map(|wo| wo.value().as_u64())
-        .sum();
+    // Configure wallet scanning
+    let wallet_birthday = tip_info.best_block_height.saturating_sub(1000); // Example: scan from 1000 blocks ago
+    
+    let wallet_scan_config = WalletScanConfig::new(wallet_birthday)
+        .with_key_manager(key_manager)
+        .with_key_store(key_store)
+        .with_stealth_address_scanning(true)
+        .with_max_addresses_per_account(100) // Scan first 100 addresses per account
+        .with_imported_key_scanning(true)
+        .with_end_height(tip_info.best_block_height)
+        .with_batch_size(50)
+        .with_request_timeout(std::time::Duration::from_secs(30));
 
-    println!("Total wallet outputs found: {}", total_outputs);
-    println!("Total value found: {} MicroMinotari", total_value);
+    println!("Wallet birthday: {}", wallet_birthday);
+    println!("Scanning blocks from {} to {}", wallet_birthday, tip_info.best_block_height);
+    println!("Scanning for wallet outputs with key management...");
 
-    // Print details of each block with outputs
-    for result in &results {
-        if !result.wallet_outputs.is_empty() {
+    // Create a progress callback
+    let progress_callback: ProgressCallback = Box::new(|progress: ScanProgress| {
+        println!(
+            "Progress: {}/{} blocks ({} outputs, {} MicroMinotari) - {:.2}s elapsed",
+            progress.current_height,
+            progress.target_height,
+            progress.outputs_found,
+            progress.total_value,
+            progress.elapsed.as_secs_f64()
+        );
+    });
+
+    // Scan for wallet outputs with progress reporting
+    let wallet_result = scanner.scan_wallet_with_progress(
+        wallet_scan_config,
+        Some(&progress_callback)
+    ).await?;
+    
+    println!("\nWallet scan completed!");
+    println!("=====================");
+    println!("Total blocks scanned: {}", wallet_result.block_results.len());
+    println!("Total wallet outputs found: {}", wallet_result.total_wallet_outputs);
+    println!("Total value found: {} MicroMinotari", wallet_result.total_value);
+    println!("Addresses scanned: {}", wallet_result.addresses_scanned);
+    println!("Accounts scanned: {}", wallet_result.accounts_scanned);
+    println!("Scan duration: {:.2}s", wallet_result.scan_duration.as_secs_f64());
+
+    // Print details of blocks with wallet outputs
+    let blocks_with_outputs: Vec<_> = wallet_result.block_results
+        .iter()
+        .filter(|r| !r.wallet_outputs.is_empty())
+        .collect();
+
+    if !blocks_with_outputs.is_empty() {
+        println!("\nBlocks with wallet outputs:");
+        println!("===========================");
+        for result in blocks_with_outputs {
+            let block_value: u64 = result.wallet_outputs.iter()
+                .map(|wo| wo.value().as_u64())
+                .sum();
+            
             println!("Block {}: {} outputs, {} MicroMinotari", 
                 result.height, 
                 result.wallet_outputs.len(),
-                result.wallet_outputs.iter().map(|wo| wo.value().as_u64()).sum::<u64>()
+                block_value
             );
+            
+            // Print details of each wallet output
+            for (i, wallet_output) in result.wallet_outputs.iter().enumerate() {
+                println!("  Output {}: {} MicroMinotari, Payment ID: {:?}", 
+                    i + 1,
+                    wallet_output.value().as_u64(),
+                    wallet_output.payment_id()
+                );
+            }
         }
+    } else {
+        println!("\nNo wallet outputs found in the scanned range.");
+        println!("This could mean:");
+        println!("1. The wallet has no outputs in this block range");
+        println!("2. The keys provided don't match any outputs");
+        println!("3. The wallet birthday is set too high");
+        println!("4. The base node doesn't have the required blocks");
     }
+
+    // Demonstrate basic scanning without key management (for comparison)
+    println!("\nPerforming basic scan without key management...");
+    
+    let basic_extraction_config = ExtractionConfig {
+        enable_key_derivation: false,
+        validate_range_proofs: false,
+        validate_signatures: false,
+        handle_special_outputs: true,
+        detect_corruption: false,
+        private_key: None,
+        public_key: None,
+    };
+
+    let basic_scan_config = lightweight_wallet_libs::scanning::ScanConfig {
+        start_height: tip_info.best_block_height.saturating_sub(10), // Just last 10 blocks
+        end_height: Some(tip_info.best_block_height),
+        batch_size: 10,
+        request_timeout: std::time::Duration::from_secs(30),
+        extraction_config: basic_extraction_config,
+    };
+
+    let basic_results = scanner.scan_blocks(basic_scan_config).await?;
+    let basic_total_outputs: usize = basic_results.iter().map(|r| r.wallet_outputs.len()).sum();
+    
+    println!("Basic scan found {} wallet outputs (without key management)", basic_total_outputs);
+    println!("Note: Without proper keys, most outputs cannot be extracted as wallet outputs.");
 
     Ok(())
 }
