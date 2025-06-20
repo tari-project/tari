@@ -32,6 +32,7 @@ pub mod stealth_address;
 use crate::data_structures::types::PrivateKey;
 use crate::errors::KeyManagementError;
 use zeroize::Zeroize;
+use key_derivation::LightweightKeyManager;
 
 /// Key derivation path for deterministic key generation
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -215,7 +216,6 @@ impl Drop for ImportedPrivateKey {
 }
 
 pub use seed_phrase::mnemonic_to_master_key;
-pub use key_derivation::LightweightKeyManager;
 pub use stealth_address::{StealthAddress, StealthAddressManager};
 
 /// Key store for managing both derived and imported keys
@@ -497,6 +497,109 @@ impl SecureKeyOps for PrivateKey {
     }
     
     fn secure_clear(&mut self) {
+        self.zeroize();
+    }
+}
+
+/// Concrete implementation of KeyManager that combines trait functionality with KeyStore
+#[derive(Debug, Clone)]
+pub struct ConcreteKeyManager {
+    /// The underlying key manager for derivation
+    key_manager: LightweightKeyManager,
+    /// The key store for imported keys
+    key_store: KeyStore,
+}
+
+impl ConcreteKeyManager {
+    /// Create a new concrete key manager
+    pub fn new(master_key: [u8; 32]) -> Self {
+        Self {
+            key_manager: LightweightKeyManager::new(master_key),
+            key_store: KeyStore::new(),
+        }
+    }
+
+    /// Create a key manager from a mnemonic phrase
+    pub fn from_mnemonic(mnemonic: &str, passphrase: Option<&str>) -> Result<Self, KeyManagementError> {
+        let key_manager = LightweightKeyManager::from_mnemonic(mnemonic, passphrase)?;
+        Ok(Self {
+            key_manager,
+            key_store: KeyStore::new(),
+        })
+    }
+
+    /// Import a private key
+    pub fn import_private_key(&mut self, imported_key: ImportedPrivateKey) -> Result<(), KeyManagementError> {
+        self.key_store.add_imported_key(imported_key)
+    }
+
+    /// Import a private key from bytes
+    pub fn import_private_key_from_bytes(&mut self, bytes: [u8; 32], label: String) -> Result<(), KeyManagementError> {
+        self.key_store.import_private_key_from_bytes(bytes, Some(label))
+    }
+
+    /// Get all imported keys
+    pub fn get_all_imported_keys(&self) -> &[ImportedPrivateKey] {
+        self.key_store.get_imported_keys()
+    }
+
+    /// Get imported key by label
+    pub fn get_imported_key_by_label(&self, label: &str) -> Result<&ImportedPrivateKey, KeyManagementError> {
+        self.key_store.get_imported_key_by_label(label)
+    }
+
+    /// Derive a key pair at a specific index
+    pub fn derive_key_pair_at_index(&self, index: u64) -> Result<DerivedKeyPair, KeyManagementError> {
+        let path = KeyDerivationPath::tari_standard(0, 0, index as u32);
+        self.key_manager.derive_key_pair(&path)
+    }
+
+    /// Get the current key index
+    pub fn current_key_index(&self) -> u64 {
+        self.key_manager.current_key_index()
+    }
+
+    /// Update the current key index
+    pub fn update_key_index(&mut self, new_index: u64) {
+        self.key_manager.update_key_index(new_index);
+    }
+}
+
+impl KeyManager for ConcreteKeyManager {
+    fn derive_key_pair(&self, path: &KeyDerivationPath) -> Result<DerivedKeyPair, KeyManagementError> {
+        self.key_manager.derive_key_pair(path)
+    }
+
+    fn derive_private_key(&self, path: &KeyDerivationPath) -> Result<PrivateKey, KeyManagementError> {
+        self.key_manager.derive_private_key(path)
+    }
+
+    fn derive_public_key(&self, path: &KeyDerivationPath) -> Result<crate::data_structures::types::CompressedPublicKey, KeyManagementError> {
+        self.key_manager.derive_public_key(path)
+    }
+
+    fn next_key_pair(&mut self) -> Result<DerivedKeyPair, KeyManagementError> {
+        self.key_manager.next_key_pair()
+    }
+
+    fn current_key_index(&self) -> u64 {
+        self.key_manager.current_key_index()
+    }
+
+    fn update_key_index(&mut self, new_index: u64) {
+        self.key_manager.update_key_index(new_index);
+    }
+}
+
+impl Zeroize for ConcreteKeyManager {
+    fn zeroize(&mut self) {
+        self.key_manager.zeroize();
+        self.key_store.zeroize();
+    }
+}
+
+impl Drop for ConcreteKeyManager {
+    fn drop(&mut self) {
         self.zeroize();
     }
 }

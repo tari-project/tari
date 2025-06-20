@@ -283,16 +283,7 @@ impl PaymentId {
                 tx_id: _,
                 output_index: _,
             } => {
-                let len = 1 +
-                    8 +
-                    Self::SIZE_VALUE_AND_META_DATA +
-                    1 +
-                    8;
-                if len < Self::PADDING_SIZE {
-                    Self::PADDING_SIZE
-                } else {
-                    len
-                }
+                1 + 32 + 8 // tag + 32-byte tx_id + 8-byte output_index
             },
             PaymentId::Raw { data } => {
                 // We add 1 for the tag byte
@@ -389,7 +380,7 @@ impl PaymentId {
                     return Err(DataStructureError::InvalidPaymentId("Open payment ID data too short".to_string()).into());
                 }
                 let user_data_len = data[0] as usize;
-                if data.len() < 1 + user_data_len + 1 {
+                if data.len() < 1 + user_data_len {
                     return Err(DataStructureError::InvalidPaymentId("Open payment ID data too short".to_string()).into());
                 }
                 let user_data = data[1..1 + user_data_len].to_vec();
@@ -415,11 +406,11 @@ impl PaymentId {
                 })
             },
             6 => {
-                if data.len() < 8 {
+                if data.len() < 40 {
                     return Err(DataStructureError::InvalidPaymentId("TransactionInfo payment ID data too short".to_string()).into());
                 }
-                let tx_id = data[0..8].to_vec();
-                let output_index = u64::from_le_bytes(data[8..16].try_into().unwrap());
+                let tx_id = data[0..32].to_vec();
+                let output_index = u64::from_le_bytes(data[32..40].try_into().unwrap());
                 Ok(PaymentId::TransactionInfo {
                     tx_id,
                     output_index,
@@ -435,7 +426,11 @@ impl HexEncodable for PaymentId {
     fn to_hex(&self) -> String {
         match self {
             PaymentId::Empty => String::new(),
-            PaymentId::U256 { value } => format!("{:x}", value),
+            PaymentId::U256 { value } => {
+                let mut bytes = [0u8; 32];
+                value.to_big_endian(&mut bytes);
+                format!("{:064x}", U256::from_big_endian(&bytes))
+            },
             PaymentId::Open { data } => data.encode_hex::<String>(),
             PaymentId::AddressAndData { address, data } => {
                 format!("{}{}", hex::encode(address), data.encode_hex::<String>())

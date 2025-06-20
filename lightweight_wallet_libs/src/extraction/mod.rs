@@ -9,6 +9,7 @@
 
 pub mod encrypted_data_decryption;
 pub mod payment_id_extraction;
+pub mod wallet_output_reconstruction;
 
 pub use encrypted_data_decryption::{
     EncryptedDataDecryptor,
@@ -19,4 +20,13 @@ pub use encrypted_data_decryption::{
 pub use payment_id_extraction::{
     PaymentIdExtractor,
     PaymentIdExtractionResult,
+    PaymentIdMetadata,
+    PaymentIdType,
+};
+
+pub use wallet_output_reconstruction::{
+    WalletOutputReconstructor,
+    WalletOutputReconstructionResult,
+    WalletOutputReconstructionOptions,
+    WalletOutputReconstructionError,
 }; 
