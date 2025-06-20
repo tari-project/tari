@@ -17,6 +17,14 @@ use crate::{
     extraction::{extract_wallet_output, ExtractionConfig},
 };
 
+// Include GRPC scanner when the feature is enabled
+#[cfg(feature = "grpc")]
+pub mod grpc_scanner;
+
+// Re-export GRPC scanner types
+#[cfg(feature = "grpc")]
+pub use grpc_scanner::{GrpcBlockchainScanner, GrpcScannerBuilder};
+
 /// Progress callback for scanning operations
 pub type ProgressCallback = Box<dyn Fn(ScanProgress) + Send + Sync>;
 
@@ -68,7 +76,7 @@ pub struct ScanConfig {
 impl ScanConfig {
     /// Create a new scan config with a progress callback
     pub fn with_progress_callback(
-        mut self,
+        self,
         callback: ProgressCallback,
     ) -> ScanConfigWithCallback {
         ScanConfigWithCallback {
@@ -370,7 +378,8 @@ pub struct BlockchainScannerBuilder {
 pub enum ScannerType {
     Mock,
     // Add other scanner types here as needed
-    // Grpc { url: String },
+    #[cfg(feature = "grpc")]
+    Grpc { url: String },
     // Http { url: String },
 }
 
@@ -403,9 +412,14 @@ impl BlockchainScannerBuilder {
     }
 
     /// Build the scanner
-    pub fn build(self) -> LightweightWalletResult<Box<dyn BlockchainScanner>> {
+    pub async fn build(self) -> LightweightWalletResult<Box<dyn BlockchainScanner>> {
         match self.scanner_type {
             Some(ScannerType::Mock) => Ok(Box::new(MockBlockchainScanner::new())),
+            #[cfg(feature = "grpc")]
+            Some(ScannerType::Grpc { url }) => {
+                let scanner = GrpcBlockchainScanner::new(url).await?;
+                Ok(Box::new(scanner))
+            }
             None => Err(LightweightWalletError::ConfigurationError(
                 "Scanner type not specified".to_string()
             )),
@@ -497,7 +511,7 @@ mod tests {
         let builder = BlockchainScannerBuilder::new()
             .with_type(ScannerType::Mock);
         
-        let mut scanner = builder.build().unwrap();
+        let mut scanner = builder.build().await.unwrap();
         let tip_info = scanner.get_tip_info().await.unwrap();
         assert_eq!(tip_info.best_block_height, 1000);
     }

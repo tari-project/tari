@@ -47,15 +47,26 @@ async-trait = "0.1"
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 
+# GRPC dependencies for blockchain scanning
+tonic = { version = "0.10", features = ["tls", "tls-roots", "prost"], optional = true }
+prost = { version = "0.12", optional = true }
+
+# Added tracing-subscriber dependency
+tracing-subscriber = "0.3"
+
 [dev-dependencies]
 # Test dependencies
 serde_json = "1.0"
 wasm-bindgen-test = "0.3"
 
+[build-dependencies]
+tonic-build = "0.10"
+
 [features]
 default = []
 wasm = ["getrandom/js"]
 parallel = ["rayon"]
+grpc = ["tonic", "prost"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] } 

@@ -14,6 +14,12 @@ pub mod extraction;
 pub mod key_management;
 pub mod scanning;
 
+// Include generated GRPC code when the feature is enabled
+#[cfg(feature = "grpc")]
+pub mod tari_rpc {
+    tonic::include_proto!("tari.rpc");
+}
+
 pub use data_structures::*;
 pub use errors::*;
 pub use hex_utils::*;
