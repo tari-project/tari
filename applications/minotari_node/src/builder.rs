@@ -31,9 +31,7 @@ use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, Com
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{
-        state_machine_service::states::StatusInfo,
-        tari_pulse_service::TariPulseHandle,
-        LocalNodeCommsInterface,
+        state_machine_service::states::StatusInfo, tari_pulse_service::TariPulseHandle, LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
@@ -53,7 +51,9 @@ use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
 
-use crate::{bootstrap::BaseNodeBootstrapper, ApplicationConfig, DatabaseType};
+use crate::{
+    bootstrap::BaseNodeBootstrapper, grpc::readiness_grpc_server::ReadinessStatus, ApplicationConfig, DatabaseType,
+};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -171,24 +171,28 @@ impl BaseNodeContext {
 /// `node_identity` - The node identity information of the base node
 /// `wallet_node_identity` - The node identity information of the base node's wallet
 /// `interrupt_signal` - The signal used to stop the application
+/// `readiness_status` - The readiness status of the base node
 /// ## Returns
 /// Result containing the NodeContainer, String will contain the reason on error
 pub async fn configure_and_initialize_node(
     app_config: Arc<ApplicationConfig>,
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
+    readiness_status_tx: &tokio::sync::watch::Sender<ReadinessStatus>,
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
             let rules = ConsensusManager::builder(app_config.base_node.network)
                 .build()
                 .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
+            drop(readiness_status_tx.send(ReadinessStatus::Migrating));
             let backend = create_lmdb_database(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
                 rules,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
+            drop(readiness_status_tx.send(ReadinessStatus::BuildingContext));
             build_node_context(backend, app_config, node_identity, interrupt_signal).await?
         },
     };
