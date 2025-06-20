@@ -1892,7 +1892,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 amount.into(),
                 selection_criteria,
                 fee_per_gram.into(),
-                1, // We assume 1 input for simplicity
+                1, // We assume 1 kernel for simplicity
                 output_count,
             )
             .await
