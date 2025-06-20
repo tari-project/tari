@@ -20,7 +20,7 @@ Feature: Wallet CLI
     Scenario: As a user I want to get balance via command line
         Given I have a base node BASE
         When I have wallet WALLET connected to base node BASE
-        When I have mining node MINE connected to base node BASE and wallet WALLET
+        When I have SHA3X mining node MINE connected to base node BASE and wallet WALLET
         When mining node MINE mines 5 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
         Then I get balance of wallet WALLET is at least 1000000 uT via command line
@@ -31,7 +31,7 @@ Feature: Wallet CLI
         When I have a base node BASE connected to seed SEED
         When I have wallet SENDER connected to base node BASE
         When I have wallet RECEIVER connected to base node BASE
-        When I have mining node MINE connected to base node BASE and wallet SENDER
+        When I have SHA3X mining node MINE connected to base node BASE and wallet SENDER
         When mining node MINE mines 5 blocks
         Then I wait for wallet SENDER to have at least 1100000 uT
         When I wait 30 seconds
@@ -47,7 +47,7 @@ Feature: Wallet CLI
         Given I have a seed node SEED
         When I have a base node BASE connected to seed SEED
         When I have wallet WALLET connected to base node BASE
-        When I have mining node MINER connected to base node BASE and wallet WALLET
+        When I have SHA3X mining node MINER connected to base node BASE and wallet WALLET
         When mining node MINER mines 12 blocks
         When I mine 3 blocks on BASE
         Then all nodes are at height 15
@@ -63,7 +63,7 @@ Feature: Wallet CLI
         When I have a base node BASE connected to seed SEED
         When I have wallet SENDER connected to base node BASE
         When I have wallet RECEIVER connected to base node BASE
-        When I have mining node MINE connected to base node BASE and wallet SENDER
+        When I have SHA3X mining node MINE connected to base node BASE and wallet SENDER
         When mining node MINE mines 15 blocks
         Then wallets SENDER should have AT_LEAST 12 spendable coinbase outputs
         Then I stop wallet SENDER
@@ -78,7 +78,7 @@ Feature: Wallet CLI
         Given I have a seed node SEED
         When I have a base node BASE connected to seed SEED
         When I have wallet WALLET connected to base node BASE
-        When I have mining node MINE connected to base node BASE and wallet WALLET
+        When I have SHA3X mining node MINE connected to base node BASE and wallet WALLET
         When mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1100000 uT
         When I wait 30 seconds
@@ -93,7 +93,7 @@ Feature: Wallet CLI
         Given I have a seed node SEED
         When I have a base node BASE connected to seed SEED
         When I have wallet WALLET connected to base node BASE
-        When I have mining node MINE connected to base node BASE and wallet WALLET
+        When I have SHA3X mining node MINE connected to base node BASE and wallet WALLET
         When mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1100000 uT
         When I wait 30 seconds
@@ -106,7 +106,7 @@ Feature: Wallet CLI
     Scenario: As a user I want to count utxos via command line
         Given I have a base node BASE
         When I have wallet WALLET connected to base node BASE
-        When I have mining node MINE connected to base node BASE and wallet WALLET
+        When I have SHA3X mining node MINE connected to base node BASE and wallet WALLET
         When mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
         Then I stop wallet WALLET
@@ -115,7 +115,7 @@ Feature: Wallet CLI
     Scenario: As a user I want to export utxos via command line
         Given I have a base node BASE
         When I have wallet WALLET connected to base node BASE
-        When I have mining node MINE connected to base node BASE and wallet WALLET
+        When I have SHA3X mining node MINE connected to base node BASE and wallet WALLET
         When mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
         When I export the utxos of wallet WALLET via command line

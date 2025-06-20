@@ -21,7 +21,7 @@ Feature: Base Node Connectivity
     Scenario: Basic mining
         Given I have a seed node NODE
         When I have wallet WALLET connected to all seed nodes
-        When I have mining node MINER connected to base node NODE and wallet WALLET
+        When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET
         Given mining node MINER mines 1 blocks
         Then node NODE is at height 1
 

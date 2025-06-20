@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{convert::TryFrom, sync::Arc, thread, time::Instant};
+use std::{convert::TryFrom, str::FromStr, sync::Arc, thread, time::Instant};
 
 use futures::stream::StreamExt;
 use log::*;
@@ -363,7 +363,7 @@ async fn verify_base_node_responses(
     node_conn: &mut BaseNodeGrpcClient,
     config: &MinerConfig,
 ) -> Result<(), MinerError> {
-    if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, config.pow_algo_request()).await {
+    if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, config.pow_algo_request()?).await {
         return Err(MinerError::BaseNodeNotResponding(e));
     }
     Ok(())
@@ -412,7 +412,7 @@ async fn get_new_block_base_node(
 ) -> Result<GetNewBlockResponse, MinerError> {
     debug!(target: LOG_TARGET, "Getting new block template");
     let template_response = base_node_client
-        .get_new_block_template(config.pow_algo_request())
+        .get_new_block_template(config.pow_algo_request()?)
         .await?
         .into_inner();
     let mut block_template = template_response
@@ -561,7 +561,8 @@ async fn mining_cycle(
 
     debug!(target: LOG_TARGET, "Initializing miner");
 
-    let rx_factory = if config.proof_of_work_algo == PowAlgorithm::RandomXT {
+    let proof_of_work_algo = PowAlgorithm::from_str(&config.proof_of_work_algo)?;
+    let rx_factory = if proof_of_work_algo == PowAlgorithm::RandomXT {
         Some(RandomXFactory::new(config.num_mining_threads))
     } else {
         None

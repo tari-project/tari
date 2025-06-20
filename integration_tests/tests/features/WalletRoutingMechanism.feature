@@ -9,7 +9,7 @@ Feature: Wallet Routing Mechanism
       Given I have a seed node NODE
       #   And I have <NumBaseNodes> base nodes connected to all seed nodes
       #   And I have non-default wallet WALLET_A connected to all seed nodes using <Mechanism>
-      #   And I have mining node MINER connected to base node NODE and wallet WALLET_A
+      #   And I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
       #   And I have <NumWallets> non-default wallets connected to all seed nodes using <Mechanism>
       #   # We need to ensure the coinbase lock heights are gone and we have enough individual UTXOs; mine enough blocks
       #   And mining node MINER mines 20 blocks
@@ -49,7 +49,7 @@ Feature: Wallet Routing Mechanism
       When I have wallet SENDER connected to base node BASE
       When I have wallet RECEIVER connected to base node BASE
       #   And I stop wallet RECEIVER
-      When I have mining node MINE connected to base node BASE and wallet SENDER
+      When I have SHA3X mining node MINE connected to base node BASE and wallet SENDER
       #   And mining node MINE mines 5 blocks
       #   Then I wait for wallet SENDER to have at least 1000000 uT
       #   And I send a one-sided transaction of 1000000 uT from wallet SENDER to wallet RECEIVER at fee 100

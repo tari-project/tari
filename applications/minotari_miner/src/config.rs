@@ -30,6 +30,7 @@
 
 use std::{
     path::{Path, PathBuf},
+    str::FromStr,
     time::Duration,
 };
 
@@ -38,6 +39,8 @@ use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_core::{proof_of_work::PowAlgorithm, transactions::transaction_components::RangeProofType};
+
+use crate::errors::MinerError;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -54,8 +57,8 @@ pub struct MinerConfig {
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
     pub mine_on_tip_only: bool,
-    /// The proof of work algorithm to use
-    pub proof_of_work_algo: PowAlgorithm,
+    /// The proof of work algorithm to use (Sha3x or RandomXT)
+    pub proof_of_work_algo: String,
     /// Will check tip with node every N seconds and restart mining if height already taken and option
     /// `mine_on_tip_only` is set to true
     pub validate_tip_timeout_sec: u64,
@@ -98,7 +101,7 @@ impl Default for MinerConfig {
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
-            proof_of_work_algo: PowAlgorithm::Sha3x,
+            proof_of_work_algo: PowAlgorithm::Sha3x.to_string(),
             validate_tip_timeout_sec: 30,
             stratum_mining_pool_address: String::new(),
             stratum_mining_wallet_address: String::new(),
@@ -115,8 +118,9 @@ impl Default for MinerConfig {
 }
 
 impl MinerConfig {
-    pub fn pow_algo_request(&self) -> NewBlockTemplateRequest {
-        let algo = match self.proof_of_work_algo {
+    pub fn pow_algo_request(&self) -> Result<NewBlockTemplateRequest, MinerError> {
+        let proof_of_work_algo = PowAlgorithm::from_str(&self.proof_of_work_algo)?;
+        let algo = match proof_of_work_algo {
             PowAlgorithm::Sha3x => Some(PowAlgo {
                 pow_algo: PowAlgos::Sha3x.into(),
             }),
@@ -127,7 +131,7 @@ impl MinerConfig {
                 pow_algo: PowAlgos::Randomxt.into(),
             }),
         };
-        NewBlockTemplateRequest { algo, max_weight: 0 }
+        Ok(NewBlockTemplateRequest { algo, max_weight: 0 })
     }
 
     pub fn wait_timeout(&self) -> Duration {

@@ -42,10 +42,16 @@ use tari_integration_tests::{
 
 use crate::steps::{node_steps::submit_transaction_to, wallet_steps::create_tx_spending_coinbase};
 
-#[when(expr = "I have mine-before-tip mining node {word} connected to base node {word} and wallet {word}")]
-#[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
-pub async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String, wallet_name: String) {
-    register_miner_process(world, miner_name, bn_name, wallet_name, false);
+#[when(expr = "I have {word} mining node {word} connected to base node {word} and wallet {word}")]
+#[then(expr = "I have {word} mining node {word} connected to base node {word} and wallet {word}")]
+pub async fn create_miner(
+    world: &mut TariWorld,
+    pow_algo: String,
+    miner_name: String,
+    bn_name: String,
+    wallet_name: String,
+) {
+    register_miner_process(world, miner_name, bn_name, wallet_name, false, pow_algo);
 }
 
 #[when(expr = "mining node {word} mines {int} blocks")]
@@ -127,7 +133,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
     let peers = base_node.seed_nodes.clone();
     world.wallet_connected_to_base_node.insert(miner.clone(), miner.clone());
     spawn_wallet(world, miner.clone(), Some(miner.clone()), peers, None, None).await;
-    register_miner_process(world, miner.clone(), miner.clone(), miner, false);
+    register_miner_process(world, miner.clone(), miner.clone(), miner, false, "Sha3x".to_string());
 }
 
 #[then(
@@ -278,7 +284,14 @@ async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_mine
     )
     .await;
 
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, false);
+    register_miner_process(
+        world,
+        sha3_miner.clone(),
+        sha3_miner.clone(),
+        sha3_miner,
+        false,
+        "Sha3x".to_string(),
+    );
 }
 
 #[when(expr = "I have a stealth SHA3 miner {word} connected to all seed nodes")]
@@ -295,7 +308,14 @@ async fn stealth_sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, s
     )
     .await;
 
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, true);
+    register_miner_process(
+        world,
+        sha3_miner.clone(),
+        sha3_miner.clone(),
+        sha3_miner,
+        true,
+        "Sha3x".to_string(),
+    );
 }
 
 #[given(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
@@ -316,16 +336,30 @@ async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: St
     .await;
 
     println!("Register SHA3 miner {}", &sha3_miner);
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, false);
+    register_miner_process(
+        world,
+        sha3_miner.clone(),
+        sha3_miner.clone(),
+        sha3_miner,
+        false,
+        "Sha3x".to_string(),
+    );
 }
 
-#[when(expr = "I have individual mining nodes connected to each wallet and base node {word}")]
+#[when(expr = "I have SHA3X individual mining nodes connected to each wallet and base node {word}")]
 async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWorld, base_node: String) {
     let wallets = world.wallets.clone();
 
     for (ind, wallet_name) in wallets.keys().enumerate() {
         let miner = format!("Miner_{}", ind);
-        register_miner_process(world, miner, base_node.clone(), wallet_name.clone(), false);
+        register_miner_process(
+            world,
+            miner,
+            base_node.clone(),
+            wallet_name.clone(),
+            false,
+            "Sha3x".to_string(),
+        );
     }
 }
 
@@ -396,8 +430,14 @@ async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) 
     submit_transaction_to(world, tx_name, node).await.unwrap();
 }
 
-#[when(expr = "I mine {int} blocks with difficulty {int} on {word}")]
-async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, difficulty: u64, node: String) {
+#[when(expr = "I mine {int} blocks with difficulty {int} on {word} using {word}")]
+async fn num_blocks_with_difficulty(
+    world: &mut TariWorld,
+    num_blocks: u64,
+    difficulty: u64,
+    node: String,
+    pow_algo: String,
+) {
     let wallet_name = format!("wallet-{}", &node);
     if world.wallets.get(&wallet_name).is_none() {
         spawn_wallet(world, wallet_name.clone(), Some(node.clone()), vec![], None, None).await;
@@ -405,7 +445,14 @@ async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, diff
 
     let miner_name = format!("miner-{}", &node);
     if world.miners.get(&miner_name).is_none() {
-        register_miner_process(world, miner_name.clone(), node.clone(), wallet_name.clone(), false);
+        register_miner_process(
+            world,
+            miner_name.clone(),
+            node.clone(),
+            wallet_name.clone(),
+            false,
+            pow_algo,
+        );
     }
 
     let miner = world.miners.get(&miner_name).unwrap();
