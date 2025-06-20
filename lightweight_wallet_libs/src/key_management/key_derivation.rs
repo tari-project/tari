@@ -14,14 +14,16 @@ use crate::{
 };
 use crate::key_management::{KeyManager, KeyDerivationPath, DerivedKeyPair};
 
-/// Domain separator for key derivation
-const KEY_DERIVATION_DOMAIN: &[u8] = b"TARI_KEY_DERIVATION";
+/// Domain separator for key derivation (matching Tari key manager)
+const HASHER_LABEL_DERIVE_KEY: &[u8] = b"tari_key_manager_derive_key";
 
 /// Lightweight key manager for deterministic key derivation
 #[derive(Debug, Clone)]
 pub struct LightweightKeyManager {
-    /// Master key (32 bytes)
+    /// Master key (32 bytes) - equivalent to CipherSeed entropy
     master_key: [u8; 32],
+    /// Branch seed for key derivation
+    branch_seed: String,
     /// Current key index
     current_key_index: u64,
 }
@@ -31,6 +33,16 @@ impl LightweightKeyManager {
     pub fn new(master_key: [u8; 32]) -> Self {
         Self {
             master_key,
+            branch_seed: "".to_string(),
+            current_key_index: 0,
+        }
+    }
+
+    /// Create a key manager from a master key with branch seed
+    pub fn with_branch_seed(master_key: [u8; 32], branch_seed: String) -> Self {
+        Self {
+            master_key,
+            branch_seed,
             current_key_index: 0,
         }
     }
@@ -42,25 +54,25 @@ impl LightweightKeyManager {
         Ok(Self::new(master_key))
     }
 
-    pub fn derive_private_key(&self, path: &KeyDerivationPath) -> Result<PrivateKey, KeyManagementError> {
-        self.derive_private_key_internal(path)
+    /// Create a key manager from a mnemonic phrase with branch seed
+    pub fn from_mnemonic_with_branch_seed(
+        mnemonic: &str, 
+        passphrase: Option<&str>, 
+        branch_seed: String
+    ) -> Result<Self, KeyManagementError> {
+        use crate::key_management::mnemonic_to_master_key;
+        let master_key = mnemonic_to_master_key(mnemonic, passphrase)?;
+        Ok(Self::with_branch_seed(master_key, branch_seed))
     }
 
-    pub fn derive_public_key(&self, path: &KeyDerivationPath) -> Result<CompressedPublicKey, KeyManagementError> {
-        let private_key = self.derive_private_key(path)?;
-        self.derive_public_key_from_private(&private_key)
-    }
-
-    /// Derive a private key from the master key using a derivation path
-    fn derive_private_key_internal(&self, path: &KeyDerivationPath) -> Result<PrivateKey, KeyManagementError> {
+    /// Derive a private key using the Tari key manager pattern
+    /// derived_key = H(master_key || branch_seed || key_index)
+    fn derive_private_key_internal(&self, key_index: u64) -> Result<PrivateKey, KeyManagementError> {
         let mut hasher = Blake2b::<U64>::new();
-        hasher.update(KEY_DERIVATION_DOMAIN);
+        hasher.update(HASHER_LABEL_DERIVE_KEY);
         hasher.update(&self.master_key);
-        hasher.update(path.purpose.to_le_bytes());
-        hasher.update(path.coin_type.to_le_bytes());
-        hasher.update(path.account.to_le_bytes());
-        hasher.update(path.change.to_le_bytes());
-        hasher.update(path.address_index.to_le_bytes());
+        hasher.update(self.branch_seed.as_bytes());
+        hasher.update(key_index.to_le_bytes());
         
         let result = hasher.finalize();
         let mut key_bytes = [0u8; 32];
@@ -75,27 +87,41 @@ impl LightweightKeyManager {
         let point = private_key.0 * RISTRETTO_BASEPOINT_POINT;
         Ok(CompressedPublicKey::from_point(&point))
     }
+
+    /// Get the current branch seed
+    pub fn branch_seed(&self) -> &str {
+        &self.branch_seed
+    }
+
+    /// Set the branch seed
+    pub fn set_branch_seed(&mut self, branch_seed: String) {
+        self.branch_seed = branch_seed;
+    }
 }
 
 impl KeyManager for LightweightKeyManager {
     fn derive_key_pair(&self, path: &KeyDerivationPath) -> Result<DerivedKeyPair, KeyManagementError> {
-        let private_key = self.derive_private_key_internal(path)?;
+        // For compatibility, use the address_index as the key_index
+        let key_index = path.address_index as u64;
+        let private_key = self.derive_private_key_internal(key_index)?;
         let public_key = self.derive_public_key_from_private(&private_key)?;
         
         Ok(DerivedKeyPair::new(
             private_key,
             public_key,
-            path.address_index as u64,
+            key_index,
             path.clone(),
         ))
     }
 
     fn derive_private_key(&self, path: &KeyDerivationPath) -> Result<PrivateKey, KeyManagementError> {
-        self.derive_private_key_internal(path)
+        // For compatibility, use the address_index as the key_index
+        let key_index = path.address_index as u64;
+        self.derive_private_key_internal(key_index)
     }
 
     fn derive_public_key(&self, path: &KeyDerivationPath) -> Result<CompressedPublicKey, KeyManagementError> {
-        let private_key = self.derive_private_key_internal(path)?;
+        let private_key = self.derive_private_key(path)?;
         self.derive_public_key_from_private(&private_key)
     }
 
@@ -135,6 +161,16 @@ mod tests {
         let master_key = [1u8; 32];
         let km = LightweightKeyManager::new(master_key);
         assert_eq!(km.current_key_index(), 0);
+        assert_eq!(km.branch_seed(), "");
+    }
+
+    #[test]
+    fn test_key_manager_with_branch_seed() {
+        let master_key = [1u8; 32];
+        let branch_seed = "test_branch".to_string();
+        let km = LightweightKeyManager::with_branch_seed(master_key, branch_seed.clone());
+        assert_eq!(km.current_key_index(), 0);
+        assert_eq!(km.branch_seed(), "test_branch");
     }
 
     #[test]
@@ -176,6 +212,21 @@ mod tests {
     }
 
     #[test]
+    fn test_branch_seed_affects_derivation() {
+        let master_key = [1u8; 32];
+        let km1 = LightweightKeyManager::with_branch_seed(master_key, "branch1".to_string());
+        let km2 = LightweightKeyManager::with_branch_seed(master_key, "branch2".to_string());
+        
+        let path = KeyDerivationPath::tari_standard(0, 0, 0);
+        let key_pair1 = km1.derive_key_pair(&path).unwrap();
+        let key_pair2 = km2.derive_key_pair(&path).unwrap();
+        
+        // Different branch seeds should produce different keys
+        assert_ne!(key_pair1.private_key, key_pair2.private_key);
+        assert_ne!(key_pair1.public_key, key_pair2.public_key);
+    }
+
+    #[test]
     fn test_next_key_pair() {
         let master_key = [1u8; 32];
         let mut km = LightweightKeyManager::new(master_key);
@@ -193,5 +244,24 @@ mod tests {
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let km = LightweightKeyManager::from_mnemonic(mnemonic, None).unwrap();
         assert_eq!(km.current_key_index(), 0);
+    }
+
+    #[test]
+    fn test_from_mnemonic_with_branch_seed() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let branch_seed = "test_branch".to_string();
+        let km = LightweightKeyManager::from_mnemonic_with_branch_seed(mnemonic, None, branch_seed.clone()).unwrap();
+        assert_eq!(km.current_key_index(), 0);
+        assert_eq!(km.branch_seed(), "test_branch");
+    }
+
+    #[test]
+    fn test_set_branch_seed() {
+        let master_key = [1u8; 32];
+        let mut km = LightweightKeyManager::new(master_key);
+        assert_eq!(km.branch_seed(), "");
+        
+        km.set_branch_seed("new_branch".to_string());
+        assert_eq!(km.branch_seed(), "new_branch");
     }
 } 

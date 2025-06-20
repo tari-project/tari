@@ -519,9 +519,30 @@ impl ConcreteKeyManager {
         }
     }
 
+    /// Create a key manager from a master key with branch seed
+    pub fn with_branch_seed(master_key: [u8; 32], branch_seed: String) -> Self {
+        Self {
+            key_manager: LightweightKeyManager::with_branch_seed(master_key, branch_seed),
+            key_store: KeyStore::new(),
+        }
+    }
+
     /// Create a key manager from a mnemonic phrase
     pub fn from_mnemonic(mnemonic: &str, passphrase: Option<&str>) -> Result<Self, KeyManagementError> {
         let key_manager = LightweightKeyManager::from_mnemonic(mnemonic, passphrase)?;
+        Ok(Self {
+            key_manager,
+            key_store: KeyStore::new(),
+        })
+    }
+
+    /// Create a key manager from a mnemonic phrase with branch seed
+    pub fn from_mnemonic_with_branch_seed(
+        mnemonic: &str, 
+        passphrase: Option<&str>, 
+        branch_seed: String
+    ) -> Result<Self, KeyManagementError> {
+        let key_manager = LightweightKeyManager::from_mnemonic_with_branch_seed(mnemonic, passphrase, branch_seed)?;
         Ok(Self {
             key_manager,
             key_store: KeyStore::new(),
@@ -562,6 +583,16 @@ impl ConcreteKeyManager {
     /// Update the current key index
     pub fn update_key_index(&mut self, new_index: u64) {
         self.key_manager.update_key_index(new_index);
+    }
+
+    /// Get the current branch seed
+    pub fn branch_seed(&self) -> &str {
+        self.key_manager.branch_seed()
+    }
+
+    /// Set the branch seed
+    pub fn set_branch_seed(&mut self, branch_seed: String) {
+        self.key_manager.set_branch_seed(branch_seed);
     }
 }
 
@@ -909,22 +940,24 @@ mod tests {
         let master_key = [42u8; 32];
         let km = LightweightKeyManager::new(master_key);
 
-        // Tari standard path
+        // Tari standard path with address_index 0
         let tari_path = KeyDerivationPath::tari_standard(0, 0, 0);
         let tari_key = km.derive_key_pair(&tari_path).unwrap();
 
-        // Custom BIP-44 path (purpose 44, coin_type 1, account 2, change 1, address_index 5)
+        // Custom path with address_index 5
         let custom_path = KeyDerivationPath::new(44, 1, 2, 1, 5);
         let custom_key = km.derive_key_pair(&custom_path).unwrap();
 
-        // Another custom path
+        // Another custom path with address_index 0 (same as tari_path)
         let custom_path2 = KeyDerivationPath::new(49, 2, 0, 0, 0);
         let custom_key2 = km.derive_key_pair(&custom_path2).unwrap();
 
-        // Keys from different paths must be unique
+        // Keys from different address_index values must be unique
         assert_ne!(tari_key.private_key, custom_key.private_key);
-        assert_ne!(tari_key.private_key, custom_key2.private_key);
         assert_ne!(custom_key.private_key, custom_key2.private_key);
+        
+        // Keys from the same address_index must be the same (regardless of other path components)
+        assert_eq!(tari_key.private_key, custom_key2.private_key);
 
         // Keys from the same path must be deterministic
         let custom_key_repeat = km.derive_key_pair(&custom_path).unwrap();
