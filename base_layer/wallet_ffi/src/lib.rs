@@ -102,7 +102,7 @@ use minotari_wallet::{
         error::TransactionServiceError,
         storage::{
             database::TransactionDatabase,
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
@@ -9299,25 +9299,78 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
         return ptr::null_mut();
     }
 
-    let transaction = match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.get_any_transaction(transaction_id))
-    {
-        Ok(tx) => tx,
+    let mut transaction = None;
+
+    let completed_transactions = match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_cancelled_completed_transactions(0),
+    ) {
+        Ok(txs) => txs,
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             return ptr::null_mut();
         },
     };
 
+    if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
+        transaction = Some(tx.clone());
+    } else {
+        let outbound_transactions = match (*wallet).runtime.block_on(
+            (*wallet)
+                .wallet
+                .transaction_service
+                .get_cancelled_pending_outbound_transactions(),
+        ) {
+            Ok(txs) => txs,
+            Err(e) => {
+                *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                return ptr::null_mut();
+            },
+        };
+        let runtime = match Runtime::new() {
+            Ok(r) => r,
+            Err(e) => {
+                *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+                return ptr::null_mut();
+            },
+        };
+        let address = match runtime.block_on(async { (*wallet).wallet.get_wallet_interactive_address().await }) {
+            Ok(address) => address,
+            Err(e) => {
+                *error_out = LibWalletError::from(e).code;
+                return ptr::null_mut();
+            },
+        };
+        if let Some(tx) = outbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
+            let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
+            outbound_tx.source_address = address;
+            transaction = Some(outbound_tx);
+        } else {
+            let inbound_transactions = match (*wallet).runtime.block_on(
+                (*wallet)
+                    .wallet
+                    .transaction_service
+                    .get_cancelled_pending_inbound_transactions(),
+            ) {
+                Ok(txs) => txs,
+                Err(e) => {
+                    *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                    return ptr::null_mut();
+                },
+            };
+            if let Some(tx) = inbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
+                let mut inbound_tx = CompletedTransaction::from(tx.clone());
+                inbound_tx.destination_address = address;
+                transaction = Some(inbound_tx);
+            }
+        }
+    }
+
     match transaction {
         Some(tx) => {
-            let completed_tx = match tx {
-                WalletTransaction::Completed(ct) => ct,
-                WalletTransaction::PendingInbound(inbound) => CompletedTransaction::from(inbound),
-                WalletTransaction::PendingOutbound(out) => CompletedTransaction::from_outbound(out, Vec::new()),
-            };
-            return Box::into_raw(Box::new(completed_tx));
+            return Box::into_raw(Box::new(tx.clone()));
         },
         None => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(
