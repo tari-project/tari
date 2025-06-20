@@ -5,12 +5,14 @@
 //!
 //! This module provides functionality to extract and decrypt UTXO data
 //! using provided keys, recover wallet outputs from transaction outputs,
-//! handle various payment ID types, and recover stealth address keys.
+//! handle various payment ID types, recover stealth address keys,
+//! and extract and validate range proofs.
 
 pub mod encrypted_data_decryption;
 pub mod payment_id_extraction;
 pub mod wallet_output_reconstruction;
 pub mod stealth_address_key_recovery;
+pub mod range_proof_extraction;
 
 pub use encrypted_data_decryption::{
     EncryptedDataDecryptor,
@@ -37,4 +39,10 @@ pub use stealth_address_key_recovery::{
     StealthKeyRecoveryResult,
     StealthKeyRecoveryOptions,
     StealthKeyRecoveryError,
+};
+
+pub use range_proof_extraction::{
+    RangeProofExtractor,
+    RangeProofExtractionResult,
+    RangeProofType,
 }; 
