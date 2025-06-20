@@ -8815,8 +8815,8 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     wallet: *mut TariWallet,
-    error_out: *mut c_int,
     max_search_limit: c_ulonglong,
+    error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransactions {
     if error_out.is_null() {
         return ptr::null_mut();
@@ -9054,7 +9054,6 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
-/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -9069,7 +9068,6 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
 pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
-    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransaction {
     if error_out.is_null() {
@@ -9082,34 +9080,27 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
         return ptr::null_mut();
     }
 
-    let completed_transactions =
+    let completed_transactions = (*wallet).runtime.block_on(
         (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
-                None,
-                None,
-                None,
-                max_search_limit,
-            ));
+            .wallet
+            .transaction_service
+            .get_completed_transaction(transaction_id.into()),
+    );
 
     match completed_transactions {
-        Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions
-                .iter()
-                .find(|tx| tx.tx_id == TxId::from(transaction_id))
+        Ok(completed_transaction) => {
+            if completed_transaction.status != TransactionStatus::Completed &&
+                completed_transaction.status != TransactionStatus::Broadcast
             {
-                if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
-                    let completed = tx.clone();
-                    return Box::into_raw(Box::new(completed));
-                }
+                let completed = completed_transaction.clone();
+                return Box::into_raw(Box::new(completed));
             }
-            *error_out = 108;
         },
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
         },
     }
-
+    *error_out = 108;
     ptr::null_mut()
 }
 
@@ -9308,12 +9299,10 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
         return ptr::null_mut();
     }
 
-    let transaction = match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .transaction_service
-            .get_any_transaction(transaction_id.into()),
-    ) {
+    let transaction = match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.get_any_transaction(transaction_id))
+    {
         Ok(tx) => tx,
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;

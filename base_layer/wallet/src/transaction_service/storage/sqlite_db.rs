@@ -2896,7 +2896,7 @@ mod test {
             .commit(&mut conn)
             .unwrap();
 
-        let completed_txs = CompletedTransactionSql::index_by_cancelled(&mut conn, false).unwrap();
+        let completed_txs = CompletedTransactionSql::index_by_cancelled(&mut conn, false, 0).unwrap();
         assert_eq!(completed_txs.len(), 2);
 
         let returned_completed_tx = CompletedTransaction::try_from(
@@ -3283,7 +3283,7 @@ mod test {
 
         assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
-        assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
+        assert!(db2.fetch(&DbKey::CompletedTransactions(0)).is_ok());
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
@@ -3293,7 +3293,7 @@ mod test {
         let db3 = TransactionServiceSqliteDatabase::new(connection, new_cipher);
         assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
-        assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
+        assert!(db3.fetch(&DbKey::CompletedTransactions(0)).is_err());
     }
 
     #[test]
