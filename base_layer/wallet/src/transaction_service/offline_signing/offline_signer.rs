@@ -1,7 +1,10 @@
+use std::str::FromStr;
+
 use log::*;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
+    types::CompressedPublicKey,
 };
 use tari_core::{
     covenants::Covenant,
@@ -11,7 +14,7 @@ use tari_core::{
             payment_id::{PaymentId, TxType},
             OutputFeatures,
         },
-        transaction_key_manager::TransactionKeyManagerInterface,
+        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::TransactionMetadata,
     },
 };
@@ -122,16 +125,28 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let mut inputs = Vec::new();
-        for input in stp.get_spent_inputs()? {
+        for mut input in stp.get_spent_inputs()? {
+            input.output.script_key_id = self
+                .make_key_id_export_safe(&input.output.script_key_id)
+                .await
+                .map_err(TransactionServiceError::NotSupported)?;
             inputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, input).await?);
         }
         let mut outputs = Vec::new();
-        for output in stp.get_outputs()? {
+        for mut output in stp.get_outputs()? {
+            output.output.script_key_id = self
+                .make_key_id_export_safe(&output.output.script_key_id)
+                .await
+                .map_err(TransactionServiceError::NotSupported)?;
             outputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, output).await?);
         }
 
         let change_output = match stp.get_pre_finalized_full_change_output()? {
-            Some(change_output) => {
+            Some(mut change_output) => {
+                change_output.output.script_key_id = self
+                    .make_key_id_export_safe(&change_output.output.script_key_id)
+                    .await
+                    .map_err(TransactionServiceError::NotSupported)?;
                 Some(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, change_output).await?)
             },
             None => None,
@@ -180,5 +195,64 @@ where
             request,
             signed_transaction,
         })
+    }
+
+    async fn make_key_id_export_safe(&self, key_id: &TariKeyId) -> Result<TariKeyId, String> {
+        if *key_id ==
+            self.resources
+                .transaction_key_manager_service
+                .get_spend_key()
+                .await
+                .map_err(|err| err.to_string())?
+                .key_id
+        {
+            return Ok(key_id.clone());
+        }
+        if *key_id ==
+            self.resources
+                .transaction_key_manager_service
+                .get_view_key()
+                .await
+                .map_err(|err| err.to_string())?
+                .key_id
+        {
+            return Ok(key_id.clone());
+        }
+
+        match key_id {
+            TariKeyId::Zero => Ok(TariKeyId::Zero),
+            TariKeyId::Imported { .. } => {
+                // This is an imported key, so we can safely export it
+                Ok(key_id.clone())
+            },
+            TariKeyId::Derived { key } => {
+                let inner_key = TariKeyId::from_str(key.to_string().as_str())?;
+                let public_key = self
+                    .resources
+                    .transaction_key_manager_service
+                    .get_public_key_at_key_id(&inner_key)
+                    .await
+                    .map_err(|err| err.to_string())?;
+                let modified_key = TariKeyId::Imported {
+                    key: CompressedPublicKey::new_from_pk(public_key.to_public_key().map_err(|err| err.to_string())?),
+                };
+                let key = TariKeyId::Derived {
+                    key: modified_key.into(),
+                };
+                Ok(key)
+            },
+            TariKeyId::Managed { .. } => {
+                let key = self
+                    .resources
+                    .transaction_key_manager_service
+                    .get_public_key_at_key_id(key_id)
+                    .await
+                    .map_err(|err| err.to_string())?;
+
+                Ok(TariKeyId::Imported {
+                    key: CompressedPublicKey::new_from_pk(key.to_public_key().map_err(|err| err.to_string())?),
+                })
+            },
+        }
     }
 }
