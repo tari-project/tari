@@ -91,6 +91,7 @@ use crate::{
         data_cache::DataCache,
         hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
+        readiness_grpc_server::ReadinessStatus,
     },
     grpc_method::GrpcMethod,
     BaseNodeConfig,
@@ -524,6 +525,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             tari_randomx_estimated_hash_rate,
             num_connections: connected_peers.len() as u64,
             liveness_results: liveness,
+            readiness_status: ReadinessStatus::Ready.into(),
         };
         trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");
         Ok(Response::new(response))
