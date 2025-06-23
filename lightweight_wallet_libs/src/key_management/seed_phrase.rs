@@ -13,6 +13,7 @@ use rand_core::{OsRng, RngCore};
 use blake2::{Blake2b, Digest};
 use chacha20::{ChaCha20, cipher::{KeyIvInit, StreamCipher}, Key, Nonce};
 use digest::consts::{U32, U64};
+use std::time;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 use argon2::{Argon2, Algorithm, Version, Params};
 use std::mem::size_of;
@@ -630,6 +631,198 @@ pub fn validate_seed_phrase(mnemonic: &str) -> Result<(), KeyManagementError> {
     Ok(())
 }
 
+/// Validates that a master key was derived from a specific mnemonic phrase and passphrase
+/// using the exact Tari derivation patterns
+/// 
+/// Since master key derivation uses one-way hash functions, this function validates
+/// by re-deriving the master key from the seed and comparing the results.
+pub fn validate_master_key_derivation(
+    master_key: &[u8; 32], 
+    mnemonic: &str, 
+    passphrase: Option<&str>
+) -> Result<bool, KeyManagementError> {
+    if mnemonic.trim().is_empty() {
+        return Err(KeyManagementError::MnemonicError("Mnemonic phrase is empty".to_string()));
+    }
+    
+    // Re-derive the master key from the mnemonic and passphrase
+    let derived_master_key = mnemonic_to_master_key(mnemonic, passphrase)?;
+    
+    // Compare using constant-time comparison for security
+    Ok(constant_time_eq(master_key, &derived_master_key))
+}
+
+/// Checks if a master key matches a specific seed phrase (convenience function)
+/// 
+/// This is a simpler wrapper around validate_master_key_derivation for common use cases.
+pub fn master_key_matches_seed(
+    master_key: &[u8; 32], 
+    mnemonic: &str, 
+    passphrase: Option<&str>
+) -> bool {
+    validate_master_key_derivation(master_key, mnemonic, passphrase).unwrap_or(false)
+}
+
+/// Validates that a master key was derived from a specific CipherSeed
+/// 
+/// This function validates the entire derivation chain from CipherSeed to master key
+/// using the exact Tari derivation patterns.
+pub fn validate_master_key_from_cipher_seed(
+    master_key: &[u8; 32],
+    cipher_seed: &CipherSeed
+) -> Result<bool, KeyManagementError> {
+    // Use the exact Tari derivation pattern: H(master_entropy || branch_seed || key_index)
+    // For the master key, we use a special branch_seed "master_key" and index 0
+    let derived_master_key_hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerDomain>::new_with_label(HASHER_LABEL_DERIVE_KEY)
+        .chain(cipher_seed.entropy())  // 16-byte entropy directly from CipherSeed
+        .chain("master_key".as_bytes())  // Special branch seed for master key
+        .chain(0u64.to_le_bytes())  // Index 0 for master key
+        .finalize();
+    
+    // Take the first 32 bytes of the 64-byte Blake2b output for comparison
+    let derived_master_key = &derived_master_key_hash.as_ref()[..32];
+    
+    // Compare using constant-time comparison for security
+    Ok(constant_time_eq(master_key, derived_master_key))
+}
+
+/// Extracts derivation information from a master key for debugging and validation
+/// 
+/// This function doesn't reverse the derivation but provides information about
+/// how the master key should have been derived according to Tari patterns.
+pub fn get_master_key_derivation_info(master_key: &[u8; 32]) -> MasterKeyDerivationInfo {
+    MasterKeyDerivationInfo {
+        master_key: *master_key,
+        expected_branch_seed: "master_key".to_string(),
+        expected_key_index: 0,
+        derivation_pattern: "H(entropy || \"master_key\" || 0)".to_string(),
+        hash_algorithm: "Blake2b-512 (first 32 bytes)".to_string(),
+        domain_separation: "KeyManagerDomain with label 'derive_key'".to_string(),
+    }
+}
+
+/// Information about how a master key should be derived using Tari patterns
+#[derive(Debug, Clone, PartialEq)]
+pub struct MasterKeyDerivationInfo {
+    pub master_key: [u8; 32],
+    pub expected_branch_seed: String,
+    pub expected_key_index: u64,
+    pub derivation_pattern: String,
+    pub hash_algorithm: String,
+    pub domain_separation: String,
+}
+
+/// Attempts to find a matching seed phrase from a collection for a given master key
+/// 
+/// This is useful for wallet recovery scenarios where you have a master key
+/// and need to find which of several seed phrases it was derived from.
+pub fn find_matching_seed_phrase(
+    master_key: &[u8; 32],
+    candidate_mnemonics: &[String],
+    passphrase: Option<&str>
+) -> Result<Option<String>, KeyManagementError> {
+    for mnemonic in candidate_mnemonics {
+        if validate_master_key_derivation(master_key, mnemonic, passphrase)? {
+            return Ok(Some(mnemonic.clone()));
+        }
+    }
+    Ok(None)
+}
+
+/// Validates the complete derivation chain from encrypted bytes to master key
+/// 
+/// This function validates:
+/// 1. Encrypted bytes → CipherSeed decryption
+/// 2. CipherSeed → master key derivation
+/// 3. Final master key comparison
+pub fn validate_complete_derivation_chain(
+    master_key: &[u8; 32],
+    encrypted_bytes: &[u8],
+    passphrase: Option<&str>
+) -> Result<bool, KeyManagementError> {
+    // Step 1: Decrypt the CipherSeed from encrypted bytes
+    let cipher_seed = CipherSeed::from_enciphered_bytes(encrypted_bytes, passphrase)?;
+    
+    // Step 2: Validate master key derivation from CipherSeed
+    validate_master_key_from_cipher_seed(master_key, &cipher_seed)
+}
+
+/// Provides detailed validation of the master key derivation process
+/// 
+/// Returns comprehensive information about each step of the derivation for debugging
+pub fn detailed_master_key_validation(
+    master_key: &[u8; 32],
+    mnemonic: &str,
+    passphrase: Option<&str>
+) -> Result<DetailedValidationResult, KeyManagementError> {
+    let start_time = std::time::Instant::now();
+    
+    // Step 1: Convert mnemonic to encrypted bytes
+    let encrypted_bytes = mnemonic_to_bytes(mnemonic)?;
+    
+    // Step 2: Decrypt CipherSeed
+    let cipher_seed = CipherSeed::from_enciphered_bytes(&encrypted_bytes, passphrase)?;
+    
+    // Step 3: Re-derive master key
+    let derived_master_key = mnemonic_to_master_key(mnemonic, passphrase)?;
+    
+    // Step 4: Validate against CipherSeed directly
+    let cipher_seed_validation = validate_master_key_from_cipher_seed(master_key, &cipher_seed)?;
+    
+    // Step 5: Compare final results
+    let master_key_match = constant_time_eq(master_key, &derived_master_key);
+    
+    let validation_time = start_time.elapsed();
+    
+    Ok(DetailedValidationResult {
+        mnemonic_valid: true, // If we got this far, mnemonic was valid
+        cipher_seed_decryption_success: true,
+        master_key_derivation_success: true,
+        cipher_seed_validation: cipher_seed_validation,
+        final_master_key_match: master_key_match,
+        validation_successful: master_key_match && cipher_seed_validation,
+        cipher_seed_info: CipherSeedInfo {
+            version: cipher_seed.version,
+            birthday: cipher_seed.birthday(),
+            entropy_hash: {
+                let mut hasher = Blake2b::<U32>::new();
+                hasher.update(cipher_seed.entropy());
+                format!("{:x}", hasher.finalize())
+            },
+            salt_hash: {
+                let mut hasher = Blake2b::<U32>::new();
+                hasher.update(cipher_seed.salt());
+                format!("{:x}", hasher.finalize())
+            },
+        },
+        derivation_info: get_master_key_derivation_info(master_key),
+        validation_time_ms: validation_time.as_millis() as u64,
+    })
+}
+
+/// Detailed result of master key validation process
+#[derive(Debug, Clone)]
+pub struct DetailedValidationResult {
+    pub mnemonic_valid: bool,
+    pub cipher_seed_decryption_success: bool,
+    pub master_key_derivation_success: bool,
+    pub cipher_seed_validation: bool,
+    pub final_master_key_match: bool,
+    pub validation_successful: bool,
+    pub cipher_seed_info: CipherSeedInfo,
+    pub derivation_info: MasterKeyDerivationInfo,
+    pub validation_time_ms: u64,
+}
+
+/// Information about a CipherSeed for validation purposes
+#[derive(Debug, Clone)]
+pub struct CipherSeedInfo {
+    pub version: u8,
+    pub birthday: u16,
+    pub entropy_hash: String,  // Hash of entropy for privacy
+    pub salt_hash: String,     // Hash of salt for privacy
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -897,5 +1090,262 @@ mod tests {
                    "Word list not sorted at index {}: '{}' >= '{}'", 
                    i, MNEMONIC_ENGLISH_WORDS[i], MNEMONIC_ENGLISH_WORDS[i + 1]);
         }
+    }
+
+    #[test]
+    fn test_validate_master_key_derivation() {
+        // Generate a mnemonic and derive master key
+        let mnemonic = generate_seed_phrase().unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        
+        // Validation should succeed for correct mnemonic
+        assert!(validate_master_key_derivation(&master_key, &mnemonic, None).unwrap());
+        
+        // Validation should fail for wrong mnemonic
+        let wrong_mnemonic = generate_seed_phrase().unwrap();
+        assert!(!validate_master_key_derivation(&master_key, &wrong_mnemonic, None).unwrap());
+        
+        // Test with passphrase
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("test_pass")).unwrap();
+        let mnemonic_with_pass = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        let master_key_with_pass = mnemonic_to_master_key(&mnemonic_with_pass, Some("test_pass")).unwrap();
+        
+        // Should succeed with correct passphrase
+        assert!(validate_master_key_derivation(&master_key_with_pass, &mnemonic_with_pass, Some("test_pass")).unwrap());
+        
+        // Should fail with wrong passphrase
+        assert!(validate_master_key_derivation(&master_key_with_pass, &mnemonic_with_pass, Some("wrong_pass")).is_err());
+        
+        // Should fail with no passphrase when one is required
+        assert!(validate_master_key_derivation(&master_key_with_pass, &mnemonic_with_pass, None).is_err());
+    }
+
+    #[test]
+    fn test_master_key_matches_seed() {
+        // Generate test data
+        let mnemonic = generate_seed_phrase().unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        let wrong_mnemonic = generate_seed_phrase().unwrap();
+        
+        // Should return true for correct mnemonic
+        assert!(master_key_matches_seed(&master_key, &mnemonic, None));
+        
+        // Should return false for wrong mnemonic
+        assert!(!master_key_matches_seed(&master_key, &wrong_mnemonic, None));
+        
+        // Should return false for invalid mnemonic (doesn't panic)
+        assert!(!master_key_matches_seed(&master_key, "invalid mnemonic", None));
+        
+        // Should return false for empty mnemonic
+        assert!(!master_key_matches_seed(&master_key, "", None));
+    }
+
+    #[test]
+    fn test_validate_master_key_from_cipher_seed() {
+        // Create a CipherSeed and derive master key
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(None).unwrap();
+        let mnemonic = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        
+        // Validation should succeed for correct CipherSeed
+        assert!(validate_master_key_from_cipher_seed(&master_key, &cipher_seed).unwrap());
+        
+        // Validation should fail for different CipherSeed
+        let different_cipher_seed = CipherSeed::new();
+        assert!(!validate_master_key_from_cipher_seed(&master_key, &different_cipher_seed).unwrap());
+        
+        // Test with specific CipherSeed values for determinism
+        let deterministic_cipher_seed = CipherSeed {
+            version: CIPHER_SEED_VERSION,
+            birthday: 12345,
+            entropy: Box::new([42u8; CIPHER_SEED_ENTROPY_BYTES]),
+            salt: [99u8; CIPHER_SEED_MAIN_SALT_BYTES],
+        };
+        
+        let det_encrypted = deterministic_cipher_seed.encipher(None).unwrap();
+        let det_mnemonic = bytes_to_mnemonic(&det_encrypted).unwrap();
+        let det_master_key = mnemonic_to_master_key(&det_mnemonic, None).unwrap();
+        
+        assert!(validate_master_key_from_cipher_seed(&det_master_key, &deterministic_cipher_seed).unwrap());
+    }
+
+    #[test]
+    fn test_get_master_key_derivation_info() {
+        let dummy_master_key = [0u8; 32];
+        let info = get_master_key_derivation_info(&dummy_master_key);
+        
+        assert_eq!(info.master_key, dummy_master_key);
+        assert_eq!(info.expected_branch_seed, "master_key");
+        assert_eq!(info.expected_key_index, 0);
+        assert_eq!(info.derivation_pattern, "H(entropy || \"master_key\" || 0)");
+        assert_eq!(info.hash_algorithm, "Blake2b-512 (first 32 bytes)");
+        assert_eq!(info.domain_separation, "KeyManagerDomain with label 'derive_key'");
+    }
+
+    #[test]
+    fn test_find_matching_seed_phrase() {
+        // Generate test mnemonics
+        let mnemonic1 = generate_seed_phrase().unwrap();
+        let mnemonic2 = generate_seed_phrase().unwrap();
+        let mnemonic3 = generate_seed_phrase().unwrap();
+        
+        let master_key1 = mnemonic_to_master_key(&mnemonic1, None).unwrap();
+        
+        let candidates = vec![mnemonic1.clone(), mnemonic2.clone(), mnemonic3.clone()];
+        
+        // Should find the correct mnemonic
+        let found = find_matching_seed_phrase(&master_key1, &candidates, None).unwrap();
+        assert_eq!(found, Some(mnemonic1.clone()));
+        
+        // Should return None if master key doesn't match any candidate
+        let wrong_master_key = [99u8; 32];
+        let not_found = find_matching_seed_phrase(&wrong_master_key, &candidates, None).unwrap();
+        assert_eq!(not_found, None);
+        
+        // Test with empty candidates
+        let empty_candidates: Vec<String> = vec![];
+        let empty_result = find_matching_seed_phrase(&master_key1, &empty_candidates, None).unwrap();
+        assert_eq!(empty_result, None);
+    }
+
+    #[test]
+    fn test_validate_complete_derivation_chain() {
+        // Generate complete test chain
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("chain_test")).unwrap();
+        let mnemonic = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, Some("chain_test")).unwrap();
+        
+        // Should validate complete chain successfully
+        assert!(validate_complete_derivation_chain(&master_key, &encrypted_bytes, Some("chain_test")).unwrap());
+        
+        // Should fail with wrong passphrase
+        assert!(validate_complete_derivation_chain(&master_key, &encrypted_bytes, Some("wrong")).is_err());
+        
+        // Should fail with wrong master key
+        let wrong_master_key = [88u8; 32];
+        assert!(!validate_complete_derivation_chain(&wrong_master_key, &encrypted_bytes, Some("chain_test")).unwrap());
+        
+        // Should fail with corrupted encrypted bytes
+        let mut corrupted_bytes = encrypted_bytes.clone();
+        corrupted_bytes[0] ^= 0xFF; // Flip bits in first byte
+        assert!(validate_complete_derivation_chain(&master_key, &corrupted_bytes, Some("chain_test")).is_err());
+    }
+
+    #[test]
+    fn test_detailed_master_key_validation() {
+        // Generate test data
+        let mnemonic = generate_seed_phrase().unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        
+        // Perform detailed validation
+        let result = detailed_master_key_validation(&master_key, &mnemonic, None).unwrap();
+        
+        // All validations should succeed
+        assert!(result.mnemonic_valid);
+        assert!(result.cipher_seed_decryption_success);
+        assert!(result.master_key_derivation_success);
+        assert!(result.cipher_seed_validation);
+        assert!(result.final_master_key_match);
+        assert!(result.validation_successful);
+        
+        // Check CipherSeed info is populated
+        assert!(result.cipher_seed_info.version == CIPHER_SEED_VERSION || result.cipher_seed_info.version == CIPHER_SEED_VERSION_LEGACY);
+        assert!(!result.cipher_seed_info.entropy_hash.is_empty());
+        assert!(!result.cipher_seed_info.salt_hash.is_empty());
+        
+        // Check derivation info
+        assert_eq!(result.derivation_info.master_key, master_key);
+        assert_eq!(result.derivation_info.expected_branch_seed, "master_key");
+        assert_eq!(result.derivation_info.expected_key_index, 0);
+        
+        // Validation should have taken some time (but not too much)
+        assert!(result.validation_time_ms < 5000); // Should be well under 5 seconds
+        
+        // Test with wrong master key
+        let wrong_master_key = [77u8; 32];
+        let wrong_result = detailed_master_key_validation(&wrong_master_key, &mnemonic, None).unwrap();
+        
+        // Some validations should succeed, but final result should fail
+        assert!(wrong_result.mnemonic_valid);
+        assert!(wrong_result.cipher_seed_decryption_success);
+        assert!(wrong_result.master_key_derivation_success);
+        assert!(!wrong_result.final_master_key_match); // This should fail
+        assert!(!wrong_result.validation_successful); // Overall validation should fail
+    }
+
+    #[test]
+    fn test_master_key_validation_edge_cases() {
+        // Test with various edge cases
+        let mnemonic = generate_seed_phrase().unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        
+        // Test empty mnemonic
+        assert!(validate_master_key_derivation(&master_key, "", None).is_err());
+        
+        // Test whitespace-only mnemonic
+        assert!(validate_master_key_derivation(&master_key, "   ", None).is_err());
+        
+        // Test invalid mnemonic
+        assert!(validate_master_key_derivation(&master_key, "invalid words here", None).is_err());
+        
+        // Test with all-zero master key
+        let zero_master_key = [0u8; 32];
+        assert!(!master_key_matches_seed(&zero_master_key, &mnemonic, None));
+        
+        // Test with all-FF master key
+        let ff_master_key = [0xFFu8; 32];
+        assert!(!master_key_matches_seed(&ff_master_key, &mnemonic, None));
+    }
+
+    #[test]
+    fn test_master_key_validation_consistency() {
+        // Test that validation is consistent across multiple calls
+        let mnemonic = generate_seed_phrase().unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        
+        // Multiple validations should give the same result
+        for _ in 0..10 {
+            assert!(validate_master_key_derivation(&master_key, &mnemonic, None).unwrap());
+            assert!(master_key_matches_seed(&master_key, &mnemonic, None));
+        }
+        
+        // Test with passphrase
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("consistent_test")).unwrap();
+        let mnemonic_with_pass = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        let master_key_with_pass = mnemonic_to_master_key(&mnemonic_with_pass, Some("consistent_test")).unwrap();
+        
+        // Multiple validations should be consistent
+        for _ in 0..5 {
+            assert!(validate_master_key_derivation(&master_key_with_pass, &mnemonic_with_pass, Some("consistent_test")).unwrap());
+            // Should return an error with wrong passphrase, so we expect is_err() to be true
+            assert!(validate_master_key_derivation(&master_key_with_pass, &mnemonic_with_pass, Some("wrong_pass")).is_err());
+        }
+    }
+
+    #[test]
+    fn test_master_key_validation_performance() {
+        // Test that validation operations complete in reasonable time
+        let mnemonic = generate_seed_phrase().unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        
+        let start = time::Instant::now();
+        
+        // Perform multiple validations (reduced to account for Argon2 being expensive)
+        for _ in 0..10 {
+            assert!(validate_master_key_derivation(&master_key, &mnemonic, None).unwrap());
+        }
+        
+        let duration = start.elapsed();
+        
+        // 10 validations should complete in reasonable time (less than 30 seconds, accounting for Argon2)
+        assert!(duration.as_secs() < 30, "Validation took too long: {:?}", duration);
+        
+        // Each validation should take less than 5 seconds on average
+        let avg_time_per_validation = duration.as_millis() / 10;
+        assert!(avg_time_per_validation < 5000, "Average validation time too high: {}ms", avg_time_per_validation);
     }
 } 
