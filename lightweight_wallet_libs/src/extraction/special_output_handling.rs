@@ -10,14 +10,9 @@ use crate::{
     data_structures::{
         transaction_output::LightweightTransactionOutput,
         wallet_output::LightweightWalletOutput,
-        types::{CompressedCommitment, MicroMinotari},
     },
-    errors::LightweightWalletError,
     extraction::{
-        encrypted_data_decryption::EncryptedDataDecryptor,
-        payment_id_extraction::PaymentIdExtractor,
         range_proof_extraction::RangeProofExtractor,
-        wallet_output_reconstruction::WalletOutputReconstructor,
     },
 };
 

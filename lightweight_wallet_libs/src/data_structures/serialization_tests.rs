@@ -1,4 +1,4 @@
-use crate::EncryptedData;
+use crate::data_structures::EncryptedData;
 use borsh::{BorshDeserialize, BorshSerialize, to_vec, from_slice};
 use serde_json;
 

@@ -30,12 +30,10 @@ use curve25519_dalek::{
     scalar::Scalar,
 };
 use hex::{FromHex, ToHex};
-use primitive_types::U256;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroize;
 
-use crate::errors::DataStructureError;
 use crate::hex_utils::{HexEncodable, HexError, HexValidatable};
 
 /// Custom serde module for Scalar

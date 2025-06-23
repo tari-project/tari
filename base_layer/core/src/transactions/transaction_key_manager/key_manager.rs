@@ -197,8 +197,18 @@ mod test {
 
     #[test]
     fn test_derive_and_next_key_with_branch_seed() {
-        let mut km = TariKeyManager::<Blake2b<U64>>::from(CipherSeed::new(), "Test".to_string(), 0);
+        use tari_key_manager::mnemonic::MnemonicLanguage;
+        use tari_key_manager::mnemonic::Mnemonic;
+        use tari_key_manager::SeedWords;
+        use tari_utilities::hex::Hex;
+        use std::str::FromStr;
+        let seed_phrase = "leopard test wide unhappy relax globe clerk make choice witness trophy hundred health love army north invite fuel grab farm order process force dress";
+        let seed_words = SeedWords::from_str(seed_phrase).unwrap();
+        let seed = CipherSeed::from_mnemonic(&seed_words, None).unwrap();
+        let mut km = TariKeyManager::<Blake2b<U64>>::from(seed, "Test".to_string(), 0);
+        println!("km: {:?}", km.get_private_key(0).unwrap().reveal());
         let next_key1_result = km.next_key();
+        println!("next_key1_result: {:?}", next_key1_result);
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
         let desired_key_index2 = 2;

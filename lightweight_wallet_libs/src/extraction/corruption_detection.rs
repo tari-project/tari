@@ -12,9 +12,9 @@ use crate::{
         payment_id::PaymentId,
         transaction_output::LightweightTransactionOutput,
         wallet_output::LightweightWalletOutput,
-        types::{CompressedCommitment, MicroMinotari, PrivateKey},
+        types::{CompressedCommitment, MicroMinotari},
     },
-    errors::{LightweightWalletError, DataStructureError, EncryptionError},
+    errors::{LightweightWalletError, DataStructureError},
 };
 
 /// Result of corruption detection

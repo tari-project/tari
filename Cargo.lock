@@ -3928,7 +3928,9 @@ dependencies = [
  "digest 0.10.7",
  "getrandom 0.2.15",
  "hex",
+ "hmac",
  "lazy_static",
+ "pbkdf2",
  "primitive-types",
  "prost 0.12.6",
  "rand 0.8.5",
@@ -3936,6 +3938,8 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "sha2 0.10.8",
+ "subtle",
  "thiserror 1.0.69",
  "tokio",
  "tonic 0.10.2",
@@ -5222,6 +5226,16 @@ name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
+
+[[package]]
+name = "pbkdf2"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
+dependencies = [
+ "digest 0.10.7",
+ "hmac",
+]
 
 [[package]]
 name = "peg"

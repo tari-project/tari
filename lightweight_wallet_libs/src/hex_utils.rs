@@ -7,11 +7,10 @@ use hex::{FromHex, ToHex};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
-use crate::{
+use crate::data_structures::{
     EncryptedData, LightweightTransactionOutput, LightweightWalletOutput,
+    CompressedPublicKey, SafeArray, PaymentId, PrivateKey, CompressedCommitment,
 };
-use crate::data_structures::payment_id::PaymentId;
-use crate::data_structures::types::{CompressedCommitment, CompressedPublicKey, PrivateKey, SafeArray};
 
 /// Custom serializers for serde
 pub mod serde_helpers {

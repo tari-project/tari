@@ -5,21 +5,23 @@ use crate::data_structures::{
     transaction_output::LightweightTransactionOutput,
     wallet_output::{
         LightweightWalletOutput, LightweightKeyId, LightweightOutputFeatures, 
-        LightweightScript, LightweightCovenant, LightweightExecutionStack,
-        LightweightSignature, LightweightRangeProof, LightweightOutputType,
+         LightweightExecutionStack,
+         LightweightOutputType,
         LightweightRangeProofType
     },
     payment_id::PaymentId,
-    types::{CompressedPublicKey, MicroMinotari, PrivateKey, CompressedCommitment},
+    types::{MicroMinotari, },
+    LightweightRangeProof, LightweightScript, CompressedPublicKey, LightweightSignature, LightweightCovenant,
 };
 use crate::extraction::{
     encrypted_data_decryption::EncryptedDataDecryptor,
     payment_id_extraction::PaymentIdExtractor,
 };
 use crate::key_management::{
-    ConcreteKeyManager, ImportedPrivateKey, KeyStore,
+    ConcreteKeyManager, KeyStore,
 };
 use crate::errors::LightweightWalletError;
+use crate::ImportedPrivateKey;
 
 /// Result of wallet output reconstruction
 #[derive(Debug, Clone)]

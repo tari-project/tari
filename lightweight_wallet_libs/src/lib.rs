@@ -6,6 +6,7 @@
 //! This crate provides lightweight wallet functionality for the Tari blockchain,
 //! including UTXO management, transaction validation, and key management.
 
+pub mod crypto;
 pub mod data_structures;
 pub mod errors;
 pub mod hex_utils;
@@ -20,7 +21,6 @@ pub mod tari_rpc {
     tonic::include_proto!("tari.rpc");
 }
 
-pub use data_structures::*;
 pub use errors::*;
 pub use hex_utils::*;
 pub use validation::*;

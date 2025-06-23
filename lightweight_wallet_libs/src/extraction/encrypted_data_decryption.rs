@@ -14,7 +14,7 @@ use crate::{
         transaction_output::LightweightTransactionOutput,
     },
     errors::{LightweightWalletError, EncryptionError, KeyManagementError},
-    key_management::{KeyManager, KeyStore, ImportedPrivateKey, DerivedKeyPair},
+    key_management::{KeyManager, KeyStore, ImportedPrivateKey},
 };
 
 /// Options for encrypted data decryption

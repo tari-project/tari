@@ -7,11 +7,12 @@
 //! from various formats including base58, hex, and emoji.
 
 use crate::errors::{LightweightWalletError, DataStructureError};
-use crate::hex_utils::{HexEncodable, HexError, HexValidatable};
-use crate::data_structures::types::{CompressedPublicKey, PrivateKey};
+use crate::hex_utils::{HexEncodable};
+use crate::data_structures::types::{CompressedPublicKey, };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use crate::data_structures::PrivateKey;
 
 // Tari address constants (ported from core)
 pub const TARI_ADDRESS_INTERNAL_DUAL_SIZE: usize = 67;

@@ -8,7 +8,7 @@
 
 use crate::{
     data_structures::{
-        types::{CompressedCommitment, CompressedPublicKey, MicroMinotari, PrivateKey},
+        types::{ MicroMinotari},
         transaction_output::LightweightTransactionOutput,
         wallet_output::{LightweightCovenant, LightweightOutputFeatures, LightweightScript},
         encrypted_data::EncryptedData,

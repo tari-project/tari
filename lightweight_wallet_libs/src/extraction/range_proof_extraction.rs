@@ -10,9 +10,8 @@ use crate::{
     data_structures::{
         transaction_output::LightweightTransactionOutput,
         wallet_output::LightweightWalletOutput,
-        types::{CompressedCommitment, MicroMinotari},
+        types::{CompressedCommitment },
     },
-    errors::LightweightWalletError,
     validation::{
         range_proofs::{
             LightweightBulletProofPlusValidator,

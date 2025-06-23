@@ -33,11 +33,15 @@ primitive-types = { version = "0.12", features = ["serde"] }
 curve25519-dalek = { version = "4.1", features = ["alloc"] }
 rand_core = "0.6"
 wasm-bindgen = "0.2"
+subtle = "2.5"
+rand = "0.8"
+pbkdf2 = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
 
 # Address dependencies
 bs58 = "0.5"
 lazy_static = "1.4"
-rand = "0.8"
 
 # Parallel processing
 rayon = { version = "1.8", optional = true }

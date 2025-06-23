@@ -13,7 +13,6 @@ use crate::{
         payment_id::{PaymentId, TxType},
         types::{CompressedCommitment, PrivateKey},
     },
-    errors::LightweightWalletError,
     hex_utils::HexEncodable,
 };
 use primitive_types::U256;
