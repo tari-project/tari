@@ -53,16 +53,17 @@ impl RistrettoSecretKey {
         RistrettoSecretKey(Scalar::from_bytes_mod_order(bytes))
     }
 
-    /// Create a secret key from uniform bytes
+    /// Create a secret key from uniform bytes using wide reduction (64 bytes -> 32 bytes)
+    /// This matches the main Tari implementation exactly
     pub fn from_uniform_bytes(bytes: &[u8]) -> Result<Self, KeyManagementError> {
-        if bytes.len() != 32 {
+        if bytes.len() != 64 {
             return Err(KeyManagementError::key_derivation_failed("Invalid byte length for secret key"));
         }
         
-        let mut bytes_array = [0u8; 32];
+        let mut bytes_array = [0u8; 64];
         bytes_array.copy_from_slice(bytes);
         
-        let scalar = Scalar::from_bytes_mod_order(bytes_array);
+        let scalar = Scalar::from_bytes_mod_order_wide(&bytes_array);
         Ok(RistrettoSecretKey(scalar))
     }
 

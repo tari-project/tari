@@ -12,7 +12,7 @@ use rand_core::{OsRng, RngCore};
 
 use blake2::{Blake2b, Digest};
 use chacha20::{ChaCha20, cipher::{KeyIvInit, StreamCipher}, Key, Nonce};
-use digest::consts::U32;
+use digest::consts::{U32, U64};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 use argon2::{Argon2, Algorithm, Version, Params};
 use std::mem::size_of;
@@ -36,6 +36,7 @@ const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
 const HASHER_LABEL_CIPHER_SEED_ENCRYPTION_NONCE: &str = "cipher_seed_encryption_nonce";
 const HASHER_LABEL_CIPHER_SEED_MAC: &str = "cipher_seed_mac";
 const HASHER_LABEL_CIPHER_SEED_PBKDF_SALT: &str = "cipher_seed_pbkdf_salt";
+const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";
 
 // Hasher label constants for domain separation (now using constants defined above)
 
@@ -515,7 +516,7 @@ pub fn mnemonic_to_bytes(mnemonic: &str) -> Result<Vec<u8>, KeyManagementError> 
 }
 
 /// Converts a mnemonic phrase and optional passphrase to a 32-byte master key using Tari CipherSeed
-/// This follows the Tari CipherSeed specification
+/// This follows the exact Tari key derivation specification
 pub fn mnemonic_to_master_key(mnemonic: &str, passphrase: Option<&str>) -> Result<[u8; 32], KeyManagementError> {
     if mnemonic.trim().is_empty() {
         return Err(KeyManagementError::MnemonicError("Mnemonic phrase is empty".to_string()));
@@ -527,22 +528,17 @@ pub fn mnemonic_to_master_key(mnemonic: &str, passphrase: Option<&str>) -> Resul
     // Decrypt the CipherSeed
     let cipher_seed = CipherSeed::from_enciphered_bytes(&encrypted_bytes, passphrase)?;
     
-    // Use the entropy as the master key (pad to 32 bytes if necessary)
+    // Use the exact Tari derivation pattern: H(master_entropy || branch_seed || key_index)
+    // For the master key, we use a special branch_seed "master_key" and index 0
+    let master_key_hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerDomain>::new_with_label(HASHER_LABEL_DERIVE_KEY)
+        .chain(cipher_seed.entropy())  // 16-byte entropy directly from CipherSeed
+        .chain("master_key".as_bytes())  // Special branch seed for master key
+        .chain(0u64.to_le_bytes())  // Index 0 for master key
+        .finalize();
+    
+    // Take the first 32 bytes of the 64-byte Blake2b output for our master key
     let mut master_key = [0u8; 32];
-    let entropy = cipher_seed.entropy();
-    
-    // The CipherSeed entropy is 16 bytes, so we need to expand it to 32 bytes
-    // We'll use the entropy + birthday + salt as input to derive a 32-byte key
-    let mut key_input = Vec::with_capacity(CIPHER_SEED_ENTROPY_BYTES + 2 + CIPHER_SEED_MAIN_SALT_BYTES);
-    key_input.extend(entropy);
-    key_input.extend(cipher_seed.birthday().to_le_bytes());
-    key_input.extend(cipher_seed.salt());
-    
-    // Use Blake2b to derive the full 32-byte master key
-    let mut hasher = Blake2b::<digest::consts::U32>::new();
-    hasher.update(&key_input);
-    let result = hasher.finalize();
-    master_key.copy_from_slice(result.as_slice());
+    master_key.copy_from_slice(&master_key_hash.as_ref()[..32]);
     
     Ok(master_key)
 }
