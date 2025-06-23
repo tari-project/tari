@@ -25,3 +25,4 @@ pub mod blocks;
 pub mod data_cache;
 pub mod hash_rate;
 pub mod helpers;
+pub mod readiness_grpc_server;

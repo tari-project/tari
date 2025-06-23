@@ -898,9 +898,10 @@ where
                 payment_id,
                 block_hash,
                 block_height,
+                max_limit,
             } => Ok(TransactionServiceResponse::CompletedTransactions(
                 self.db
-                    .get_completed_transactions(payment_id, block_hash, block_height)?,
+                    .get_completed_transactions(payment_id, block_hash, block_height, max_limit)?,
             )),
             TransactionServiceRequest::GetCompletedTransactionsByAddresses {
                 source_address,
@@ -919,9 +920,11 @@ where
                     self.db.get_cancelled_pending_outbound_transactions()?,
                 ))
             },
-            TransactionServiceRequest::GetCancelledCompletedTransactions => Ok(
-                TransactionServiceResponse::CompletedTransactions(self.db.get_cancelled_completed_transactions()?),
-            ),
+            TransactionServiceRequest::GetCancelledCompletedTransactions(max_limit) => {
+                Ok(TransactionServiceResponse::CompletedTransactions(
+                    self.db.get_cancelled_completed_transactions(max_limit)?,
+                ))
+            },
             TransactionServiceRequest::GetCompletedTransaction(tx_id) => Ok(
                 TransactionServiceResponse::CompletedTransaction(Box::new(self.db.get_completed_transaction(tx_id)?)),
             ),
@@ -1028,7 +1031,7 @@ where
                 match self.get_transaction_with_payref(payref)? {
                     Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
                     None => Err(TransactionServiceError::TransactionStorageError(
-                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions),
+                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions(1)),
                     ))?,
                 }
             },
@@ -3830,29 +3833,23 @@ where
         {
             (
                 match tx_type {
-                    TxType::PaymentToOther | TxType::Burn => TransactionDirection::Outbound,
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
+                    TxType::PaymentToOther |
+                    TxType::Burn |
                     TxType::CodeTemplateRegistration |
+                    TxType::ValidatorNodeRegistration |
+                    TxType::CoinSplit |
+                    TxType::PaymentToSelf => TransactionDirection::Outbound,
+                    TxType::CoinJoin |
                     TxType::ClaimAtomicSwap |
                     TxType::HtlcAtomicSwapRefund |
                     TxType::ImportedUtxoNoneRewindable |
                     TxType::Coinbase => TransactionDirection::Inbound,
                 },
                 amount,
-                match tx_type {
-                    TxType::PaymentToOther | TxType::ImportedUtxoNoneRewindable => recipient_address.clone(),
-                    TxType::Burn => TariAddress::default(),
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
-                    TxType::CodeTemplateRegistration |
-                    TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund |
-                    TxType::Coinbase => self.resources.one_sided_tari_address.clone(),
+                if tx_type == TxType::Burn {
+                    TariAddress::default()
+                } else {
+                    recipient_address.clone()
                 },
             )
         } else {

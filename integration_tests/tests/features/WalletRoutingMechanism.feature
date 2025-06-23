@@ -61,8 +61,8 @@ Feature: Wallet Routing Mechanism
       # When I wait 121 seconds
       #   And I stop wallet SENDER
       # When I wait 360 seconds
-      #   And I restart wallet RECEIVER
+      #   And I stop-start wallet RECEIVER
       # When I wait 121 seconds
       #   And I stop wallet RECEIVER
-      #   And I restart wallet SENDER
+      #   And I stop-start wallet SENDER
       #   And wallet SENDER detects all transactions are at least Broadcast

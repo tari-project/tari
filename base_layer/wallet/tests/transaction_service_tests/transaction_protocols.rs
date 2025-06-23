@@ -856,7 +856,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
 
     assert_eq!(
         completed_txs
@@ -892,7 +892,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
 
     assert_eq!(
         completed_txs
@@ -946,7 +946,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
 
     assert_eq!(
         completed_txs
@@ -1040,7 +1040,7 @@ async fn tx_revalidation() {
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
 
     assert_eq!(
         completed_txs
@@ -1085,7 +1085,7 @@ async fn tx_revalidation() {
         .db
         .mark_all_non_coinbases_transactions_as_unvalidated()
         .unwrap();
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
     let completed_tx_2 = completed_txs
         .iter()
         .find(|c_tx| c_tx.tx_id == TxId::from(2u64))
@@ -1107,7 +1107,7 @@ async fn tx_revalidation() {
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
     // data should now be updated and changed
     let completed_tx_2 = completed_txs
         .iter()
@@ -1278,7 +1278,7 @@ async fn tx_validation_protocol_reorg() {
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
     let mut unconfirmed_count = 0;
     let mut confirmed_count = 0;
     for tx in completed_txs {
@@ -1396,7 +1396,7 @@ async fn tx_validation_protocol_reorg() {
 
     assert_eq!(rpc_service_state.take_get_header_by_height_calls().len(), 0);
 
-    let completed_txs = resources.db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = resources.db.get_completed_transactions(None, None, None, 0).unwrap();
     // Tx 1
     assert!(completed_txs
         .iter()

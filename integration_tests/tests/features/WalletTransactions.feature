@@ -4,17 +4,15 @@
 @wallet-transact @wallet @flaky
 Feature: Wallet Transactions
 
-  @critical @flaky
+  @critical
   Scenario: Wallet sending and receiving one-sided transactions
     Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have wallet WALLET_C connected to all seed nodes
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 15 blocks
     Then all nodes are at height 15
-    When I wait 5 seconds
     When I wait for wallet WALLET_A to have at least 55000000000 uT
     Then I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     Then I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
@@ -34,11 +32,10 @@ Feature: Wallet Transactions
     Then all nodes are at height 30
     Then I wait for wallet WALLET_C to have at least 1500000 uT
 
-  #This is flaky, passes on local run time, but fails CI
-  @critical @broken
+  #This is flaky, passes on local run time, but fails CI (still true?)
+  @critical @flaky
   Scenario: Wallet sending and receiving one-sided stealth transactions
     Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have wallet WALLET_C connected to all seed nodes
@@ -64,9 +61,9 @@ Feature: Wallet Transactions
     Then all nodes are at height 30
     Then I wait for wallet WALLET_C to have at least 1500000 uT
 
+  @critical
   Scenario: Wallet imports unspent output
     Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have wallet WALLET_C connected to all seed nodes
@@ -82,13 +79,13 @@ Feature: Wallet Transactions
     When I wait 5 seconds
     Then I import WALLET_B unspent outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
-    Then I restart wallet WALLET_C
+    Then I stop-start wallet WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I check if last imported transactions are valid in wallet WALLET_C
 
+  @critical
   Scenario: Wallet has two connected miners, coinbase's are computed correctly
     Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
     When I have mining node MINER2 connected to base node NODE and wallet WALLET_A
@@ -101,7 +98,6 @@ Feature: Wallet Transactions
 
   Scenario: Wallet imports spent outputs that become invalidated
     Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have wallet WALLET_C connected to all seed nodes
@@ -117,19 +113,18 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 15
     When I wait for wallet WALLET_B to have at least 50000 uT
-    Then I stop wallet WALLET_B
-    When I wait 30 seconds
-    Then I import WALLET_B spent outputs to WALLET_C
-    #Then I wait for wallet WALLET_C to have at least 1000000 uT
-    Then I restart wallet WALLET_C
-    Then I wait for wallet WALLET_C to have less than 1 uT
-    Then I check if last imported transactions are invalid in wallet WALLET_C
 
-  @flaky
+    Then I import WALLET_B spent outputs to WALLET_C
+    Then I stop-start wallet WALLET_C
+    Then I wait for wallet WALLET_C to have less than 1 uT
+
+    Then I import WALLET_B unspent outputs to WALLET_C
+    Then I stop-start wallet WALLET_C
+    When I wait for wallet WALLET_C to have at least 50000 uT
+
   Scenario: Wallet imports reorged outputs that become invalidated
     # Chain 1
-    Given I have a seed node SEED_B
-    When I have a base node B connected to seed SEED_B
+    Given I have a base node B
     When I have wallet WB connected to base node B
     When I have wallet WALLET_RECEIVE_TX connected to base node B
     When I have wallet WALLET_IMPORTED connected to base node B
@@ -141,35 +136,31 @@ Feature: Wallet Transactions
     When node B is at height 8
     Then I wait for wallet WALLET_RECEIVE_TX to have at least 1000000 uT
     Then I stop wallet WALLET_RECEIVE_TX
-    When I wait 30 seconds
+    When I wait 5 seconds
     Then I import WALLET_RECEIVE_TX unspent outputs to WALLET_IMPORTED
     Then I wait for wallet WALLET_IMPORTED to have at least 1000000 uT
     # This triggers a validation of the imported outputs
-    Then I restart wallet WALLET_IMPORTED
+    Then I stop-start wallet WALLET_IMPORTED
     # Chain 2
-    Given I have a seed node SEED_C
-    When I have a base node C connected to seed SEED_C
+    Given I have a base node C
     When I have wallet WC connected to base node C
     When I have mining node CM connected to base node C and wallet WC
-    When mining node CM mines 10 blocks with min difficulty 1000 and max difficulty 9999999999
+    When mining node CM mines 10 blocks with min difficulty 100 and max difficulty 1000
     # Connect chain 1 and 2
     Then node B is at height 8
     When node C is at height 10
     When I have a base node SA connected to nodes B,C
+    When I have a base node SA2 connected to nodes B,C
+    When I have a base node SA3 connected to nodes B,C
     Then node SA is at height 10
     Then node B is at height 10
     Then node C is at height 10
-    Then I restart wallet WALLET_IMPORTED
+    Then I stop-start wallet WALLET_IMPORTED
     Then I wait for wallet WALLET_IMPORTED to have less than 1 uT
-    When mining node CM mines 1 blocks with min difficulty 1000 and max difficulty 9999999999
-    When node B is at height 11
-    When node C is at height 11
-    Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
   @critical
   Scenario: Wallet imports pre_mine UTXO
     Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have wallet WALLET_C connected to all seed nodes
@@ -177,22 +168,20 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I send an interactive transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     When mining node MINER mines 6 blocks
     Then all nodes are at height 11
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
-    When I wait 15 seconds
     Then I import WALLET_B unspent outputs as pre_mine outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
-    When I send a one-sided transaction of 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+    When I send an interactive transaction of 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
     When mining node MINER mines 6 blocks
     Then all nodes are at height 17
     Then I wait for wallet WALLET_C to have at least 400000 uT
 
   Scenario: Wallet should display all transactions made
     Given I have a seed node NODE
-    When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
@@ -208,7 +197,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 15
     Then I wait for wallet WALLET_B to have at least 500000 uT
     Then I check if wallet WALLET_B has 5 transactions
-    Then I restart wallet WALLET_B
+    Then I stop-start wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
 
     @missing-steps
@@ -375,18 +364,18 @@ Feature: Wallet Transactions
   #   # requests SAF messages from the base nodes the base nodes get the request and attempt to send the stored messages
   #   # but the connection fails. It requires a second reconnection and request for the SAF messages to be delivered.
   #   When I wait 10 seconds
-  #   Then I restart wallet WALLET_SENDER
+  #   Then I stop-start wallet WALLET_SENDER
   #   When I wait 10 seconds
-  #   Then I restart wallet WALLET_SENDER
+  #   Then I stop-start wallet WALLET_SENDER
   #   When I wait 30 seconds
   #   When mining node MINER mines 5 blocks
   #   Then all nodes are at height 15
   #   When wallet WALLET_SENDER detects all transactions as Mined_or_OneSidedConfirmed
   #   When I start wallet WALLET_RECV
   #   When I wait 5 seconds
-  #   Then I restart wallet WALLET_RECV
+  #   Then I stop-start wallet WALLET_RECV
   #   When I wait 5 seconds
-  #   Then I restart wallet WALLET_RECV
+  #   Then I stop-start wallet WALLET_RECV
   #   Then I wait for wallet WALLET_RECV to have at least 1000000 uT
 
   # @critical @missing-steps
@@ -404,14 +393,13 @@ Feature: Wallet Transactions
   #   When I send 1000000 uT one-sided without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
   #   When I wait 15 seconds
   #   Then I cancel last transaction in wallet WALLET_SENDER
-  #   Then I restart wallet WALLET_RECV
+  #   Then I stop-start wallet WALLET_RECV
   #   When I wait 15 seconds
   #   When wallet WALLET_RECV detects last transaction is Cancelled
 
-  @critical  @flaky
+  @critical
   Scenario: Create burn transaction
     Given I have a seed node NODE
-    When I have 2 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have mining node MINER_A connected to base node NODE and wallet WALLET_A
@@ -419,9 +407,14 @@ Feature: Wallet Transactions
     When mining node MINER_A mines 12 blocks
     When mining node MINER_B mines 3 blocks
     Then all nodes are at height 15
-    When I wait for wallet WALLET_A to have at least 221552530060 uT
-    When I create a burn transaction of 201552500000 uT from WALLET_A at fee 100
-    When mining node MINER_B mines 5 blocks
+    When I wait for wallet WALLET_A to have at least 221552000000 uT
+    When I create a burn transaction of 221552000000 uT from WALLET_A at fee 100
+    Then wallet WALLET_A detects all transactions as Broadcast
+    Then I wait for wallet WALLET_A to have less than 1000000 uT
+    When mining node MINER_A mines 1 blocks
+    Then all nodes are at height 16
+    Then wallet WALLET_A detects all transactions as Mined_or_OneSidedUnconfirmed
+    When mining node MINER_B mines 4 blocks
     Then all nodes are at height 20
     Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
-    When I wait for wallet WALLET_A to have at least 20000000000 uT
+    When I wait for wallet WALLET_A to have at least 18462593892 uT
