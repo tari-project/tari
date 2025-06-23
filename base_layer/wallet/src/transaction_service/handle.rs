@@ -42,12 +42,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
-            BuildInfo,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
+            payment_id::PaymentId, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
             TransactionOutput,
         },
     },
@@ -65,11 +60,7 @@ use crate::{
     transaction_service::{
         error::TransactionServiceError,
         storage::models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
         },
     },
     OperationId,
@@ -85,6 +76,7 @@ pub enum TransactionServiceRequest {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     },
     GetCompletedTransactionsByAddresses {
         source_address: Option<TariAddress>,
@@ -1279,17 +1271,6 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::ReValidateTransactions)
-            .await??
-        {
-            TransactionServiceResponse::ValidationStarted(_) => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn revalidate_rejected_transactions(&mut self) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::ReValidateRejectedTransactions)
             .await??
         {
             TransactionServiceResponse::ValidationStarted(_) => Ok(()),

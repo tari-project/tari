@@ -113,7 +113,7 @@ service Wallet {
   //
   // Example usage (JavaScript):
   // ```javascript
- // // Call the Identify RPC method
+  // // Call the Identify RPC method
   // client.Identify({}, (error, response) => {
   //   if (error) {
   //     console.error('Error:', error);
@@ -1132,6 +1132,10 @@ service Wallet {
   // }
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
+
+  rpc GetFeeEstimate(GetFeeEstimateRequest) returns (GetFeeEstimateResponse);
+
+  rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
@@ -1193,7 +1197,7 @@ message PaymentRecipient {
   string address = 1;
   // Amount to send in microTari (1 T = 1_000_000 µT).
   uint64 amount = 2;
-   // Fee rate per gram.
+  // Fee rate per gram.
   uint64 fee_per_gram = 3;
   enum PaymentType {
     // Default Mimblewimble-style transaction.
@@ -1547,7 +1551,7 @@ message ImportTransactionsRequest {
 }
 
 message ImportTransactionsResponse {
-    repeated uint64 tx_ids = 1;
+  repeated uint64 tx_ids = 1;
 }
 
 message GetAllCompletedTransactionsRequest {
@@ -1618,4 +1622,36 @@ enum PaymentDirection {
   PAYMENT_DIRECTION_INBOUND = 1;
   // Payment sent from this wallet
   PAYMENT_DIRECTION_OUTBOUND = 2;
+}
+
+message GetFeeEstimateRequest {
+  // The amount to send in microTari (1 T = 1_000_000 µT).
+  uint64 amount = 1;
+  // fee per gram to use for the estimate
+  uint64 fee_per_gram = 2;
+  // number of outputs to create in the transaction
+  uint64 output_count = 3;
+}
+
+message GetFeeEstimateResponse {
+  // Estimated fee for the transaction in microTari
+  uint64 estimated_fee = 1;
+}
+
+message GetFeePerGramStatsRequest {
+  // Optional: The number of recent blocks to consider for fee statistics.
+  uint64 block_count = 1;
+}
+
+message GetFeePerGramStatsResponse {
+  repeated FeePerGramStat fee_per_gram_stats = 1;
+}
+
+message FeePerGramStat {
+  // The average fee per gram over the specified number of blocks.
+  uint64 average_fee_per_gram = 1;
+  // The minimum fee per gram observed in the recent blocks.
+  uint64 min_fee_per_gram = 2;
+  // The maximum fee per gram observed in the recent blocks.
+  uint64 max_fee_per_gram = 3;
 }

@@ -21,8 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    fs,
-    io,
+    fs, io,
     path::PathBuf,
     str::{self},
 };
@@ -31,22 +30,25 @@ use cucumber::{event::ScenarioFinished, writer, writer::Verbosity, World as _};
 use log::*;
 use tari_common::initialize_logging;
 use tari_integration_tests::TariWorld;
+use tokio::runtime::Runtime;
 
 pub mod steps;
 
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 
-#[tokio::main]
-async fn main() {
+fn main() {
     initialize_logging(
         &PathBuf::from("log4rs/cucumber.yml"),
         &PathBuf::from("./"),
         include_str!("../log4rs/cucumber.yml"),
     )
     .expect("logging not configured");
-
-    let world = TariWorld::cucumber()
+    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
+    // not be affected by the output capture.
+    let runtime = Runtime::new().unwrap();
+    runtime.block_on(async {
+        let world = TariWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
         .max_concurrent_scenarios(5)
@@ -79,8 +81,8 @@ async fn main() {
                 world.before(feature, scenario).await;
             })
         });
-    let file = fs::File::create("cucumber-output-junit.xml").unwrap();
-    world
+        let file = fs::File::create("cucumber-output-junit.xml").unwrap();
+        world
             .fail_on_skipped()
             // .fail_fast() - Not yet supported in 0.18
             .with_writer(writer::Tee::new(writer::JUnit::new(file, Verbosity::ShowWorldAndDocString),
@@ -88,7 +90,4 @@ async fn main() {
             .run("tests/features/")
             .await;
     });
-
-    // If by any chance we have anything in the stdout buffer just log it.
-    flush_stdout(&stdout_buffer);
 }

@@ -42,11 +42,7 @@ use crate::transaction_service::{
     error::TransactionStorageError,
     storage::{
         models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
         },
         sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
     },
@@ -287,7 +283,8 @@ pub struct TransactionDatabase<T> {
 }
 
 impl<T> TransactionDatabase<T>
-where T: TransactionBackend + 'static
+where
+    T: TransactionBackend + 'static,
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
@@ -636,7 +633,7 @@ where T: TransactionBackend + 'static
             .find_completed_transactions_filter_addresses(source_address, destination_address)
     }
 
-    pub fn get_completed_transactions_by_addresses(
+    pub fn get_cancelled_completed_transactions(
         &self,
         max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {

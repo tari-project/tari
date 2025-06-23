@@ -23,12 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{
-    ComAndPubSignature,
-    CompressedCommitment,
-    CompressedPublicKey,
-    HashOutput,
-    PrivateKey,
-    UncompressedPublicKey,
+    ComAndPubSignature, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey, UncompressedPublicKey,
 };
 use tari_crypto::{hashing::DomainSeparation, signatures::CompressedSchnorrSignature};
 use tari_utilities::{ByteArray, ByteArrayError};
@@ -71,8 +66,8 @@ impl<H: DomainSeparation> TryFrom<proto::Signature>
 impl<H: DomainSeparation> From<&CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>> for proto::Signature {
     fn from(sig: &CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
-            public_nonce: sig.borrow().get_compressed_public_nonce().to_vec(),
-            signature: sig.borrow().get_signature().to_vec(),
+            public_nonce: sig.get_compressed_public_nonce().to_vec(),
+            signature: sig.get_signature().to_vec(),
         }
     }
 }
