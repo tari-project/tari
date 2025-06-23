@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.6.1-pre.0](https://github.com/tari-project/tari/compare/v4.6.0-pre.0...v4.6.1-pre.0) (2025-06-23)
+
+
+### Features
+
+* readiness status during initialization ([#7240](https://github.com/tari-project/tari/issues/7240)) ([078cad8](https://github.com/tari-project/tari/commit/078cad82efab14e79df411fa00c350b909402bda))
+
+
+### Bug Fixes
+
+* database cannot resize on jmt write ([#7244](https://github.com/tari-project/tari/issues/7244)) ([1df5cfe](https://github.com/tari-project/tari/commit/1df5cfeb91472cac482169b2e18605b540242845))
+* minotari_merge_mining_proxy returns Tari block hash even if submit_to_origin is disabled ([#7242](https://github.com/tari-project/tari/issues/7242)) ([d21f99c](https://github.com/tari-project/tari/commit/d21f99ce982b534b976f08c0808bd59c6d3aff54))
+
 ## [4.6.0-pre.0](https://github.com/tari-project/tari/compare/v4.5.0-pre.0...v4.6.0-pre.0) (2025-06-20)
 
 
