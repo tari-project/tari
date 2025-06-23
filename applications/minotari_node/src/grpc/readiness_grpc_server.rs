@@ -31,7 +31,6 @@ pub struct ReadinessGrpcServer {
 
 pub struct ReadinessService {
     readiness_rx: watch::Receiver<ReadinessStatus>,
-    readiness_tx: watch::Sender<ReadinessStatus>,
 }
 
 #[derive(Clone)]
@@ -47,12 +46,12 @@ pub enum ReadinessStatus {
 impl Into<i32> for ReadinessStatus {
     fn into(self) -> i32 {
         match self {
-            ReadinessStatus::Ready => 0,
-            ReadinessStatus::Migrating => 1,
-            ReadinessStatus::NotReady => 2,
+            ReadinessStatus::NotReady => 0,
+            ReadinessStatus::StartingUp => 1,
+            ReadinessStatus::Migrating => 2,
             ReadinessStatus::Recovering => 3,
             ReadinessStatus::BuildingContext => 4,
-            ReadinessStatus::StartingUp => 5,
+            ReadinessStatus::Ready => 5,
         }
     }
 }
@@ -61,21 +60,11 @@ impl ReadinessService {
     pub fn new() -> (Self, watch::Sender<ReadinessStatus>) {
         let (readiness_tx, readiness_rx) = watch::channel(ReadinessStatus::NotReady);
         let sender = readiness_tx.clone();
-        (
-            Self {
-                readiness_rx,
-                readiness_tx,
-            },
-            sender,
-        )
+        (Self { readiness_rx }, sender)
     }
 
     pub fn get_status(&self) -> ReadinessStatus {
         self.readiness_rx.borrow().clone()
-    }
-
-    pub fn update_status(&self, status: ReadinessStatus) -> Result<(), watch::error::SendError<ReadinessStatus>> {
-        self.readiness_tx.send(status)
     }
 }
 
@@ -83,6 +72,10 @@ impl ReadinessGrpcServer {
     pub fn new() -> (Self, watch::Sender<ReadinessStatus>) {
         let (readiness_service, readiness_tx) = ReadinessService::new();
         (Self { readiness_service }, readiness_tx)
+    }
+
+    fn get_not_available_status(&self) -> Status {
+        Status::unavailable("Node is not available. Initializing...")
     }
 }
 
@@ -127,252 +120,252 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_network_difficulty(
         &self,
         _request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn list_headers(
         &self,
         _request: Request<tari_rpc::ListHeadersRequest>,
     ) -> Result<Response<Self::ListHeadersStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_header_by_hash(
         &self,
         _request: Request<tari_rpc::GetHeaderByHashRequest>,
     ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_blocks(
         &self,
         _request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetBlocksStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_block_timing(
         &self,
         _request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<tari_rpc::BlockTimingResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_constants(
         &self,
         _request: Request<tari_rpc::BlockHeight>,
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_block_size(
         &self,
         _request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_block_fees(
         &self,
         _request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn check_for_updates(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_tokens_in_circulation(
         &self,
         _request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_new_block_template(
         &self,
         _request: Request<tari_rpc::NewBlockTemplateRequest>,
     ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_new_block(
         &self,
         _request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_new_block_with_coinbases(
         &self,
         _request: Request<tari_rpc::GetNewBlockWithCoinbasesRequest>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_new_block_template_with_coinbases(
         &self,
         _request: Request<tari_rpc::GetNewBlockTemplateWithCoinbasesRequest>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_new_block_blob(
         &self,
         _request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockBlobResult>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn submit_block(
         &self,
         _request: Request<tari_rpc::Block>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn submit_block_blob(
         &self,
         _request: Request<tari_rpc::BlockBlobRequest>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn submit_transaction(
         &self,
         _request: Request<tari_rpc::SubmitTransactionRequest>,
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_sync_info(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_sync_progress(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncProgressResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_tip_info(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn search_kernels(
         &self,
         _request: Request<tari_rpc::SearchKernelsRequest>,
     ) -> Result<Response<Self::SearchKernelsStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn search_utxos(
         &self,
         _request: Request<tari_rpc::SearchUtxosRequest>,
     ) -> Result<Response<Self::SearchUtxosStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn fetch_matching_utxos(
         &self,
         _request: Request<tari_rpc::FetchMatchingUtxosRequest>,
     ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_peers(
         &self,
         _request: Request<tari_rpc::GetPeersRequest>,
     ) -> Result<Response<Self::GetPeersStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_mempool_transactions(
         &self,
         _request: Request<tari_rpc::GetMempoolTransactionsRequest>,
     ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn transaction_state(
         &self,
         _request: Request<tari_rpc::TransactionStateRequest>,
     ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn identify(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn list_connected_peers(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_mempool_stats(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::MempoolStatsResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_active_validator_nodes(
         &self,
         _request: Request<tari_rpc::GetActiveValidatorNodesRequest>,
     ) -> Result<Response<Self::GetActiveValidatorNodesStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_shard_key(
         &self,
         _request: Request<tari_rpc::GetShardKeyRequest>,
     ) -> Result<Response<tari_rpc::GetShardKeyResponse>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_template_registrations(
         &self,
         _request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
     ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn get_side_chain_utxos(
         &self,
         _request: Request<tari_rpc::GetSideChainUtxosRequest>,
     ) -> Result<Response<Self::GetSideChainUtxosStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 
     async fn search_payment_references(
         &self,
         _request: Request<tari_rpc::SearchPaymentReferencesRequest>,
     ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
-        return Err(Status::unavailable("Node is not available. Initializing..."));
+        return Err(self.get_not_available_status());
     }
 }

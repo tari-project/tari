@@ -177,12 +177,12 @@ enum BaseNodeState{
 }
 
 enum ReadinessStatus{
-    READY = 0;
-    MIGRATING = 1;
-    NOT_READY = 2;
-    RECOVERING = 3;
-    BUILDING_CONTEXT = 4;
-    STARTING_UP = 5;
+   NOT_READY = 0;
+   STARTING_UP = 1;
+   MIGRATING = 2;
+   RECOVERING = 3;
+   BUILDING_CONTEXT = 4;
+   READY = 5;
 }
 
 /// return type of GetNewBlockTemplate
