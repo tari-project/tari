@@ -140,8 +140,6 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
-};
-use tokio::{
     time::{sleep, timeout, Duration},
 };
 use tonic::{Request, Response, Status};

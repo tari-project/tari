@@ -41,7 +41,14 @@ use tari_common_types::{
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     types::{
-        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature,
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+        Signature,
         UncompressedCommitment,
     },
 };
@@ -60,7 +67,12 @@ use super::{
 };
 use crate::{
     blocks::{
-        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader,
+        Block,
+        BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
@@ -70,19 +82,45 @@ use crate::{
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
-                fetch_db_entry_sizes, lmdb_all, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
-                lmdb_delete_keys_starting_with, lmdb_exists, lmdb_fetch_matching_after, lmdb_filter_map_values,
-                lmdb_first_after, lmdb_get, lmdb_get_multiple, lmdb_insert, lmdb_insert_dup, lmdb_last, lmdb_len,
+                fetch_db_entry_sizes,
+                lmdb_all,
+                lmdb_clear,
+                lmdb_delete,
+                lmdb_delete_each_where,
+                lmdb_delete_key_value,
+                lmdb_delete_keys_starting_with,
+                lmdb_exists,
+                lmdb_fetch_matching_after,
+                lmdb_filter_map_values,
+                lmdb_first_after,
+                lmdb_get,
+                lmdb_get_multiple,
+                lmdb_insert,
+                lmdb_insert_dup,
+                lmdb_last,
+                lmdb_len,
                 lmdb_replace,
             },
             validator_node_store::ValidatorNodeStore,
-            TransactionInputRowData, TransactionInputRowDataRef, TransactionKernelRowData, TransactionOutputRowData,
+            TransactionInputRowData,
+            TransactionInputRowDataRef,
+            TransactionKernelRowData,
+            TransactionOutputRowData,
         },
         smt_hasher::SmtHasher,
         stats::DbTotalSizeStats,
         utxo_mined_info::OutputMinedInfo,
-        BlockchainBackend, ChainTipData, DbBasicStats, DbSize, HorizonData, InputMinedInfo, MmrTree, Reorg,
-        TemplateRegistrationEntry, ValidatorNodeEntry, ValidatorNodeRegistrationInfo,
+        BlockchainBackend,
+        ChainTipData,
+        DbBasicStats,
+        DbSize,
+        HorizonData,
+        InputMinedInfo,
+        MmrTree,
+        Reorg,
+        TemplateRegistrationEntry,
+        ValidatorNodeEntry,
+        ValidatorNodeRegistrationInfo,
     },
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty, Difficulty, PowAlgorithm},
@@ -90,8 +128,14 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
         transaction_components::{
-            OutputType, SideChainFeatureData, SideChainId, SpentOutput, TransactionInput, TransactionKernel,
-            TransactionOutput, ValidatorNodeRegistration,
+            OutputType,
+            SideChainFeatureData,
+            SideChainId,
+            SpentOutput,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+            ValidatorNodeRegistration,
         },
     },
     PrunedKernelMmr,
@@ -2081,9 +2125,9 @@ impl BlockchainBackend for LMDBDatabase {
         // attempted; this is more efficient than relying on an error if the LMDB environment map size was reached with
         // the write operation, with cleanup, resize and re-try afterwards.
         let block_operations = txn.operations().iter().filter(|op| {
-            matches!(op, WriteOperation::InsertOrphanBlock { .. })
-                || matches!(op, WriteOperation::InsertTipBlockBody { .. })
-                || matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
+            matches!(op, WriteOperation::InsertOrphanBlock { .. }) ||
+                matches!(op, WriteOperation::InsertTipBlockBody { .. }) ||
+                matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
         });
         let count = block_operations.count();
         if count > 0 {

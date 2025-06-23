@@ -23,7 +23,12 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{
-    ComAndPubSignature, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey, UncompressedPublicKey,
+    ComAndPubSignature,
+    CompressedCommitment,
+    CompressedPublicKey,
+    HashOutput,
+    PrivateKey,
+    UncompressedPublicKey,
 };
 use tari_crypto::{hashing::DomainSeparation, signatures::CompressedSchnorrSignature};
 use tari_utilities::{ByteArray, ByteArrayError};

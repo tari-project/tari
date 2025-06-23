@@ -37,8 +37,8 @@ use crate::{
 };
 
 /// Placeholder root hash for an empty validator node Merkle tree.
-/// This hash was embedded previously in genesis blocks from the balanced merkle tree implementation, so now if the validator set is empty,
-/// we define this hash as the resulting Merkle root.
+/// This hash was embedded previously in genesis blocks from the balanced merkle tree implementation, so now if the
+/// validator set is empty, we define this hash as the resulting Merkle root.
 pub const VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH: FixedHash = FixedHash::new([
     0x27, 0x7d, 0xa6, 0x5c, 0x40, 0xb2, 0xcf, 0x99, 0xdb, 0x86, 0xba, 0xed, 0xb9, 0x03, 0xa3, 0xf0, 0xa3, 0x85, 0x40,
     0xf3, 0xa9, 0x4d, 0x40, 0xc8, 0x26, 0xee, 0xca, 0xc7, 0xe2, 0x7d, 0x5d, 0xfc,
@@ -480,14 +480,17 @@ mod test {
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{BlockchainBackend, SmtHasher},
         consensus::ConsensusManager,
-        input_mr_hash_from_pruned_mmr, kernel_mr_hash_from_mmr,
+        input_mr_hash_from_pruned_mmr,
+        kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr, PrunedInputMmr, PrunedOutputMmr,
+        KernelMmr,
+        PrunedInputMmr,
+        PrunedOutputMmr,
     };
     #[test]
     #[serial]

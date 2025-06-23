@@ -45,6 +45,7 @@ use tari_core::{
         },
     },
 };
+use tari_max_size::MaxSizeString;
 use tari_sidechain::{
     ChainLink,
     CommandCommitProof,
@@ -59,7 +60,6 @@ use tari_sidechain::{
     SidechainBlockHeader,
     ValidatorQcSignature,
 };
-use tari_max_size::MaxSizeString;
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;

@@ -55,9 +55,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let output = create_outputs(1, Default::default(), &key_manager).await.remove(0);
         let output_hash = output.hash();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(output_hash.as_slice());
-        let covenant = covenant!(output_hash_eq(@hash(hash.into()))).unwrap();
+        let covenant = covenant!(output_hash_eq(@hash(output_hash))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,

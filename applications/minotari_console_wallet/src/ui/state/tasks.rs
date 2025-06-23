@@ -22,10 +22,6 @@
 
 use std::{convert::TryFrom, path::PathBuf};
 
-use crate::ui::{
-    state::{BurntProofBase64, CommitmentSignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
-    ui_error::UiError,
-};
 use log::{debug, error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
@@ -33,8 +29,10 @@ use minotari_wallet::{
     transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
 };
 use rand::random;
-use tari_common_types::types::{FixedHash, PrivateKey};
-use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{CompressedPublicKey, FixedHash, PrivateKey},
+};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{payment_id::PaymentId, BuildInfo, OutputFeatures, TemplateType},
@@ -42,6 +40,11 @@ use tari_core::transactions::{
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
+
+use crate::ui::{
+    state::{BurntProofBase64, CommitmentSignatureBase64, UiTransactionBurnStatus, UiTransactionSendStatus},
+    ui_error::UiError,
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 
