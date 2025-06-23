@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    cmp::{self, Ordering},
+    cmp,
+    cmp::Ordering,
     collections::VecDeque,
     convert::TryFrom,
     mem,
@@ -38,12 +39,19 @@ use std::{
 
 use blake2::Blake2b;
 use digest::consts::U32;
-use jmt::{JellyfishMerkleTree, KeyHash};
+use jmt::{
+    storage::{LeafNode, Node, NodeKey, TreeReader},
+    JellyfishMerkleTree,
+    KeyHash,
+    OwnedValue,
+    Version,
+};
 use log::*;
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     types::{
         BadBlock,
         BlockHash,
@@ -59,7 +67,7 @@ use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{smt_hasher::SmtHasher, TemplateRegistrationEntry};
+use super::{smt_hasher::SmtHasher, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
@@ -82,6 +90,7 @@ use crate::{
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
+        smt_hasher::ValidatorNodeJmtHasher,
         utxo_mined_info::OutputMinedInfo,
         BlockAddResult,
         BlockchainBackend,
@@ -118,7 +127,6 @@ use crate::{
     PrunedInputMmr,
     PrunedKernelMmr,
     PrunedOutputMmr,
-    ValidatorNodeBMT,
 };
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -1006,13 +1014,13 @@ where B: BlockchainBackend
         db.fetch_mmr_size(tree)
     }
 
-    pub fn get_shard_key(
+    pub fn get_validator_node(
         &self,
-        height: u64,
+        sidechain_pk: Option<CompressedPublicKey>,
         public_key: CompressedPublicKey,
-    ) -> Result<Option<[u8; 32]>, ChainStorageError> {
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.get_shard_key(height, public_key)
+        db.get_validator_node(sidechain_pk.as_ref(), public_key)
     }
 
     /// Tries to add a block to the longest chain.
@@ -1342,12 +1350,39 @@ where B: BlockchainBackend
         db.write(txn)
     }
 
+    pub fn fetch_all_active_validator_nodes(
+        &self,
+        height: u64,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_all_active_validator_nodes(height)
+    }
+
     pub fn fetch_active_validator_nodes(
         &self,
         height: u64,
-    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError> {
+        sidechain_pk: Option<CompressedPublicKey>,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_active_validator_nodes(height)
+        db.fetch_active_validator_nodes(sidechain_pk.as_ref(), height)
+    }
+
+    pub fn fetch_validators_activating_in_epoch(
+        &self,
+        sidechain_pk: Option<CompressedPublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_validators_activating_in_epoch(sidechain_pk.as_ref(), epoch)
+    }
+
+    pub fn fetch_validators_exiting_in_epoch(
+        &self,
+        sidechain_pk: Option<CompressedPublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_validators_exiting_in_epoch(sidechain_pk.as_ref(), epoch)
     }
 
     pub fn fetch_template_registrations<T: RangeBounds<u64>>(
@@ -1474,13 +1509,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
     let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
         // At epoch boundary, the MR is rebuilt from the current validator set
-        let validator_nodes = db.fetch_active_validator_nodes(block_height)?;
-        (
-            FixedHash::try_from(calculate_validator_node_mr(&validator_nodes))?,
-            validator_nodes.len(),
-        )
+        let validator_nodes = db.fetch_all_active_validator_nodes(block_height)?;
+        (calculate_validator_node_mr(&validator_nodes)?, validator_nodes.len())
     } else {
         // MR is unchanged except for epoch boundary
+        // Active validator set never changes within epochs, so we can reuse the previous block VN MR
         (tip_header.validator_node_mr, 0)
     };
 
@@ -1507,17 +1540,84 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     Ok(mmr_roots)
 }
 
-pub fn calculate_validator_node_mr(validator_nodes: &[(CompressedPublicKey, [u8; 32])]) -> tari_mmr::Hash {
-    fn hash_node((pk, s): &(CompressedPublicKey, [u8; 32])) -> Vec<u8> {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
-            .chain(pk)
-            .chain(s)
-            .finalize()
-            .to_vec()
+pub fn calculate_validator_node_mr(
+    validator_nodes: &[ValidatorNodeRegistrationInfo],
+) -> Result<FixedHash, ChainStorageError> {
+    struct EmptyJmtStore;
+
+    impl TreeReader for EmptyJmtStore {
+        fn get_node_option(&self, _node_key: &NodeKey) -> anyhow::Result<Option<Node>> {
+            Ok(None)
+        }
+
+        fn get_value_option(&self, _max_version: Version, _key_hash: KeyHash) -> anyhow::Result<Option<OwnedValue>> {
+            Ok(None)
+        }
+
+        fn get_rightmost_leaf(&self) -> anyhow::Result<Option<(NodeKey, LeafNode)>> {
+            Ok(None)
+        }
+    }
+    fn hash_node((pk, s): &(&CompressedPublicKey, &[u8; 32])) -> KeyHash {
+        KeyHash(
+            DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
+                .chain(pk)
+                .chain(s)
+                .finalize()
+                .into(),
+        )
     }
 
-    let vn_bmt = ValidatorNodeBMT::create(validator_nodes.iter().map(hash_node).collect::<Vec<_>>());
-    vn_bmt.get_merkle_root()
+    fn hash_sid(sid: Option<&CompressedPublicKey>) -> KeyHash {
+        KeyHash(
+            DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node_sid")
+                .chain(&sid)
+                .finalize()
+                .into(),
+        )
+    }
+
+    // TODO: update validator JMTs as outputs are added to the blockchain
+    // Alternatively, we could use the utxo JMT for inclusion proofs
+    let mut validator_sets = Vec::<(Option<&CompressedPublicKey>, Vec<(&CompressedPublicKey, &[u8; 32])>)>::new();
+    for ValidatorNodeRegistrationInfo {
+        public_key: pk,
+        sidechain_id,
+        shard_key,
+        ..
+    } in validator_nodes
+    {
+        // NOTE: this depends on validator_nodes being ordered by sidechain ID (we happen to know this is the case, i.e
+        // the natural LMDB order)
+        match validator_sets.last_mut() {
+            Some((sid, set)) if *sid == sidechain_id.as_ref() => {
+                // If the last entry has the same sidechain ID, we can just push to it
+                set.push((pk, shard_key));
+            },
+            Some(_) | None => {
+                // If there are no entries or the sidechain id has changed, we create a new one
+                validator_sets.push((sidechain_id.as_ref(), vec![(pk, shard_key)]));
+            },
+        }
+    }
+    let mut roots = Vec::with_capacity(validator_sets.len());
+    for (sidechain_pk, set) in validator_sets {
+        let sidechain_mt = JellyfishMerkleTree::<_, ValidatorNodeJmtHasher>::new(&EmptyJmtStore);
+        let (root, _) = sidechain_mt
+            .put_value_set(
+                set.iter()
+                    .map(|pk_and_shard_key| (hash_node(pk_and_shard_key), Some(vec![]))),
+                1,
+            )
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        roots.push((hash_sid(sidechain_pk), root));
+    }
+
+    let root_mt = JellyfishMerkleTree::<_, ValidatorNodeJmtHasher>::new(&EmptyJmtStore);
+    let (root_hash, _) = root_mt
+        .put_value_set(roots.into_iter().map(|(sid, root)| (sid, Some(root.0.to_vec()))), 1)
+        .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+    Ok(FixedHash::from(root_hash.0))
 }
 
 pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
@@ -1707,22 +1807,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
                 Err(e) => return Err(e),
             };
 
-            let rp_hash = match utxo_mined_info.output.proof {
-                Some(proof) => proof.hash(),
-                None => FixedHash::zero(),
-            };
-            compact_input.add_output_data(
-                utxo_mined_info.output.version,
-                utxo_mined_info.output.features,
-                utxo_mined_info.output.commitment,
-                utxo_mined_info.output.script,
-                utxo_mined_info.output.sender_offset_public_key,
-                utxo_mined_info.output.covenant,
-                utxo_mined_info.output.encrypted_data,
-                utxo_mined_info.output.metadata_signature,
-                rp_hash,
-                utxo_mined_info.output.minimum_value_promise,
-            );
+            compact_input.add_output_data(utxo_mined_info.output);
             Ok(compact_input)
         })
         .collect::<Result<Vec<TransactionInput>, _>>()?;
@@ -2295,8 +2380,8 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         // We dont have to mark the block twice
         Err(e @ ValidationError::BadBlockFound { .. }) => {
             db.write(txn)?;
-            return Err(e.into())
-        },
+            return Err(e.into());
+        }
 
         Err(e) => {
             txn.insert_bad_block(candidate_block.header.hash(), candidate_block.header.height, e.to_string());
@@ -2313,6 +2398,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         .with_achieved_target_difficulty(achieved_target_diff)
         .with_total_kernel_offset(candidate_block.header.total_kernel_offset.clone())
         .build()?;
+
     let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).ok_or(
         ChainStorageError::UnexpectedResult("Somehow hash is missing from Chain block".to_string()),
     )?;

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 
 use tari_common::configuration::Network;
 use thiserror::Error;
@@ -131,7 +131,6 @@ impl ConsensusManager {
         pow_algo: PowAlgorithm,
         height: u64,
     ) -> Result<TargetDifficultyWindow, String> {
-        use std::convert::TryFrom;
         let constants = self.consensus_constants(height);
         let block_window = constants.difficulty_block_window();
 

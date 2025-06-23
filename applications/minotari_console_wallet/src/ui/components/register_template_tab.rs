@@ -10,7 +10,7 @@ use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use regex::Regex;
 use reqwest::StatusCode;
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
-use tari_crypto::hashing::DomainSeparation;
+use tari_crypto::{hashing::DomainSeparation, ristretto::RistrettoSecretKey};
 use tari_hashing::TariEngineHashDomain;
 use tari_utilities::hex::Hex;
 use tokio::{
@@ -113,6 +113,7 @@ pub struct RegisterTemplateTab {
     template_version: String,
     fee_per_gram: String,
     template_type: String,
+    sidechain_id_key_field: String,
     error_message: Option<String>,
     success_message: Option<String>,
     offline_message: Option<String>,
@@ -131,6 +132,7 @@ impl RegisterTemplateTab {
             binary_checksum: String::new(),
             template_version: String::new(),
             template_name: String::new(),
+            sidechain_id_key_field: String::new(),
             error_message: None,
             success_message: None,
             offline_message: None,
@@ -156,6 +158,7 @@ impl RegisterTemplateTab {
             .constraints(
                 [
                     Constraint::Length(4),
+                    Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
@@ -254,6 +257,11 @@ impl RegisterTemplateTab {
             )
             .split(form_layout[4]);
 
+        let fifth_row_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50)].as_ref())
+            .split(form_layout[5]);
+
         // ----------------------------------------------------------------------------
         // First row - Binary URL
         // ----------------------------------------------------------------------------
@@ -335,6 +343,18 @@ impl RegisterTemplateTab {
             .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram:"));
         f.render_widget(fee_per_gram, fourth_row_layout[2]);
 
+        let sidechain_id_key_field = Paragraph::new(self.sidechain_id_key_field.as_ref())
+            .style(match self.input_mode {
+                InputMode::SidechainIdKey => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Sidechain Deployment Key (x):"),
+            );
+        f.render_widget(sidechain_id_key_field, fifth_row_layout[0]);
+
         // ----------------------------------------------------------------------------
         // field cursor placement
         // ----------------------------------------------------------------------------
@@ -368,6 +388,10 @@ impl RegisterTemplateTab {
             InputMode::RepositoryCommitHash => f.set_cursor(
                 fourth_row_layout[1].x + self.repository_commit_hash.width() as u16 + 1,
                 fourth_row_layout[1].y + 1,
+            ),
+            InputMode::SidechainIdKey => f.set_cursor(
+                fifth_row_layout[0].x + self.sidechain_id_key_field.width() as u16 + 1,
+                fifth_row_layout[0].y + 1,
             ),
         }
     }
@@ -477,6 +501,20 @@ impl RegisterTemplateTab {
                             Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
                         return KeyHandled::Handled;
                     };
+                    let mut sidechain_id = None;
+                    if !self.sidechain_id_key_field.is_empty() {
+                        sidechain_id =
+                            if let Ok(network) = RistrettoSecretKey::from_hex(self.sidechain_id_key_field.as_str()) {
+                                Some(network)
+                            } else {
+                                self.confirmation_dialog = None;
+                                self.error_message = Some(
+                                    "Sidechain ID should be a valid secret key or blank \nPress Enter to continue."
+                                        .to_string(),
+                                );
+                                return KeyHandled::Handled;
+                            };
+                    }
 
                     let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
 
@@ -491,6 +529,7 @@ impl RegisterTemplateTab {
                         self.repository_url.clone(),
                         self.repository_commit_hash.clone(),
                         fee_per_gram,
+                        sidechain_id.as_ref(),
                         UtxoSelectionCriteria::default(),
                         tx,
                     )) {
@@ -524,7 +563,7 @@ impl RegisterTemplateTab {
     fn on_key_send_input(&mut self, c: char) -> KeyHandled {
         if self.input_mode != InputMode::None {
             match self.input_mode {
-                InputMode::None => (),
+                InputMode::None | InputMode::SidechainIdKey => (),
                 InputMode::BinaryUrl => match c {
                     '\n' => {
                         let rt = Runtime::new().expect("Failed to start tokio runtime");
@@ -629,7 +668,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(18),
+                    Constraint::Length(21),
                     Constraint::Min(42),
                     Constraint::Length(1),
                     Constraint::Length(1),
@@ -761,6 +800,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             },
             'u' => self.input_mode = InputMode::RepositoryUrl,
             'h' => self.input_mode = InputMode::RepositoryCommitHash,
+            'x' => self.input_mode = InputMode::SidechainIdKey,
             's' => {
                 // ----------------------------------------------------------------------------
                 // basic field value validation
@@ -849,6 +889,9 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                 let _ = self.fee_per_gram.pop();
             },
             InputMode::None => {},
+            InputMode::SidechainIdKey => {
+                let _ = self.sidechain_id_key_field.pop();
+            },
         }
     }
 }
@@ -863,6 +906,7 @@ enum InputMode {
     RepositoryUrl,
     RepositoryCommitHash,
     FeePerGram,
+    SidechainIdKey,
 }
 
 #[derive(PartialEq, Debug)]

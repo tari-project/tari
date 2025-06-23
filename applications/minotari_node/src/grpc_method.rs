@@ -62,6 +62,7 @@ pub enum GrpcMethod {
     ListConnectedPeers,
     GetMempoolStats,
     GetActiveValidatorNodes,
+    GetValidatorNodeChanges,
     GetShardKey,
     GetTemplateRegistrations,
     GetSideChainUtxos,
@@ -70,7 +71,7 @@ pub enum GrpcMethod {
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 37] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 38] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -104,6 +105,7 @@ impl GrpcMethod {
         GrpcMethod::ListConnectedPeers,
         GrpcMethod::GetMempoolStats,
         GrpcMethod::GetActiveValidatorNodes,
+        GrpcMethod::GetValidatorNodeChanges,
         GrpcMethod::GetShardKey,
         GrpcMethod::GetTemplateRegistrations,
         GrpcMethod::GetSideChainUtxos,
@@ -112,7 +114,7 @@ impl GrpcMethod {
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 37>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 38>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -160,6 +162,7 @@ impl FromStr for GrpcMethod {
             "list_connected_peers" => Ok(GrpcMethod::ListConnectedPeers),
             "get_mempool_stats" => Ok(GrpcMethod::GetMempoolStats),
             "get_active_validator_nodes" => Ok(GrpcMethod::GetActiveValidatorNodes),
+            "get_validator_node_changes" => Ok(GrpcMethod::GetValidatorNodeChanges),
             "get_shard_key" => Ok(GrpcMethod::GetShardKey),
             "get_template_registrations" => Ok(GrpcMethod::GetTemplateRegistrations),
             "get_side_chain_utxos" => Ok(GrpcMethod::GetSideChainUtxos),
@@ -257,6 +260,7 @@ mod tests {
                 GrpcMethod::ListConnectedPeers => count += 1,
                 GrpcMethod::GetMempoolStats => count += 1,
                 GrpcMethod::GetActiveValidatorNodes => count += 1,
+                GrpcMethod::GetValidatorNodeChanges => count += 1,
                 GrpcMethod::GetShardKey => count += 1,
                 GrpcMethod::GetTemplateRegistrations => count += 1,
                 GrpcMethod::GetSideChainUtxos => count += 1,

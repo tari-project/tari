@@ -636,7 +636,7 @@ where T: TransactionBackend + 'static
             .find_completed_transactions_filter_addresses(source_address, destination_address)
     }
 
-    pub fn get_cancelled_completed_transactions(
+    pub fn get_completed_transactions_by_addresses(
         &self,
         max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {

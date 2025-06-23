@@ -30,7 +30,7 @@ use minotari_wallet::{
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
 };
-use rand::{random, rngs::OsRng};
+use rand::random;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, Signature, UncompressedSignature},
@@ -186,6 +186,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
     claim_public_key: Option<CompressedPublicKey>,
@@ -193,6 +194,7 @@ pub async fn send_burn_transaction_task(
     selection_criteria: UtxoSelectionCriteria,
     payment_id: PaymentId,
     fee_per_gram: MicroMinotari,
+    sidechain_deployment_key: Option<PrivateKey>,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
@@ -209,7 +211,14 @@ pub async fn send_burn_transaction_task(
         amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
     );
     let (burn_tx_id, original_proof) = match transaction_service_handle
-        .burn_tari(amount, selection_criteria, fee_per_gram, payment_id, claim_public_key)
+        .burn_tari(
+            amount,
+            selection_criteria,
+            fee_per_gram,
+            payment_id,
+            claim_public_key,
+            sidechain_deployment_key,
+        )
         .await
     {
         Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),
@@ -324,6 +333,7 @@ pub async fn send_register_template_transaction_task(
     binary_url: String,
     binary_sha: String,
     fee_per_gram: MicroMinotari,
+    sidechain_id_key: Option<&PrivateKey>,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
     _db: WalletDatabase<WalletSqliteDatabase>,
@@ -357,7 +367,7 @@ pub async fn send_register_template_transaction_task(
             return;
         },
     };
-    let binary_sha = match MaxSizeBytes::<32>::try_from(binary_sha) {
+    let binary_sha = match FixedHash::from_hex(&binary_sha) {
         Ok(binary_sha) => binary_sha,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to process `binary_sha`: {}", e);
@@ -428,8 +438,6 @@ pub async fn send_register_template_transaction_task(
 
     let result = transaction_service_handle
         .register_code_template(
-            author_public_key,
-            author_signature,
             template_name,
             template_version,
             template_type,
@@ -440,10 +448,11 @@ pub async fn send_register_template_transaction_task(
             binary_sha,
             binary_url,
             fee_per_gram,
+            sidechain_id_key.cloned(),
         )
         .await;
 
-    let sent_tx_id = match result {
+    let (sent_tx_id, _template_addr) = match result {
         Ok(tx_id) => tx_id,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to register code template: {:?}", e);

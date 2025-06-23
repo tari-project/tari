@@ -339,22 +339,6 @@ impl TransactionOutput {
         Ok(())
     }
 
-    pub fn verify_validator_node_signature(&self) -> Result<(), TransactionError> {
-        if let Some(validator_node_reg) = self
-            .features
-            .sidechain_feature
-            .as_ref()
-            .and_then(|f| f.validator_node_registration())
-        {
-            if !validator_node_reg.is_valid_signature_for(&[]) {
-                return Err(TransactionError::InvalidSignatureError(
-                    "Validator node signature is not valid!".to_string(),
-                ));
-            }
-        }
-        Ok(())
-    }
-
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
     pub fn verify_mask(
         &self,
@@ -380,6 +364,10 @@ impl TransactionOutput {
     /// Returns true if the output is burned, otherwise false
     pub fn is_burned(&self) -> bool {
         matches!(self.features.output_type, OutputType::Burn)
+    }
+
+    pub fn is_burned_to_sidechain(&self) -> bool {
+        self.is_burned() && self.features.sidechain_feature.is_some()
     }
 
     /// Convenience function that calculates the challenge for the metadata commitment signature

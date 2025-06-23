@@ -336,7 +336,7 @@ impl TransactionsTab {
             .split(area);
 
         // Labels
-        let constraints = [Constraint::Length(1); 14];
+        let constraints = [Constraint::Length(1); 13];
         let label_layout = Layout::default().constraints(constraints).split(columns[0]);
 
         let payment_ref = Span::styled("PayRef:", Style::default().fg(Color::Magenta));

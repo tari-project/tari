@@ -92,7 +92,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -150,8 +150,11 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         block.header.output_mr =
             FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
+            FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap();
     }
+
+    block.header.output_mr =
+        FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
 
     block.header.output_mr =
         FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
@@ -442,7 +445,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &P
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
-            validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
+            validator_node_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000")
                 .unwrap(),
             validator_node_size: 0,
             input_mr: FixedHash::from_hex("212ce6f5f7fc67dcb73b2a8a7a11404703aca210a7c75de9e50d914c9f9942c2").unwrap(),
@@ -485,7 +488,7 @@ mod test {
         kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         transactions::{
-            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
+            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
             CryptoFactories,
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
@@ -629,7 +632,7 @@ mod test {
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&tree_reader);
         let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
         let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
-        let mut vn_nodes = Vec::new();
+        // let mut vn_nodes = Vec::new();
         let mut smt_batch = vec![];
         for o in block.block().body.outputs() {
             if o.features.is_coinbase() {
@@ -643,18 +646,58 @@ mod test {
             smt_batch.push((smt_key, Some(smt_value.to_vec())));
 
             o.verify_metadata_signature().unwrap();
-            if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
-                let reg = o
-                    .features
-                    .sidechain_feature
-                    .as_ref()
-                    .and_then(|f| f.validator_node_registration())
-                    .unwrap();
-                vn_nodes.push((
-                    reg.public_key().clone(),
-                    reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                ));
-            }
+            // if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = o
+            //         .features
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     vn_nodes.push((
+            //         reg.public_key().clone(),
+            //         reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+            //     ));
+            // }
+        }
+
+        block_output_mmr
+            .push(normal_output_mmr.get_merkle_root().unwrap().to_vec())
+            .unwrap();
+
+        for i in block.block().body.inputs() {
+            let smt_key = KeyHash(
+                i.commitment()
+                    .unwrap()
+                    .as_bytes()
+                    .try_into()
+                    .expect("Commitment is 32 bytes"),
+            );
+            smt_batch.push((smt_key, None));
+
+            // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
+            //     let reg = i
+            //         .features()
+            //         .unwrap()
+            //         .sidechain_feature
+            //         .as_ref()
+            //         .and_then(|f| f.validator_node_registration())
+            //         .unwrap();
+            //     let pos = vn_nodes
+            //         .iter()
+            //         .position(|v| {
+            //             v == &(
+            //                 reg.public_key().clone(),
+            //                 reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
+            //             )
+            //         })
+            //         .unwrap();
+            //     vn_nodes.remove(pos);
+            // }
+        }
+
+        let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
+        for input in block.block().body.inputs() {
+            input_mmr.push(input.canonical_hash().to_vec()).unwrap();
         }
 
         block_output_mmr

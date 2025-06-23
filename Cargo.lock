@@ -3391,6 +3391,7 @@ checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.2",
+ "serde",
 ]
 
 [[package]]
@@ -4077,6 +4078,7 @@ dependencies = [
  "tari_features",
  "tari_max_size",
  "tari_script",
+ "tari_sidechain",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
@@ -4343,7 +4345,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_grpc_client"
-version = "0.1.0"
+version = "4.6.0-pre.0"
 dependencies = [
  "minotari_app_grpc",
  "tokio",
@@ -4391,6 +4393,7 @@ dependencies = [
  "tari_script",
  "tari_service_framework",
  "tari_shutdown",
+ "tari_sidechain",
  "tari_test_utils",
  "tari_utilities",
  "tempfile",
@@ -7414,6 +7417,7 @@ dependencies = [
  "tari_script",
  "tari_service_framework",
  "tari_shutdown",
+ "tari_sidechain",
  "tari_storage",
  "tari_test_utils",
  "tari_utilities",
@@ -7506,6 +7510,19 @@ dependencies = [
  "time",
  "tokio",
  "tonic 0.13.1",
+]
+
+[[package]]
+name = "tari_jellyfish"
+version = "4.6.0-pre.0"
+dependencies = [
+ "borsh",
+ "digest 0.10.7",
+ "indexmap 2.7.0",
+ "serde",
+ "tari_crypto",
+ "tari_hashing",
+ "thiserror 2.0.6",
 ]
 
 [[package]]
@@ -7673,6 +7690,23 @@ version = "4.6.0-pre.0"
 dependencies = [
  "futures 0.3.31",
  "tokio",
+]
+
+[[package]]
+name = "tari_sidechain"
+version = "4.6.0-pre.0"
+dependencies = [
+ "borsh",
+ "hex",
+ "log",
+ "serde",
+ "serde_json",
+ "tari_common_types",
+ "tari_crypto",
+ "tari_hashing",
+ "tari_jellyfish",
+ "tari_utilities",
+ "thiserror 2.0.6",
 ]
 
 [[package]]

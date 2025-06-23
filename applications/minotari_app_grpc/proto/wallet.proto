@@ -1082,8 +1082,6 @@ service Wallet {
   // ```
   rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
-  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
-
   rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponse);
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
@@ -1134,10 +1132,10 @@ service Wallet {
   // }
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
+  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 
-  rpc GetFeeEstimate(GetFeeEstimateRequest) returns (GetFeeEstimateResponse);
-
-  rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
+  rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
+  rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
 }
 
 
@@ -1186,6 +1184,7 @@ message CreateBurnTransactionRequest{
   uint64 fee_per_gram = 2;
   bytes claim_public_key = 4;
   bytes payment_id = 5;
+  bytes sidechain_deployment_key = 6;
 }
 
 // A recipient for a transfer, including address, amount, fee, and optional payment ID.
@@ -1418,8 +1417,14 @@ message ImportUtxosResponse {
 }
 
 message CreateTemplateRegistrationRequest {
-  TemplateRegistration template_registration = 1;
-  uint64 fee_per_gram = 2;
+  uint64 fee_per_gram = 1;
+  string template_name = 2;
+  uint32 template_version = 3;
+  TemplateType template_type = 4;
+  BuildInfo build_info = 5;
+  bytes binary_sha = 6;
+  string binary_url = 7;
+  bytes sidechain_deployment_key = 8;
 }
 
 message CreateTemplateRegistrationResponse {
@@ -1498,11 +1503,40 @@ message TransactionEventResponse {
 message RegisterValidatorNodeRequest {
   bytes validator_node_public_key = 1;
   Signature validator_node_signature = 2;
-  uint64 fee_per_gram = 3;
-  bytes payment_id = 5;
+  bytes validator_node_claim_public_key = 3;
+  uint64 max_epoch = 4;
+  uint64 fee_per_gram = 5;
+  bytes payment_id = 6;
+  bytes sidechain_deployment_key = 7;
 }
 
 message RegisterValidatorNodeResponse {
+  uint64 transaction_id = 1;
+  bool is_success = 2;
+  string failure_message = 3;
+}
+
+message SubmitValidatorEvictionProofRequest {
+  EvictionProof proof = 1;
+  uint64 fee_per_gram = 2;
+  string message = 3;
+  bytes sidechain_deployment_key = 4;
+}
+
+message SubmitValidatorEvictionProofResponse {
+  uint64 tx_id = 1;
+}
+
+message SubmitValidatorNodeExitRequest {
+  bytes validator_node_public_key = 1;
+  Signature validator_node_signature = 2;
+  uint64 max_epoch = 3;
+  uint64 fee_per_gram = 4;
+  bytes message = 5;
+  bytes sidechain_deployment_key = 6;
+}
+
+message SubmitValidatorNodeExitResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
@@ -1584,36 +1618,4 @@ enum PaymentDirection {
   PAYMENT_DIRECTION_INBOUND = 1;
   // Payment sent from this wallet
   PAYMENT_DIRECTION_OUTBOUND = 2;
-}
-
-message GetFeeEstimateRequest {
-  // The amount to send in microTari (1 T = 1_000_000 µT).
-  uint64 amount = 1;
-  // fee per gram to use for the estimate
-  uint64 fee_per_gram = 2;
-  // number of outputs to create in the transaction
-  uint64 output_count = 3;
-}
-
-message GetFeeEstimateResponse {
-  // Estimated fee for the transaction in microTari
-  uint64 estimated_fee = 1;
-}
-
-message GetFeePerGramStatsRequest {
-  // Optional: The number of recent blocks to consider for fee statistics.
-  uint64 block_count = 1;
-}
-
-message GetFeePerGramStatsResponse {
-  repeated FeePerGramStat fee_per_gram_stats = 1;
-}
-
-message FeePerGramStat {
-  // The average fee per gram over the specified number of blocks.
-  uint64 average_fee_per_gram = 1;
-  // The minimum fee per gram observed in the recent blocks.
-  uint64 min_fee_per_gram = 2;
-  // The maximum fee per gram observed in the recent blocks.
-  uint64 max_fee_per_gram = 3;
 }

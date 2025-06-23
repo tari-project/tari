@@ -61,6 +61,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
     emoji::EmojiId,
+    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
@@ -195,6 +196,7 @@ pub async fn burn_tari(
     fee_per_gram: u64,
     amount: MicroMinotari,
     payment_id: PaymentId,
+    sidechain_deployment_key: Option<PrivateKey>,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
         .burn_tari(
@@ -203,6 +205,104 @@ pub async fn burn_tari(
             fee_per_gram * uT,
             payment_id,
             None,
+            sidechain_deployment_key,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// encumbers a n-of-m transaction
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::mutable_key_type)]
+async fn encumber_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: MicroMinotari,
+    expected_commitment: CompressedCommitment,
+    script_input_shares: HashMap<CompressedPublicKey, CompressedCheckSigSchnorrSignature>,
+    script_signature_public_nonces: Vec<CompressedPublicKey>,
+    sender_offset_public_key_shares: Vec<CompressedPublicKey>,
+    metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
+    dh_shared_secret_shares: Vec<CompressedPublicKey>,
+    recipient_address: TariAddress,
+    original_maturity: u64,
+    use_output: UseOutput,
+    payment_id: PaymentId,
+) -> Result<
+    (
+        TxId,
+        Transaction,
+        CompressedPublicKey,
+        CompressedPublicKey,
+        CompressedPublicKey,
+        CompressedPublicKey,
+    ),
+    CommandError,
+> {
+    println!("Getting connection to BaseNode and retrieving output(s)...");
+    wallet_transaction_service
+        .encumber_aggregate_utxo(
+            fee_per_gram,
+            expected_commitment,
+            script_input_shares,
+            script_signature_public_nonces,
+            sender_offset_public_key_shares,
+            metadata_ephemeral_public_key_shares,
+            dh_shared_secret_shares,
+            recipient_address,
+            original_maturity,
+            use_output,
+            payment_id,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+async fn spend_backup_pre_mine_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: MicroMinotari,
+    output_hash: HashOutput,
+    expected_commitment: CompressedCommitment,
+    recipient_address: TariAddress,
+    payment_id: PaymentId,
+) -> Result<TxId, CommandError> {
+    wallet_transaction_service
+        .spend_backup_pre_mine_utxo(
+            fee_per_gram,
+            output_hash,
+            expected_commitment,
+            recipient_address,
+            payment_id,
+        )
+        .await
+        .map_err(CommandError::TransactionServiceError)
+}
+
+/// finalises an already encumbered a n-of-m transaction
+async fn finalise_aggregate_utxo(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    tx_id: u64,
+    meta_signatures: Vec<Signature>,
+    script_signatures: Vec<Signature>,
+    wallet_script_secret_key: PrivateKey,
+) -> Result<TxId, CommandError> {
+    trace!(target: LOG_TARGET, "finalise_aggregate_utxo: start");
+
+    let mut meta_sig = UncompressedSignature::default();
+    for sig in &meta_signatures {
+        meta_sig = &meta_sig + sig.to_schnorr_signature()?;
+    }
+    let mut script_sig = UncompressedSignature::default();
+    for sig in &script_signatures {
+        script_sig = &script_sig + sig.to_schnorr_signature()?;
+    }
+    trace!(target: LOG_TARGET, "finalise_aggregate_utxo: aggregated signatures");
+
+    wallet_transaction_service
+        .finalize_aggregate_utxo(
+            tx_id,
+            Signature::new_from_schnorr(meta_sig),
+            Signature::new_from_schnorr(script_sig),
+            wallet_script_secret_key,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -361,6 +461,9 @@ pub async fn register_validator_node(
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: CompressedPublicKey,
     validator_node_signature: Signature,
+    validator_node_claim_public_key: CompressedPublicKey,
+    sidechain_deployment_key: Option<PrivateKey>,
+    epoch: VnEpoch,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
@@ -370,6 +473,9 @@ pub async fn register_validator_node(
             amount,
             validator_node_public_key,
             validator_node_signature,
+            validator_node_claim_public_key,
+            sidechain_deployment_key,
+            epoch,
             selection_criteria,
             fee_per_gram,
             payment_id,
@@ -591,9 +697,11 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, payment_id_clone)
-                            .await
-                            .map(|(tx_id, _)| tx_id),
+                        MakeItRainTransactionType::BurnTari => {
+                            burn_tari(tx_service, fee, amount, payment_id_clone, None)
+                                .await
+                                .map(|(tx_id, _)| tx_id)
+                        },
                     };
                     let submit_time = Instant::now();
 
@@ -817,6 +925,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     PaymentId::open_from_string(&args.payment_id, TxType::Burn),
+                    None,
                 )
                 .await
                 {
@@ -2374,8 +2483,17 @@ pub async fn command_runner(
                     args.validator_node_public_key.into(),
                     Signature::new(
                         args.validator_node_public_nonce.into(),
-                        RistrettoSecretKey::from_vec(&args.validator_node_signature)?,
+                        RistrettoSecretKey::from_vec(&args.validator_node_signature[0])?,
                     ),
+                    args.validator_node_claim_public_key.into(),
+                    if args.sidechain_deployment_key.is_empty() {
+                        None
+                    } else {
+                        Some(RistrettoSecretKey::from_canonical_bytes(
+                            &args.sidechain_deployment_key[0],
+                        )?)
+                    },
+                    args.epoch,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),

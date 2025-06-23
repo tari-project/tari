@@ -108,21 +108,26 @@ pub struct ConsensusConstants {
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
     /// The allowlist of range proof types
-    permitted_range_proof_types: [(OutputType, &'static [RangeProofType]); 5],
+    permitted_range_proof_types: &'static [(OutputType, &'static [RangeProofType])],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
     coinbase_output_features_extra_max_length: u32,
     /// Maximum number of token elements permitted in covenants
     max_covenant_length: u32,
     /// Epoch duration in blocks
     vn_epoch_length: u64,
-    /// The number of Epochs that a validator node registration is valid
-    vn_validity_period_epochs: VnEpoch,
     /// The min amount of micro Minotari to deposit for a registration transaction to be allowed onto the blockchain
     vn_registration_min_deposit_amount: MicroMinotari,
     /// The period that the registration funds are required to be locked up.
     vn_registration_lock_height: u64,
     /// The period after which the VNs will be reshuffled.
     vn_registration_shuffle_interval: VnEpoch,
+    /// Maximum number of validator nodes activated initially
+    /// (in the first epoch when we do not have any vns yet).
+    vn_registration_max_vns_initial_epoch: u32,
+    /// Maximum number of validator nodes activated in an epoch.
+    vn_registration_max_vns_per_epoch: u32,
+    /// Maximum number of validator nodes that can exit per epoch
+    vn_registration_max_exits_per_epoch: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -329,17 +334,13 @@ impl ConsensusConstants {
     }
 
     /// Returns the permitted range proof types
-    pub fn permitted_range_proof_types(&self) -> [(OutputType, &[RangeProofType]); 5] {
+    pub fn permitted_range_proof_types(&self) -> &'static [(OutputType, &'static [RangeProofType])] {
         self.permitted_range_proof_types
     }
 
     /// The maximum permitted token length of all covenants. A value of 0 is equivalent to disabling covenants.
     pub fn max_covenant_length(&self) -> u32 {
         self.max_covenant_length
-    }
-
-    pub fn validator_node_validity_period_epochs(&self) -> VnEpoch {
-        self.vn_validity_period_epochs
     }
 
     pub fn validator_node_registration_shuffle_interval(&self) -> VnEpoch {
@@ -361,7 +362,19 @@ impl ConsensusConstants {
 
     /// Returns the block height of the start of the given epoch
     pub fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
-        epoch.as_u64() * self.vn_epoch_length
+        epoch.as_u64().saturating_mul(self.vn_epoch_length)
+    }
+
+    pub fn vn_registration_max_vns_initial_epoch(&self) -> u32 {
+        self.vn_registration_max_vns_initial_epoch
+    }
+
+    pub fn vn_registration_max_vns_per_epoch(&self) -> u32 {
+        self.vn_registration_max_vns_per_epoch
+    }
+
+    pub fn vn_registration_max_exits_per_epoch(&self) -> u32 {
+        self.vn_registration_max_exits_per_epoch
     }
 
     pub fn epoch_length(&self) -> u64 {
@@ -414,11 +427,13 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -479,11 +494,13 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
-            vn_validity_period_epochs: VnEpoch(3),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -535,33 +552,14 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         };
-
-        // let mut con2 = consensus_constants1.clone();
-        // con2.effective_from_height = 2560;
-        // let mut algos = HashMap::new();
-        // algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-        //     min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
-        //     max_difficulty: Difficulty::max(),
-        //     target_time: 60,
-        // });
-        // algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
-        //     min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
-        //     max_difficulty: Difficulty::max(),
-        //     target_time: 60,
-        // });
-        // algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
-        //     min_difficulty: Difficulty::from_u64(600).expect("valid difficulty"),
-        //     max_difficulty: Difficulty::max(),
-        //     target_time: 60,
-        // });
-        // con2.proof_of_work = algos;
-
         let consensus_constants = vec![consensus_constants1];
         consensus_constants
     }
@@ -613,11 +611,13 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         }];
         consensus_constants
     }
@@ -663,11 +663,13 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
@@ -740,11 +742,13 @@ impl ConsensusConstants {
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             max_covenant_length: 0,
             vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
+            vn_registration_max_vns_initial_epoch: 50,
+            vn_registration_max_vns_per_epoch: 10,
+            vn_registration_max_exits_per_epoch: 5,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 540; // 18 hours
@@ -784,8 +788,8 @@ impl ConsensusConstants {
         &[OutputType::Coinbase, OutputType::Standard, OutputType::Burn]
     }
 
-    const fn current_permitted_range_proof_types() -> [(OutputType, &'static [RangeProofType]); 5] {
-        [
+    const fn current_permitted_range_proof_types() -> &'static [(OutputType, &'static [RangeProofType])] {
+        &[
             (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
             (OutputType::Coinbase, &[
                 RangeProofType::BulletProofPlus,
@@ -796,17 +800,24 @@ impl ConsensusConstants {
                 RangeProofType::BulletProofPlus,
             ]),
             (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+            (OutputType::SidechainCheckpoint, &[RangeProofType::BulletProofPlus]),
+            (OutputType::SidechainProof, &[RangeProofType::BulletProofPlus]),
+            (OutputType::ValidatorNodeExit, &[RangeProofType::BulletProofPlus]),
         ]
     }
 
-    const fn all_range_proof_types() -> [(OutputType, &'static [RangeProofType]); 5] {
-        [
+    const fn all_range_proof_types() -> &'static [(OutputType, &'static [RangeProofType])] {
+        const RP_TYPES: &[(OutputType, &[RangeProofType])] = &[
             (OutputType::Standard, RangeProofType::all()),
             (OutputType::Coinbase, RangeProofType::all()),
             (OutputType::Burn, RangeProofType::all()),
             (OutputType::ValidatorNodeRegistration, RangeProofType::all()),
             (OutputType::CodeTemplateRegistration, RangeProofType::all()),
-        ]
+            (OutputType::SidechainCheckpoint, RangeProofType::all()),
+            (OutputType::SidechainProof, RangeProofType::all()),
+            (OutputType::ValidatorNodeExit, RangeProofType::all()),
+        ];
+        RP_TYPES
     }
 }
 
@@ -889,7 +900,7 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_permitted_range_proof_types(
         mut self,
-        permitted_range_proof_types: [(OutputType, &'static [RangeProofType]); 5],
+        permitted_range_proof_types: &'static [(OutputType, &'static [RangeProofType])],
     ) -> Self {
         self.consensus.permitted_range_proof_types = permitted_range_proof_types;
         self
@@ -1076,47 +1087,13 @@ mod test {
         }
     }
 
-    // This function is to ensure all OutputType variants are assessed in the tests
-    fn cycle_output_type_enum(output_type: OutputType) -> OutputType {
-        match output_type {
-            OutputType::Standard => OutputType::Coinbase,
-            OutputType::Coinbase => OutputType::Burn,
-            OutputType::Burn => OutputType::ValidatorNodeRegistration,
-            OutputType::ValidatorNodeRegistration => OutputType::CodeTemplateRegistration,
-            OutputType::CodeTemplateRegistration => OutputType::Standard,
-        }
-    }
-
-    // This function is to ensure all RangeProofType variants are assessed in the tests
-    fn cycle_range_proof_type_enum(range_proof_type: RangeProofType) -> RangeProofType {
-        match range_proof_type {
-            RangeProofType::BulletProofPlus => RangeProofType::RevealedValue,
-            RangeProofType::RevealedValue => RangeProofType::BulletProofPlus,
-        }
-    }
-
     #[test]
     fn range_proof_types_coverage() {
-        let mut output_type_enums = vec![OutputType::Standard];
-        loop {
-            let next_variant = cycle_output_type_enum(*output_type_enums.last().unwrap());
-            if output_type_enums.contains(&next_variant) {
-                break;
-            }
-            output_type_enums.push(next_variant);
-        }
-
-        let mut range_proof_type_enums = vec![RangeProofType::BulletProofPlus];
-        loop {
-            let next_variant = cycle_range_proof_type_enum(*range_proof_type_enums.last().unwrap());
-            if range_proof_type_enums.contains(&next_variant) {
-                break;
-            }
-            range_proof_type_enums.push(next_variant);
-        }
+        let output_type_variants = OutputType::all();
+        let range_proof_type_variants = RangeProofType::all();
 
         let permitted_range_proof_types = ConsensusConstants::current_permitted_range_proof_types().to_vec();
-        for item in &output_type_enums {
+        for item in output_type_variants {
             let entries = permitted_range_proof_types
                 .iter()
                 .filter(|&&x| x.0 == *item)
@@ -1126,13 +1103,13 @@ mod test {
         }
 
         let permitted_range_proof_types = ConsensusConstants::all_range_proof_types().to_vec();
-        for output_type in &output_type_enums {
+        for output_type in output_type_variants {
             let entries = permitted_range_proof_types
                 .iter()
                 .filter(|&&x| x.0 == *output_type)
                 .collect::<Vec<_>>();
             assert_eq!(entries.len(), 1);
-            for range_proof_type in &range_proof_type_enums {
+            for range_proof_type in range_proof_type_variants {
                 assert!(entries[0].1.contains(range_proof_type));
             }
         }

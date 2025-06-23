@@ -200,6 +200,12 @@ pub enum TransactionServiceError {
     ScriptError(#[from] ScriptError),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Error signing sidechain data: `{0}`")]
+    SidechainSigningError(String),
+    #[error("Invalid data for a burn transaction: `{0}`")]
+    InvalidBurnTransaction(String),
+    #[error("Invalid validator node signature")]
+    InvalidValidatorNodeSignature,
 }
 
 impl From<RangeProofError> for TransactionServiceError {

@@ -61,7 +61,7 @@ pub fn lmdb_insert<K, V>(
 ) -> Result<(), ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized + Debug,
-    V: Serialize + Debug,
+    V: Serialize + Debug + ?Sized,
 {
     let val_buf = serialize(val, None)?;
     match txn.access().put(db, key, &val_buf, put::NOOVERWRITE) {

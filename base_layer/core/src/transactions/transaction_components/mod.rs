@@ -63,8 +63,7 @@ pub use output_features::CoinBaseExtra;
 mod output_features_version;
 mod output_type;
 mod range_proof_type;
-mod side_chain;
-
+pub mod side_chain;
 mod transaction;
 mod transaction_builder;
 mod transaction_input;

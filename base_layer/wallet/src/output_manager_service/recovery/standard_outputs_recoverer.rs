@@ -226,6 +226,9 @@ where
             OutputType::Burn => OutputSource::Burn,
             OutputType::ValidatorNodeRegistration => OutputSource::ValidatorNodeRegistration,
             OutputType::CodeTemplateRegistration => OutputSource::CodeTemplateRegistration,
+            OutputType::SidechainCheckpoint => OutputSource::SidechainCheckpoint,
+            OutputType::SidechainProof => OutputSource::SidechainProof,
+            OutputType::ValidatorNodeExit => OutputSource::ValidatorNodeExit,
         }
     }
 

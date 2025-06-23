@@ -46,7 +46,7 @@ service BaseNode {
     // Returns Block Fees
     rpc GetBlockFees (BlockGroupRequest) returns (BlockGroupResponse);
     // Get Version
-    rpc GetVersion(Empty) returns (StringValue);
+    rpc GetVersion(Empty) returns (BaseNodeGetVersionResponse);
     // Check for new updates
     rpc CheckForUpdates(Empty) returns (SoftwareUpdate);
     // Get coins in circulation
@@ -95,6 +95,7 @@ service BaseNode {
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
     // Get VNs
     rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream GetActiveValidatorNodesResponse);
+    rpc GetValidatorNodeChanges(GetValidatorNodeChangesRequest) returns (GetValidatorNodeChangesResponse);
     rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
     // Get templates
     rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
@@ -242,9 +243,9 @@ message IntegerValue {
     uint64 value = 1;
 }
 
-// A generic String value
-message StringValue {
-    string value = 1;
+message BaseNodeGetVersionResponse {
+  string version = 1;
+  uint32 network = 2;
 }
 
 /// GetBlockSize / GetBlockFees Request
@@ -487,48 +488,143 @@ message MempoolStatsResponse {
 }
 
 message GetActiveValidatorNodesRequest {
-    uint64 height = 1;
+  uint64 height = 1;
+  bytes sidechain_id = 2;
 }
 
 message GetActiveValidatorNodesResponse {
-    bytes shard_key = 1;
-    bytes public_key = 2;
+  bytes shard_key = 1;
+  bytes public_key = 2;
+  bytes sidechain_id = 3;
+}
+
+message GetValidatorNodeChangesRequest {
+  uint64 epoch = 1;
+  bytes sidechain_id = 2;
+}
+
+message ValidatorNodeChange {
+  oneof change {
+    ValidatorNodeChangeAdd add = 1;
+    ValidatorNodeChangeRemove remove = 2;
+  }
+}
+
+message ValidatorNodeChangeAdd {
+  uint64 activation_epoch = 1;
+  ValidatorNodeRegistration registration = 2;
+  uint64 minimum_value_promise = 3;
+  bytes shard_key = 4;
+}
+
+message ValidatorNodeChangeRemove {
+  bytes public_key = 1;
+}
+
+message GetValidatorNodeChangesResponse {
+  repeated ValidatorNodeChange changes = 1;
 }
 
 message GetShardKeyRequest {
-    uint64 height = 1;
-    bytes public_key = 2;
+  uint64 epoch = 1;
+  bytes public_key = 2;
 }
 
 message GetShardKeyResponse {
-    bytes shard_key = 1;
-    bool found = 2;
+  bytes shard_key = 1;
 }
 
 message GetTemplateRegistrationsRequest {
-    bytes start_hash = 1;
-    uint64 count = 2;
+  bytes start_hash = 1;
+  uint64 count = 2;
 }
 
 message GetTemplateRegistrationResponse {
-    bytes utxo_hash = 1;
-    TemplateRegistration registration = 2;
+  bytes utxo_hash = 1;
+  TemplateRegistration registration = 2;
 }
 
 message BlockInfo {
-    uint64 height = 1;
-    bytes hash = 2;
-    bytes next_block_hash = 3;
+  uint64 height = 1;
+  bytes hash = 2;
+  bytes next_block_hash = 3;
 }
 
 message GetSideChainUtxosRequest {
-    bytes start_hash = 1;
-    uint64 count = 2;
+  bytes start_hash = 1;
+  uint64 count = 2;
 }
 
 message GetSideChainUtxosResponse {
-    BlockInfo block_info = 1;
-    repeated TransactionOutput outputs = 2;
+  BlockInfo block_info = 1;
+  repeated TransactionOutput outputs = 2;
+}
+
+message GetNetworkStateRequest {
+}
+
+message GetNetworkStateResponse {
+   // metadata
+    MetaData metadata = 1;
+    // has the base node synced
+    bool initial_sync_achieved = 2;
+    //current state of the base node
+    BaseNodeState base_node_state = 3;
+    // do we have failed checkpoints
+    bool failed_checkpoints = 4;
+    // The block reward of the next tip
+    uint64 reward = 5;
+    // estimate sha3x hash rate
+    uint64 sha3x_estimated_hash_rate = 6;
+    // estimate randomx hash rate
+    uint64 monero_randomx_estimated_hash_rate = 7;
+    uint64 tari_randomx_estimated_hash_rate = 10;
+    // number of connections
+    uint64 num_connections = 8;
+    //liveness results
+    repeated LivenessResult liveness_results = 9;
+}
+
+message LivenessResult{
+    // node id
+    bytes peer_node_id = 1;
+    // time to discover
+    uint64 discover_latency = 2;
+    // Dial latency
+    uint64 ping_latency = 3;
+}
+
+// PayRef (Payment Reference) search and lookup messages
+
+// Request to search for outputs by payment reference
+message SearchPaymentReferencesRequest {
+    // Payment reference as hex string (64 characters)
+    repeated string payment_reference_hex = 1;
+    repeated bytes payment_reference_bytes = 2;
+    // Optional: include spent outputs in results
+    bool include_spent = 3;
+}
+
+// Response containing payment reference match
+message PaymentReferenceResponse {
+    // The payment reference that was found
+    string payment_reference_hex = 1;
+    // Block height where the output was mined
+    uint64 block_height = 2;
+    // Block hash where the output was mined
+    bytes block_hash = 3;
+    // Timestamp when the output was mined
+    uint64 mined_timestamp = 4;
+    // Output commitment (32 bytes)
+    bytes commitment = 5;
+    // Whether this output has been spent
+    bool is_spent = 6;
+    // Height where output was spent (if spent)
+    uint64 spent_height = 7;
+    // Block hash where output was spent (if spent)
+    bytes spent_block_hash = 8;
+    // Transaction output amount will be 0 for non set a
+    uint64 min_value_promise = 9;
 }
 
 message GetNetworkStateRequest {
