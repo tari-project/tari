@@ -7,8 +7,6 @@
 //! with the main Tari wallet implementation.
 
 use crate::errors::KeyManagementError;
-use blake2::{Blake2b, Digest};
-use digest::consts::U64;
 use hmac;
 use sha2;
 
@@ -288,48 +286,32 @@ fn mnemonic_to_bytes(mnemonic: &str) -> Result<Vec<u8>, KeyManagementError> {
     Ok(bytes)
 }
 
-/// Converts a mnemonic phrase and optional passphrase to a 32-byte master key using the Tari CipherSeed specification
+/// Converts a mnemonic phrase and optional passphrase to a 32-byte master key using BIP39-style derivation
+/// This follows the standard BIP39 approach of combining mnemonic + passphrase
 pub fn mnemonic_to_master_key(mnemonic: &str, passphrase: Option<&str>) -> Result<[u8; 32], KeyManagementError> {
     if mnemonic.trim().is_empty() {
         return Err(KeyManagementError::MnemonicError("Mnemonic phrase is empty".to_string()));
     }
     
-    // Convert mnemonic to bytes (this gives us the encrypted CipherSeed data)
-    let encrypted_seed = mnemonic_to_bytes(mnemonic)?;
+    // Validate the mnemonic format
+    let _mnemonic_bytes = mnemonic_to_bytes(mnemonic)?;
     
-    // The encrypted seed should be 33 bytes (version + ciphertext + salt + checksum)
-    if encrypted_seed.len() != 33 {
-        return Err(KeyManagementError::MnemonicError(format!("Invalid encrypted seed length: {}", encrypted_seed.len())));
-    }
+    // Create the BIP39-style salt: "mnemonic" + passphrase
+    let salt_prefix = "mnemonic";
+    let passphrase_str = passphrase.unwrap_or("");
+    let mut salt = Vec::with_capacity(salt_prefix.len() + passphrase_str.len());
+    salt.extend_from_slice(salt_prefix.as_bytes());
+    salt.extend_from_slice(passphrase_str.as_bytes());
     
-    // For now, we'll use a simplified approach that extracts the entropy directly
-    // In a full implementation, this would decrypt the CipherSeed using the passphrase
-    // and extract the 16-byte entropy field
-    
-    // For the lightweight implementation, we'll use the first 16 bytes as entropy
-    // This is a simplified approach - in practice, you'd need the full CipherSeed decryption
-    let mut entropy = [0u8; 16];
-    if encrypted_seed.len() >= 16 {
-        entropy.copy_from_slice(&encrypted_seed[1..17]); // Skip version byte
-    } else {
-        // Fallback: hash the mnemonic to get entropy
-        let mut hasher = Blake2b::<U64>::new();
-        hasher.update(mnemonic.as_bytes());
-        if let Some(pass) = passphrase {
-            hasher.update(pass.as_bytes());
-        }
-        let result = hasher.finalize();
-        entropy.copy_from_slice(&result[..16]);
-    }
-    
-    // Convert to 32-byte master key using PBKDF2
+    // Use PBKDF2 with the mnemonic as the password and the constructed salt
+    // This is the standard BIP39 approach that properly incorporates the passphrase
     let mut master_key = [0u8; 32];
     pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(
-        entropy.as_ref(),
-        &encrypted_seed[1..17],
-        2048,
+        mnemonic.as_bytes(),  // Use the mnemonic string as the password
+        &salt,                // Use "mnemonic" + passphrase as the salt
+        2048,                 // Standard iteration count
         &mut master_key,
-    );
+    ).map_err(|_| KeyManagementError::KeyDerivationFailed("PBKDF2 key derivation failed".to_string()))?;
 
     Ok(master_key)
 }
@@ -340,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_mnemonic_to_master_key() {
-        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
         let passphrase = Some("test");
         let key = mnemonic_to_master_key(mnemonic, passphrase).unwrap();
         assert_eq!(key.len(), 32);
@@ -358,5 +340,23 @@ mod tests {
         assert_eq!(find_mnemonic_index_from_word("ability").unwrap(), 1);
         assert_eq!(find_mnemonic_index_from_word("zoo").unwrap(), 2047);
         assert!(find_mnemonic_index_from_word("invalid").is_err());
+    }
+
+    #[test]
+    fn test_mnemonic_to_master_key_different_passphrases() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        
+        let key1 = mnemonic_to_master_key(mnemonic, Some("passphrase1")).unwrap();
+        let key2 = mnemonic_to_master_key(mnemonic, Some("passphrase2")).unwrap();
+        let key3 = mnemonic_to_master_key(mnemonic, None).unwrap();
+        
+        // Different passphrases should produce different keys
+        assert_ne!(key1, key2);
+        assert_ne!(key1, key3);
+        assert_ne!(key2, key3);
+        
+        // Same mnemonic and passphrase should produce the same key
+        let key1_duplicate = mnemonic_to_master_key(mnemonic, Some("passphrase1")).unwrap();
+        assert_eq!(key1, key1_duplicate);
     }
 } 

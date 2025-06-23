@@ -7,9 +7,15 @@
 //! master keys, seed phrases, and wallet metadata.
 
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::Zeroize;
 use crate::data_structures::SafeArray;
 use crate::errors::KeyManagementError;
+use crate::key_management::mnemonic_to_master_key;
+
+// Constants from Tari CipherSeed specification for birthday calculation
+const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1640995200; // seconds to 2022-01-01 00:00:00 UTC
+const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
 
 /// Core wallet struct containing master key, birthday, and metadata
 #[derive(Debug, Clone)]
@@ -43,6 +49,32 @@ impl Wallet {
             birthday,
             metadata: WalletMetadata::default(),
         }
+    }
+
+    /// Create a new wallet from a seed phrase and optional passphrase
+    pub fn new_from_seed_phrase(phrase: &str, passphrase: Option<&str>) -> Result<Self, KeyManagementError> {
+        // Convert seed phrase to master key
+        let master_key = mnemonic_to_master_key(phrase, passphrase)?;
+        
+        // Calculate current birthday as days since genesis
+        let birthday = Self::calculate_current_birthday();
+        
+        Ok(Self::new(master_key, birthday))
+    }
+
+    /// Calculate the current birthday (days since Tari genesis date)
+    fn calculate_current_birthday() -> u64 {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default() // default to epoch on error
+            .as_secs();
+        
+        if now < BIRTHDAY_GENESIS_FROM_UNIX_EPOCH {
+            return 0; // Before genesis date
+        }
+        
+        let seconds_since_genesis = now - BIRTHDAY_GENESIS_FROM_UNIX_EPOCH;
+        seconds_since_genesis / SECONDS_PER_DAY
     }
 
     /// Get the wallet birthday (creation timestamp)
@@ -215,5 +247,76 @@ mod tests {
         assert_eq!(metadata.network, "");
         assert_eq!(metadata.current_key_index, 0);
         assert!(metadata.properties.is_empty());
+    }
+
+    #[test]
+    fn test_wallet_new_from_seed_phrase() {
+        // Test with a 24-word seed phrase
+        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let passphrase = Some("test");
+        
+        let wallet = Wallet::new_from_seed_phrase(seed_phrase, passphrase).unwrap();
+        
+        // Verify the wallet was created successfully
+        assert!(wallet.birthday() > 0); // Should have a valid birthday
+        assert_eq!(wallet.current_key_index(), 0);
+        assert_eq!(wallet.network(), "");
+        assert!(wallet.label().is_none());
+        
+        // Verify that the same seed phrase produces the same master key
+        let wallet2 = Wallet::new_from_seed_phrase(seed_phrase, passphrase).unwrap();
+        assert_eq!(wallet.master_key_bytes(), wallet2.master_key_bytes());
+    }
+
+    #[test]
+    fn test_wallet_new_from_seed_phrase_without_passphrase() {
+        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        
+        let wallet = Wallet::new_from_seed_phrase(seed_phrase, None).unwrap();
+        
+        // Should create a valid wallet
+        assert!(wallet.birthday() > 0);
+        assert_eq!(wallet.current_key_index(), 0);
+    }
+
+    #[test]
+    fn test_wallet_new_from_seed_phrase_different_passphrases() {
+        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        
+        let wallet1 = Wallet::new_from_seed_phrase(seed_phrase, Some("passphrase1")).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(seed_phrase, Some("passphrase2")).unwrap();
+        let wallet3 = Wallet::new_from_seed_phrase(seed_phrase, None).unwrap();
+        
+        // Verify all wallets are created successfully
+        assert!(wallet1.birthday() > 0);
+        assert!(wallet2.birthday() > 0);
+        assert!(wallet3.birthday() > 0);
+        
+        // Different passphrases should produce different master keys
+        assert_ne!(wallet1.master_key_bytes(), wallet2.master_key_bytes());
+        assert_ne!(wallet1.master_key_bytes(), wallet3.master_key_bytes());
+        assert_ne!(wallet2.master_key_bytes(), wallet3.master_key_bytes());
+        
+        // Same seed phrase and passphrase should produce the same master key
+        let wallet1_duplicate = Wallet::new_from_seed_phrase(seed_phrase, Some("passphrase1")).unwrap();
+        assert_eq!(wallet1.master_key_bytes(), wallet1_duplicate.master_key_bytes());
+    }
+
+    #[test]
+    fn test_wallet_new_from_invalid_seed_phrase() {
+        let invalid_phrase = "invalid seed phrase";
+        
+        let result = Wallet::new_from_seed_phrase(invalid_phrase, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_calculate_current_birthday() {
+        let birthday = Wallet::calculate_current_birthday();
+        
+        // Birthday should be a reasonable number (days since 2022-01-01)
+        // As of 2024, this should be at least 365 days but less than 10000 days
+        assert!(birthday >= 365);
+        assert!(birthday < 10000);
     }
 } 
