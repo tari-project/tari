@@ -26,6 +26,15 @@ getrandom = "0.2"
 # Hex encoding
 hex = "0.4"
 
+# CRC32 for checksums
+crc32fast = "1.4"
+
+# ChaCha20 for CipherSeed encryption
+chacha20 = "0.9"
+
+# Argon2 for CipherSeed key derivation
+argon2 = "0.5"
+
 # Primitive types
 primitive-types = { version = "0.12", features = ["serde"] }
 

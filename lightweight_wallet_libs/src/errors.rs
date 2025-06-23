@@ -326,6 +326,21 @@ pub enum KeyManagementError {
     
     #[error("Key version error: {0}")]
     KeyVersionError(String),
+    
+    #[error("CRC checksum error")]
+    CrcError,
+    
+    #[error("Version mismatch")]
+    VersionMismatch,
+    
+    #[error("Invalid data format")]
+    InvalidData,
+    
+    #[error("Decryption failed")]
+    DecryptionFailed,
+    
+    #[error("Cryptographic error: {0}")]
+    CryptographicError(String),
 }
 
 /// Errors related to UTXO scanning operations

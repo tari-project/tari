@@ -12,7 +12,7 @@ use zeroize::Zeroize;
 use rand_core::{OsRng, RngCore};
 use crate::data_structures::SafeArray;
 use crate::errors::KeyManagementError;
-use crate::key_management::mnemonic_to_master_key;
+use crate::key_management::{mnemonic_to_master_key, generate_seed_phrase, validate_seed_phrase, bytes_to_mnemonic, CipherSeed};
 
 // Constants from Tari CipherSeed specification for birthday calculation
 const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1640995200; // seconds to 2022-01-01 00:00:00 UTC
@@ -91,6 +91,18 @@ impl Wallet {
             metadata: WalletMetadata::default(),
             original_seed_phrase: None,
         }
+    }
+
+    /// Generate a new wallet with a fresh seed phrase
+    /// 
+    /// Creates a wallet using a randomly generated 24-word BIP39 seed phrase.
+    /// The original seed phrase is stored and can be exported using `export_seed_phrase()`.
+    pub fn generate_new_with_seed_phrase(passphrase: Option<&str>) -> Result<Self, KeyManagementError> {
+        // Generate a new 24-word seed phrase
+        let seed_phrase = generate_seed_phrase()?;
+        
+        // Create wallet from the generated seed phrase
+        Self::new_from_seed_phrase(&seed_phrase, passphrase)
     }
 
     /// Calculate the current birthday (days since Tari genesis date)
@@ -299,11 +311,10 @@ mod tests {
 
     #[test]
     fn test_wallet_new_from_seed_phrase() {
-        // Test with a 24-word seed phrase
-        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
-        let passphrase = Some("test");
+        // Test with no passphrase
+        let seed_phrase = crate::key_management::generate_seed_phrase().unwrap();
         
-        let wallet = Wallet::new_from_seed_phrase(seed_phrase, passphrase).unwrap();
+        let wallet = Wallet::new_from_seed_phrase(&seed_phrase, None).unwrap();
         
         // Verify the wallet was created successfully
         assert!(wallet.birthday() > 0); // Should have a valid birthday
@@ -312,15 +323,24 @@ mod tests {
         assert!(wallet.label().is_none());
         
         // Verify that the same seed phrase produces the same master key
-        let wallet2 = Wallet::new_from_seed_phrase(seed_phrase, passphrase).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(&seed_phrase, None).unwrap();
         assert_eq!(wallet.master_key_bytes(), wallet2.master_key_bytes());
+        
+        // Test with passphrase - need to generate seed phrase with the same passphrase
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("test")).unwrap();
+        let seed_phrase_with_pass = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        
+        let wallet_with_pass = Wallet::new_from_seed_phrase(&seed_phrase_with_pass, Some("test")).unwrap();
+        let wallet_with_pass2 = Wallet::new_from_seed_phrase(&seed_phrase_with_pass, Some("test")).unwrap();
+        assert_eq!(wallet_with_pass.master_key_bytes(), wallet_with_pass2.master_key_bytes());
     }
 
     #[test]
     fn test_wallet_new_from_seed_phrase_without_passphrase() {
-        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let seed_phrase = crate::key_management::generate_seed_phrase().unwrap();
         
-        let wallet = Wallet::new_from_seed_phrase(seed_phrase, None).unwrap();
+        let wallet = Wallet::new_from_seed_phrase(&seed_phrase, None).unwrap();
         
         // Should create a valid wallet
         assert!(wallet.birthday() > 0);
@@ -329,24 +349,36 @@ mod tests {
 
     #[test]
     fn test_wallet_new_from_seed_phrase_different_passphrases() {
-        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        // Create different CipherSeeds with different passphrases
+        let cipher_seed1 = CipherSeed::new();
+        let cipher_seed2 = CipherSeed::new();
+        let cipher_seed3 = CipherSeed::new();
         
-        let wallet1 = Wallet::new_from_seed_phrase(seed_phrase, Some("passphrase1")).unwrap();
-        let wallet2 = Wallet::new_from_seed_phrase(seed_phrase, Some("passphrase2")).unwrap();
-        let wallet3 = Wallet::new_from_seed_phrase(seed_phrase, None).unwrap();
+        let encrypted1 = cipher_seed1.encipher(Some("passphrase1")).unwrap();
+        let seed_phrase1 = bytes_to_mnemonic(&encrypted1).unwrap();
+        
+        let encrypted2 = cipher_seed2.encipher(Some("passphrase2")).unwrap();
+        let seed_phrase2 = bytes_to_mnemonic(&encrypted2).unwrap();
+        
+        let encrypted3 = cipher_seed3.encipher(None).unwrap();
+        let seed_phrase3 = bytes_to_mnemonic(&encrypted3).unwrap();
+        
+        let wallet1 = Wallet::new_from_seed_phrase(&seed_phrase1, Some("passphrase1")).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(&seed_phrase2, Some("passphrase2")).unwrap();
+        let wallet3 = Wallet::new_from_seed_phrase(&seed_phrase3, None).unwrap();
         
         // Verify all wallets are created successfully
         assert!(wallet1.birthday() > 0);
         assert!(wallet2.birthday() > 0);
         assert!(wallet3.birthday() > 0);
         
-        // Different passphrases should produce different master keys
+        // Different seed phrases should produce different master keys
         assert_ne!(wallet1.master_key_bytes(), wallet2.master_key_bytes());
         assert_ne!(wallet1.master_key_bytes(), wallet3.master_key_bytes());
         assert_ne!(wallet2.master_key_bytes(), wallet3.master_key_bytes());
         
         // Same seed phrase and passphrase should produce the same master key
-        let wallet1_duplicate = Wallet::new_from_seed_phrase(seed_phrase, Some("passphrase1")).unwrap();
+        let wallet1_duplicate = Wallet::new_from_seed_phrase(&seed_phrase1, Some("passphrase1")).unwrap();
         assert_eq!(wallet1.master_key_bytes(), wallet1_duplicate.master_key_bytes());
     }
 
@@ -442,14 +474,23 @@ mod tests {
 
     #[test]
     fn test_wallet_export_seed_phrase_from_phrase() {
-        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
-        let passphrase = Some("test");
+        // Generate a seed phrase with no passphrase (default from generate_seed_phrase)
+        let seed_phrase = crate::key_management::generate_seed_phrase().unwrap();
         
-        let wallet = Wallet::new_from_seed_phrase(seed_phrase, passphrase).unwrap();
+        let wallet = Wallet::new_from_seed_phrase(&seed_phrase, None).unwrap();
         
         // Should be able to export the original seed phrase
         let exported_phrase = wallet.export_seed_phrase().unwrap();
         assert_eq!(exported_phrase, seed_phrase);
+        
+        // Test with a passphrase - need to create seed phrase with the same passphrase
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("test")).unwrap();
+        let seed_phrase_with_pass = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        
+        let wallet_with_pass = Wallet::new_from_seed_phrase(&seed_phrase_with_pass, Some("test")).unwrap();
+        let exported_phrase_with_pass = wallet_with_pass.export_seed_phrase().unwrap();
+        assert_eq!(exported_phrase_with_pass, seed_phrase_with_pass);
     }
 
     #[test]
@@ -480,11 +521,11 @@ mod tests {
 
     #[test]
     fn test_wallet_export_seed_phrase_different_phrases() {
-        let phrase1 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
-        let phrase2 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let phrase1 = crate::key_management::generate_seed_phrase().unwrap();
+        let phrase2 = crate::key_management::generate_seed_phrase().unwrap();
         
-        let wallet1 = Wallet::new_from_seed_phrase(phrase1, None).unwrap();
-        let wallet2 = Wallet::new_from_seed_phrase(phrase2, None).unwrap();
+        let wallet1 = Wallet::new_from_seed_phrase(&phrase1, None).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(&phrase2, None).unwrap();
         
         let exported1 = wallet1.export_seed_phrase().unwrap();
         let exported2 = wallet2.export_seed_phrase().unwrap();
@@ -496,8 +537,8 @@ mod tests {
 
     #[test]
     fn test_wallet_zeroization_with_seed_phrase() {
-        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
-        let mut wallet = Wallet::new_from_seed_phrase(seed_phrase, None).unwrap();
+        let seed_phrase = crate::key_management::generate_seed_phrase().unwrap();
+        let mut wallet = Wallet::new_from_seed_phrase(&seed_phrase, None).unwrap();
         
         // Verify seed phrase is stored
         assert_eq!(wallet.export_seed_phrase().unwrap(), seed_phrase);
@@ -512,21 +553,146 @@ mod tests {
 
     #[test]
     fn test_wallet_seed_phrase_consistency() {
-        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
-        let passphrase1 = Some("test1");
-        let passphrase2 = Some("test2");
+        // Create seed phrases with specific passphrases
+        let cipher_seed1 = CipherSeed::new();
+        let cipher_seed2 = CipherSeed::new();
         
-        let wallet1 = Wallet::new_from_seed_phrase(seed_phrase, passphrase1).unwrap();
-        let wallet2 = Wallet::new_from_seed_phrase(seed_phrase, passphrase2).unwrap();
+        let encrypted1 = cipher_seed1.encipher(Some("test1")).unwrap();
+        let seed_phrase1 = bytes_to_mnemonic(&encrypted1).unwrap();
         
-        // Both should export the same seed phrase regardless of passphrase
+        let encrypted2 = cipher_seed2.encipher(Some("test2")).unwrap();
+        let seed_phrase2 = bytes_to_mnemonic(&encrypted2).unwrap();
+        
+        let wallet1 = Wallet::new_from_seed_phrase(&seed_phrase1, Some("test1")).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(&seed_phrase2, Some("test2")).unwrap();
+        
+        // Each should export their respective seed phrase
         let exported1 = wallet1.export_seed_phrase().unwrap();
         let exported2 = wallet2.export_seed_phrase().unwrap();
-        assert_eq!(exported1, seed_phrase);
-        assert_eq!(exported2, seed_phrase);
-        assert_eq!(exported1, exported2);
+        assert_eq!(exported1, seed_phrase1);
+        assert_eq!(exported2, seed_phrase2);
         
-        // But they should have different master keys due to different passphrases
+        // Different seed phrases should be different
+        assert_ne!(exported1, exported2);
+        
+        // They should have different master keys due to different underlying CipherSeeds
         assert_ne!(wallet1.master_key_bytes(), wallet2.master_key_bytes());
+        
+        // Test that same seed phrase with same passphrase produces consistent results
+        let wallet1_duplicate = Wallet::new_from_seed_phrase(&seed_phrase1, Some("test1")).unwrap();
+        assert_eq!(wallet1.master_key_bytes(), wallet1_duplicate.master_key_bytes());
+        assert_eq!(wallet1.export_seed_phrase().unwrap(), wallet1_duplicate.export_seed_phrase().unwrap());
+    }
+
+    #[test]
+    fn test_wallet_generate_new_with_seed_phrase() {
+        // Generate wallets with seed phrases
+        let wallet1 = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        let wallet2 = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        
+        // Should be able to export seed phrases
+        let phrase1 = wallet1.export_seed_phrase().unwrap();
+        let phrase2 = wallet2.export_seed_phrase().unwrap();
+        
+        // Phrases should be different (different random CipherSeeds)
+        assert_ne!(phrase1, phrase2);
+        
+        // Phrases should be valid 24-word mnemonics
+        assert_eq!(phrase1.split_whitespace().count(), 24);
+        assert_eq!(phrase2.split_whitespace().count(), 24);
+        
+        // Should be able to validate the phrases
+        assert!(validate_seed_phrase(&phrase1).is_ok());
+        assert!(validate_seed_phrase(&phrase2).is_ok());
+        
+        // Should be able to recreate the wallets from the exported phrases
+        let recreated1 = Wallet::new_from_seed_phrase(&phrase1, None).unwrap();
+        let recreated2 = Wallet::new_from_seed_phrase(&phrase2, None).unwrap();
+        
+        // Recreated wallets should have the same master keys
+        assert_eq!(wallet1.master_key_bytes(), recreated1.master_key_bytes());
+        assert_eq!(wallet2.master_key_bytes(), recreated2.master_key_bytes());
+        
+        // Test with passphrase separately
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("test")).unwrap();
+        let phrase_with_pass = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        
+        let wallet_with_pass = Wallet::new_from_seed_phrase(&phrase_with_pass, Some("test")).unwrap();
+        let recreated_with_pass = Wallet::new_from_seed_phrase(&phrase_with_pass, Some("test")).unwrap();
+        assert_eq!(wallet_with_pass.master_key_bytes(), recreated_with_pass.master_key_bytes());
+    }
+
+    #[test]
+    fn test_wallet_generate_new_with_seed_phrase_vs_generate_new() {
+        let wallet_with_phrase = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        let wallet_random = Wallet::generate_new(None);
+        
+        // Wallet with seed phrase should allow export
+        assert!(wallet_with_phrase.export_seed_phrase().is_ok());
+        
+        // Randomly generated wallet should not allow export
+        assert!(wallet_random.export_seed_phrase().is_err());
+        
+        // Both should have valid birthdays
+        assert!(wallet_with_phrase.birthday() > 0);
+        assert!(wallet_random.birthday() > 0);
+        
+        // Should have different master keys
+        assert_ne!(wallet_with_phrase.master_key_bytes(), wallet_random.master_key_bytes());
+    }
+
+    #[test]
+    fn test_wallet_generate_new_with_seed_phrase_deterministic() {
+        // Generate a wallet with seed phrase (no passphrase)
+        let wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        let exported_phrase = wallet.export_seed_phrase().unwrap();
+        
+        // Create another wallet from the same phrase
+        let wallet2 = Wallet::new_from_seed_phrase(&exported_phrase, None).unwrap();
+        
+        // Should have the same master key
+        assert_eq!(wallet.master_key_bytes(), wallet2.master_key_bytes());
+        
+        // Should export the same phrase
+        assert_eq!(wallet.export_seed_phrase().unwrap(), wallet2.export_seed_phrase().unwrap());
+        
+        // Test with passphrase - need to create the CipherSeed properly
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("passphrase")).unwrap();
+        let seed_phrase_with_pass = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        
+        let wallet_with_pass = Wallet::new_from_seed_phrase(&seed_phrase_with_pass, Some("passphrase")).unwrap();
+        let wallet_with_pass2 = Wallet::new_from_seed_phrase(&seed_phrase_with_pass, Some("passphrase")).unwrap();
+        
+        // Should have the same master key
+        assert_eq!(wallet_with_pass.master_key_bytes(), wallet_with_pass2.master_key_bytes());
+        
+        // Should export the same phrase
+        assert_eq!(wallet_with_pass.export_seed_phrase().unwrap(), wallet_with_pass2.export_seed_phrase().unwrap());
+    }
+
+    #[test]
+    fn test_wallet_generate_new_with_seed_phrase_randomness() {
+        // Generate multiple wallets to test randomness
+        let mut phrases = Vec::new();
+        for _ in 0..5 {
+            let wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
+            let phrase = wallet.export_seed_phrase().unwrap();
+            phrases.push(phrase);
+        }
+        
+        // All phrases should be different
+        for i in 0..phrases.len() {
+            for j in i + 1..phrases.len() {
+                assert_ne!(phrases[i], phrases[j], "Generated duplicate seed phrases");
+            }
+        }
+        
+        // All phrases should be valid
+        for phrase in &phrases {
+            assert!(validate_seed_phrase(phrase).is_ok());
+            assert_eq!(phrase.split_whitespace().count(), 24);
+        }
     }
 } 

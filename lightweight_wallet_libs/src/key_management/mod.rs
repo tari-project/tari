@@ -195,7 +195,7 @@ impl Drop for ImportedPrivateKey {
     }
 }
 
-pub use seed_phrase::mnemonic_to_master_key;
+pub use seed_phrase::{mnemonic_to_master_key, generate_seed_phrase, validate_seed_phrase, bytes_to_mnemonic, mnemonic_to_bytes, CipherSeed};
 pub use stealth_address::{StealthAddress, StealthAddressManager};
 
 /// Key store for managing both derived and imported keys
