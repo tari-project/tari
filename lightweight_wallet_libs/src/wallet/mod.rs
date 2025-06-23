@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::Zeroize;
+use rand_core::{OsRng, RngCore};
 use crate::data_structures::SafeArray;
 use crate::errors::KeyManagementError;
 use crate::key_management::mnemonic_to_master_key;
@@ -60,6 +61,27 @@ impl Wallet {
         let birthday = Self::calculate_current_birthday();
         
         Ok(Self::new(master_key, birthday))
+    }
+
+    /// Generate a new wallet with random entropy
+    /// 
+    /// Creates a wallet with completely random 32-byte master key entropy.
+    /// Note: The passphrase parameter is included for API consistency but is not
+    /// currently used since we generate random entropy directly rather than
+    /// deriving from a mnemonic phrase.
+    pub fn generate_new(_passphrase: Option<&str>) -> Self {
+        // Generate 32 bytes of cryptographically secure random entropy
+        let mut master_key_bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut master_key_bytes);
+        
+        // Calculate current birthday
+        let birthday = Self::calculate_current_birthday();
+        
+        Self {
+            master_key: SafeArray::new(master_key_bytes),
+            birthday,
+            metadata: WalletMetadata::default(),
+        }
     }
 
     /// Calculate the current birthday (days since Tari genesis date)
@@ -318,5 +340,77 @@ mod tests {
         // As of 2024, this should be at least 365 days but less than 10000 days
         assert!(birthday >= 365);
         assert!(birthday < 10000);
+    }
+
+    #[test]
+    fn test_wallet_generate_new() {
+        // Generate a new wallet without passphrase
+        let wallet1 = Wallet::generate_new(None);
+        
+        // Verify basic properties
+        assert!(wallet1.birthday() > 0); // Should have a valid birthday
+        assert_eq!(wallet1.current_key_index(), 0);
+        assert_eq!(wallet1.network(), "");
+        assert!(wallet1.label().is_none());
+        
+        // Generate another wallet with passphrase (should still work)
+        let wallet2 = Wallet::generate_new(Some("test_passphrase"));
+        
+        // Both wallets should have valid birthdays (around the same time)
+        assert!(wallet2.birthday() > 0);
+        let birthday_diff = if wallet1.birthday() > wallet2.birthday() {
+            wallet1.birthday() - wallet2.birthday()
+        } else {
+            wallet2.birthday() - wallet1.birthday()
+        };
+        assert!(birthday_diff <= 1); // Should be created within the same day
+        
+        // Each wallet should have different random master keys
+        assert_ne!(wallet1.master_key_bytes(), wallet2.master_key_bytes());
+    }
+
+    #[test]
+    fn test_wallet_generate_new_randomness() {
+        // Generate multiple wallets to verify randomness
+        let wallet1 = Wallet::generate_new(None);
+        let wallet2 = Wallet::generate_new(None);
+        let wallet3 = Wallet::generate_new(Some("passphrase"));
+        let wallet4 = Wallet::generate_new(Some("different_passphrase"));
+        
+        // All should have different master keys (highly unlikely to be the same with proper randomness)
+        let keys = [
+            wallet1.master_key_bytes(),
+            wallet2.master_key_bytes(),
+            wallet3.master_key_bytes(),
+            wallet4.master_key_bytes(),
+        ];
+        
+        // Verify no two keys are the same
+        for i in 0..keys.len() {
+            for j in i + 1..keys.len() {
+                assert_ne!(keys[i], keys[j], "Wallets {} and {} have the same master key", i, j);
+            }
+        }
+        
+        // All should have the same birthday (created within a short time span)
+        let birthdays = [wallet1.birthday(), wallet2.birthday(), wallet3.birthday(), wallet4.birthday()];
+        let min_birthday = *birthdays.iter().min().unwrap();
+        let max_birthday = *birthdays.iter().max().unwrap();
+        assert!(max_birthday - min_birthday <= 1); // All created within the same day
+    }
+
+    #[test]
+    fn test_wallet_generate_new_vs_manual_creation() {
+        let generated_wallet = Wallet::generate_new(None);
+        
+        // Create a manual wallet with the same birthday for comparison
+        let manual_wallet = Wallet::new([42u8; 32], generated_wallet.birthday());
+        
+        // Should have the same birthday but different master keys
+        assert_eq!(generated_wallet.birthday(), manual_wallet.birthday());
+        assert_ne!(generated_wallet.master_key_bytes(), manual_wallet.master_key_bytes());
+        
+        // Generated wallet should have non-zero entropy (extremely unlikely to be all zeros)
+        assert_ne!(generated_wallet.master_key_bytes(), [0u8; 32]);
     }
 } 
