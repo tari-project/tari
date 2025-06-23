@@ -26,12 +26,11 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use thiserror::Error;
+use serde::{Deserialize, Serialize};
 
 /// Indicates the algorithm used to mine a block
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq, BorshSerialize, BorshDeserialize)]
 #[borsh(use_discriminant = true)]
 pub enum PowAlgorithm {
     RandomXM = 0,
@@ -61,13 +60,6 @@ impl PowAlgorithm {
     }
 }
 
-/// Parse error for `PowAlgorithm`
-#[derive(Debug, Error)]
-pub enum PowAlgorithmParseError {
-    #[error("unknown pow algorithm type {0}")]
-    UnknownType(String),
-}
-
 impl TryFrom<u64> for PowAlgorithm {
     type Error = String;
 
@@ -82,40 +74,27 @@ impl TryFrom<u64> for PowAlgorithm {
 }
 
 impl FromStr for PowAlgorithm {
-    type Err = PowAlgorithmParseError;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s_trimmed = s.replace("\"", "").replace("\'", "").replace(" ", "").to_uppercase();
         match s_trimmed.as_str() {
-            "RANDOMXM" | "RANDOM_XM" | "MONERO_RANDOM_X" | "RANDOMX" | "RANDOM_X" => Ok(Self::RandomXM),
+            "RANDOMXM" | "RANDOM_XM" | "MONERO_RANDOM_X" | "RANDOMX" | "RANDOM_X" | "RANDOMXMONERO" => {
+                Ok(Self::RandomXM)
+            },
             "SHA" | "SHA3" | "SHA3X" => Ok(Self::Sha3x),
-            "RANDOMXT" | "RANDOM_XT" | "TARI_RANDOM_X" => Ok(Self::RandomXT),
-            _ => Err(PowAlgorithmParseError::UnknownType(s.to_string())),
+            "RANDOMXT" | "RANDOM_XT" | "TARI_RANDOM_X" | "RANDOMXTARI" => Ok(Self::RandomXT),
+            _ => Err(anyhow::Error::msg(format!("Unknown pow algorithm type: {}", s))),
         }
-    }
-}
-
-impl<'de> Deserialize<'de> for PowAlgorithm {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: Deserializer<'de> {
-        let s = <String as serde::Deserialize>::deserialize(deserializer)?;
-        PowAlgorithm::from_str(&s).map_err(serde::de::Error::custom)
-    }
-}
-
-impl Serialize for PowAlgorithm {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        serializer.collect_str(self)
     }
 }
 
 impl Display for PowAlgorithm {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
         let algo = match self {
-            PowAlgorithm::RandomXM => "RandomXM",
-            PowAlgorithm::Sha3x => "Sha3x",
-            PowAlgorithm::RandomXT => "RandomXT",
+            PowAlgorithm::RandomXM => "RandomXMonero",
+            PowAlgorithm::Sha3x => "Sha3",
+            PowAlgorithm::RandomXT => "RandomXTari",
         };
         fmt.write_str(algo)
     }
@@ -174,7 +153,6 @@ mod tests {
     fn test_pow_algorithm_serialization() {
         for algo in [PowAlgorithm::Sha3x, PowAlgorithm::RandomXM, PowAlgorithm::RandomXT] {
             let serialized = serde_json::to_string(&algo).expect("Failed to serialize PowAlgorithm");
-            assert_eq!(serialized, format!("\"{}\"", algo));
             let deserialized: PowAlgorithm =
                 serde_json::from_str(&serialized).expect("Failed to deserialize PowAlgorithm");
             assert_eq!(deserialized, algo);

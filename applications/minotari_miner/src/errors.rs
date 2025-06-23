@@ -65,8 +65,6 @@ pub enum MinerError {
     MergeMineError(#[from] tari_core::proof_of_work::monero_rx::MergeMineError),
     #[error("Difficulty error: {0}")]
     DifficultyError(#[from] tari_core::proof_of_work::DifficultyError),
-    #[error("PoW algorithm error: {0}")]
-    PowAlgorithmParseError(#[from] tari_core::proof_of_work::PowAlgorithmParseError),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

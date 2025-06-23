@@ -53,7 +53,7 @@ pub use proof_of_work::{PowData, ProofOfWork};
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 mod proof_of_work_algorithm;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use proof_of_work_algorithm::{PowAlgorithm, PowAlgorithmParseError};
+pub use proof_of_work_algorithm::PowAlgorithm;
 
 /// Crates for proof of work sha3_pow
 #[cfg(feature = "base_node")]
