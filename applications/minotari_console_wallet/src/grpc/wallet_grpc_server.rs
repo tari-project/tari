@@ -852,7 +852,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             if let Ok(Some(tx)) = tx {
                                 break tx;
                             }
-                            sleep(Duration::from_millis(100)).await;
+                            sleep(Duration::from_millis(10)).await;
                         }
                     })
                     .await
