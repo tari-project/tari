@@ -27,6 +27,8 @@ pub struct Wallet {
     birthday: u64,
     /// Wallet metadata for additional configuration and state
     metadata: WalletMetadata,
+    /// Original seed phrase (stored only if wallet was created from a seed phrase)
+    original_seed_phrase: Option<String>,
 }
 
 /// Wallet metadata containing additional configuration and state information
@@ -49,6 +51,7 @@ impl Wallet {
             master_key: SafeArray::new(master_key),
             birthday,
             metadata: WalletMetadata::default(),
+            original_seed_phrase: None,
         }
     }
 
@@ -60,7 +63,12 @@ impl Wallet {
         // Calculate current birthday as days since genesis
         let birthday = Self::calculate_current_birthday();
         
-        Ok(Self::new(master_key, birthday))
+        Ok(Self {
+            master_key: SafeArray::new(master_key),
+            birthday,
+            metadata: WalletMetadata::default(),
+            original_seed_phrase: Some(phrase.to_string()),
+        })
     }
 
     /// Generate a new wallet with random entropy
@@ -81,6 +89,7 @@ impl Wallet {
             master_key: SafeArray::new(master_key_bytes),
             birthday,
             metadata: WalletMetadata::default(),
+            original_seed_phrase: None,
         }
     }
 
@@ -164,6 +173,19 @@ impl Wallet {
         self.metadata.properties.remove(key)
     }
 
+    /// Export the original seed phrase if available
+    /// 
+    /// Returns the original seed phrase that was used to create this wallet.
+    /// Returns an error if the wallet was created using `generate_new()` or other
+    /// methods that don't use a seed phrase.
+    pub fn export_seed_phrase(&self) -> Result<String, KeyManagementError> {
+        self.original_seed_phrase
+            .clone()
+            .ok_or_else(|| KeyManagementError::SeedPhraseError(
+                "Wallet was not created from a seed phrase".to_string()
+            ))
+    }
+
     /// Get a copy of the master key bytes (for internal use only)
     pub(crate) fn master_key_bytes(&self) -> [u8; 32] {
         *self.master_key.as_bytes()
@@ -175,6 +197,10 @@ impl Zeroize for Wallet {
         self.master_key.zeroize();
         self.birthday = 0;
         self.metadata.zeroize();
+        if let Some(ref mut seed_phrase) = self.original_seed_phrase {
+            seed_phrase.zeroize();
+        }
+        self.original_seed_phrase = None;
     }
 }
 
@@ -412,5 +438,95 @@ mod tests {
         
         // Generated wallet should have non-zero entropy (extremely unlikely to be all zeros)
         assert_ne!(generated_wallet.master_key_bytes(), [0u8; 32]);
+    }
+
+    #[test]
+    fn test_wallet_export_seed_phrase_from_phrase() {
+        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let passphrase = Some("test");
+        
+        let wallet = Wallet::new_from_seed_phrase(seed_phrase, passphrase).unwrap();
+        
+        // Should be able to export the original seed phrase
+        let exported_phrase = wallet.export_seed_phrase().unwrap();
+        assert_eq!(exported_phrase, seed_phrase);
+    }
+
+    #[test]
+    fn test_wallet_export_seed_phrase_from_generated() {
+        let wallet = Wallet::generate_new(None);
+        
+        // Should fail to export seed phrase since wallet was generated randomly
+        let result = wallet.export_seed_phrase();
+        assert!(result.is_err());
+        
+        if let Err(e) = result {
+            assert!(e.to_string().contains("Wallet was not created from a seed phrase"));
+        }
+    }
+
+    #[test]
+    fn test_wallet_export_seed_phrase_from_manual() {
+        let wallet = Wallet::new([42u8; 32], 1234567890);
+        
+        // Should fail to export seed phrase since wallet was created manually
+        let result = wallet.export_seed_phrase();
+        assert!(result.is_err());
+        
+        if let Err(e) = result {
+            assert!(e.to_string().contains("Wallet was not created from a seed phrase"));
+        }
+    }
+
+    #[test]
+    fn test_wallet_export_seed_phrase_different_phrases() {
+        let phrase1 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let phrase2 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        
+        let wallet1 = Wallet::new_from_seed_phrase(phrase1, None).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(phrase2, None).unwrap();
+        
+        let exported1 = wallet1.export_seed_phrase().unwrap();
+        let exported2 = wallet2.export_seed_phrase().unwrap();
+        
+        assert_eq!(exported1, phrase1);
+        assert_eq!(exported2, phrase2);
+        assert_ne!(exported1, exported2);
+    }
+
+    #[test]
+    fn test_wallet_zeroization_with_seed_phrase() {
+        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let mut wallet = Wallet::new_from_seed_phrase(seed_phrase, None).unwrap();
+        
+        // Verify seed phrase is stored
+        assert_eq!(wallet.export_seed_phrase().unwrap(), seed_phrase);
+        
+        // Zeroize the wallet
+        wallet.zeroize();
+        
+        // Verify seed phrase is no longer available
+        let result = wallet.export_seed_phrase();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wallet_seed_phrase_consistency() {
+        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let passphrase1 = Some("test1");
+        let passphrase2 = Some("test2");
+        
+        let wallet1 = Wallet::new_from_seed_phrase(seed_phrase, passphrase1).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(seed_phrase, passphrase2).unwrap();
+        
+        // Both should export the same seed phrase regardless of passphrase
+        let exported1 = wallet1.export_seed_phrase().unwrap();
+        let exported2 = wallet2.export_seed_phrase().unwrap();
+        assert_eq!(exported1, seed_phrase);
+        assert_eq!(exported2, seed_phrase);
+        assert_eq!(exported1, exported2);
+        
+        // But they should have different master keys due to different passphrases
+        assert_ne!(wallet1.master_key_bytes(), wallet2.master_key_bytes());
     }
 } 
