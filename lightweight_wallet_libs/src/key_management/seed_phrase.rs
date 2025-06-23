@@ -104,11 +104,12 @@ impl CipherSeed {
         // Encrypt the secret data
         Self::apply_stream_cipher(&mut secret_data, &encryption_key, &self.salt)?;
         
-        // Assemble the final seed: version, encrypted_data, salt, checksum
+        // Assemble the final seed: version, encrypted_secret_data, salt, checksum
+        // This matches the main Tari format: version + ciphertext + salt + checksum
         let mut encrypted_seed = Vec::with_capacity(1 + secret_data.len() + CIPHER_SEED_MAIN_SALT_BYTES + CIPHER_SEED_CHECKSUM_BYTES);
         encrypted_seed.push(CIPHER_SEED_VERSION);
-        encrypted_seed.extend(&secret_data);
-        encrypted_seed.extend(&self.salt);
+        encrypted_seed.extend(&secret_data);  // encrypted secret data (23 bytes)
+        encrypted_seed.extend(&self.salt);    // salt (5 bytes)
         
         let mut crc_hasher = crc32fast::Hasher::new();
         crc_hasher.update(&encrypted_seed);
@@ -120,14 +121,14 @@ impl CipherSeed {
     
     /// Recover a seed from encrypted data and a passphrase
     pub fn from_enciphered_bytes(encrypted_seed: &[u8], passphrase: Option<&str>) -> Result<Self, KeyManagementError> {
-        // Check the length: version, birthday, entropy, MAC, salt, checksum
-        if encrypted_seed.len() !=
-            1 + CIPHER_SEED_BIRTHDAY_BYTES +
-                CIPHER_SEED_ENTROPY_BYTES +
-                CIPHER_SEED_MAC_BYTES +
-                CIPHER_SEED_MAIN_SALT_BYTES +
-                CIPHER_SEED_CHECKSUM_BYTES
-        {
+        // Check the length: version (1) + encrypted_secret_data (23) + salt (5) + checksum (4) = 33 bytes
+        // This matches the main Tari format
+        let expected_length = 1 + 
+            CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES + 
+            CIPHER_SEED_MAIN_SALT_BYTES + 
+            CIPHER_SEED_CHECKSUM_BYTES;
+        
+        if encrypted_seed.len() != expected_length {
             return Err(KeyManagementError::InvalidData);
         }
 
@@ -141,10 +142,7 @@ impl CipherSeed {
 
         // Verify the checksum first, to detect obvious errors
         let checksum = encrypted_seed.split_off(
-            1 + CIPHER_SEED_BIRTHDAY_BYTES +
-                CIPHER_SEED_ENTROPY_BYTES +
-                CIPHER_SEED_MAC_BYTES +
-                CIPHER_SEED_MAIN_SALT_BYTES,
+            1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES + CIPHER_SEED_MAIN_SALT_BYTES,
         );
         
         // Only verify checksum for current version (version 2)
@@ -158,19 +156,25 @@ impl CipherSeed {
             }
         }
 
-        // Derive encryption and MAC keys from passphrase and main salt
-        let passphrase = passphrase.unwrap_or(DEFAULT_CIPHER_SEED_PASSPHRASE);
+        // Extract salt (last 5 bytes before checksum)
         let salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES] = encrypted_seed
             .split_off(1 + CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES)
             .try_into()
             .map_err(|_| KeyManagementError::InvalidData)?;
+            
+        // Derive encryption and MAC keys from passphrase and main salt
+        let passphrase = passphrase.unwrap_or(DEFAULT_CIPHER_SEED_PASSPHRASE);
         let (encryption_key, mac_key) = Self::derive_keys(passphrase, &salt)?;
 
-        // Decrypt the secret data: birthday, entropy, MAC
+        // Decrypt the secret data: birthday, entropy, MAC (everything between version and salt)
         let mut secret_data = encrypted_seed.split_off(1);
         Self::apply_stream_cipher(&mut secret_data, &encryption_key, &salt)?;
 
-        // Parse secret data
+        // Parse decrypted secret data: birthday (2) + entropy (16) + MAC (5) = 23 bytes
+        if secret_data.len() != CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES + CIPHER_SEED_MAC_BYTES {
+            return Err(KeyManagementError::InvalidData);
+        }
+        
         let mac = secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES + CIPHER_SEED_ENTROPY_BYTES);
         let entropy_vec = secret_data.split_off(CIPHER_SEED_BIRTHDAY_BYTES);
         let entropy: [u8; CIPHER_SEED_ENTROPY_BYTES] = entropy_vec
@@ -309,6 +313,11 @@ impl CipherSeed {
     /// Get the birthday
     pub fn birthday(&self) -> u16 {
         self.birthday
+    }
+    
+    /// Get the version
+    pub fn version(&self) -> u8 {
+        self.version
     }
 }
 
@@ -462,7 +471,7 @@ fn find_mnemonic_index_from_word(word: &str) -> Result<usize, KeyManagementError
     let lowercase_word = word.to_lowercase();
     match MNEMONIC_ENGLISH_WORDS.binary_search(&lowercase_word.as_str()) {
         Ok(index) => Ok(index),
-        Err(_) => Err(KeyManagementError::MnemonicError(format!("Word not found: {}", word))),
+        Err(_) => Err(KeyManagementError::unknown_word(&word, 0)), // Position will be set by caller
     }
 }
 
@@ -470,16 +479,24 @@ fn find_mnemonic_index_from_word(word: &str) -> Result<usize, KeyManagementError
 pub fn mnemonic_to_bytes(mnemonic: &str) -> Result<Vec<u8>, KeyManagementError> {
     let words: Vec<&str> = mnemonic.split_whitespace().collect();
     
+    if words.is_empty() {
+        return Err(KeyManagementError::empty_seed_phrase());
+    }
+    
     if words.len() != 24 {
-        return Err(KeyManagementError::MnemonicError("Mnemonic must be exactly 24 words".to_string()));
+        return Err(KeyManagementError::invalid_word_count(24, words.len()));
     }
     
     // Convert each word to its 11-bit index using LSB-first ordering
     let mut bits = Vec::with_capacity(264); // 24 words * 11 bits = 264 bits
-    for word in words {
-        let index = find_mnemonic_index_from_word(word)?;
+    for (position, word) in words.iter().enumerate() {
+        let index = find_mnemonic_index_from_word(word)
+            .map_err(|_| KeyManagementError::unknown_word(word, position))?;
+        
         if index >= MNEMONIC_ENGLISH_WORDS.len() {
-            return Err(KeyManagementError::MnemonicError(format!("Invalid word index: {}", index)));
+            return Err(KeyManagementError::seed_encoding_error(
+                &format!("Word '{}' at position {} has invalid index: {}", word, position + 1, index)
+            ));
         }
         
         // Convert 11-bit index to bits (LSB first, matching working implementation)
@@ -508,8 +525,8 @@ pub fn mnemonic_to_bytes(mnemonic: &str) -> Result<Vec<u8>, KeyManagementError> 
     
     // Should be exactly 33 bytes for valid CipherSeed
     if bytes.len() != 33 {
-        return Err(KeyManagementError::MnemonicError(
-            format!("Invalid conversion: expected 33 bytes, got {}", bytes.len())
+        return Err(KeyManagementError::seed_encoding_error(
+            &format!("Invalid conversion: expected 33 bytes, got {}", bytes.len())
         ));
     }
     
@@ -520,14 +537,31 @@ pub fn mnemonic_to_bytes(mnemonic: &str) -> Result<Vec<u8>, KeyManagementError> 
 /// This follows the exact Tari key derivation specification
 pub fn mnemonic_to_master_key(mnemonic: &str, passphrase: Option<&str>) -> Result<[u8; 32], KeyManagementError> {
     if mnemonic.trim().is_empty() {
-        return Err(KeyManagementError::MnemonicError("Mnemonic phrase is empty".to_string()));
+        return Err(KeyManagementError::empty_seed_phrase());
     }
     
     // Convert mnemonic to encrypted bytes
     let encrypted_bytes = mnemonic_to_bytes(mnemonic)?;
     
     // Decrypt the CipherSeed
-    let cipher_seed = CipherSeed::from_enciphered_bytes(&encrypted_bytes, passphrase)?;
+    let cipher_seed = CipherSeed::from_enciphered_bytes(&encrypted_bytes, passphrase)
+        .map_err(|e| {
+            match e {
+                KeyManagementError::DecryptionFailed => {
+                    if passphrase.is_some() {
+                        KeyManagementError::cipher_seed_decryption_failed(
+                            "Failed to decrypt CipherSeed. Please verify the passphrase is correct."
+                        )
+                    } else {
+                        KeyManagementError::missing_required_passphrase()
+                    }
+                },
+                KeyManagementError::VersionMismatch => {
+                    KeyManagementError::unsupported_cipher_seed_version(0, vec![2, 128])
+                },
+                _ => e,
+            }
+        })?;
     
     // Use the exact Tari derivation pattern: H(master_entropy || branch_seed || key_index)
     // For the master key, we use a special branch_seed "master_key" and index 0
@@ -553,7 +587,8 @@ pub fn generate_seed_phrase() -> Result<String, KeyManagementError> {
     let cipher_seed = CipherSeed::new();
     
     // Encrypt the CipherSeed (using default passphrase)
-    let encrypted_bytes = cipher_seed.encipher(None)?;
+    let encrypted_bytes = cipher_seed.encipher(None)
+        .map_err(|e| KeyManagementError::cipher_seed_encryption_failed(&e.to_string()))?;
     
     // Convert encrypted bytes to mnemonic words
     bytes_to_mnemonic(&encrypted_bytes)
@@ -565,8 +600,8 @@ pub fn generate_seed_phrase() -> Result<String, KeyManagementError> {
 pub fn bytes_to_mnemonic(bytes: &[u8]) -> Result<String, KeyManagementError> {
     // The CipherSeed should be exactly 33 bytes for 24-word mnemonic
     if bytes.len() != 33 {
-        return Err(KeyManagementError::MnemonicError(
-            format!("Invalid encrypted seed length: expected 33 bytes, got {}", bytes.len())
+        return Err(KeyManagementError::seed_decoding_error(
+            &format!("Invalid encrypted seed length: expected 33 bytes, got {}", bytes.len())
         ));
     }
     
@@ -593,8 +628,8 @@ pub fn bytes_to_mnemonic(bytes: &[u8]) -> Result<String, KeyManagementError> {
         
         // Ensure word index is within valid range
         if word_index >= MNEMONIC_ENGLISH_WORDS.len() {
-            return Err(KeyManagementError::MnemonicError(
-                format!("Invalid word index generated: {}", word_index)
+            return Err(KeyManagementError::seed_decoding_error(
+                &format!("Invalid word index generated: {} (max: {})", word_index, MNEMONIC_ENGLISH_WORDS.len() - 1)
             ));
         }
         
@@ -610,15 +645,18 @@ pub fn bytes_to_mnemonic(bytes: &[u8]) -> Result<String, KeyManagementError> {
 pub fn validate_seed_phrase(mnemonic: &str) -> Result<(), KeyManagementError> {
     let words: Vec<&str> = mnemonic.split_whitespace().collect();
     
+    if words.is_empty() {
+        return Err(KeyManagementError::empty_seed_phrase());
+    }
+    
     if words.len() != 24 {
-        return Err(KeyManagementError::MnemonicError(
-            format!("Invalid mnemonic length: expected 24 words, got {}", words.len())
-        ));
+        return Err(KeyManagementError::invalid_word_count(24, words.len()));
     }
     
     // Validate that all words exist in the word list
-    for word in &words {
-        find_mnemonic_index_from_word(word)?;
+    for (position, word) in words.iter().enumerate() {
+        find_mnemonic_index_from_word(word)
+            .map_err(|_| KeyManagementError::unknown_word(word, position))?;
     }
     
     // Try to convert mnemonic to bytes (this validates the format)
@@ -626,7 +664,27 @@ pub fn validate_seed_phrase(mnemonic: &str) -> Result<(), KeyManagementError> {
     
     // Try to decrypt the CipherSeed (this validates the checksum and structure)
     // We use the default passphrase for validation
-    CipherSeed::from_enciphered_bytes(&encrypted_bytes, None)?;
+    CipherSeed::from_enciphered_bytes(&encrypted_bytes, None)
+        .map_err(|e| {
+            match e {
+                KeyManagementError::DecryptionFailed => {
+                    KeyManagementError::seed_validation_failed(
+                        "CipherSeed decryption failed",
+                        "This may indicate the seed phrase was created with a passphrase, or the seed phrase is invalid"
+                    )
+                },
+                KeyManagementError::CrcError => {
+                    KeyManagementError::invalid_seed_checksum()
+                },
+                KeyManagementError::VersionMismatch => {
+                    KeyManagementError::seed_validation_failed(
+                        "Unsupported CipherSeed version",
+                        "This seed phrase uses an unsupported version format"
+                    )
+                },
+                _ => e,
+            }
+        })?;
     
     Ok(())
 }
@@ -642,11 +700,21 @@ pub fn validate_master_key_derivation(
     passphrase: Option<&str>
 ) -> Result<bool, KeyManagementError> {
     if mnemonic.trim().is_empty() {
-        return Err(KeyManagementError::MnemonicError("Mnemonic phrase is empty".to_string()));
+        return Err(KeyManagementError::empty_seed_phrase());
     }
     
     // Re-derive the master key from the mnemonic and passphrase
-    let derived_master_key = mnemonic_to_master_key(mnemonic, passphrase)?;
+    let derived_master_key = mnemonic_to_master_key(mnemonic, passphrase)
+        .map_err(|e| {
+            match e.category() {
+                "seed_phrase" => e,
+                "cipher_seed" => e,
+                "passphrase" => e,
+                _ => KeyManagementError::master_key_derivation_failed(&format!(
+                    "Failed to derive master key for validation: {}", e
+                )),
+            }
+        })?;
     
     // Compare using constant-time comparison for security
     Ok(constant_time_eq(master_key, &derived_master_key))
@@ -721,11 +789,38 @@ pub fn find_matching_seed_phrase(
     candidate_mnemonics: &[String],
     passphrase: Option<&str>
 ) -> Result<Option<String>, KeyManagementError> {
-    for mnemonic in candidate_mnemonics {
-        if validate_master_key_derivation(master_key, mnemonic, passphrase)? {
-            return Ok(Some(mnemonic.clone()));
+    if candidate_mnemonics.is_empty() {
+        return Ok(None);
+    }
+    
+    let mut errors = Vec::new();
+    
+    for (index, mnemonic) in candidate_mnemonics.iter().enumerate() {
+        match validate_master_key_derivation(master_key, mnemonic, passphrase) {
+            Ok(true) => return Ok(Some(mnemonic.clone())),
+            Ok(false) => continue,
+            Err(e) => {
+                // Collect errors for analysis but continue searching
+                errors.push((index, e));
+                continue;
+            }
         }
     }
+    
+    // If we didn't find a match and had errors, provide helpful information
+    if !errors.is_empty() {
+        let error_summary = errors.iter()
+            .map(|(idx, e)| format!("Candidate {}: {}", idx + 1, e))
+            .collect::<Vec<_>>()
+            .join("; ");
+            
+        return Err(KeyManagementError::wallet_recovery_failed(
+            "seed phrase search",
+            &format!("No matching seed phrase found. Errors encountered: {}", error_summary),
+            "Verify that the seed phrases are correct and try with different passphrases if needed"
+        ));
+    }
+    
     Ok(None)
 }
 
@@ -740,8 +835,28 @@ pub fn validate_complete_derivation_chain(
     encrypted_bytes: &[u8],
     passphrase: Option<&str>
 ) -> Result<bool, KeyManagementError> {
+    // Validate input parameters
+    if encrypted_bytes.len() != 33 {
+        return Err(KeyManagementError::invalid_cipher_seed_format(
+            &format!("Invalid encrypted bytes length: expected 33 bytes, got {}", encrypted_bytes.len())
+        ));
+    }
+    
     // Step 1: Decrypt the CipherSeed from encrypted bytes
-    let cipher_seed = CipherSeed::from_enciphered_bytes(encrypted_bytes, passphrase)?;
+    let cipher_seed = CipherSeed::from_enciphered_bytes(encrypted_bytes, passphrase)
+        .map_err(|e| {
+            match e {
+                KeyManagementError::DecryptionFailed => {
+                    KeyManagementError::cipher_seed_decryption_failed(
+                        "Failed to decrypt CipherSeed from encrypted bytes"
+                    )
+                },
+                KeyManagementError::VersionMismatch => {
+                    KeyManagementError::unsupported_cipher_seed_version(0, vec![2, 128])
+                },
+                _ => e,
+            }
+        })?;
     
     // Step 2: Validate master key derivation from CipherSeed
     validate_master_key_from_cipher_seed(master_key, &cipher_seed)
@@ -757,17 +872,53 @@ pub fn detailed_master_key_validation(
 ) -> Result<DetailedValidationResult, KeyManagementError> {
     let start_time = std::time::Instant::now();
     
+    // Input validation
+    if mnemonic.trim().is_empty() {
+        return Err(KeyManagementError::empty_seed_phrase());
+    }
+    
     // Step 1: Convert mnemonic to encrypted bytes
-    let encrypted_bytes = mnemonic_to_bytes(mnemonic)?;
+    let encrypted_bytes = mnemonic_to_bytes(mnemonic)
+        .map_err(|e| {
+            KeyManagementError::seed_validation_failed(
+                &format!("Mnemonic to bytes conversion failed: {}", e),
+                "Check that the seed phrase has exactly 24 valid words"
+            )
+        })?;
     
     // Step 2: Decrypt CipherSeed
-    let cipher_seed = CipherSeed::from_enciphered_bytes(&encrypted_bytes, passphrase)?;
+    let cipher_seed = CipherSeed::from_enciphered_bytes(&encrypted_bytes, passphrase)
+        .map_err(|e| {
+            match e {
+                KeyManagementError::DecryptionFailed => {
+                    if passphrase.is_some() {
+                        KeyManagementError::cipher_seed_decryption_failed(
+                            "CipherSeed decryption failed - check passphrase"
+                        )
+                    } else {
+                        KeyManagementError::missing_required_passphrase()
+                    }
+                },
+                _ => e,
+            }
+        })?;
     
     // Step 3: Re-derive master key
-    let derived_master_key = mnemonic_to_master_key(mnemonic, passphrase)?;
+    let derived_master_key = mnemonic_to_master_key(mnemonic, passphrase)
+        .map_err(|e| {
+            KeyManagementError::master_key_derivation_failed(
+                &format!("Master key re-derivation failed: {}", e)
+            )
+        })?;
     
     // Step 4: Validate against CipherSeed directly
-    let cipher_seed_validation = validate_master_key_from_cipher_seed(master_key, &cipher_seed)?;
+    let cipher_seed_validation = validate_master_key_from_cipher_seed(master_key, &cipher_seed)
+        .map_err(|e| {
+            KeyManagementError::key_validation_failed(
+                "master",
+                &format!("CipherSeed validation failed: {}", e)
+            )
+        })?;
     
     // Step 5: Compare final results
     let master_key_match = constant_time_eq(master_key, &derived_master_key);
@@ -1347,5 +1498,240 @@ mod tests {
         // Each validation should take less than 5 seconds on average
         let avg_time_per_validation = duration.as_millis() / 10;
         assert!(avg_time_per_validation < 5000, "Average validation time too high: {}ms", avg_time_per_validation);
+    }
+
+    #[test]
+    fn test_enhanced_error_handling_empty_seed_phrase() {
+        // Test empty seed phrase
+        let result = validate_seed_phrase("");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::EmptySeedPhrase));
+        assert!(error.is_recoverable());
+        assert_eq!(error.category(), "seed_phrase");
+        assert!(error.recovery_suggestion().is_some());
+    }
+
+    #[test]
+    fn test_enhanced_error_handling_invalid_word_count() {
+        // Test too few words
+        let short_mnemonic = "abandon abandon abandon";
+        let result = validate_seed_phrase(short_mnemonic);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::InvalidWordCount { expected: 24, actual: 3 }));
+        assert!(error.is_recoverable());
+        assert_eq!(error.category(), "seed_phrase");
+        
+        // Test too many words
+        let long_mnemonic = "abandon ".repeat(30);
+        let result = validate_seed_phrase(&long_mnemonic);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::InvalidWordCount { expected: 24, actual: 30 }));
+    }
+
+    #[test]
+    fn test_enhanced_error_handling_unknown_word() {
+        // Test with invalid word
+        let invalid_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon invalidword";
+        let result = validate_seed_phrase(invalid_mnemonic);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::UnknownWord { ref word, position: 23 } if word == "invalidword"));
+        assert!(error.is_recoverable());
+        assert_eq!(error.category(), "seed_phrase");
+        
+        let suggestion = error.recovery_suggestion().unwrap();
+        assert!(suggestion.contains("Check word 24"));
+    }
+
+    #[test]
+    fn test_enhanced_error_handling_master_key_derivation() {
+        // Test master key derivation with invalid passphrase
+        let mnemonic = generate_seed_phrase().unwrap();
+        
+        // Create encrypted seed with passphrase
+        let cipher_seed = CipherSeed::new();
+        let encrypted_bytes = cipher_seed.encipher(Some("correct_passphrase")).unwrap();
+        let mnemonic_with_pass = bytes_to_mnemonic(&encrypted_bytes).unwrap();
+        
+        // Try with wrong passphrase
+        let result = mnemonic_to_master_key(&mnemonic_with_pass, Some("wrong_passphrase"));
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::CipherSeedDecryptionFailed { .. }));
+        assert_eq!(error.category(), "cipher_seed");
+        
+        // Try with no passphrase when one is required
+        let result = mnemonic_to_master_key(&mnemonic_with_pass, None);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::MissingRequiredPassphrase));
+        assert!(error.is_recoverable());
+        assert_eq!(error.category(), "passphrase");
+    }
+
+    #[test]
+    fn test_enhanced_error_handling_validation_chain() {
+        // Test complete validation chain with various errors
+        let master_key = [1u8; 32];
+        
+        // Test with empty candidates
+        let result = find_matching_seed_phrase(&master_key, &[], None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
+        
+        // Test with invalid candidates
+        let invalid_candidates = vec![
+            "".to_string(),                    // Empty
+            "too few words".to_string(),       // Too few words
+            "abandon ".repeat(25),             // Too many words
+        ];
+        
+        let result = find_matching_seed_phrase(&master_key, &invalid_candidates, None);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::WalletRecoveryFailed { .. }));
+        assert_eq!(error.category(), "recovery");
+    }
+
+    #[test]
+    fn test_enhanced_error_handling_cipher_seed_format() {
+        // Test with invalid encrypted bytes length
+        let invalid_bytes = vec![1u8; 32]; // Wrong length
+        let result = validate_complete_derivation_chain(&[0u8; 32], &invalid_bytes, None);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::InvalidCipherSeedFormat { .. }));
+        assert_eq!(error.category(), "cipher_seed");
+    }
+
+    #[test]
+    fn test_enhanced_error_handling_detailed_validation() {
+        // Test detailed validation with various scenarios
+        let mnemonic = generate_seed_phrase().unwrap();
+        let master_key = mnemonic_to_master_key(&mnemonic, None).unwrap();
+        
+        // Valid case
+        let result = detailed_master_key_validation(&master_key, &mnemonic, None);
+        assert!(result.is_ok());
+        let validation_result = result.unwrap();
+        assert!(validation_result.validation_successful);
+        assert!(validation_result.final_master_key_match);
+        
+        // Invalid case - empty mnemonic
+        let result = detailed_master_key_validation(&master_key, "", None);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(matches!(error, KeyManagementError::EmptySeedPhrase));
+        
+        // Invalid case - wrong master key
+        let wrong_master_key = [99u8; 32];
+        let result = detailed_master_key_validation(&wrong_master_key, &mnemonic, None);
+        assert!(result.is_ok());
+        let validation_result = result.unwrap();
+        assert!(!validation_result.validation_successful);
+        assert!(!validation_result.final_master_key_match);
+    }
+
+    #[test]
+    fn test_error_categorization_and_recovery() {
+        // Test all error categories
+        let errors = vec![
+            KeyManagementError::empty_seed_phrase(),
+            KeyManagementError::invalid_word_count(24, 12),
+            KeyManagementError::unknown_word("invalid", 5),
+            KeyManagementError::master_key_derivation_failed("test"),
+            KeyManagementError::cipher_seed_decryption_failed("test"),
+            KeyManagementError::missing_required_passphrase(),
+            KeyManagementError::key_validation_failed("test", "test"),
+            KeyManagementError::domain_separation_error("test", "test", "test"),
+            KeyManagementError::wallet_recovery_failed("test", "test", "test"),
+        ];
+        
+        let expected_categories = vec![
+            "seed_phrase",
+            "seed_phrase", 
+            "seed_phrase",
+            "key_derivation",
+            "cipher_seed",
+            "passphrase",
+            "key_validation",
+            "domain_separation",
+            "recovery",
+        ];
+        
+        for (error, expected_category) in errors.iter().zip(expected_categories.iter()) {
+            assert_eq!(error.category(), *expected_category);
+        }
+        
+        // Test recoverable classification
+        assert!(KeyManagementError::empty_seed_phrase().is_recoverable());
+        assert!(KeyManagementError::invalid_word_count(24, 12).is_recoverable());
+        assert!(KeyManagementError::unknown_word("test", 0).is_recoverable());
+        assert!(!KeyManagementError::master_key_derivation_failed("test").is_recoverable());
+        
+        // Test critical classification
+        assert!(KeyManagementError::master_key_derivation_failed("test").is_critical());
+        assert!(KeyManagementError::cipher_seed_mac_verification_failed().is_critical());
+        assert!(!KeyManagementError::empty_seed_phrase().is_critical());
+    }
+
+    #[test]
+    fn test_error_recovery_suggestions() {
+        // Test recovery suggestions for various errors
+        let error = KeyManagementError::unknown_word("test", 5);
+        let suggestion = error.recovery_suggestion().unwrap();
+        assert!(suggestion.contains("Check word 6"));
+        assert!(suggestion.contains("BIP39"));
+        
+        let error = KeyManagementError::invalid_word_count(24, 12);
+        let suggestion = error.recovery_suggestion().unwrap();
+        assert!(suggestion.contains("24 words"));
+        
+        let error = KeyManagementError::empty_seed_phrase();
+        let suggestion = error.recovery_suggestion().unwrap();
+        assert!(suggestion.contains("12 or 24 words"));
+        
+        let error = KeyManagementError::missing_required_passphrase();
+        let suggestion = error.recovery_suggestion().unwrap();
+        assert!(suggestion.contains("passphrase"));
+        
+        let error = KeyManagementError::invalid_passphrase();
+        let suggestion = error.recovery_suggestion().unwrap();
+        assert!(suggestion.contains("correct"));
+        
+        // Errors without specific suggestions
+        let error = KeyManagementError::master_key_derivation_failed("test");
+        assert!(error.recovery_suggestion().is_none());
+    }
+
+    #[test]
+    fn test_enhanced_error_messages() {
+        // Test that error messages are descriptive and helpful
+        let error = KeyManagementError::invalid_word_count(24, 12);
+        let error_string = error.to_string();
+        assert!(error_string.contains("expected 24 words"));
+        assert!(error_string.contains("got 12 words"));
+        assert!(error_string.contains("exactly 24 words"));
+        
+        let error = KeyManagementError::unknown_word("invalidword", 5);
+        let error_string = error.to_string();
+        assert!(error_string.contains("invalidword"));
+        assert!(error_string.contains("position 5"));
+        assert!(error_string.contains("BIP39 word list"));
+        assert!(error_string.contains("typos"));
+        
+        let error = KeyManagementError::cipher_seed_decryption_failed("Wrong passphrase");
+        let error_string = error.to_string();
+        assert!(error_string.contains("Wrong passphrase"));
+        assert!(error_string.contains("verify the passphrase"));
+        
+        let error = KeyManagementError::branch_key_derivation_failed("test_branch", 42, "Invalid key");
+        let error_string = error.to_string();
+        assert!(error_string.contains("test_branch"));
+        assert!(error_string.contains("42"));
+        assert!(error_string.contains("Invalid key"));
     }
 } 

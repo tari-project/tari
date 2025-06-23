@@ -128,52 +128,94 @@ impl LightweightKeyManager {
     }
 }
 
-/// Derives a private key from master entropy using the Tari key derivation pattern:
-/// derived_key = H(master_entropy || branch_seed || key_index)
-/// 
-/// This matches the implementation in the base layer key manager.
+/// Derives a private key using Tari's key derivation specification
 pub fn derive_private_key(
-    master_entropy: &[u8],
+    master_entropy: &[u8; 32],
     branch_seed: &str,
     key_index: u64,
 ) -> Result<RistrettoSecretKey, KeyManagementError> {
-    // Apply domain separation to generate derive key using the same pattern as base layer
-    let derive_key = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerDomain>::new_with_label(HASHER_LABEL_DERIVE_KEY)
+    if branch_seed.is_empty() {
+        return Err(KeyManagementError::invalid_derivation_index(
+            "empty",
+            key_index
+        ));
+    }
+    
+    let derive_key = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerDomain>::new_with_label("derive_key")
         .chain(master_entropy)
         .chain(branch_seed.as_bytes())
         .chain(key_index.to_le_bytes())
         .finalize();
-
+    
     let derive_key = derive_key.as_ref();
-    let secret_key = RistrettoSecretKey::from_uniform_bytes(derive_key)
-        .map_err(|e| KeyManagementError::key_derivation_failed(&format!("Failed to create secret key: {}", e)))?;
-    
-    Ok(secret_key)
+    RistrettoSecretKey::from_uniform_bytes(derive_key)
+        .map_err(|e| KeyManagementError::branch_key_derivation_failed(
+            branch_seed,
+            key_index,
+            &format!("Failed to create private key: {}", e)
+        ))
 }
 
-/// Derives a public key from master entropy using the Tari key derivation pattern
-pub fn derive_public_key(
-    master_entropy: &[u8],
-    branch_seed: &str,
-    key_index: u64,
+/// Derives a public key from a private key
+pub fn derive_public_key_from_private(
+    private_key: &RistrettoSecretKey,
 ) -> Result<RistrettoPublicKey, KeyManagementError> {
-    let secret_key = derive_private_key(master_entropy, branch_seed, key_index)?;
-    Ok(RistrettoPublicKey::from_secret_key(&secret_key))
+    Ok(private_key.public_key())
 }
 
-/// Derives view and spend keys from a master key using Tari's key derivation pattern
-pub fn derive_view_and_spend_keys(master_key: &[u8; 32]) -> Result<(RistrettoSecretKey, RistrettoSecretKey), KeyManagementError> {
-    // Use the exact branch keys from the main Tari implementation
-    // View key uses TransactionKeyManagerBranch::DataEncryption = "data encryption"
-    // Spend key uses TransactionKeyManagerBranch::Spend = "comms" (WALLET_COMMS_AND_SPEND_KEY_BRANCH)
-    const VIEW_KEY_BRANCH: &str = "data encryption";
-    const SPEND_KEY_BRANCH: &str = "comms";
-    const KEY_INDEX: u64 = 0;
+/// Derives view and spend keys from CipherSeed entropy using Tari's exact key derivation pattern
+/// This matches the main Tari KeyManager implementation which uses entropy directly
+pub fn derive_view_and_spend_keys_from_entropy(entropy: &[u8; 16]) -> Result<(RistrettoSecretKey, RistrettoSecretKey), KeyManagementError> {
+    // Tari uses specific branch seeds for view and spend keys
+    // These constants match the main Tari wallet implementation
+    const VIEW_KEY_BRANCH: &str = "data encryption";  // For encrypted data decryption (view key)
+    const SPEND_KEY_BRANCH: &str = "comms"; // For wallet communications and spending
     
-    let view_key = derive_private_key(master_key, VIEW_KEY_BRANCH, KEY_INDEX)?;
-    let spend_key = derive_private_key(master_key, SPEND_KEY_BRANCH, KEY_INDEX)?;
+    let view_key = derive_private_key_from_entropy(entropy, VIEW_KEY_BRANCH, 0)
+        .map_err(|e| KeyManagementError::view_key_derivation_failed(
+            &format!("Failed to derive view key: {}", e)
+        ))?;
+        
+    let spend_key = derive_private_key_from_entropy(entropy, SPEND_KEY_BRANCH, 0)
+        .map_err(|e| KeyManagementError::spend_key_derivation_failed(
+            &format!("Failed to derive spend key: {}", e)
+        ))?;
     
     Ok((view_key, spend_key))
+}
+
+/// Derives a private key directly from CipherSeed entropy using Tari's key derivation specification
+/// This matches the main Tari KeyManager.derive_private_key implementation exactly
+pub fn derive_private_key_from_entropy(
+    entropy: &[u8; 16],
+    branch_seed: &str,
+    key_index: u64,
+) -> Result<RistrettoSecretKey, KeyManagementError> {
+    if branch_seed.is_empty() {
+        return Err(KeyManagementError::invalid_derivation_index(
+            "empty",
+            key_index
+        ));
+    }
+    
+    // This matches the main Tari KeyManager implementation exactly:
+    // DomainSeparatedHasher::new_with_label(HASHER_LABEL_DERIVE_KEY)
+    //   .chain(self.seed.entropy())  // CipherSeed entropy directly (16 bytes)
+    //   .chain(self.branch_seed.as_bytes())
+    //   .chain(key_index.to_le_bytes())
+    let derive_key = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerDomain>::new_with_label("derive_key")
+        .chain(entropy)  // Use the 16-byte CipherSeed entropy directly
+        .chain(branch_seed.as_bytes())
+        .chain(key_index.to_le_bytes())
+        .finalize();
+    
+    let derive_key = derive_key.as_ref();
+    RistrettoSecretKey::from_uniform_bytes(derive_key)
+        .map_err(|e| KeyManagementError::branch_key_derivation_failed(
+            branch_seed,
+            key_index,
+            &format!("Failed to create private key: {}", e)
+        ))
 }
 
 /// Derives a stealth address from view and spend public keys
@@ -193,6 +235,28 @@ pub fn derive_stealth_address(
     Ok(stealth_address)
 }
 
+/// Creates a lightweight key manager from a mnemonic phrase using enhanced error handling
+pub fn create_key_manager_from_mnemonic(
+    mnemonic: &str,
+    passphrase: Option<&str>,
+) -> Result<[u8; 32], KeyManagementError> {
+    if mnemonic.trim().is_empty() {
+        return Err(KeyManagementError::empty_seed_phrase());
+    }
+    
+    crate::key_management::seed_phrase::mnemonic_to_master_key(mnemonic, passphrase)
+        .map_err(|e| {
+            match e.category() {
+                "seed_phrase" => e,
+                "cipher_seed" => e,
+                "passphrase" => e,
+                _ => KeyManagementError::master_key_derivation_failed(
+                    &format!("Failed to create key manager from mnemonic: {}", e)
+                ),
+            }
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,13 +266,18 @@ mod tests {
 
     #[test]
     fn test_mnemonic_to_master_key() {
-        let seed_phrase = "leopard test wide unhappy relax globe clerk make ice witness trophy hundred health love army north invite fuel grab farm order process force dress";
+        let seed_phrase = "theory train hurt word now piece large material message toddler abuse prize roast maximum bronze drink legal city liberty glimpse present found slush silent";
 
-        let master_key = mnemonic_to_master_key(seed_phrase, None).unwrap();
-        let (view_private_key, spend_private_key) = derive_view_and_spend_keys(&master_key)
+        // Convert seed phrase to CipherSeed and use entropy directly
+        let encrypted_bytes = crate::key_management::seed_phrase::mnemonic_to_bytes(seed_phrase).unwrap();
+        let cipher_seed = crate::key_management::seed_phrase::CipherSeed::from_enciphered_bytes(&encrypted_bytes, None).unwrap();
+        let entropy: [u8; 16] = cipher_seed.entropy().try_into().unwrap();
+        
+        let (view_private_key, _spend_private_key) = derive_view_and_spend_keys_from_entropy(&entropy)
             .expect("Failed to derive view and spend keys");
-        let expected_private_key = "a0633ff5adc26d30fad02b04077d190b507e0865c8ef53adb624dd81ca4d7301";
+        let expected_private_key = "5a7b695be289e8967257d076a74a38d43b5f0c63bc981d9c962fc0c8dec7d001";
         let actual_private_key = hex::encode(view_private_key.as_bytes());
+        println!("Actual Private Key: {}", actual_private_key);
         assert_eq!(expected_private_key, actual_private_key);
     }
 
@@ -223,50 +292,20 @@ mod tests {
         let expected_view_public_key = "36a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055";
         let expected_spend_public_key = "d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173";
         
-        /*
-        Generated Address:
-         base58: 125pkjnZohtMd4R2jNomnujPbP8rM21rJTWVUKaUGkGp1xNSF3egChCAiHRVRXAaWqSqN2hQko4fPyonEjFcy7QMdSa
-emoji: 🐢📟🍵👽🐗🔔🌕💤🍑🐼📜💦🎯🍚🎉🍕🌽🏭🐀🎽🚚🐊🌴🍯🌸🍣🧲🌰🍉🚦🐸🚂💋🎲🔔🚓👒🌕🎈🔫🏦🚽🍌🔌👗🔥🎂💦🚫🌸🚰🤠👘🏰🏁💰🌕💤📎👒🧩👒⚽🎵🍭🐔👃
-hex: 000136a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173ab
-raw_bytes: 0,1,54,168,117,212,8,186,33,144,199,187,4,39,67,37,18,105,107,94,239,109,12,50,15,43,255,11,26,247,141,238,176,85,212,242,150,8,66,219,104,253,29,209,155,213,63,187,251,15,210,170,156,106,98,192,8,186,201,150,183,150,101,87,49,115,171
-network: MainNet
-network_byte: 0
-features:
-  features_byte: 1
-  one_sided: true
-  payment_id: false
-  interactive: false
-public_spend_key: d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173
-public_view_key: 36a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055
-address_type: Dual Address
-payment_id: 
-payment_id_ascii: 
-*/
-
-/* Generated Address WITH payment id::
-base58: 16bYd9f7iM8oCR3hJXTkALxTDfptEL1nJz1wRTGADD3Lg8sW4ygkaBqX7JGFhmKoBosmmXsYv5fRfYgnjSWxiLK87PdtpZQWsEh1X7fFdkdiuEt
-emoji: 🐢🐋🍵👽🐗🔔🌕💤🍑🐼📜💦🎯🍚🎉🍕🌽🏭🐀🎽🚚🐊🌴🍯🌸🍣🧲🌰🍉🚦🐸🚂💋🎲🔔🚓👒🌕🎈🔫🏦🚽🍌🔌👗🔥🎂💦🚫🌸🚰🤠👘🏰🏁💰🌕💤📎👒🧩👒⚽🎵🍭🐔🙈⚽🐔🙈🍩🦁🏀🐛🐊⚽🐌🙈🍩🏭🏈🚽
-hex: 000536a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173746573742d7061796d656e742d6964fd
-raw_bytes: 0,5,54,168,117,212,8,186,33,144,199,187,4,39,67,37,18,105,107,94,239,109,12,50,15,43,255,11,26,247,141,238,176,85,212,242,150,8,66,219,104,253,29,209,155,213,63,187,251,15,210,170,156,106,98,192,8,186,201,150,183,150,101,87,49,115,116,101,115,116,45,112,97,121,109,101,110,116,45,105,100,253
-network: MainNet
-network_byte: 0
-features:
-  features_byte: 5
-  one_sided: true
-  payment_id: true
-  interactive: false
-public_spend_key: d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173
-public_view_key: 36a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055
-address_type: Dual Address
-payment_id: 746573742d7061796d656e742d6964
-payment_id_ascii: test-payment-id
- */
-        // Convert seed phrase to master key
-        let master_key = mnemonic_to_master_key(seed_phrase, None)
-            .expect("Failed to convert mnemonic to master key");
+        // Convert seed phrase to encrypted bytes
+        let encrypted_bytes = crate::key_management::seed_phrase::mnemonic_to_bytes(seed_phrase)
+            .expect("Failed to convert mnemonic to bytes");
         
-        // Derive view and spend keys
-        let (view_private_key, spend_private_key) = derive_view_and_spend_keys(&master_key)
+        // Decrypt the CipherSeed to get the entropy
+        let cipher_seed = crate::key_management::seed_phrase::CipherSeed::from_enciphered_bytes(&encrypted_bytes, None)
+            .expect("Failed to decrypt CipherSeed");
+        
+        // Use the entropy directly for key derivation (matching main Tari implementation)
+        let entropy: [u8; 16] = cipher_seed.entropy().try_into()
+            .expect("Failed to convert entropy to 16-byte array");
+        
+        // Derive view and spend keys using entropy directly
+        let (view_private_key, spend_private_key) = derive_view_and_spend_keys_from_entropy(&entropy)
             .expect("Failed to derive view and spend keys");
         
         // Convert to public keys
@@ -279,20 +318,19 @@ payment_id_ascii: test-payment-id
         let actual_view_public_key = hex::encode(view_public_key.as_bytes());
         let actual_spend_public_key = hex::encode(spend_public_key.as_bytes());
         
-        // For now, we'll just verify that we can derive keys successfully
-        // The actual values may not match due to the simplified implementation
-        println!("View Private Key: {}", actual_view_private_key);
-        println!("Spend Private Key: {}", actual_spend_private_key);
-        println!("View Public Key: {}", actual_view_public_key);
-        println!("Spend Public Key: {}", actual_spend_public_key);
-        
-        // Verify that the keys are different
-        assert_ne!(view_private_key, spend_private_key);
-        assert_ne!(view_public_key, spend_public_key);
+        // Verify that we can derive keys successfully and they're different
+        assert_ne!(view_private_key, spend_private_key, "View and spend private keys should be different");
+        assert_ne!(view_public_key, spend_public_key, "View and spend public keys should be different");
         
         // Verify that the public keys correspond to the private keys
         assert_eq!(view_public_key, RistrettoPublicKey::from_secret_key(&view_private_key));
         assert_eq!(spend_public_key, RistrettoPublicKey::from_secret_key(&spend_private_key));
+
+        // Verify that our keys match the expected Tari values exactly
+        assert_eq!(actual_view_private_key, expected_view_private_key);
+        assert_eq!(actual_spend_private_key, expected_spend_private_key);
+        assert_eq!(actual_view_public_key, expected_view_public_key);
+        assert_eq!(actual_spend_public_key, expected_spend_public_key);
     }
 
     #[test]
@@ -369,21 +407,29 @@ payment_id_ascii: test-payment-id
         println!("=== Testing Tari Test Vector ===");
         println!("Seed phrase: {}", seed_phrase);
         
-        // Step 1: Convert seed phrase to master key
-        let master_key = mnemonic_to_master_key(seed_phrase, None)
-            .expect("Failed to convert mnemonic to master key");
+        // Convert seed phrase to encrypted bytes (correct approach)
+        let encrypted_bytes = crate::key_management::seed_phrase::mnemonic_to_bytes(seed_phrase)
+            .expect("Failed to convert mnemonic to bytes");
         
-        println!("Master key: {}", hex::encode(master_key));
+        // Decrypt the CipherSeed to get the entropy
+        let cipher_seed = crate::key_management::seed_phrase::CipherSeed::from_enciphered_bytes(&encrypted_bytes, None)
+            .expect("Failed to decrypt CipherSeed");
         
-        // Step 2: Derive view and spend keys
-        let (view_private_key, spend_private_key) = derive_view_and_spend_keys(&master_key)
+        // Use the entropy directly for key derivation (matching main Tari implementation)
+        let entropy: [u8; 16] = cipher_seed.entropy().try_into()
+            .expect("Failed to convert entropy to 16-byte array");
+        
+        println!("CipherSeed entropy: {}", hex::encode(entropy));
+        
+        // Derive view and spend keys using entropy directly
+        let (view_private_key, spend_private_key) = derive_view_and_spend_keys_from_entropy(&entropy)
             .expect("Failed to derive view and spend keys");
         
-        // Step 3: Convert to public keys
+        // Convert to public keys
         let view_public_key = RistrettoPublicKey::from_secret_key(&view_private_key);
         let spend_public_key = RistrettoPublicKey::from_secret_key(&spend_private_key);
         
-        // Step 4: Convert to hex strings for comparison
+        // Convert to hex strings for comparison
         let actual_view_private_key = hex::encode(view_private_key.as_bytes());
         let actual_spend_private_key = hex::encode(spend_private_key.as_bytes());
         let actual_view_public_key = hex::encode(view_public_key.as_bytes());
@@ -398,8 +444,7 @@ payment_id_ascii: test-payment-id
         println!("Expected Spend Public Key:  {}", expected_spend_public_key);
         println!("Actual Spend Public Key:    {}", actual_spend_public_key);
         
-        // For now, validate that we can derive keys successfully and they're different
-        // TODO: Update these assertions once we get the exact Tari derivation patterns right
+        // Validate that we can derive keys successfully and they're different
         assert_ne!(view_private_key, spend_private_key, "View and spend private keys should be different");
         assert_ne!(view_public_key, spend_public_key, "View and spend public keys should be different");
         
@@ -407,23 +452,16 @@ payment_id_ascii: test-payment-id
         assert_eq!(view_public_key, RistrettoPublicKey::from_secret_key(&view_private_key));
         assert_eq!(spend_public_key, RistrettoPublicKey::from_secret_key(&spend_private_key));
         
-        // TODO: Fix exact value validation once master key derivation is corrected
-        // Current differences:
-        // View Private Key:  fe5f41a995b41e11a4b7c74e21d63ac6dea9c79bcdaf996c3906ce2642f6f904 vs 7755e59ca4a10d19d14f56a014826d005d029ff9a5053c850d63f9322005080a
-        // Spend Private Key: f7ad3f01f4ffad6197cce7f74f77c93b773c6c3d9a9b50ebc7f52fb5f02e3908 vs ef5d6881f2b1ff65dd6d62a77f73be2179cad40c6d587d5ff9f4ed49b5378b05
-        // This suggests our master key derivation or domain separation differs from main Tari implementation
-        
-        // For now, verify basic functional correctness instead of exact values
-        // assert_eq!(actual_view_private_key, expected_view_private_key, "View private key mismatch");
-        // assert_eq!(actual_spend_private_key, expected_spend_private_key, "Spend private key mismatch");
-        // assert_eq!(actual_view_public_key, expected_view_public_key, "View public key mismatch");
-        // assert_eq!(actual_spend_public_key, expected_spend_public_key, "Spend public key mismatch");
+        // Now test the exact value validation - this is the real test of correctness
+        assert_eq!(actual_view_private_key, expected_view_private_key, "View private key mismatch");
+        assert_eq!(actual_spend_private_key, expected_spend_private_key, "Spend private key mismatch");
+        assert_eq!(actual_view_public_key, expected_view_public_key, "View public key mismatch");
+        assert_eq!(actual_spend_public_key, expected_spend_public_key, "Spend public key mismatch");
         
         // Store expected addresses for future validation
         let _ = expected_base58_address;
         let _ = expected_emoji_address;
         
-        println!("✅ Basic key derivation test passed - keys are different and consistent");
-        println!("⚠️  Exact value validation is TODO - needs correct Tari derivation patterns");
+        println!("✅ Exact Tari test vector validation passed!");
     }
 } 

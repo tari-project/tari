@@ -341,6 +341,116 @@ pub enum KeyManagementError {
     
     #[error("Cryptographic error: {0}")]
     CryptographicError(String),
+
+    // === Enhanced Seed Phrase Error Types ===
+    
+    #[error("Invalid seed phrase format: {details}. Suggestion: {suggestion}")]
+    InvalidSeedPhraseFormat { details: String, suggestion: String },
+    
+    #[error("Invalid word count: expected {expected} words, got {actual} words. Please check your seed phrase has exactly {expected} words.")]
+    InvalidWordCount { expected: usize, actual: usize },
+    
+    #[error("Unknown word '{word}' at position {position}. This word is not in the BIP39 word list. Please check for typos.")]
+    UnknownWord { word: String, position: usize },
+    
+    #[error("Invalid seed phrase checksum. The seed phrase appears to be corrupted or mistyped. Please verify all words are correct.")]
+    InvalidSeedChecksum,
+    
+    #[error("Empty seed phrase provided. Please provide a valid seed phrase.")]
+    EmptySeedPhrase,
+    
+    #[error("Seed phrase validation failed: {reason}. Suggestion: {suggestion}")]
+    SeedValidationFailed { reason: String, suggestion: String },
+    
+    #[error("Seed phrase encoding error: {details}. The seed phrase could not be converted to the expected format.")]
+    SeedEncodingError { details: String },
+    
+    #[error("Seed phrase decoding error: {details}. The provided data could not be converted to a valid seed phrase.")]
+    SeedDecodingError { details: String },
+
+    // === Enhanced Derivation Error Types ===
+    
+    #[error("Master key derivation failed: {reason}. Check that the seed phrase and passphrase are correct.")]
+    MasterKeyDerivationFailed { reason: String },
+    
+    #[error("Branch key derivation failed for branch '{branch}' at index {index}: {reason}")]
+    BranchKeyDerivationFailed { branch: String, index: u64, reason: String },
+    
+    #[error("View key derivation failed: {reason}. This may indicate an issue with the master key or derivation parameters.")]
+    ViewKeyDerivationFailed { reason: String },
+    
+    #[error("Spend key derivation failed: {reason}. This may indicate an issue with the master key or derivation parameters.")]
+    SpendKeyDerivationFailed { reason: String },
+    
+    #[error("Invalid derivation index {index} for branch '{branch}'. Index must be within valid range.")]
+    InvalidDerivationIndex { branch: String, index: u64 },
+    
+    #[error("Derivation path too deep: {depth} levels. Maximum supported depth is {max_depth}.")]
+    DerivationPathTooDeep { depth: usize, max_depth: usize },
+    
+    #[error("Hierarchical derivation failed at level {level}: {reason}")]
+    HierarchicalDerivationFailed { level: usize, reason: String },
+
+    // === Enhanced CipherSeed Error Types ===
+    
+    #[error("CipherSeed version {version} is not supported. Supported versions: {supported_versions:?}")]
+    UnsupportedCipherSeedVersion { version: u8, supported_versions: Vec<u8> },
+    
+    #[error("CipherSeed encryption failed: {reason}. Please check the passphrase and try again.")]
+    CipherSeedEncryptionFailed { reason: String },
+    
+    #[error("CipherSeed decryption failed: {reason}. Please verify the passphrase is correct.")]
+    CipherSeedDecryptionFailed { reason: String },
+    
+    #[error("Invalid CipherSeed format: {details}. The data does not match the expected CipherSeed structure.")]
+    InvalidCipherSeedFormat { details: String },
+    
+    #[error("CipherSeed MAC verification failed. The seed data may be corrupted or the wrong passphrase was used.")]
+    CipherSeedMacVerificationFailed,
+    
+    #[error("Invalid CipherSeed birthday {birthday}. Birthday must be within valid range.")]
+    InvalidCipherSeedBirthday { birthday: u16 },
+    
+    #[error("CipherSeed entropy error: {details}. The entropy data is invalid or corrupted.")]
+    CipherSeedEntropyError { details: String },
+
+    // === Enhanced Passphrase Error Types ===
+    
+    #[error("Missing required passphrase. This seed phrase was created with a passphrase and requires one for decryption.")]
+    MissingRequiredPassphrase,
+    
+    #[error("Invalid passphrase provided. Please check that the passphrase is correct.")]
+    InvalidPassphrase,
+    
+    #[error("Passphrase validation failed: {reason}")]
+    PassphraseValidationFailed { reason: String },
+
+    // === Enhanced Key Validation Error Types ===
+    
+    #[error("Key validation failed: {key_type} key failed validation. Reason: {reason}")]
+    KeyValidationFailed { key_type: String, reason: String },
+    
+    #[error("Key format error: {key_type} key has invalid format. Expected: {expected_format}, got: {actual_format}")]
+    KeyFormatError { key_type: String, expected_format: String, actual_format: String },
+    
+    #[error("Key length error: {key_type} key has invalid length. Expected: {expected_length} bytes, got: {actual_length} bytes")]
+    KeyLengthError { key_type: String, expected_length: usize, actual_length: usize },
+
+    // === Enhanced Domain Separation Error Types ===
+    
+    #[error("Domain separation error: {operation} failed with domain '{domain}'. {details}")]
+    DomainSeparationError { operation: String, domain: String, details: String },
+    
+    #[error("Invalid domain label '{label}' for operation '{operation}'. Expected one of: {valid_labels:?}")]
+    InvalidDomainLabel { operation: String, label: String, valid_labels: Vec<String> },
+
+    // === Enhanced Recovery Error Types ===
+    
+    #[error("Wallet recovery failed: {stage}. {details}. Suggestion: {suggestion}")]
+    WalletRecoveryFailed { stage: String, details: String, suggestion: String },
+    
+    #[error("Partial recovery completed: {recovered_items} items recovered, {failed_items} items failed. {details}")]
+    PartialRecoveryCompleted { recovered_items: usize, failed_items: usize, details: String },
 }
 
 /// Errors related to UTXO scanning operations
@@ -626,14 +736,363 @@ impl KeyManagementError {
         Self::KeyDerivationFailed(details.to_string())
     }
     
-    /// Create a stealth address recovery error
+    /// Create a stealth address recovery failed error
     pub fn stealth_address_recovery_failed(details: &str) -> Self {
         Self::StealthAddressRecoveryFailed(details.to_string())
+    }
+
+    // === Seed Phrase Error Convenience Methods ===
+    
+    /// Create an invalid seed phrase format error with suggestion
+    pub fn invalid_seed_phrase_format(details: &str, suggestion: &str) -> Self {
+        Self::InvalidSeedPhraseFormat {
+            details: details.to_string(),
+            suggestion: suggestion.to_string(),
+        }
+    }
+    
+    /// Create an invalid word count error
+    pub fn invalid_word_count(expected: usize, actual: usize) -> Self {
+        Self::InvalidWordCount { expected, actual }
+    }
+    
+    /// Create an unknown word error
+    pub fn unknown_word(word: &str, position: usize) -> Self {
+        Self::UnknownWord {
+            word: word.to_string(),
+            position,
+        }
+    }
+    
+    /// Create an invalid seed checksum error
+    pub fn invalid_seed_checksum() -> Self {
+        Self::InvalidSeedChecksum
+    }
+    
+    /// Create an empty seed phrase error
+    pub fn empty_seed_phrase() -> Self {
+        Self::EmptySeedPhrase
+    }
+    
+    /// Create a seed validation failed error with suggestion
+    pub fn seed_validation_failed(reason: &str, suggestion: &str) -> Self {
+        Self::SeedValidationFailed {
+            reason: reason.to_string(),
+            suggestion: suggestion.to_string(),
+        }
+    }
+    
+    /// Create a seed encoding error
+    pub fn seed_encoding_error(details: &str) -> Self {
+        Self::SeedEncodingError {
+            details: details.to_string(),
+        }
+    }
+    
+    /// Create a seed decoding error
+    pub fn seed_decoding_error(details: &str) -> Self {
+        Self::SeedDecodingError {
+            details: details.to_string(),
+        }
+    }
+
+    // === Derivation Error Convenience Methods ===
+    
+    /// Create a master key derivation failed error
+    pub fn master_key_derivation_failed(reason: &str) -> Self {
+        Self::MasterKeyDerivationFailed {
+            reason: reason.to_string(),
+        }
+    }
+    
+    /// Create a branch key derivation failed error
+    pub fn branch_key_derivation_failed(branch: &str, index: u64, reason: &str) -> Self {
+        Self::BranchKeyDerivationFailed {
+            branch: branch.to_string(),
+            index,
+            reason: reason.to_string(),
+        }
+    }
+    
+    /// Create a view key derivation failed error
+    pub fn view_key_derivation_failed(reason: &str) -> Self {
+        Self::ViewKeyDerivationFailed {
+            reason: reason.to_string(),
+        }
+    }
+    
+    /// Create a spend key derivation failed error
+    pub fn spend_key_derivation_failed(reason: &str) -> Self {
+        Self::SpendKeyDerivationFailed {
+            reason: reason.to_string(),
+        }
+    }
+    
+    /// Create an invalid derivation index error
+    pub fn invalid_derivation_index(branch: &str, index: u64) -> Self {
+        Self::InvalidDerivationIndex {
+            branch: branch.to_string(),
+            index,
+        }
+    }
+    
+    /// Create a derivation path too deep error
+    pub fn derivation_path_too_deep(depth: usize, max_depth: usize) -> Self {
+        Self::DerivationPathTooDeep { depth, max_depth }
+    }
+    
+    /// Create a hierarchical derivation failed error
+    pub fn hierarchical_derivation_failed(level: usize, reason: &str) -> Self {
+        Self::HierarchicalDerivationFailed {
+            level,
+            reason: reason.to_string(),
+        }
+    }
+
+    // === CipherSeed Error Convenience Methods ===
+    
+    /// Create an unsupported CipherSeed version error
+    pub fn unsupported_cipher_seed_version(version: u8, supported_versions: Vec<u8>) -> Self {
+        Self::UnsupportedCipherSeedVersion {
+            version,
+            supported_versions,
+        }
+    }
+    
+    /// Create a CipherSeed encryption failed error
+    pub fn cipher_seed_encryption_failed(reason: &str) -> Self {
+        Self::CipherSeedEncryptionFailed {
+            reason: reason.to_string(),
+        }
+    }
+    
+    /// Create a CipherSeed decryption failed error
+    pub fn cipher_seed_decryption_failed(reason: &str) -> Self {
+        Self::CipherSeedDecryptionFailed {
+            reason: reason.to_string(),
+        }
+    }
+    
+    /// Create an invalid CipherSeed format error
+    pub fn invalid_cipher_seed_format(details: &str) -> Self {
+        Self::InvalidCipherSeedFormat {
+            details: details.to_string(),
+        }
+    }
+    
+    /// Create a CipherSeed MAC verification failed error
+    pub fn cipher_seed_mac_verification_failed() -> Self {
+        Self::CipherSeedMacVerificationFailed
+    }
+    
+    /// Create an invalid CipherSeed birthday error
+    pub fn invalid_cipher_seed_birthday(birthday: u16) -> Self {
+        Self::InvalidCipherSeedBirthday { birthday }
+    }
+    
+    /// Create a CipherSeed entropy error
+    pub fn cipher_seed_entropy_error(details: &str) -> Self {
+        Self::CipherSeedEntropyError {
+            details: details.to_string(),
+        }
+    }
+
+    // === Passphrase Error Convenience Methods ===
+    
+    /// Create a missing required passphrase error
+    pub fn missing_required_passphrase() -> Self {
+        Self::MissingRequiredPassphrase
+    }
+    
+    /// Create an invalid passphrase error
+    pub fn invalid_passphrase() -> Self {
+        Self::InvalidPassphrase
+    }
+    
+    /// Create a passphrase validation failed error
+    pub fn passphrase_validation_failed(reason: &str) -> Self {
+        Self::PassphraseValidationFailed {
+            reason: reason.to_string(),
+        }
+    }
+
+    // === Key Validation Error Convenience Methods ===
+    
+    /// Create a key validation failed error
+    pub fn key_validation_failed(key_type: &str, reason: &str) -> Self {
+        Self::KeyValidationFailed {
+            key_type: key_type.to_string(),
+            reason: reason.to_string(),
+        }
+    }
+    
+    /// Create a key format error
+    pub fn key_format_error(key_type: &str, expected_format: &str, actual_format: &str) -> Self {
+        Self::KeyFormatError {
+            key_type: key_type.to_string(),
+            expected_format: expected_format.to_string(),
+            actual_format: actual_format.to_string(),
+        }
+    }
+    
+    /// Create a key length error
+    pub fn key_length_error(key_type: &str, expected_length: usize, actual_length: usize) -> Self {
+        Self::KeyLengthError {
+            key_type: key_type.to_string(),
+            expected_length,
+            actual_length,
+        }
+    }
+
+    // === Domain Separation Error Convenience Methods ===
+    
+    /// Create a domain separation error
+    pub fn domain_separation_error(operation: &str, domain: &str, details: &str) -> Self {
+        Self::DomainSeparationError {
+            operation: operation.to_string(),
+            domain: domain.to_string(),
+            details: details.to_string(),
+        }
+    }
+    
+    /// Create an invalid domain label error
+    pub fn invalid_domain_label(operation: &str, label: &str, valid_labels: Vec<String>) -> Self {
+        Self::InvalidDomainLabel {
+            operation: operation.to_string(),
+            label: label.to_string(),
+            valid_labels,
+        }
+    }
+
+    // === Recovery Error Convenience Methods ===
+    
+    /// Create a wallet recovery failed error
+    pub fn wallet_recovery_failed(stage: &str, details: &str, suggestion: &str) -> Self {
+        Self::WalletRecoveryFailed {
+            stage: stage.to_string(),
+            details: details.to_string(),
+            suggestion: suggestion.to_string(),
+        }
+    }
+    
+    /// Create a partial recovery completed error
+    pub fn partial_recovery_completed(recovered_items: usize, failed_items: usize, details: &str) -> Self {
+        Self::PartialRecoveryCompleted {
+            recovered_items,
+            failed_items,
+            details: details.to_string(),
+        }
+    }
+
+    // === Helper Methods for Error Analysis ===
+    
+    /// Check if this is a recoverable error (user can potentially fix)
+    pub fn is_recoverable(&self) -> bool {
+        matches!(
+            self,
+            Self::UnknownWord { .. } |
+            Self::InvalidWordCount { .. } |
+            Self::InvalidSeedChecksum |
+            Self::EmptySeedPhrase |
+            Self::MissingRequiredPassphrase |
+            Self::InvalidPassphrase |
+            Self::InvalidSeedPhraseFormat { .. } |
+            Self::SeedValidationFailed { .. }
+        )
+    }
+    
+    /// Check if this is a critical error (requires immediate attention)
+    pub fn is_critical(&self) -> bool {
+        matches!(
+            self,
+            Self::MasterKeyDerivationFailed { .. } |
+            Self::KeyValidationFailed { .. } |
+            Self::CipherSeedMacVerificationFailed |
+            Self::CipherSeedEntropyError { .. } |
+            Self::DomainSeparationError { .. }
+        )
+    }
+    
+    /// Get suggested recovery action for this error
+    pub fn recovery_suggestion(&self) -> Option<String> {
+        match self {
+            Self::UnknownWord { position, .. } => {
+                Some(format!("Check word {} for typos. Verify it's in the BIP39 word list.", position + 1))
+            },
+            Self::InvalidWordCount { expected, .. } => {
+                Some(format!("Ensure your seed phrase has exactly {} words separated by spaces.", expected))
+            },
+            Self::InvalidSeedChecksum => {
+                Some("Verify all words are spelled correctly and in the right order.".to_string())
+            },
+            Self::EmptySeedPhrase => {
+                Some("Provide a valid seed phrase with 12 or 24 words.".to_string())
+            },
+            Self::MissingRequiredPassphrase => {
+                Some("This wallet was created with a passphrase. Please provide the correct passphrase.".to_string())
+            },
+            Self::InvalidPassphrase => {
+                Some("Check that the passphrase is correct and try again.".to_string())
+            },
+            Self::InvalidSeedPhraseFormat { suggestion, .. } => {
+                Some(suggestion.clone())
+            },
+            Self::SeedValidationFailed { suggestion, .. } => {
+                Some(suggestion.clone())
+            },
+            _ => None,
+        }
+    }
+    
+    /// Get the error category for this error
+    pub fn category(&self) -> &'static str {
+        match self {
+            Self::UnknownWord { .. } |
+            Self::InvalidWordCount { .. } |
+            Self::InvalidSeedChecksum |
+            Self::EmptySeedPhrase |
+            Self::InvalidSeedPhraseFormat { .. } |
+            Self::SeedValidationFailed { .. } |
+            Self::SeedEncodingError { .. } |
+            Self::SeedDecodingError { .. } => "seed_phrase",
+            
+            Self::MasterKeyDerivationFailed { .. } |
+            Self::BranchKeyDerivationFailed { .. } |
+            Self::ViewKeyDerivationFailed { .. } |
+            Self::SpendKeyDerivationFailed { .. } |
+            Self::InvalidDerivationIndex { .. } |
+            Self::DerivationPathTooDeep { .. } |
+            Self::HierarchicalDerivationFailed { .. } => "key_derivation",
+            
+            Self::UnsupportedCipherSeedVersion { .. } |
+            Self::CipherSeedEncryptionFailed { .. } |
+            Self::CipherSeedDecryptionFailed { .. } |
+            Self::InvalidCipherSeedFormat { .. } |
+            Self::CipherSeedMacVerificationFailed |
+            Self::InvalidCipherSeedBirthday { .. } |
+            Self::CipherSeedEntropyError { .. } => "cipher_seed",
+            
+            Self::MissingRequiredPassphrase |
+            Self::InvalidPassphrase |
+            Self::PassphraseValidationFailed { .. } => "passphrase",
+            
+            Self::KeyValidationFailed { .. } |
+            Self::KeyFormatError { .. } |
+            Self::KeyLengthError { .. } => "key_validation",
+            
+            Self::DomainSeparationError { .. } |
+            Self::InvalidDomainLabel { .. } => "domain_separation",
+            
+            Self::WalletRecoveryFailed { .. } |
+            Self::PartialRecoveryCompleted { .. } => "recovery",
+            
+            _ => "general",
+        }
     }
 }
 
 impl ScanningError {
-    /// Create a blockchain connection error
+    /// Create a blockchain connection failed error
     pub fn blockchain_connection_failed(details: &str) -> Self {
         Self::BlockchainConnectionFailed(details.to_string())
     }
