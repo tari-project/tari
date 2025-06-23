@@ -128,33 +128,7 @@ impl LightweightKeyManager {
     }
 }
 
-/// Derives a private key using Tari's key derivation specification
-pub fn derive_private_key(
-    master_entropy: &[u8; 32],
-    branch_seed: &str,
-    key_index: u64,
-) -> Result<RistrettoSecretKey, KeyManagementError> {
-    if branch_seed.is_empty() {
-        return Err(KeyManagementError::invalid_derivation_index(
-            "empty",
-            key_index
-        ));
-    }
-    
-    let derive_key = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerDomain>::new_with_label("derive_key")
-        .chain(master_entropy)
-        .chain(branch_seed.as_bytes())
-        .chain(key_index.to_le_bytes())
-        .finalize();
-    
-    let derive_key = derive_key.as_ref();
-    RistrettoSecretKey::from_uniform_bytes(derive_key)
-        .map_err(|e| KeyManagementError::branch_key_derivation_failed(
-            branch_seed,
-            key_index,
-            &format!("Failed to create private key: {}", e)
-        ))
-}
+
 
 /// Derives a public key from a private key
 pub fn derive_public_key_from_private(
@@ -260,7 +234,6 @@ pub fn create_key_manager_from_mnemonic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::key_management::seed_phrase::mnemonic_to_master_key;
     use crate::crypto::keys::ByteArray;
 
 
