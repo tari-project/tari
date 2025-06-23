@@ -693,46 +693,6 @@ mod test {
             input_mmr.push(input.canonical_hash().to_vec()).unwrap();
         }
 
-        block_output_mmr
-            .push(normal_output_mmr.get_merkle_root().unwrap().to_vec())
-            .unwrap();
-
-        for i in block.block().body.inputs() {
-            let smt_key = KeyHash(
-                i.commitment()
-                    .unwrap()
-                    .as_bytes()
-                    .try_into()
-                    .expect("Commitment is 32 bytes"),
-            );
-            smt_batch.push((smt_key, None));
-
-            // if matches!(i.features().unwrap().output_type, OutputType::ValidatorNodeRegistration) {
-            //     let reg = i
-            //         .features()
-            //         .unwrap()
-            //         .sidechain_feature
-            //         .as_ref()
-            //         .and_then(|f| f.validator_node_registration())
-            //         .unwrap();
-            //     let pos = vn_nodes
-            //         .iter()
-            //         .position(|v| {
-            //             v == &(
-            //                 reg.public_key().clone(),
-            //                 reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-            //             )
-            //         })
-            //         .unwrap();
-            //     vn_nodes.remove(pos);
-            // }
-        }
-
-        let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
-        for input in block.block().body.inputs() {
-            input_mmr.push(input.canonical_hash().to_vec()).unwrap();
-        }
-
         assert_eq!(
             kernel_mr_hash_from_mmr(&kernel_mmr).unwrap().to_vec().to_hex(),
             block.header().kernel_mr.to_vec().to_hex()
