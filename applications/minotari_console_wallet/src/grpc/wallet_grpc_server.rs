@@ -841,7 +841,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?;
-                    // The transaction is only persisted after it has been sent via comms, so we need to wait
                     let wallet_tx = timeout(Duration::from_millis(100), async {
                         loop {
                             let tx = self
