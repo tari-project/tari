@@ -226,6 +226,44 @@ mod tests {
         let expected_view_public_key = "36a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055";
         let expected_spend_public_key = "d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173";
         
+        /*
+        Generated Address:
+         base58: 125pkjnZohtMd4R2jNomnujPbP8rM21rJTWVUKaUGkGp1xNSF3egChCAiHRVRXAaWqSqN2hQko4fPyonEjFcy7QMdSa
+emoji: 🐢📟🍵👽🐗🔔🌕💤🍑🐼📜💦🎯🍚🎉🍕🌽🏭🐀🎽🚚🐊🌴🍯🌸🍣🧲🌰🍉🚦🐸🚂💋🎲🔔🚓👒🌕🎈🔫🏦🚽🍌🔌👗🔥🎂💦🚫🌸🚰🤠👘🏰🏁💰🌕💤📎👒🧩👒⚽🎵🍭🐔👃
+hex: 000136a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173ab
+raw_bytes: 0,1,54,168,117,212,8,186,33,144,199,187,4,39,67,37,18,105,107,94,239,109,12,50,15,43,255,11,26,247,141,238,176,85,212,242,150,8,66,219,104,253,29,209,155,213,63,187,251,15,210,170,156,106,98,192,8,186,201,150,183,150,101,87,49,115,171
+network: MainNet
+network_byte: 0
+features:
+  features_byte: 1
+  one_sided: true
+  payment_id: false
+  interactive: false
+public_spend_key: d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173
+public_view_key: 36a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055
+address_type: Dual Address
+payment_id: 
+payment_id_ascii: 
+*/
+
+/* Generated Address WITH payment id::
+base58: 16bYd9f7iM8oCR3hJXTkALxTDfptEL1nJz1wRTGADD3Lg8sW4ygkaBqX7JGFhmKoBosmmXsYv5fRfYgnjSWxiLK87PdtpZQWsEh1X7fFdkdiuEt
+emoji: 🐢🐋🍵👽🐗🔔🌕💤🍑🐼📜💦🎯🍚🎉🍕🌽🏭🐀🎽🚚🐊🌴🍯🌸🍣🧲🌰🍉🚦🐸🚂💋🎲🔔🚓👒🌕🎈🔫🏦🚽🍌🔌👗🔥🎂💦🚫🌸🚰🤠👘🏰🏁💰🌕💤📎👒🧩👒⚽🎵🍭🐔🙈⚽🐔🙈🍩🦁🏀🐛🐊⚽🐌🙈🍩🏭🏈🚽
+hex: 000536a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173746573742d7061796d656e742d6964fd
+raw_bytes: 0,5,54,168,117,212,8,186,33,144,199,187,4,39,67,37,18,105,107,94,239,109,12,50,15,43,255,11,26,247,141,238,176,85,212,242,150,8,66,219,104,253,29,209,155,213,63,187,251,15,210,170,156,106,98,192,8,186,201,150,183,150,101,87,49,115,116,101,115,116,45,112,97,121,109,101,110,116,45,105,100,253
+network: MainNet
+network_byte: 0
+features:
+  features_byte: 5
+  one_sided: true
+  payment_id: true
+  interactive: false
+public_spend_key: d4f2960842db68fd1dd19bd53fbbfb0fd2aa9c6a62c008bac996b79665573173
+public_view_key: 36a875d408ba2190c7bb0427432512696b5eef6d0c320f2bff0b1af78deeb055
+address_type: Dual Address
+payment_id: 746573742d7061796d656e742d6964
+payment_id_ascii: test-payment-id
+ */
         // Convert seed phrase to master key
         let master_key = mnemonic_to_master_key(seed_phrase, None)
             .expect("Failed to convert mnemonic to master key");

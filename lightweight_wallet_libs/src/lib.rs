@@ -14,6 +14,7 @@ pub mod validation;
 pub mod extraction;
 pub mod key_management;
 pub mod scanning;
+pub mod wallet;
 
 // Include generated GRPC code when the feature is enabled
 #[cfg(feature = "grpc")]
@@ -26,4 +27,5 @@ pub use hex_utils::*;
 pub use validation::*;
 pub use extraction::*;
 pub use key_management::*;
-pub use scanning::*; 
+pub use scanning::*;
+pub use wallet::*; 
