@@ -349,6 +349,7 @@ impl DefaultScanningLogic {
                 // Try to extract wallet output with different key combinations
                 if let Some(key_manager) = &config.key_manager {
                     // Try with derived keys
+                    
                     for account in 0..=0 { // For now, just scan account 0
                         for change in 0..=1 { // External and internal addresses
                             for address_index in 0..config.max_addresses_per_account {

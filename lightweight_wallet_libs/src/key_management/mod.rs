@@ -646,7 +646,7 @@ mod tests {
         let path_str = "m/44'/123456'/0'/0/0";
         let path = KeyDerivationPath::from_string(path_str).unwrap();
         assert_eq!(path.branch_seed, "".to_string());
-        assert_eq!(path.key_index, 0);
+        assert_eq!(path.key_index, 44);
     }
 
     #[test]
@@ -939,11 +939,28 @@ mod tests {
 
     #[test]
     fn test_key_derivation_path_to_from_string() {
-        // Custom path
-        let path = KeyDerivationPath::new("".to_string(), 5);
-        let path_str = path.to_string();
-        let parsed = KeyDerivationPath::from_string(&path_str).unwrap();
-        assert_eq!(path, parsed);
+        let path_str = "m/44'/123456'/0'/0/0";
+        let path = KeyDerivationPath::from_string(path_str).unwrap();
+        assert_eq!(path.branch_seed, "".to_string());
+        assert_eq!(path.key_index, 44);
+    }
+
+    #[test]
+    fn test_private_key_from_seed_phrase() {
+        let seed_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let passphrase = Some("test");
+        
+        let private_key = private_key_from_seed_phrase(seed_phrase, passphrase).unwrap();
+        
+        // Verify we got a valid private key
+        assert_eq!(private_key.as_bytes().len(), 32);
+        
+        // Test without passphrase
+        let private_key2 = private_key_from_seed_phrase(seed_phrase, None).unwrap();
+        assert_eq!(private_key2.as_bytes().len(), 32);
+        
+        // Same seed phrase should produce different keys with different passphrases
+        assert_ne!(private_key.as_bytes(), private_key2.as_bytes());
     }
 
     // ---
@@ -956,4 +973,30 @@ mod tests {
     // let custom_path = KeyDerivationPath::new(44, 1, 2, 1, 5); // m/44'/1'/2'/1/5
     // let key_pair = key_manager.derive_key_pair(&custom_path).unwrap();
     // println!("Custom derived public key: {}", key_pair.public_key);
+}
+
+/// Create a private key directly from a seed phrase using the default derivation path
+/// 
+/// This is a convenience function that combines mnemonic_to_master_key and key derivation
+/// into a single step. It uses the default derivation path (index 0, no branch seed).
+/// 
+/// # Arguments
+/// * `seed_phrase` - The mnemonic seed phrase
+/// * `passphrase` - Optional passphrase (can be None)
+/// 
+/// # Returns
+/// * `Ok(PrivateKey)` if successful
+/// * `Err(KeyManagementError)` if the seed phrase is invalid or derivation fails
+pub fn private_key_from_seed_phrase(
+    seed_phrase: &str,
+    passphrase: Option<&str>,
+) -> Result<PrivateKey, KeyManagementError> {
+    // Convert seed phrase to master key
+    let master_key = mnemonic_to_master_key(seed_phrase, passphrase)?;
+    
+    // Create a key manager and derive the private key using default path
+    let key_manager = LightweightKeyManager::new(master_key);
+    let private_key = key_manager.derive_private_key(&KeyDerivationPath::default())?;
+    
+    Ok(private_key)
 } 

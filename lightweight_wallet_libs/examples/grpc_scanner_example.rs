@@ -11,7 +11,7 @@ use lightweight_wallet_libs::{
     scanning::{GrpcScannerBuilder, WalletScanConfig, WalletScanner, ProgressCallback, ScanProgress},
     extraction::ExtractionConfig,
     key_derivation::LightweightKeyManager,
-    key_management::{ConcreteKeyManager, KeyStore, ImportedPrivateKey},
+    key_management::{ConcreteKeyManager, KeyStore, ImportedPrivateKey, KeyDerivationPath, KeyManager},
     BlockchainScanner,
     errors::LightweightWalletResult,
 };
@@ -22,7 +22,6 @@ use tracing_subscriber::fmt;
 async fn main() -> LightweightWalletResult<()> {
     // Initialize logging
 
-    use lightweight_wallet_libs::{ImportedPrivateKey, KeyDerivationPath};
     tracing_subscriber::fmt::init();
 
     println!("GRPC Wallet Scanner Example");
@@ -58,24 +57,39 @@ async fn main() -> LightweightWalletResult<()> {
     // Create a key store with some imported keys (example)
     let mut key_store = KeyStore::new();
     
-    let test_imported_key = ImportedPrivateKey::from_seed_phrase("gate sound fault steak act victory vacuum night injury lion section share pass food damage venue smart vicious cinnamon eternal invest shoulder green file", None, KeyDerivationPath::default());
+    // Example: Create an imported key from a seed phrase using the new convenience function
+    // Extract the seed from env
+    let seed_phrase = std::env::var("TEST_SEED_PHRASE").expect("Define TEST_SEED_PHRASE").to_string();
+    
+    // Use the new convenience function to get a private key directly from seed phrase
+    let private_key = lightweight_wallet_libs::key_management::private_key_from_seed_phrase(
+        &seed_phrase,
+        None
+    ).unwrap();
+    
+    // Create the ImportedPrivateKey
+    let test_imported_key = ImportedPrivateKey::from_seed_phrase(
+        private_key,
+        KeyDerivationPath::default(),
+        Some("test_imported_key".to_string())
+    );
     key_store.add_imported_key(test_imported_key).unwrap();
 
     // Configure wallet scanning
-    let wallet_birthday = tip_info.best_block_height.saturating_sub(1000); // Example: scan from 1000 blocks ago
-    
+    let wallet_birthday = 950;//tip_info.best_block_height.saturating_sub(1000); // Example: scan from 1000 blocks ago
+    let tip_end_height = 960;// tip_info.best_block_height;
     let wallet_scan_config = WalletScanConfig::new(wallet_birthday)
         .with_key_manager(key_manager)
         .with_key_store(key_store)
         .with_stealth_address_scanning(true)
-        .with_max_addresses_per_account(100) // Scan first 100 addresses per account
+        .with_max_addresses_per_account(1) // Scan first 100 addresses per account
         .with_imported_key_scanning(true)
-        .with_end_height(tip_info.best_block_height)
-        .with_batch_size(50)
+        .with_end_height(tip_end_height)
+        .with_batch_size(100)
         .with_request_timeout(std::time::Duration::from_secs(30));
 
     println!("Wallet birthday: {}", wallet_birthday);
-    println!("Scanning blocks from {} to {}", wallet_birthday, tip_info.best_block_height);
+    println!("Scanning blocks from {} to {}", wallet_birthday, tip_end_height);
     println!("Scanning for wallet outputs with key management...");
 
     // Create a progress callback
