@@ -43,9 +43,9 @@ pub enum ReadinessStatus {
     StartingUp,
 }
 
-impl Into<i32> for ReadinessStatus {
-    fn into(self) -> i32 {
-        match self {
+impl From<ReadinessStatus> for i32 {
+    fn from(status: ReadinessStatus) -> i32 {
+        match status {
             ReadinessStatus::NotReady => 0,
             ReadinessStatus::StartingUp => 1,
             ReadinessStatus::Migrating => 2,
