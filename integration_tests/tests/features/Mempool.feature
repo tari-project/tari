@@ -94,14 +94,14 @@ Feature: Mempool
     Given I have a seed node SEED_A
     When I have a base node NODE_A connected to seed SEED_A
     When I have wallet WALLET_A connected to base node NODE_A
-    When I have mining node MINING_A connected to base node NODE_A and wallet WALLET_A
+    When I have SHA3X mining node MINING_A connected to base node NODE_A and wallet WALLET_A
     When I mine a block on NODE_A with coinbase CB_A
     When mining node MINING_A mines 3 blocks with min difficulty 1 and max difficulty 2
     Then node SEED_A is at height 4
     Given I have a seed node SEED_B
     When I have a base node NODE_B connected to seed SEED_B
     When I have wallet WALLET_B connected to base node NODE_B
-    When I have mining node MINING_B connected to base node NODE_B and wallet WALLET_B
+    When I have SHA3X mining node MINING_B connected to base node NODE_B and wallet WALLET_B
     When I mine a block on NODE_B with coinbase CB_B
     When mining node MINING_B mines 10 blocks with min difficulty 20 and max difficulty 9999999999
     Then node SEED_B is at height 11

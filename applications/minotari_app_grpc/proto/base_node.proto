@@ -176,6 +176,15 @@ enum BaseNodeState{
     SYNC_FAILED = 6;
 }
 
+enum ReadinessStatus{
+   NOT_READY = 0;
+   STARTING_UP = 1;
+   MIGRATING = 2;
+   RECOVERING = 3;
+   BUILDING_CONTEXT = 4;
+   READY = 5;
+}
+
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse {
     NewBlockTemplate new_block_template = 1;
@@ -554,6 +563,8 @@ message GetNetworkStateResponse {
     uint64 num_connections = 8;
     //liveness results
     repeated LivenessResult liveness_results = 9;
+    // readiness status
+    ReadinessStatus readiness_status = 11;
 }
 
 message LivenessResult{
@@ -597,4 +608,3 @@ message PaymentReferenceResponse {
     // Transaction output amount will be 0 for non set a
     uint64 min_value_promise = 9;
 }
-

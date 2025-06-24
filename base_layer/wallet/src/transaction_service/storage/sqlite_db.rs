@@ -177,10 +177,10 @@ impl TransactionServiceSqliteDatabase {
             },
             DbKey::PendingOutboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::PendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
-            DbKey::CompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CompletedTransactions(_) => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingOutboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
-            DbKey::CancelledCompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CancelledCompletedTransactions(_) => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingOutboundTransaction(k) => {
                 conn.transaction::<_, _, _>(|conn| match OutboundTransactionSql::find_by_cancelled(k, true, conn) {
                     Ok(v) => {
@@ -294,9 +294,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
-            DbKey::CompletedTransactions => {
+            DbKey::CompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false)? {
+                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false, *max_limit)? {
                     result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
@@ -318,9 +318,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
-            DbKey::CancelledCompletedTransactions => {
+            DbKey::CancelledCompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true)? {
+                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true, *max_limit)? {
                     result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
@@ -374,10 +374,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::CompletedTransaction(k) => CompletedTransactionSql::find(*k, &mut conn).is_ok(),
             DbKey::PendingOutboundTransactions => false,
             DbKey::PendingInboundTransactions => false,
-            DbKey::CompletedTransactions => false,
+            DbKey::CompletedTransactions(_) => false,
             DbKey::CancelledPendingOutboundTransactions => false,
             DbKey::CancelledPendingInboundTransactions => false,
-            DbKey::CancelledCompletedTransactions => false,
+            DbKey::CancelledCompletedTransactions(_) => false,
             DbKey::CancelledPendingOutboundTransaction(k) => {
                 OutboundTransactionSql::find_by_cancelled(*k, true, &mut conn).is_ok()
             },
@@ -1144,7 +1144,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let limit = if max_limit == 0 { i64::MAX } else { max_limit as i64 };
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
@@ -1160,6 +1162,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         query
+            .limit(limit)
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
@@ -1866,7 +1869,9 @@ impl CompletedTransactionSql {
     pub fn index_by_cancelled(
         conn: &mut SqliteConnection,
         cancelled: bool,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        let max_limit_i64 = if max_limit == 0 { i64::MAX } else { max_limit as i64 };
         let mut query = completed_transactions::table.into_boxed();
 
         query = if cancelled {
@@ -1877,6 +1882,7 @@ impl CompletedTransactionSql {
 
         Ok(query
             .order_by(completed_transactions::mined_timestamp.desc())
+            .limit(max_limit_i64)
             .load::<CompletedTransactionSql>(conn)?)
     }
 
@@ -2890,7 +2896,7 @@ mod test {
             .commit(&mut conn)
             .unwrap();
 
-        let completed_txs = CompletedTransactionSql::index_by_cancelled(&mut conn, false).unwrap();
+        let completed_txs = CompletedTransactionSql::index_by_cancelled(&mut conn, false, 0).unwrap();
         assert_eq!(completed_txs.len(), 2);
 
         let returned_completed_tx = CompletedTransaction::try_from(
@@ -3277,7 +3283,7 @@ mod test {
 
         assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
-        assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
+        assert!(db2.fetch(&DbKey::CompletedTransactions(0)).is_ok());
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
@@ -3287,7 +3293,7 @@ mod test {
         let db3 = TransactionServiceSqliteDatabase::new(connection, new_cipher);
         assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
-        assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
+        assert!(db3.fetch(&DbKey::CompletedTransactions(0)).is_err());
     }
 
     #[test]

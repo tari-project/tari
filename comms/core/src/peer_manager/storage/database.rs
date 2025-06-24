@@ -1109,6 +1109,47 @@ impl PeerDatabaseSql {
         Ok(peers.into_iter().take(number).collect())
     }
 
+    /// Return available dial candidates that are communication nodes, not banned, not deleted,
+    /// and not in the excluded node IDs list
+    pub fn get_available_dial_candidates(
+        &self,
+        exclude_node_ids: &[NodeId],
+        limit: Option<usize>,
+    ) -> Result<Vec<Peer>, StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        // Build base query filtering for communication nodes, not banned, not deleted
+        let mut query = peers::table
+            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+            .filter(
+                peers::banned_until
+                    .is_null()
+                    .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+            )
+            .filter(peers::deleted_at.is_null())
+            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                "features & {} != 0",
+                PeerFeatures::COMMUNICATION_NODE.to_i32()
+            )))
+            .into_boxed();
+
+        // Exclude connected peers if provided
+        if !exclude_node_ids.is_empty() {
+            let excluded_hex_ids: Vec<String> = exclude_node_ids.iter().map(|node_id| node_id.to_hex()).collect();
+            query = query.filter(peers::node_id.ne_all(excluded_hex_ids));
+        }
+
+        // Apply limit if specified
+        if let Some(limit) = limit {
+            // Safely convert usize to i64, using try_into with fallback to i64::MAX
+            let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+            query = query.limit(limit_i64);
+        }
+
+        let results = query.load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+        PeerDatabaseSql::peers_from_join_query(results)
+    }
+
     /// Get a peer by its node ID
     pub fn get_peer_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;

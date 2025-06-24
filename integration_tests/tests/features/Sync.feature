@@ -36,7 +36,7 @@ Feature: Block Sync
     When I have a base node NODE1 connected to all seed nodes
     When I have 2 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 15 blocks
     Then all nodes are at height 15
     When I wait for wallet WALLET_A to have at least 55000000000 uT
@@ -63,7 +63,7 @@ Feature: Block Sync
     When I have a base node NODE1 connected to all seed nodes
     When I have 2 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 15 blocks
     Then all nodes are at height 15
     When I wait for wallet WALLET_A to have at least 55000000000 uT
@@ -99,7 +99,7 @@ Feature: Block Sync
   Scenario: Node should not sync from pruned node
     When I have a base node NODE1 connected to all seed nodes
     When I have wallet WALLET1 connected to base node NODE1
-    When I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
+    When I have SHA3X mining node MINING1 connected to base node NODE1 and wallet WALLET1
     When I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 6
     When mining node MINING1 mines 40 blocks with min difficulty 20 and max difficulty 9999999999
     Then all nodes are at height 40
@@ -107,7 +107,7 @@ Feature: Block Sync
     When I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
     When I have a base node NODE2
     When I have wallet WALLET2 connected to base node NODE2
-    When I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
+    When I have SHA3X mining node MINING2 connected to base node NODE2 and wallet WALLET2
     When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 2
     When I connect node NODE2 to node PNODE1
     When I connect node NODE2 to node PNODE2
@@ -125,9 +125,9 @@ Feature: Block Sync
     Given I have a seed node SEED
     When I have wallet WALLET1 connected to seed node SEED
     When I have wallet WALLET2 connected to seed node SEED
-    When I have mining node MINER connected to base node SEED and wallet WALLET1
+    When I have SHA3X mining node MINER connected to base node SEED and wallet WALLET1
     When I have a base node SYNCER connected to all seed nodes
-    When I have mine-before-tip mining node MINER2 connected to base node SYNCER and wallet WALLET2
+    When I have SHA3X mining node MINER2 connected to base node SYNCER and wallet WALLET2
     When I stop node SYNCER
     When mining node MINER mines <X1> blocks with min difficulty 1 and max difficulty 9999999999
     Then node SEED is at height <X1>
@@ -189,3 +189,21 @@ Feature: Block Sync
       | 5     | 999    | 100           |
       | 10    | 1000   | 100           |
       | 20    | 1001   | 100           |
+
+  @critical
+  Scenario: I want to verify accumulated difficulty when hybrid mining
+    Given I have a seed node SEED
+    When I have a base node NODE1 connected to all seed nodes
+    When I have a base node NODE2 connected to all seed nodes
+    When I have a base node NODE3 connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have SHA3X mining node MINER_SHA3X connected to base node SEED and wallet WALLET_A
+    When I have RANDOM_XT mining node MINER_RANDOM_XT connected to base node SEED and wallet WALLET_A
+    When mining node MINER_SHA3X mines 5 blocks with min difficulty 50 and max difficulty 100000
+    When mining node MINER_RANDOM_XT mines 5 blocks with min difficulty 1 and max difficulty 100
+    When mining node MINER_SHA3X mines 5 blocks with min difficulty 50 and max difficulty 100000
+    When mining node MINER_RANDOM_XT mines 5 blocks with min difficulty 1 and max difficulty 100
+    Then all nodes are at height 20
+    When I have 10 base nodes connected to all seed nodes
+    Then all nodes are at height 20
+    Then all nodes are on the same network difficulty

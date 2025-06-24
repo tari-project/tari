@@ -168,7 +168,7 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.grpc_enabled = true;
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
-        base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(15);
+        base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(3);
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");
@@ -186,10 +186,29 @@ pub async fn spawn_base_node_with_config(
             .tcp
             .listener_address
             .clone()]);
+        base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
         base_node_config.base_node.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
         base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
-        base_node_config.base_node.p2p.allow_test_addresses = true;
+        base_node_config
+            .base_node
+            .p2p
+            .dht
+            .network_discovery
+            .max_seed_peer_sync_count = 1;
+        base_node_config
+            .base_node
+            .p2p
+            .dht
+            .network_discovery
+            .seed_peer_min_initial_sync_peers_needed = 1;
+        base_node_config
+            .base_node
+            .p2p
+            .dht
+            .network_discovery
+            .min_successful_seed_contacts_for_early_exit = 1;
+        base_node_config.base_node.p2p.dht.network_discovery.bootstrap_timeout = Duration::from_secs(5);
         base_node_config.base_node.storage.orphan_storage_capacity = 10;
         if base_node_config.base_node.storage.pruning_horizon != 0 {
             base_node_config.base_node.storage.pruning_interval = 1;
@@ -198,6 +217,18 @@ pub async fn spawn_base_node_with_config(
 
         // Hierarchically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());
+
+        base_node_config
+            .base_node
+            .state_machine
+            .blocks_behind_before_considered_lagging = 1;
+        base_node_config.base_node.state_machine.time_before_considered_lagging = Duration::from_secs(3);
+        base_node_config.base_node.state_machine.initial_sync_peer_count = 1;
+        base_node_config
+            .base_node
+            .state_machine
+            .blockchain_sync_config
+            .num_initial_sync_rounds_seed_bootstrap = 1;
 
         println!(
             "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",

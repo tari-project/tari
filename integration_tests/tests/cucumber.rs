@@ -102,7 +102,7 @@ fn main() {
         });
         let file = fs::File::create("cucumber-output-junit.xml").unwrap();
         world
-            // .fail_on_skipped()
+            .fail_on_skipped()
             // .fail_fast() - Not yet supported in 0.18
             .with_writer(writer::Tee::new(writer::JUnit::new(file, Verbosity::ShowWorldAndDocString),
                                           writer::Summarize::new(writer::Basic::new(io::stdout(), writer::Coloring::Auto, Verbosity::ShowWorldAndDocString))))

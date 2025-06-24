@@ -2042,6 +2042,29 @@ impl BlockchainBackend for LMDBDatabase {
                         LMDBStore::resize(&self.env, &self.env_config, size_that_could_not_be_written)?;
                     }
                 },
+                Err(ChainStorageError::JellyfishMerkleTreeError(jmt_err)) => {
+                    match jmt_err.downcast_ref::<ChainStorageError>() {
+                        Some(ChainStorageError::DbResizeRequired(size_that_could_not_be_written)) => {
+                            info!(
+                                target: LOG_TARGET,
+                                "Database resize required (resized {} time(s) in this transaction)",
+                                i + 1
+                            );
+                            // SAFETY: This depends on the thread safety of the caller. Technically, `write` is unsafe
+                            // too however we happen to know that `LmdbDatabase` is wrapped
+                            // in an exclusive write lock in BlockchainDatabase, so we know
+                            // there are no other threads taking out LMDB transactions when this
+                            // is called.
+                            unsafe {
+                                LMDBStore::resize(&self.env, &self.env_config, *size_that_could_not_be_written)?;
+                            }
+                        },
+                        _ => {
+                            error!(target: LOG_TARGET, "Failed to apply DB transaction: {:?}", jmt_err);
+                            return Err(ChainStorageError::JellyfishMerkleTreeError(jmt_err));
+                        },
+                    }
+                },
                 Err(e) => {
                     error!(target: LOG_TARGET, "Failed to apply DB transaction: {:?}", e);
                     return Err(e);

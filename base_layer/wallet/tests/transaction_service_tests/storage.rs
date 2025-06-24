@@ -363,7 +363,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     }
 
-    let retrieved_completed_txs = db.get_completed_transactions(None, None, None).unwrap();
+    let retrieved_completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
 
     for i in 0..messages.len() {
@@ -421,21 +421,21 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found completed tx");
     }
 
-    let completed_txs = db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     let num_completed_txs = completed_txs.len();
-    assert_eq!(db.get_cancelled_completed_transactions().unwrap().len(), 0);
+    assert_eq!(db.get_cancelled_completed_transactions(0).unwrap().len(), 0);
 
     let cancelled_tx_id = completed_txs[1].tx_id;
     assert!(db.get_cancelled_completed_transaction(cancelled_tx_id).is_err());
     db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown)
         .unwrap();
-    let completed_txs = db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     assert_eq!(completed_txs.len(), num_completed_txs - 1);
 
     db.get_cancelled_completed_transaction(cancelled_tx_id)
         .expect("Should find cancelled transaction");
 
-    let cancelled_txs = db.get_cancelled_completed_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_completed_transactions(0).unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == cancelled_tx_id));
 

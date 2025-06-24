@@ -181,6 +181,29 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
     );
 }
 
+#[then(expr = "all nodes are on the same network difficulty")]
+async fn all_nodes_on_same_network_difficulty(world: &mut TariWorld) {
+    let mut all_nodes_metadata = Vec::new();
+    for (name, _) in &world.base_nodes {
+        let mut client = world.get_node_client(name).await.unwrap();
+        let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+        all_nodes_metadata.push(chain_tip.metadata.unwrap());
+    }
+    let first_metadata = all_nodes_metadata.first().unwrap();
+    if all_nodes_metadata
+        .iter()
+        .any(|v| v.best_block_height != first_metadata.best_block_height)
+    {
+        panic!("base nodes not successfully synchronized at the same height");
+    }
+    if all_nodes_metadata
+        .iter()
+        .any(|v| v.accumulated_difficulty != first_metadata.accumulated_difficulty)
+    {
+        panic!("base nodes synchronized at the same height do all not have the same accumulated difficulty");
+    }
+}
+
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {

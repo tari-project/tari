@@ -84,6 +84,7 @@ pub enum TransactionServiceRequest {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     },
     GetCompletedTransactionsByAddresses {
         source_address: Option<TariAddress>,
@@ -91,7 +92,7 @@ pub enum TransactionServiceRequest {
     },
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
-    GetCancelledCompletedTransactions,
+    GetCancelledCompletedTransactions(u64),
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     ImportTransaction(WalletTransaction),
@@ -241,7 +242,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
-            Self::GetCancelledCompletedTransactions => write!(f, "GetCancelledCompletedTransactions"),
+            Self::GetCancelledCompletedTransactions(_) => write!(f, "GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({})", t),
             Self::ScrapeWallet {
                 destination,
@@ -1092,6 +1093,7 @@ impl TransactionServiceHandle {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
@@ -1099,6 +1101,7 @@ impl TransactionServiceHandle {
                 payment_id,
                 block_hash,
                 block_height,
+                max_limit,
             })
             .await??
         {
@@ -1127,10 +1130,11 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_completed_transactions(
         &mut self,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetCancelledCompletedTransactions)
+            .call(TransactionServiceRequest::GetCancelledCompletedTransactions(max_limit))
             .await??
         {
             TransactionServiceResponse::CompletedTransactions(c) => Ok(c),

@@ -34,7 +34,7 @@ Scenario: Verify UTXO and kernel MMR size in header
         When I have wallet WALLET_10 connected to all seed nodes
         When I have wallet WALLET_11 connected to all seed nodes
         When I have wallet WALLET_12 connected to all seed nodes
-        When I have mining node MINER connected to base node NODE_01 and wallet WALLET_DEFAULT
+        When I have SHA3X mining node MINER connected to base node NODE_01 and wallet WALLET_DEFAULT
         When mining node MINER mines 1 blocks
         Then all nodes are at height 1
 

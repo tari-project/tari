@@ -10,7 +10,7 @@ Scenario: Get Transaction Info
     When I have a stealth SHA3 miner MINER connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When I have a stealth SHA3 miner MINER2 connected to all seed nodes
     # We need to ensure the coinbase lock heights are gone; mine enough blocks
     When mining node MINER mines 4 blocks

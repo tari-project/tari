@@ -754,14 +754,14 @@ impl AppStateInner {
         completed_transactions.extend(
             self.wallet
                 .transaction_service
-                .get_completed_transactions(None, None, None)
+                .get_completed_transactions(None, None, None, 500)
                 .await?,
         );
 
         completed_transactions.extend(
             self.wallet
                 .transaction_service
-                .get_cancelled_completed_transactions()
+                .get_cancelled_completed_transactions(100)
                 .await?,
         );
         completed_transactions.sort_by(|a, b| {

@@ -162,6 +162,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
     fn find_completed_transactions_filter_addresses(
         &self,
@@ -181,10 +182,10 @@ pub enum DbKey {
     CompletedTransaction(TxId),
     PendingOutboundTransactions,
     PendingInboundTransactions,
-    CompletedTransactions,
+    CompletedTransactions(u64),
     CancelledPendingOutboundTransactions,
     CancelledPendingInboundTransactions,
-    CancelledCompletedTransactions,
+    CancelledCompletedTransactions(u64),
     CancelledPendingOutboundTransaction(TxId),
     CancelledPendingInboundTransaction(TxId),
     AnyTransaction(TxId),
@@ -221,7 +222,7 @@ impl fmt::Debug for DbKey {
             PendingInboundTransactions => {
                 write!(f, "PendingInboundTransactions")
             },
-            CompletedTransactions => {
+            CompletedTransactions(_) => {
                 write!(f, "CompletedTransactions ")
             },
             CancelledPendingOutboundTransactions => {
@@ -230,7 +231,7 @@ impl fmt::Debug for DbKey {
             CancelledPendingInboundTransactions => {
                 write!(f, "CancelledPendingInboundTransactions")
             },
-            CancelledCompletedTransactions => {
+            CancelledCompletedTransactions(_) => {
                 write!(f, "CancelledCompletedTransactions")
             },
             CancelledPendingOutboundTransaction(tx_id) => {
@@ -499,10 +500,14 @@ where T: TransactionBackend + 'static
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t =
-            self.db
-                .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash, block_height)?;
+        let t = self.db.find_completed_transactions_filter_payment_id_block_hash(
+            payment_id,
+            block_hash,
+            block_height,
+            max_limit,
+        )?;
         Ok(t)
     }
 
@@ -617,8 +622,9 @@ where T: TransactionBackend + 'static
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(payment_id, false, block_hash, block_height)
+        self.get_completed_transactions_by_cancelled(payment_id, false, block_hash, block_height, max_limit)
     }
 
     pub fn get_completed_transactions_by_addresses(
@@ -630,8 +636,11 @@ where T: TransactionBackend + 'static
             .find_completed_transactions_filter_addresses(source_address, destination_address)
     }
 
-    pub fn get_cancelled_completed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.get_completed_transactions_by_cancelled(None, true, None, None)
+    pub fn get_cancelled_completed_transactions(
+        &self,
+        max_limit: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.get_completed_transactions_by_cancelled(None, true, None, None, max_limit)
     }
 
     pub fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
@@ -659,11 +668,12 @@ where T: TransactionBackend + 'static
         cancelled: bool,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let key = if cancelled {
-            DbKey::CancelledCompletedTransactions
+            DbKey::CancelledCompletedTransactions(max_limit)
         } else {
-            DbKey::CompletedTransactions
+            DbKey::CompletedTransactions(max_limit)
         };
         match (payment_id.is_none(), block_hash.is_none(), block_height.is_none()) {
             (true, true, true) => {
@@ -680,10 +690,12 @@ where T: TransactionBackend + 'static
                 }?;
                 Ok(t)
             },
-            (_, _, _) => {
-                self.db
-                    .find_completed_transactions_filter_payment_id_block_hash(payment_id, block_hash, block_height)
-            },
+            (_, _, _) => self.db.find_completed_transactions_filter_payment_id_block_hash(
+                payment_id,
+                block_hash,
+                block_height,
+                max_limit,
+            ),
         }
     }
 
@@ -843,10 +855,10 @@ impl Display for DbKey {
             DbKey::CompletedTransaction(_) => f.write_str("Completed Transaction"),
             DbKey::PendingOutboundTransactions => f.write_str("All Pending Outbound Transactions"),
             DbKey::PendingInboundTransactions => f.write_str("All Pending Inbound Transactions"),
-            DbKey::CompletedTransactions => f.write_str("All Complete Transactions"),
+            DbKey::CompletedTransactions(_) => f.write_str("All Complete Transactions"),
             DbKey::CancelledPendingOutboundTransactions => f.write_str("All Cancelled Pending Inbound Transactions"),
             DbKey::CancelledPendingInboundTransactions => f.write_str("All Cancelled Pending Outbound Transactions"),
-            DbKey::CancelledCompletedTransactions => f.write_str("All Cancelled Complete Transactions"),
+            DbKey::CancelledCompletedTransactions(_) => f.write_str("All Cancelled Complete Transactions"),
             DbKey::CancelledPendingOutboundTransaction(_) => f.write_str("Cancelled Pending Outbound Transaction"),
             DbKey::CancelledPendingInboundTransaction(_) => f.write_str("Cancelled Pending Inbound Transaction"),
             DbKey::AnyTransaction(_) => f.write_str("Any Transaction"),
