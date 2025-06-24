@@ -197,9 +197,7 @@ where
         request: PrepareOneSidedTransactionForSigningResult,
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
         let signer = OneSidedSigner::new(&self.resources.transaction_key_manager_service);
-        let signed_transaction = signer
-            .sign_transaction(request.tx_id, request.info.clone())
-            .await?;
+        let signed_transaction = signer.sign_transaction(request.tx_id, request.info.clone()).await?;
 
         Ok(SignedOneSidedTransactionResult {
             version: get_supported_version(),
