@@ -40,6 +40,7 @@ pub use cli::{
     CoinSplitArgs,
     DiscoverPeerArgs,
     ExportUtxosArgs,
+    ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
     SendMinotariArgs,
     SetBaseNodeArgs,
