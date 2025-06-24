@@ -1,0 +1,134 @@
+# Lightweight Wallet Libraries (.cursorrules)
+
+## Project Overview
+This repository contains the **Tari Lightweight Wallet Libraries** - a standalone, dependency-free implementation of core Tari wallet functionality extracted from the main Tari codebase. This is NOT the main Tari project.
+
+## Key Differences from Main Tari Project
+
+### 🎯 **Purpose & Scope**
+- **Main Tari**: Complete blockchain protocol implementation with nodes, mining, consensus, networking
+- **Lightweight Libs**: Focused ONLY on wallet functionality - seed phrases, key derivation, address generation, UTXO scanning/validation
+
+### 🏗️ **Architecture Philosophy**
+- **Main Tari**: Monolithic architecture with tightly coupled components
+- **Lightweight Libs**: Modular, self-contained libraries designed for embedding
+
+### 📦 **Dependencies**
+- **Main Tari**: Heavy dependencies on tari-* crates, networking, storage, consensus layers
+- **Lightweight Libs**: ZERO dependencies on main Tari codebase, minimal external deps (crypto primitives only)
+
+### 🌐 **Target Platforms**
+- **Main Tari**: Linux/Windows servers, desktop applications
+- **Lightweight Libs**: Cross-platform including WASM, mobile apps, web wallets, embedded systems
+
+### 🔧 **Use Cases**
+- **Main Tari**: Running full nodes, miners, base layer operations
+- **Lightweight Libs**: Building lightweight wallets, mobile apps, browser extensions, hardware wallets
+
+## Core Modules
+
+### `/src/wallet/` - Core Wallet Operations
+- Wallet creation from seed phrases
+- Master key derivation and management
+- Address generation (dual/single addresses)
+- CipherSeed implementation (Tari's seed format)
+
+### `/src/key_management/` - Key Derivation & Mnemonics
+- BIP39-like mnemonic generation/validation (Tari format)
+- Hierarchical key derivation
+- Stealth address support
+- Secure key storage and zeroization
+
+### `/src/data_structures/` - Wallet Data Types
+- Transaction outputs and wallet outputs
+- Encrypted data handling
+- Payment ID management
+- Address formats (emoji, base58, hex)
+
+### `/src/validation/` - Cryptographic Validation
+- Range proof validation (BulletProof+, RevealedValue)
+- Signature verification (metadata, script)
+- Commitment validation
+- Batch validation for performance
+
+### `/src/extraction/` - UTXO Processing
+- Encrypted data decryption
+- Payment ID extraction
+- Wallet output reconstruction
+- Corruption detection
+
+### `/src/scanning/` - Blockchain Scanning
+- GRPC-based blockchain scanning
+- Wallet output discovery
+- Progress tracking and resumable scans
+- Mock scanner for testing
+
+### `/src/crypto/` - Cryptographic Primitives
+- Ristretto255 key implementations
+- Domain-separated hashing
+- Independent of tari-crypto
+
+## Development Guidelines
+
+### ✅ **DO**
+- Maintain zero dependencies on tari-* crates
+- Keep external dependencies minimal (crypto primitives only)
+- Ensure WASM compatibility for all new code
+- Write comprehensive tests with known test vectors
+- Use secure memory handling (zeroization)
+- Follow exact Tari key derivation patterns for compatibility
+
+### ❌ **DON'T**
+- Add dependencies on main Tari codebase
+- Include networking, consensus, or mining code
+- Add heavy dependencies that break WASM/mobile compatibility
+- Break compatibility with main Tari wallet key generation
+- Expose sensitive cryptographic material unnecessarily
+
+### 🧪 **Testing Strategy**
+- Test against known Tari test vectors for compatibility
+- Property-based testing for deterministic behavior
+- Cross-platform testing (native, WASM)
+- Performance testing for batch operations
+- Security testing for key handling
+
+### 🔐 **Security Considerations**
+- All private keys must use zeroization on drop
+- Constant-time operations for sensitive comparisons
+- Secure random number generation
+- Memory-safe handling of cryptographic material
+- No secret material in error messages or logs
+
+## Feature Flags
+- `default`: Core functionality only
+- `wasm`: WASM-specific optimizations and JS bindings
+- `grpc`: GRPC blockchain scanning (optional)
+- `parallel`: Parallel processing support
+
+## Compatibility Requirements
+This library MUST maintain 100% compatibility with main Tari wallet for:
+- Key derivation from seed phrases
+- Address generation
+- CipherSeed format
+- Payment ID handling
+
+## Example Usage Patterns
+```rust
+// Wallet creation
+let wallet = Wallet::generate_new_with_seed_phrase(None)?;
+let address = wallet.get_dual_address(features, payment_id)?;
+
+// Key management
+let seed_phrase = generate_seed_phrase()?;
+let (view_key, spend_key) = derive_view_and_spend_keys_from_entropy(&entropy)?;
+
+// UTXO scanning
+let scanner = GrpcBlockchainScanner::new(url).await?;
+let results = scanner.scan_wallet(config).await?;
+```
+
+## When to Suggest Main Tari vs Lightweight Libs
+- **Suggest Main Tari** for: node operations, mining, consensus, networking, full wallet backend
+- **Suggest Lightweight Libs** for: mobile apps, web wallets, key management, address generation, UTXO processing
+
+Remember: This is a specialized, extracted library focused solely on wallet functionality with zero dependencies on the main Tari ecosystem. 
