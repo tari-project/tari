@@ -180,6 +180,20 @@ Feature: Wallet Transactions
     Then all nodes are at height 17
     Then I wait for wallet WALLET_C to have at least 400000 uT
 
+  @critical
+  Scenario: Wallet sends many interactive transactions to another wallet
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 50 blocks
+    Then all nodes are at height 50
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I send 40 interactive transactions of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 55
+
+
   Scenario: Wallet should display all transactions made
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes
