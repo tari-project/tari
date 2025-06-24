@@ -1077,8 +1077,6 @@ async fn generate_block_with_zero_coinbase(world: &mut TariWorld, node: String) 
     let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
 
     let block_template = template_response.new_block_template.clone().unwrap();
-    let miner_data = template_response.miner_data.unwrap();
-    let amount = miner_data.reward + miner_data.total_fees;
     let request = GetNewBlockWithCoinbasesRequest {
         new_template: Some(block_template),
         coinbases: vec![
