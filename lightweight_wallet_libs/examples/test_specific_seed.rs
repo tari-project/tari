@@ -53,9 +53,11 @@ fn main() {
         }
     }
     
+    let password_protected_seed = "scare cinnamon blast check harsh wisdom already tape senior guitar swim athlete leopard occur illegal connect weapon hood good jewel apple link able execute";
+    let password = "test";
     // Step 5: Test with different passphrases
     println!("\nStep 5: Testing with passphrase...");
-    match mnemonic_to_master_key(user_seed, Some("test")) {
+    match mnemonic_to_master_key(password_protected_seed, Some(password)) {
         Ok(key) => {
             println!("   ✅ With passphrase: {}...", key[..8].iter().map(|b| format!("{:02x}", b)).collect::<String>());
         },
@@ -65,9 +67,4 @@ fn main() {
     }
     
     println!("\n=== Analysis Complete ===");
-    println!("💡 Summary:");
-    println!("   • This seed phrase appears to be BIP39 format");
-    println!("   • Tari uses its own CipherSeed format, not BIP39");
-    println!("   • To use this seed with Tari, it would need to be converted");
-    println!("   • Or you can generate a new Tari-compatible seed phrase");
 } 

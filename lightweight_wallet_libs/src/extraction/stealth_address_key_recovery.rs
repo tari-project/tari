@@ -13,7 +13,7 @@ use crate::{
     },
     errors::LightweightWalletError,
     key_management::{
-        ConcreteKeyManager, StealthAddress, StealthAddressManager,
+        StealthAddress, StealthAddressManager,
         KeyStore,
     },
     extraction::{
@@ -83,12 +83,17 @@ pub enum StealthKeyRecoveryError {
     DecryptionFailed(#[from] LightweightWalletError),
 }
 
+// TODO: Update StealthKeyRecoveryManager to use new entropy-based key derivation approach
+// instead of the removed ConcreteKeyManager
+/*
 /// Stealth address key recovery manager
 pub struct StealthKeyRecoveryManager {
     key_manager: ConcreteKeyManager,
     options: StealthKeyRecoveryOptions,
 }
+*/
 
+/*
 impl StealthKeyRecoveryManager {
     /// Create a new stealth key recovery manager
     pub fn new(key_manager: ConcreteKeyManager) -> Self {
@@ -323,7 +328,9 @@ impl StealthKeyRecoveryManager {
         &self.options
     }
 }
+*/
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -451,4 +458,5 @@ mod tests {
             Err(StealthKeyRecoveryError::NoSuitableKey)
         ));
     }
-} 
+}
+*/

@@ -31,14 +31,12 @@ pub use payment_id_extraction::{
 };
 
 pub use wallet_output_reconstruction::{
-    WalletOutputReconstructor,
     WalletOutputReconstructionResult,
     WalletOutputReconstructionOptions,
     WalletOutputReconstructionError,
 };
 
 pub use stealth_address_key_recovery::{
-    StealthKeyRecoveryManager,
     StealthKeyRecoveryResult,
     StealthKeyRecoveryOptions,
     StealthKeyRecoveryError,

@@ -15,7 +15,7 @@ use crate::{
     data_structures::{transaction_output::LightweightTransactionOutput, wallet_output::LightweightWalletOutput},
     errors::{LightweightWalletError, LightweightWalletResult},
     extraction::{extract_wallet_output, ExtractionConfig},
-    key_management::{KeyManager, KeyStore, ConcreteKeyManager, KeyDerivationPath},
+    key_management::{KeyManager, KeyStore, KeyDerivationPath},
 };
 
 // Include GRPC scanner when the feature is enabled
@@ -106,12 +106,11 @@ impl Default for ScanConfig {
 }
 
 /// Configuration for wallet-specific scanning
-#[derive(Debug, Clone)]
 pub struct WalletScanConfig {
     /// Base scan configuration
     pub scan_config: ScanConfig,
     /// Key manager for wallet key derivation
-    pub key_manager: Option<ConcreteKeyManager>,
+    pub key_manager: Option<Box<dyn KeyManager + Send + Sync>>,
     /// Key store for imported keys
     pub key_store: Option<KeyStore>,
     /// Whether to scan for stealth addresses
@@ -142,7 +141,7 @@ impl WalletScanConfig {
     }
 
     /// Set the key manager
-    pub fn with_key_manager(mut self, key_manager: ConcreteKeyManager) -> Self {
+    pub fn with_key_manager(mut self, key_manager: Box<dyn KeyManager + Send + Sync>) -> Self {
         self.key_manager = Some(key_manager);
         self
     }
@@ -346,6 +345,7 @@ impl DefaultScanningLogic {
             let mut wallet_outputs = Vec::new();
             
             for output in &block.outputs {
+                    // TODO: Update to use new entropy-based key derivation approach
                 // Try to extract wallet output with different key combinations
                 if let Some(key_manager) = &config.key_manager {
                     // Try with derived keys

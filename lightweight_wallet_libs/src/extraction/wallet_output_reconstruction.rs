@@ -18,7 +18,7 @@ use crate::extraction::{
     payment_id_extraction::PaymentIdExtractor,
 };
 use crate::key_management::{
-    ConcreteKeyManager, KeyStore,
+    KeyStore,
 };
 use crate::errors::LightweightWalletError;
 use crate::ImportedPrivateKey;
@@ -88,12 +88,17 @@ pub enum WalletOutputReconstructionError {
     ValidationFailed(String),
 }
 
+// TODO: Update WalletOutputReconstructor to use new entropy-based key derivation approach
+// instead of the removed ConcreteKeyManager
+/* 
 /// Wallet output reconstructor
 pub struct WalletOutputReconstructor {
     key_manager: ConcreteKeyManager,
     options: WalletOutputReconstructionOptions,
 }
+*/
 
+/* 
 impl WalletOutputReconstructor {
     /// Create a new wallet output reconstructor
     pub fn new(key_manager: ConcreteKeyManager) -> Self {
@@ -391,7 +396,9 @@ impl WalletOutputReconstructor {
         Ok(results)
     }
 }
+*/
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,4 +569,5 @@ mod tests {
             assert_eq!(result.wallet_output.value(), MicroMinotari::new(1000 + i as u64 * 100));
         }
     }
-} 
+}
+*/
