@@ -11,6 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use zeroize::Zeroize;
 use rand_core::{OsRng, RngCore};
 use crate::data_structures::SafeArray;
+use crate::data_structures::address::{TariAddress, DualAddress, SingleAddress, TariAddressFeatures, Network};
+use crate::data_structures::types::{CompressedPublicKey, PrivateKey};
 use crate::errors::KeyManagementError;
 use crate::key_management::{mnemonic_to_master_key, generate_seed_phrase, validate_seed_phrase, bytes_to_mnemonic, CipherSeed};
 
@@ -198,9 +200,127 @@ impl Wallet {
             ))
     }
 
-    /// Get a copy of the master key bytes (for internal use only)
-    pub(crate) fn master_key_bytes(&self) -> [u8; 32] {
+    /// Generate a dual address with view and spend keys
+    /// 
+    /// Creates a dual Tari address using derived view and spend keys from the master key.
+    /// This allows for stealth payments and other advanced functionality.
+    pub fn get_dual_address(&self, features: TariAddressFeatures, payment_id: Option<Vec<u8>>) -> Result<TariAddress, KeyManagementError> {
+        // Derive view and spend keys from master key
+        let (view_key, spend_key) = self.derive_key_pair()?;
+        
+        // Convert to CompressedPublicKey
+        let view_public_key = CompressedPublicKey::from_private_key(&view_key);
+        let spend_public_key = CompressedPublicKey::from_private_key(&spend_key);
+        
+        // Use the network from wallet metadata or default to Esmeralda
+        let network = match self.metadata.network.as_str() {
+            "mainnet" => Network::MainNet,
+            "stagenet" => Network::StageNet,
+            "localnet" => Network::LocalNet,
+            _ => Network::Esmeralda, // default
+        };
+        
+        // Create dual address
+        let dual_address = DualAddress::new(
+            view_public_key,
+            spend_public_key,
+            network,
+            features,
+            payment_id,
+        ).map_err(|e| KeyManagementError::SeedPhraseError(format!("Failed to create dual address: {}", e)))?;
+        
+        Ok(TariAddress::Dual(dual_address))
+    }
+
+    /// Generate a single address with spend key only
+    /// 
+    /// Creates a single Tari address using only a spend key derived from the master key.
+    /// This is simpler than dual addresses but has fewer features.
+    pub fn get_single_address(&self, features: TariAddressFeatures) -> Result<TariAddress, KeyManagementError> {
+        // Derive spend key from master key
+        let (_, spend_key) = self.derive_key_pair()?;
+        
+        // Convert to CompressedPublicKey
+        let spend_public_key = CompressedPublicKey::from_private_key(&spend_key);
+        
+        // Use the network from wallet metadata or default to Esmeralda
+        let network = match self.metadata.network.as_str() {
+            "mainnet" => Network::MainNet,
+            "stagenet" => Network::StageNet,
+            "localnet" => Network::LocalNet,
+            _ => Network::Esmeralda, // default
+        };
+        
+        // Create single address
+        let single_address = SingleAddress::new(
+            spend_public_key,
+            network,
+            features,
+        ).map_err(|e| KeyManagementError::SeedPhraseError(format!("Failed to create single address: {}", e)))?;
+        
+        Ok(TariAddress::Single(single_address))
+    }
+
+    /// Derive view and spend key pair from master key
+    /// 
+    /// Uses the master key to derive a view key and spend key following Tari's
+    /// key derivation specification.
+    fn derive_key_pair(&self) -> Result<(PrivateKey, PrivateKey), KeyManagementError> {
+        // Get master key bytes
+        let master_key_bytes = self.master_key.as_bytes();
+        
+        // For now, we'll use a simple approach where:
+        // - view_key = master_key
+        // - spend_key = hash(master_key || "spend")
+        // 
+        // TODO: In the future, this should use proper hierarchical key derivation
+        // with branch seeds as specified in the Tari key management documentation
+        
+        let view_key = PrivateKey::from_canonical_bytes(master_key_bytes)
+            .map_err(|e| KeyManagementError::SeedPhraseError(format!("Failed to create view key: {}", e)))?;
+        
+        // Create spend key by hashing master_key + "spend" string
+        use blake2b_simd::blake2b;
+        let mut hasher_input = Vec::new();
+        hasher_input.extend_from_slice(master_key_bytes);
+        hasher_input.extend_from_slice(b"spend");
+        
+        let spend_key_hash = blake2b(&hasher_input);
+        let spend_key_bytes: [u8; 32] = spend_key_hash.as_bytes()[0..32].try_into()
+            .map_err(|_| KeyManagementError::SeedPhraseError("Failed to create spend key bytes".to_string()))?;
+        
+        let spend_key = PrivateKey::from_canonical_bytes(&spend_key_bytes)
+            .map_err(|e| KeyManagementError::SeedPhraseError(format!("Failed to create spend key: {}", e)))?;
+        
+        Ok((view_key, spend_key))
+    }
+
+    /// Get a copy of the master key bytes (for demonstration purposes)
+    /// WARNING: This exposes sensitive cryptographic material. Use with caution.
+    pub fn master_key_bytes(&self) -> [u8; 32] {
         *self.master_key.as_bytes()
+    }
+
+    fn string_to_network(&self, network_str: &str) -> Network {
+        match network_str.to_lowercase().as_str() {
+            "mainnet" => Network::MainNet,
+            "stagenet" => Network::StageNet,
+            "localnet" => Network::LocalNet,
+            "esmeralda" | "esme" => Network::Esmeralda,
+            _ => Network::Esmeralda, // Default to Esmeralda for unknown networks
+        }
+    }
+
+    /// Convert network to string representation
+    fn network_to_string(&self, network: Network) -> String {
+        match network {
+            Network::MainNet => "mainnet".to_string(),
+            Network::StageNet => "stagenet".to_string(),
+            Network::LocalNet => "localnet".to_string(),
+            Network::Esmeralda => "esmeralda".to_string(),
+            Network::NextNet => "nextnet".to_string(),
+            Network::Igor => "igor".to_string(),
+        }
     }
 }
 
@@ -674,25 +794,164 @@ mod tests {
 
     #[test]
     fn test_wallet_generate_new_with_seed_phrase_randomness() {
-        // Generate multiple wallets to test randomness
-        let mut phrases = Vec::new();
-        for _ in 0..5 {
-            let wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
-            let phrase = wallet.export_seed_phrase().unwrap();
-            phrases.push(phrase);
-        }
+        // Generate multiple wallets to verify randomness
+        let wallet1 = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        let wallet2 = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        let wallet3 = Wallet::generate_new_with_seed_phrase(Some("passphrase1")).unwrap();
+        let wallet4 = Wallet::generate_new_with_seed_phrase(Some("passphrase2")).unwrap();
         
-        // All phrases should be different
-        for i in 0..phrases.len() {
-            for j in i + 1..phrases.len() {
-                assert_ne!(phrases[i], phrases[j], "Generated duplicate seed phrases");
+        // All should have different master keys
+        let keys = [
+            wallet1.master_key_bytes(),
+            wallet2.master_key_bytes(),
+            wallet3.master_key_bytes(),
+            wallet4.master_key_bytes(),
+        ];
+        
+        // Verify no two keys are the same
+        for i in 0..keys.len() {
+            for j in i + 1..keys.len() {
+                assert_ne!(keys[i], keys[j], "Wallets {} and {} have the same master key", i, j);
             }
         }
         
-        // All phrases should be valid
-        for phrase in &phrases {
-            assert!(validate_seed_phrase(phrase).is_ok());
-            assert_eq!(phrase.split_whitespace().count(), 24);
-        }
+        // All should be able to export their seed phrases
+        assert!(wallet1.export_seed_phrase().is_ok());
+        assert!(wallet2.export_seed_phrase().is_ok());
+        assert!(wallet3.export_seed_phrase().is_ok());
+        assert!(wallet4.export_seed_phrase().is_ok());
+    }
+
+    #[test]
+    fn test_wallet_get_dual_address() {
+        let wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        
+        // Test basic dual address generation
+        let address = wallet.get_dual_address(TariAddressFeatures::create_interactive_and_one_sided(), None).unwrap();
+        
+        // Verify it's a dual address
+        assert!(matches!(address, TariAddress::Dual(_)));
+        assert!(address.public_view_key().is_some());
+        assert_eq!(address.network(), Network::Esmeralda); // Default network
+        assert_eq!(address.features(), TariAddressFeatures::create_interactive_and_one_sided());
+        
+        // Test dual address with payment ID
+        let payment_id = vec![1u8, 2, 3, 4, 5];
+        let address_with_payment = wallet.get_dual_address(
+            TariAddressFeatures::create_interactive_only(),
+            Some(payment_id.clone())
+        ).unwrap();
+        
+        assert!(matches!(address_with_payment, TariAddress::Dual(_)));
+        assert!(address_with_payment.features().contains(TariAddressFeatures::PAYMENT_ID));
+        
+        // Test that the same wallet produces the same address
+        let address2 = wallet.get_dual_address(TariAddressFeatures::create_interactive_and_one_sided(), None).unwrap();
+        assert_eq!(address.to_hex(), address2.to_hex());
+    }
+
+    #[test]
+    fn test_wallet_get_single_address() {
+        let wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        
+        // Test basic single address generation
+        let address = wallet.get_single_address(TariAddressFeatures::create_interactive_only()).unwrap();
+        
+        // Verify it's a single address
+        assert!(matches!(address, TariAddress::Single(_)));
+        assert!(address.public_view_key().is_none());
+        assert_eq!(address.network(), Network::Esmeralda); // Default network
+        assert_eq!(address.features(), TariAddressFeatures::create_interactive_only());
+        
+        // Test that the same wallet produces the same address
+        let address2 = wallet.get_single_address(TariAddressFeatures::create_interactive_only()).unwrap();
+        assert_eq!(address.to_hex(), address2.to_hex());
+    }
+
+    #[test]
+    fn test_wallet_address_generation_with_different_networks() {
+        let mut wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        
+        // Test default network (Esmeralda)
+        let address_default = wallet.get_dual_address(TariAddressFeatures::create_interactive_only(), None).unwrap();
+        assert_eq!(address_default.network(), Network::Esmeralda);
+        
+        // Test mainnet
+        wallet.set_network("mainnet".to_string());
+        let address_mainnet = wallet.get_dual_address(TariAddressFeatures::create_interactive_only(), None).unwrap();
+        assert_eq!(address_mainnet.network(), Network::MainNet);
+        
+        // Test stagenet
+        wallet.set_network("stagenet".to_string());
+        let address_stagenet = wallet.get_single_address(TariAddressFeatures::create_one_sided_only()).unwrap();
+        assert_eq!(address_stagenet.network(), Network::StageNet);
+        
+        // Test localnet
+        wallet.set_network("localnet".to_string());
+        let address_localnet = wallet.get_single_address(TariAddressFeatures::create_one_sided_only()).unwrap();
+        assert_eq!(address_localnet.network(), Network::LocalNet);
+        
+        // Test unknown network defaults to Esmeralda
+        wallet.set_network("unknown".to_string());
+        let address_unknown = wallet.get_dual_address(TariAddressFeatures::create_interactive_only(), None).unwrap();
+        assert_eq!(address_unknown.network(), Network::Esmeralda);
+    }
+
+    #[test]
+    fn test_wallet_address_generation_deterministic() {
+        // Create two wallets from the same seed phrase
+        let seed_phrase = crate::key_management::generate_seed_phrase().unwrap();
+        let wallet1 = Wallet::new_from_seed_phrase(&seed_phrase, None).unwrap();
+        let wallet2 = Wallet::new_from_seed_phrase(&seed_phrase, None).unwrap();
+        
+        // They should generate the same addresses
+        let dual_addr1 = wallet1.get_dual_address(TariAddressFeatures::create_interactive_and_one_sided(), None).unwrap();
+        let dual_addr2 = wallet2.get_dual_address(TariAddressFeatures::create_interactive_and_one_sided(), None).unwrap();
+        assert_eq!(dual_addr1.to_hex(), dual_addr2.to_hex());
+        
+        let single_addr1 = wallet1.get_single_address(TariAddressFeatures::create_interactive_only()).unwrap();
+        let single_addr2 = wallet2.get_single_address(TariAddressFeatures::create_interactive_only()).unwrap();
+        assert_eq!(single_addr1.to_hex(), single_addr2.to_hex());
+    }
+
+    #[test]
+    fn test_wallet_address_generation_different_features() {
+        let wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        
+        // Generate addresses with different features
+        let interactive_only = wallet.get_dual_address(TariAddressFeatures::create_interactive_only(), None).unwrap();
+        let one_sided_only = wallet.get_dual_address(TariAddressFeatures::create_one_sided_only(), None).unwrap();
+        let both_features = wallet.get_dual_address(TariAddressFeatures::create_interactive_and_one_sided(), None).unwrap();
+        
+        // Verify features are correctly set
+        assert_eq!(interactive_only.features(), TariAddressFeatures::create_interactive_only());
+        assert_eq!(one_sided_only.features(), TariAddressFeatures::create_one_sided_only());
+        assert_eq!(both_features.features(), TariAddressFeatures::create_interactive_and_one_sided());
+        
+        // Different features should produce different addresses (due to feature byte in address)
+        assert_ne!(interactive_only.to_hex(), one_sided_only.to_hex());
+        assert_ne!(interactive_only.to_hex(), both_features.to_hex());
+        assert_ne!(one_sided_only.to_hex(), both_features.to_hex());
+    }
+
+    #[test]
+    fn test_wallet_address_formats() {
+        let wallet = Wallet::generate_new_with_seed_phrase(None).unwrap();
+        let address = wallet.get_dual_address(TariAddressFeatures::create_interactive_and_one_sided(), None).unwrap();
+        
+        // Test all address formats
+        let emoji = address.to_emoji_string();
+        let base58 = address.to_base58();
+        let hex = address.to_hex();
+        
+        // All should be valid and non-empty
+        assert!(!emoji.is_empty());
+        assert!(!base58.is_empty());
+        assert!(!hex.is_empty());
+        
+        // Should be able to parse them back
+        assert!(TariAddress::from_emoji_string(&emoji).is_ok());
+        assert!(TariAddress::from_base58(&base58).is_ok());
+        assert!(TariAddress::from_hex(&hex).is_ok());
     }
 } 

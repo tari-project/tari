@@ -142,6 +142,7 @@ mod tests {
         let actual_view_public_key = hex::encode(view_public_key.as_bytes());
         let actual_spend_public_key = hex::encode(spend_public_key.as_bytes());
         
+        
         println!("Expected View Private Key:  {}", expected_view_private_key);
         println!("Actual View Private Key:    {}", actual_view_private_key);
         println!("Expected Spend Private Key: {}", expected_spend_private_key);

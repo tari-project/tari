@@ -155,6 +155,12 @@ pub enum DataStructureError {
     
     #[error("Invalid address: {0}")]
     InvalidAddress(String),
+
+    #[error("Invalid checksum: {0}")]
+    InvalidChecksum(String),
+
+    #[error("Invalid network: {0}")]
+    InvalidNetwork(String),
 }
 
 /// Errors related to serialization and deserialization
