@@ -487,8 +487,8 @@ pub enum TransactionServiceResponse {
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
-    OneSidedTransactionPreparedForSigning(PrepareOneSidedTransactionForSigningResult),
-    SignedOneSidedTransaction(SignedOneSidedTransactionResult),
+    OneSidedTransactionPreparedForSigning(Box<PrepareOneSidedTransactionForSigningResult>),
+    SignedOneSidedTransaction(Box<SignedOneSidedTransactionResult>),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -793,7 +793,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::OneSidedTransactionPreparedForSigning(result) => Ok(result),
+            TransactionServiceResponse::OneSidedTransactionPreparedForSigning(result) => Ok(*result),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
@@ -807,7 +807,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SignOneSidedTransaction { request })
             .await??
         {
-            TransactionServiceResponse::SignedOneSidedTransaction(result) => Ok(result),
+            TransactionServiceResponse::SignedOneSidedTransaction(result) => Ok(*result),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

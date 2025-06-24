@@ -681,14 +681,14 @@ where
                         payment_id,
                     )
                     .await
-                    .map(TransactionServiceResponse::OneSidedTransactionPreparedForSigning)
+                    .map(|v| TransactionServiceResponse::OneSidedTransactionPreparedForSigning(Box::new(v)))
             },
             TransactionServiceRequest::SignOneSidedTransaction { request } => {
                 let offline_signing = OfflineSigner::new(self.resources.clone());
                 offline_signing
                     .sign_locked_transaction(request)
                     .await
-                    .map(TransactionServiceResponse::SignedOneSidedTransaction)
+                    .map(|v| TransactionServiceResponse::SignedOneSidedTransaction(Box::new(v)))
             },
             TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => self
                 .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
