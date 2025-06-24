@@ -150,7 +150,7 @@ where
         if num_recovered > 0 {
             // this is a best effort, if this fails, its very likely that it's already busy with a validation.
             let _result = self.resources.output_manager_service.validate_txos().await;
-            let _result = self.resources.transaction_service.validate_transactions().await;
+            // let _result = self.resources.transaction_service.validate_transactions().await;
         }
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,

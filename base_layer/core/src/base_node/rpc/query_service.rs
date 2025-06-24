@@ -416,4 +416,39 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     ) -> Result<GetUtxosByBlockResponse, Self::Error> {
         self.fetch_utxos_by_block(request).await
     }
+
+    async fn get_utxos_mined_info(
+        &self,
+        request: models::GetUtxosMinedInfoRequest,
+    ) -> Result<models::GetUtxosMinedInfoResponse, Self::Error> {
+        request.validate()?;
+
+        // let hashes = request.hashes.clone().try_into()?;
+        let mut utxos = vec![];
+
+        for hash in request.hashes {
+            let hash = hash.try_into()?;
+            let output = self.db().fetch_output(hash).await?;
+            if let Some(output) = output {
+                // let header = self
+                //     .db()
+                //     .fetch_header_by_block_hash(output.block_hash())
+                //     .await?
+                //     .ok_or_else(|| Error::HeaderHashNotFound)?;
+
+                utxos.push(models::MinedUtxoInfo {
+                    utxo_hash: hash.to_vec(),
+                    mined_in_hash: todo!(),
+                    mined_in_height: todo!(),
+                    mined_in_timestamp: todo!(),
+                });
+            }
+        }
+
+        Ok(models::GetUtxosMinedInfoResponse {
+            utxos: todo!(),
+            best_block_hash: todo!(),
+            best_block_height: todo!(),
+        })
+    }
 }

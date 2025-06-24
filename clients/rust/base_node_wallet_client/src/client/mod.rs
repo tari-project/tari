@@ -5,7 +5,7 @@ pub mod http;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use tari_core::{
-    base_node::rpc::models::{self, BlockHeader, SyncUtxosByBlockResponse},
+    base_node::rpc::models::{self, BlockHeader, GetUtxosMinedInfoResponse, SyncUtxosByBlockResponse},
     mempool::FeePerGramStat,
     transactions::{
         tari_amount::MicroMinotari,
@@ -20,6 +20,7 @@ use crate::client::models::TxSubmissionResponse;
 /// Trait that a base node wallet client must implement.
 #[async_trait::async_trait]
 pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
+    fn get_address(&self) -> String;
     fn is_online(&self) -> bool;
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error>;
 
@@ -38,7 +39,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 
     fn get_last_request_latency(&self) -> Option<std::time::Duration>;
 
-    async fn fetch_matching_utxos(&self, hashes: Vec<Vec<u8>>) -> Result<FetchMatchingUtxosResponse, Error>;
+    async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error>;
 
     async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error>;
 
@@ -62,19 +63,4 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 pub struct DeletedUtxoInfo {
     pub utxo_hash: Vec<u8>,
     pub found_in_header: Option<(u64, Vec<u8>)>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct FetchMatchingUtxosResponse {
-    pub utxos: Vec<MinedUtxoInfo>,
-    pub best_block_hash: Vec<u8>,
-    pub best_block_height: u64,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MinedUtxoInfo {
-    pub utxo_hash: Vec<u8>,
-    pub mined_in_hash: Vec<u8>,
-    pub mined_in_height: u64,
-    pub mined_in_timestamp: u64,
 }

@@ -376,7 +376,6 @@ pub async fn set_peer_and_get_base_node_peer_config(
         )
     })?;
     let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, http_client_url);
-    debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
 
     Ok(peer_config)
 }
@@ -629,9 +628,9 @@ pub async fn start_wallet(
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
         // NOTE: https://github.com/tari-project/tari/issues/5227
         debug!("revalidating all transactions");
-        if let Err(e) = wallet.transaction_service.revalidate_all_transactions().await {
-            error!(target: LOG_TARGET, "Failed to revalidate all transactions: {}", e);
-        }
+        // if let Err(e) = wallet.transaction_service.revalidate_all_transactions().await {
+        //     error!(target: LOG_TARGET, "Failed to revalidate all transactions: {}", e);
+        // }
 
         debug!("restarting transaction protocols");
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
@@ -639,12 +638,12 @@ pub async fn start_wallet(
         }
 
         debug!("validating transactions");
-        if let Err(e) = wallet.transaction_service.validate_transactions().await {
-            error!(
-                target: LOG_TARGET,
-                "Problem validating and restarting transaction protocols: {}", e
-            );
-        }
+        // if let Err(e) = wallet.transaction_service.validate_transactions().await {
+        //     error!(
+        //         target: LOG_TARGET,
+        //         "Problem validating and restarting transaction protocols: {}", e
+        //     );
+        // }
 
         // validate transaction outputs
         validate_txos(wallet).await?;

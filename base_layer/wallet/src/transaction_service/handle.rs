@@ -202,8 +202,8 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
-    ValidateTransactions,
-    ReValidateTransactions,
+    // ValidateTransactions,
+    // ReValidateTransactions,
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
         count: u64,
@@ -393,8 +393,8 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetNumConfirmationsRequired => write!(f, "GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
-            Self::ValidateTransactions => write!(f, "ValidateTransactions"),
-            Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
+            // Self::ValidateTransactions => write!(f, "ValidateTransactions"),
+            // Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
@@ -1147,16 +1147,16 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn revalidate_all_transactions(&mut self) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::ReValidateTransactions)
-            .await??
-        {
-            TransactionServiceResponse::ValidationStarted(_) => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
+    // pub async fn revalidate_all_transactions(&mut self) -> Result<(), TransactionServiceError> {
+    //     match self
+    //         .handle
+    //         .call(TransactionServiceRequest::ReValidateTransactions)
+    //         .await??
+    //     {
+    //         TransactionServiceResponse::ValidationStarted(_) => Ok(()),
+    //         _ => Err(TransactionServiceError::UnexpectedApiResponse),
+    //     }
+    // }
 
     pub async fn set_normal_power_mode(&mut self) -> Result<(), TransactionServiceError> {
         match self
@@ -1213,16 +1213,16 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn validate_transactions(&mut self) -> Result<OperationId, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::ValidateTransactions)
-            .await??
-        {
-            TransactionServiceResponse::ValidationStarted(id) => Ok(id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
+    // pub async fn validate_transactions(&mut self) -> Result<OperationId, TransactionServiceError> {
+    //     match self
+    //         .handle
+    //         .call(TransactionServiceRequest::ValidateTransactions)
+    //         .await??
+    //     {
+    //         TransactionServiceResponse::ValidationStarted(id) => Ok(id),
+    //         _ => Err(TransactionServiceError::UnexpectedApiResponse),
+    //     }
+    // }
 
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,

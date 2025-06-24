@@ -105,10 +105,7 @@ use minotari_wallet::{
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
-    utxo_scanner_service::{
-        service::{DefaultHttpClientFactory, UtxoScannerService},
-        RECOVERY_KEY,
-    },
+    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
     wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
     Wallet,
     WalletConfig,

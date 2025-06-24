@@ -1005,14 +1005,14 @@ where
                 self.resources.config.num_confirmations_required = number;
                 Ok(TransactionServiceResponse::NumConfirmationsSet)
             },
-            TransactionServiceRequest::ValidateTransactions => self
-                .start_transaction_validation_protocol(transaction_validation_join_handles)
-                .await
-                .map(TransactionServiceResponse::ValidationStarted),
-            TransactionServiceRequest::ReValidateTransactions => self
-                .start_transaction_revalidation(transaction_validation_join_handles)
-                .await
-                .map(TransactionServiceResponse::ValidationStarted),
+            // TransactionServiceRequest::ValidateTransactions => self
+            //     .start_transaction_validation_protocol(transaction_validation_join_handles)
+            //     .await
+            //     .map(TransactionServiceResponse::ValidationStarted),
+            // TransactionServiceRequest::ReValidateTransactions => self
+            //     .start_transaction_revalidation(transaction_validation_join_handles)
+            //     .await
+            // .map(TransactionServiceResponse::ValidationStarted),
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -3515,12 +3515,6 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
     ) -> Result<OperationId, TransactionServiceError> {
-        let current_base_node = self
-            .resources
-            .connectivity
-            .get_current_base_node_peer_node_id()
-            .ok_or(TransactionServiceError::NoBaseNodeKeysProvided)?;
-
         trace!(target: LOG_TARGET, "Starting transaction validation protocol");
         let id = OperationId::new_random();
 
@@ -3561,14 +3555,14 @@ where
                                 continue 'outer;
                             }
                         }
-                        _ = base_node_watch.changed() => {
-                             if let Some(selected_peer) = base_node_watch.borrow().as_ref() {
-                                if selected_peer.get_current_peer().node_id != current_base_node {
-                                    debug!(target: LOG_TARGET, "Base node changed, restarting transaction validation protocol");
-                                  continue 'outer;
-                                }
-                            }
-                        }
+                        // _ = base_node_watch.changed() => {
+                        //      if let Some(selected_peer) = base_node_watch.borrow().as_ref() {
+                        //         if selected_peer.get_current_peer().node_id != current_base_node {
+                        //             debug!(target: LOG_TARGET, "Base node changed, restarting transaction validation protocol");
+                        //           continue 'outer;
+                        //         }
+                        //     }
+                        // }
                     }
                 }
             }

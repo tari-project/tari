@@ -10,6 +10,7 @@ use tari_core::{
     base_node::rpc::models::{
         self,
         BlockHeader,
+        GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
         TipInfoResponse,
         TxQueryResponse,
@@ -23,7 +24,7 @@ use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 use url::Url;
 
-use crate::{BaseNodeWalletClient, DeletedUtxoInfo, FetchMatchingUtxosResponse};
+use crate::{BaseNodeWalletClient, DeletedUtxoInfo};
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
 
@@ -56,6 +57,10 @@ impl Clone for Client {
 
 #[async_trait]
 impl BaseNodeWalletClient for Client {
+    fn get_address(&self) -> String {
+        self.api_address.to_string()
+    }
+
     fn is_online(&self) -> bool {
         self.last_latency
             .read()
@@ -236,9 +241,9 @@ impl BaseNodeWalletClient for Client {
             .map(|(duration, _)| duration)
     }
 
-    async fn fetch_matching_utxos(&self, hashes: Vec<Vec<u8>>) -> Result<FetchMatchingUtxosResponse, anyhow::Error> {
+    async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, anyhow::Error> {
         debug!(target: LOG_TARGET, "Requesting matching UTXOs for hashes {:?} from Base Node wallet service at {}", hashes, self.api_address);
-        let mut target_url = self.api_address.join("/fetch_matching_utxos")?;
+        let mut target_url = self.api_address.join("/get_utxos_mined_info")?;
         target_url.set_query(Some(&format!(
             "hashes={}",
             hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(",")
@@ -254,7 +259,7 @@ impl BaseNodeWalletClient for Client {
                 body
             ));
         }
-        Ok(res.json::<FetchMatchingUtxosResponse>().await?)
+        Ok(res.json::<GetUtxosMinedInfoResponse>().await?)
     }
 
     async fn query_deleted_utxos(

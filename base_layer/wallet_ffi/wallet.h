@@ -69,8 +69,6 @@ struct EncryptedData;
 
 struct FeePerGramStat;
 
-struct FeePerGramStatsResponse;
-
 struct InboundTransaction;
 
 struct OutboundTransaction;
@@ -242,8 +240,6 @@ typedef struct TransportConfig TariTransportConfig;
 typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
-
-typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
 
@@ -4596,9 +4592,9 @@ void log_debug_message(const char *msg,
  * The ```fee_per_gram_stats_destroy``` method must be called when finished with a TariFeePerGramStats to prevent
  * a memory leak.
  */
-TariFeePerGramStats *wallet_get_fee_per_gram_stats(struct TariWallet *wallet,
-                                                   unsigned int count,
-                                                   int *error_out);
+TariFeePerGramStat *wallet_get_fee_per_gram_stats(struct TariWallet *wallet,
+                                                  unsigned int count,
+                                                  int *error_out);
 
 /**
  * Get length of stats from the TariFeePerGramStats.

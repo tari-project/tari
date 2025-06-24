@@ -619,11 +619,11 @@ where
 
     #[allow(clippy::too_many_lines)]
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
-        let current_base_node = self
-            .resources
-            .connectivity
-            .get_current_base_node_peer_node_id()
-            .ok_or(OutputManagerError::NoBaseNodeKeysProvided)?;
+        // let current_base_node = self
+        //     .resources
+        //     .connectivity
+        //     .get_current_base_node_peer_node_id()
+        //     .ok_or(OutputManagerError::NoBaseNodeKeysProvided)?;
         let id = OsRng.next_u64();
         let txo_validation = TxoValidationTask::new(
             id,
@@ -706,17 +706,17 @@ where
                                 continue 'outer;
                             }
                         }
-                        _ = base_node_watch.changed() => {
-                            if let Some(peer) = base_node_watch.borrow().as_ref() {
-                                if peer.get_current_peer().node_id != current_base_node {
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "TXO Validation Protocol (Id: {}) resetting to run again because base node changed", id
-                                    );
-                                    continue 'outer;
-                                }
-                            }
-                        }
+                        // _ = base_node_watch.changed() => {
+                        //     if let Some(peer) = base_node_watch.borrow().as_ref() {
+                        //         if peer.get_current_peer().node_id != current_base_node {
+                        //             debug!(
+                        //                 target: LOG_TARGET,
+                        //                 "TXO Validation Protocol (Id: {}) resetting to run again because base node changed", id
+                        //             );
+                        //             continue 'outer;
+                        //         }
+                        //     }
+                        // }
                     }
                 }
             }

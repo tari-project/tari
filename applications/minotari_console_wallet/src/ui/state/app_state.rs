@@ -1236,15 +1236,15 @@ impl AppStateInner {
         let mut txn_service = self.wallet.transaction_service.clone();
         let mut output_manager_service = self.wallet.output_manager_service.clone();
 
-        task::spawn(async move {
-            if let Err(e) = txn_service.validate_transactions().await {
-                error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-            }
+        // task::spawn(async move {
+        //     if let Err(e) = txn_service.validate_transactions().await {
+        //         error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
+        //     }
 
-            if let Err(e) = output_manager_service.validate_txos().await {
-                error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
-            }
-        });
+        //     if let Err(e) = output_manager_service.validate_txos().await {
+        //         error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
+        //     }
+        // });
     }
 
     pub fn spawn_restart_transaction_protocols_task(&mut self) {

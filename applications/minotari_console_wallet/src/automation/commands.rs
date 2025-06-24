@@ -2352,22 +2352,22 @@ pub async fn command_runner(
                 Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
 
-            RevalidateWalletDb => {
-                if let Err(e) = output_service
-                    .revalidate_all_outputs()
-                    .await
-                    .map_err(CommandError::OutputManagerError)
-                {
-                    eprintln!("RevalidateWalletDb error! {}", e);
-                }
-                if let Err(e) = transaction_service
-                    .revalidate_all_transactions()
-                    .await
-                    .map_err(CommandError::TransactionServiceError)
-                {
-                    eprintln!("RevalidateWalletDb error! {}", e);
-                }
-            },
+            // RevalidateWalletDb => {
+            //     if let Err(e) = output_service
+            //         .revalidate_all_outputs()
+            //         .await
+            //         .map_err(CommandError::OutputManagerError)
+            //     {
+            //         eprintln!("RevalidateWalletDb error! {}", e);
+            //     }
+            //     if let Err(e) = transaction_service
+            //         .revalidate_all_transactions()
+            //         .await
+            //         .map_err(CommandError::TransactionServiceError)
+            //     {
+            //         eprintln!("RevalidateWalletDb error! {}", e);
+            //     }
+            // },
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
                     args.amount,
