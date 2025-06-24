@@ -1123,6 +1123,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 })?
                 .as_u64(),
         );
+
+        // assume full coinbase reward in case of single coinbase with zero value
+        if coinbases.len() == 1 && coinbases[0].value == 0 {
+            coinbases[0].value = reward as u64;
+        }
+        
         let mut total_shares = 0u128;
         for coinbase in &coinbases {
             total_shares += u128::from(coinbase.value);
@@ -1355,7 +1361,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::invalid_argument(format!("Malformed block template provided: {}", s)),
                 )
             })?;
-        let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
         if coinbases.len() as u64 >
             self.consensus_rules
                 .consensus_constants(block_template.header.height)
@@ -1379,6 +1385,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal("Could not calculate the amount of fees in the block".to_string()),
                 )
             })?;
+
+        // assume full coinbase reward in case of single coinbase with zero value
+        if coinbases.len() == 1 && coinbases[0].value == 0 {
+            coinbases[0].value = reward.as_u64();
+        }
+       
         let mut amount = 0u64;
         for coinbase in &coinbases {
             amount += coinbase.value;
