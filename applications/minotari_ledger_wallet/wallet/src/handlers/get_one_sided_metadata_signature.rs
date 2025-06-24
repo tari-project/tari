@@ -133,13 +133,15 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         .map_err(|_| AppSW::MetadataSignatureFail)?;
 
     let mut fields = Vec::new();
+    let field_value = format!("{}", value.to_string());
     fields.push(Field {
         name: "Amount",
-        value: &format!("{}", value.to_string()),
+        value: &field_value,
     });
-    fields.push(Field {
+    let field_value = format!("{}", receiver_address);
+        fields.push(Field {
         name: "Receiver",
-        value: &format!("{}", receiver_address),
+        value: &field_value,
     });
 
     // Add payment ID field if present
