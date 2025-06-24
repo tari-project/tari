@@ -14,7 +14,7 @@ use crate::data_structures::SafeArray;
 use crate::data_structures::address::{TariAddress, DualAddress, SingleAddress, TariAddressFeatures, Network};
 use crate::data_structures::types::{CompressedPublicKey, PrivateKey};
 use crate::errors::KeyManagementError;
-use crate::key_management::{mnemonic_to_master_key, generate_seed_phrase, validate_seed_phrase, bytes_to_mnemonic, CipherSeed};
+use crate::key_management::{mnemonic_to_master_key, validate_seed_phrase, bytes_to_mnemonic, CipherSeed};
 
 // Constants from Tari CipherSeed specification for birthday calculation
 const BIRTHDAY_GENESIS_FROM_UNIX_EPOCH: u64 = 1640995200; // seconds to 2022-01-01 00:00:00 UTC
@@ -100,10 +100,17 @@ impl Wallet {
     /// Creates a wallet using a randomly generated 24-word BIP39 seed phrase.
     /// The original seed phrase is stored and can be exported using `export_seed_phrase()`.
     pub fn generate_new_with_seed_phrase(passphrase: Option<&str>) -> Result<Self, KeyManagementError> {
-        // Generate a new 24-word seed phrase
-        let seed_phrase = generate_seed_phrase()?;
+        // Create a new CipherSeed with random entropy
+        let cipher_seed = CipherSeed::new();
         
-        // Create wallet from the generated seed phrase
+        // Encrypt the CipherSeed with the provided passphrase (or default if None)
+        let encrypted_bytes = cipher_seed.encipher(passphrase)
+            .map_err(|e| KeyManagementError::cipher_seed_encryption_failed(&e.to_string()))?;
+        
+        // Convert encrypted bytes to mnemonic words
+        let seed_phrase = bytes_to_mnemonic(&encrypted_bytes)?;
+        
+        // Create wallet from the generated seed phrase with the same passphrase
         Self::new_from_seed_phrase(&seed_phrase, passphrase)
     }
 
