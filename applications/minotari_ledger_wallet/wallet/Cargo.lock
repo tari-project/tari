@@ -530,7 +530,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet"
-version = "4.6.0-pre.0"
+version = "4.6.1-pre.0"
 dependencies = [
  "blake2",
  "borsh",
@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "4.6.0-pre.0"
+version = "4.6.1-pre.0"
 dependencies = [
  "bs58",
 ]

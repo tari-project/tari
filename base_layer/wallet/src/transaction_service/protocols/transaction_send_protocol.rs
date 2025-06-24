@@ -316,6 +316,28 @@ where
             store_and_forward_send_result: false,
             transaction_status: TransactionStatus::Queued,
         };
+        // Add pending outbound transaction if it does not exist
+        if !self
+            .resources
+            .db
+            .transaction_exists(tx_id)
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
+        {
+            let fee = sender_protocol
+                .get_fee_amount()
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            outbound_tx.fee = fee;
+            outbound_tx.status = initial_send.transaction_status;
+            self.resources
+                .db
+                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
+                self.cancel_oversized_transaction().await?;
+                return Err(e);
+            }
+        }
+
         if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
             info!(
                 target: LOG_TARGET,
@@ -342,28 +364,6 @@ where
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
 
-        // Add pending outbound transaction if it does not exist
-        if !self
-            .resources
-            .db
-            .transaction_exists(tx_id)
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
-        {
-            let fee = sender_protocol
-                .get_fee_amount()
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            outbound_tx.fee = fee;
-            outbound_tx.status = initial_send.transaction_status;
-            outbound_tx.direct_send_success = true;
-            self.resources
-                .db
-                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
-                self.cancel_oversized_transaction().await?;
-                return Err(e);
-            }
-        }
         if initial_send.transaction_status == TransactionStatus::Pending {
             self.resources
                 .db
