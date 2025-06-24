@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.6.2](https://github.com/tari-project/tari/compare/v4.6.1...v4.6.2) (2025-06-24)
+
+
+### Bug Fixes
+
+* remove long timeout in interactive_tx till tx is persisted into db ([#7252](https://github.com/tari-project/tari/issues/7252)) ([3a78aba](https://github.com/tari-project/tari/commit/3a78aba2a5ed8c764525687ede683cc726ac880a))
+
 ### [4.6.1](https://github.com/tari-project/tari/compare/v4.6.0...v4.6.1) (2025-06-23)
 
 
