@@ -465,12 +465,32 @@ impl DualAddress {
             return Err(DataStructureError::InvalidAddress("Invalid base58 size".to_string()).into());
         }
 
-        // For now, try to decode as single base58 string (this may need refinement based on actual format)
-        let decoded = bs58::decode(base58_str)
+        // Split the base58 string into three parts as per source of truth:
+        // first 2 characters: network (1 char) + features (1 char)
+        // remaining: public keys + payment_id + checksum
+        let (first, rest) = base58_str
+            .split_at_checked(2)
+            .ok_or_else(|| DataStructureError::InvalidAddress("Invalid character".to_string()))?;
+        let (network, features) = first
+            .split_at_checked(1)
+            .ok_or_else(|| DataStructureError::InvalidAddress("Invalid character".to_string()))?;
+        
+        // Decode each part separately
+        let mut result = bs58::decode(network)
             .into_vec()
-            .map_err(|_| DataStructureError::InvalidAddress("Invalid base58 encoding".to_string()))?;
-
-        Self::from_bytes(&decoded)
+            .map_err(|_| DataStructureError::InvalidAddress("Cannot recover network".to_string()))?;
+        let mut features_bytes = bs58::decode(features)
+            .into_vec()
+            .map_err(|_| DataStructureError::InvalidAddress("Cannot recover features".to_string()))?;
+        let mut rest_bytes = bs58::decode(rest)
+            .into_vec()
+            .map_err(|_| DataStructureError::InvalidAddress("Cannot recover public keys".to_string()))?;
+        
+        // Reconstruct the full byte array
+        result.append(&mut features_bytes);
+        result.append(&mut rest_bytes);
+        
+        Self::from_bytes(&result)
     }
 
     /// Convert Tari Address to emoji format (using correct EMOJI array)
@@ -649,12 +669,32 @@ impl SingleAddress {
             return Err(DataStructureError::InvalidAddress("Invalid base58 size".to_string()).into());
         }
 
-        // For now, try to decode as single base58 string (this may need refinement based on actual format)
-        let decoded = bs58::decode(base58_str)
+        // Split the base58 string into three parts as per source of truth:
+        // first 2 characters: network (1 char) + features (1 char)
+        // remaining: public key + checksum
+        let (first, rest) = base58_str
+            .split_at_checked(2)
+            .ok_or_else(|| DataStructureError::InvalidAddress("Invalid character".to_string()))?;
+        let (network, features) = first
+            .split_at_checked(1)
+            .ok_or_else(|| DataStructureError::InvalidAddress("Invalid character".to_string()))?;
+        
+        // Decode each part separately
+        let mut result = bs58::decode(network)
             .into_vec()
-            .map_err(|_| DataStructureError::InvalidAddress("Invalid base58 encoding".to_string()))?;
-
-        Self::from_bytes(&decoded)
+            .map_err(|_| DataStructureError::InvalidAddress("Cannot recover network".to_string()))?;
+        let mut features_bytes = bs58::decode(features)
+            .into_vec()
+            .map_err(|_| DataStructureError::InvalidAddress("Cannot recover features".to_string()))?;
+        let mut rest_bytes = bs58::decode(rest)
+            .into_vec()
+            .map_err(|_| DataStructureError::InvalidAddress("Cannot recover public key".to_string()))?;
+        
+        // Reconstruct the full byte array
+        result.append(&mut features_bytes);
+        result.append(&mut rest_bytes);
+        
+        Self::from_bytes(&result)
     }
 
     /// Convert Tari Address to emoji format (using correct EMOJI array)
