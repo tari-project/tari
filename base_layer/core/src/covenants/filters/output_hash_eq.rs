@@ -32,14 +32,13 @@ impl Filter for OutputHashEqFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let hash = context.next_arg()?.require_hash()?;
         // An output's hash is unique so the output set is either 1 or 0 outputs will match
-        output_set.find_inplace(|output| *output.hash().as_slice() == hash);
+        output_set.find_inplace(|output| output.hash() == hash);
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-
     use super::*;
     use crate::{
         covenant,
