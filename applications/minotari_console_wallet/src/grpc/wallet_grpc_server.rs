@@ -24,6 +24,7 @@ use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use futures::{
@@ -140,7 +141,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
-    time::{sleep, timeout, Duration},
+    time::{sleep, timeout},
 };
 use tonic::{Request, Response, Status};
 
@@ -840,8 +841,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?;
-                    // The transaction is only persisted after it has been sent via comms, so we need to wait
-                    let wallet_tx = timeout(Duration::from_secs(30), async {
+                    let wallet_tx = timeout(Duration::from_millis(100), async {
                         loop {
                             let tx = self
                                 .get_transaction_service()
@@ -852,7 +852,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             if let Ok(Some(tx)) = tx {
                                 break tx;
                             }
-                            sleep(Duration::from_millis(100)).await;
+                            sleep(Duration::from_millis(10)).await;
                         }
                     })
                     .await
