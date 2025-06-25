@@ -1057,6 +1057,11 @@ async fn generate_block_as_single_request_with_zero_coinbase(world: &mut TariWor
     assert_eq!(coinbase_kernel_count, 1);
     assert_eq!(coinbase_utxo_count, 1);
 
+    // Verify that the zero coinbase was automatically set to the full block reward
+    let coinbase_output = body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+    assert!(coinbase_output.minimum_value_promise.as_u64() > 0, 
+        "Zero coinbase should have been automatically set to block reward");
+
     match client.submit_block(new_block).await {
         Ok(_) => (),
         Err(e) => panic!("The block should have been valid, {}", e),
@@ -1112,6 +1117,11 @@ async fn generate_block_with_zero_coinbase(world: &mut TariWorld, node: String) 
     }
     assert_eq!(coinbase_kernel_count, 1);
     assert_eq!(coinbase_utxo_count, 1);
+
+    // Verify that the zero coinbase was automatically set to the full block reward
+    let coinbase_output = body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+    assert!(coinbase_output.minimum_value_promise.as_u64() > 0, 
+        "Zero coinbase should have been automatically set to block reward");
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
