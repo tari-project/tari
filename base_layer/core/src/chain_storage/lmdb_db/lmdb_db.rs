@@ -19,6 +19,50 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+//! # LMDB Database with Integrated Stats Collection
+//!
+//! This module provides an LMDB-based blockchain database with built-in statistics collection
+//! for monitoring database operations and migrations.
+//!
+//! ## Stats Collection
+//!
+//! Every `LMDBDatabase` instance automatically includes a `StatsCollector` that tracks:
+//! - Migration progress during database creation
+//! - Operation statistics (operations per second, progress percentage)
+//! - Real-time updates via tokio watch channels
+//!
+//! ## Usage Example
+//!
+//! ```no_run
+//! # use std::path::Path;
+//! // Create database with automatic stats collection
+//! let db = create_lmdb_database(
+//!     Path::new("./test_db"),
+//!     config,
+//!     consensus_manager,
+//! )?;
+//!
+//! // Access the stats collector
+//! let stats_collector = db.stats_collector();
+//!
+//! // Subscribe to progress updates
+//! let progress_receiver = stats_collector.subscribe();
+//!
+//! // Subscribe additional receivers for different consumers
+//! let ui_receiver = stats_collector.subscribe_sender();
+//! let logging_receiver = stats_collector.subscribe_sender();
+//!
+//! // Check current progress
+//! let current_progress = stats_collector.progress_percentage();
+//! let ops_per_second = stats_collector.operations_per_second();
+//! println!("Progress: {:.1}%, Ops/sec: {:.2}", current_progress, ops_per_second);
+//! ```
+//!
+//! The stats collector is automatically updated during:
+//! - Database migrations
+//! - Block processing operations
+//! - Any operation that calls `update_stats()` or `set_stats_total_height()`
 use std::{
     cmp::max,
     convert::TryFrom,
@@ -50,13 +94,13 @@ use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
 };
-use tokio::sync::watch;
 
 use super::{
     cursors::KeyPrefixCursor,
     lmdb::lmdb_get_prefix_cursor,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     lmdb_tree_writer::LmdbTreeWriter,
+    stats_collector::StatsCollector,
 };
 use crate::{
     blocks::{
@@ -259,6 +303,7 @@ pub struct LMDBDatabase {
     jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
+    stats_collector: StatsCollector,
 }
 
 impl LMDBDatabase {
@@ -305,11 +350,27 @@ impl LMDBDatabase {
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
             consensus_manager,
+            stats_collector: StatsCollector::new(),
         };
 
         run_migrations(&mut db)?;
 
         Ok(db)
+    }
+
+    /// Get a reference to the stats collector
+    pub fn stats_collector(&self) -> &StatsCollector {
+        &self.stats_collector
+    }
+
+    /// Update progress in the stats collector
+    pub fn update_stats(&self, current_height: u64) {
+        self.stats_collector.update_progress(current_height);
+    }
+
+    /// Set total height in the stats collector
+    pub fn set_stats_total_height(&self, total_height: u64) {
+        self.stats_collector.set_total_height(total_height);
     }
 
     /// Try to establish a read lock on the LMDB database. If an exclusive write lock has been previously acquired, this
@@ -2981,6 +3042,10 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 );
             }
             let txn = db.write_transaction()?;
+
+            // Set up stats tracking for migration
+            db.set_stats_total_height(chain_height);
+
             for height in 0..=chain_height {
                 let block_accum_data: V0BLockHeaderAccumulatedData =
                     lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
@@ -3008,6 +3073,9 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     &new_block_accum_data,
                     None,
                 )?;
+
+                // Update stats progress
+                db.update_stats(height);
             }
             txn.commit()?;
             let txn = db.write_transaction()?;
@@ -3107,8 +3175,15 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 txn.commit()?;
                 info!(target: LOG_TARGET, "Cleared PayRef index");
             }
+
+            // Set up stats tracking for PayRef migration
+            db.set_stats_total_height(chain_height);
+
             for height in 0..=chain_height {
                 process_payref_for_height(db, height)?;
+
+                // Update stats progress
+                db.update_stats(height);
             }
             info!(target: LOG_TARGET, "PayRef index rebuild completed");
         }
