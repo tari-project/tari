@@ -51,7 +51,7 @@ use tari_core::{
     },
 };
 
-use crate::{BaseNodeConfig, DatabaseType};
+use crate::{grpc::readiness_grpc_server::ReadinessStatusHandler, BaseNodeConfig, DatabaseType};
 
 pub const LOG_TARGET: &str = "base_node::app";
 
@@ -70,7 +70,7 @@ pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
 
 pub async fn run_recovery(
     node_config: &BaseNodeConfig,
-    readiness_tx: tokio::sync::watch::Sender<ReadinessStatus>,
+    readiness_handler: ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
     let rules = ConsensusManager::builder(node_config.network).build().map_err(|e| {
@@ -79,15 +79,20 @@ pub async fn run_recovery(
     })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            readiness_tx.send(ReadinessStatus {
+            readiness_handler.readiness_tx.send(ReadinessStatus {
                 status: Status::MigratingInitializingLmdb.into(),
                 description: Status::MigratingInitializingLmdb.as_str_name().to_string(),
                 current_block: 0,
                 total_blocks: 0,
                 progress_percentage: 0.0,
             })?;
-            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone(), None)
-                .map_err(|e| {
+            let backend = create_lmdb_database(
+                &node_config.lmdb_path,
+                node_config.lmdb.clone(),
+                rules.clone(),
+                Some(readiness_handler.lmdb_migration_status_tx),
+            )
+            .map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening db: {}", e);
                 anyhow!("Could not open DB: {}", e)
             })?;
@@ -123,7 +128,7 @@ pub async fn run_recovery(
         difficulty_calculator,
     )?;
     db.start()?;
-    do_recovery(db.into(), temp_db, readiness_tx).await?;
+    do_recovery(db.into(), temp_db, readiness_handler.readiness_tx).await?;
 
     info!(
         target: LOG_TARGET,

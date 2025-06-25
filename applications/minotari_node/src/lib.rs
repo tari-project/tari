@@ -161,7 +161,7 @@ pub async fn run_base_node_with_cli(
             total_blocks: 0,
             progress_percentage: 0.0,
         });
-        recovery::run_recovery(&config.base_node, readiness_handler.readiness_tx)
+        recovery::run_recovery(&config.base_node, readiness_handler)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
