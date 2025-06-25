@@ -6,10 +6,13 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
+use serde::de;
 use tari_core::{
     base_node::rpc::models::{
         self,
         BlockHeader,
+        DeletedUtxoInfo,
+        GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
         TipInfoResponse,
@@ -24,7 +27,7 @@ use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 use url::Url;
 
-use crate::{BaseNodeWalletClient, DeletedUtxoInfo};
+use crate::BaseNodeWalletClient;
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
 
@@ -259,15 +262,44 @@ impl BaseNodeWalletClient for Client {
                 body
             ));
         }
-        Ok(res.json::<GetUtxosMinedInfoResponse>().await?)
+        info!(target: LOG_TARGET, "Received UTXOs mined info for hashes {:?} from Base Node wallet service at {}", hashes, self.api_address);
+
+        let res_text = res.text().await?;
+        debug!(target: LOG_TARGET, "Response text: {}", res_text);
+        let json = serde_json::from_str::<GetUtxosMinedInfoResponse>(&res_text)
+            .map_err(|e| anyhow!("Failed to parse response JSON: {}", e))?;
+        Ok(json)
     }
 
     async fn query_deleted_utxos(
         &self,
         hashes: Vec<Vec<u8>>,
         must_include_header: Vec<u8>,
-    ) -> Result<Vec<DeletedUtxoInfo>, anyhow::Error> {
-        todo!()
+    ) -> Result<GetUtxosDeletedInfoResponse, anyhow::Error> {
+        debug!(target: LOG_TARGET, "Requesting deleted UTXOs for hashes {:?} from Base Node wallet service at {}", hashes, self.api_address);
+        let mut target_url = self.api_address.join("/get_utxos_deleted_info")?;
+        target_url.set_query(Some(&format!(
+            "hashes={}&must_include_header={}",
+            hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(","),
+            must_include_header.to_hex()
+        )));
+        let res = self.http_client.get(target_url).send().await?;
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ));
+        }
+        info!(target: LOG_TARGET, "Received deleted UTXOs for hashes {:?} from Base Node wallet service at {}", hashes, self.api_address);
+        let res_text = res.text().await?;
+        debug!(target: LOG_TARGET, "Response text: {}", res_text);
+        let json = serde_json::from_str::<GetUtxosDeletedInfoResponse>(&res_text)
+            .map_err(|e| anyhow!("Failed to parse response JSON: {}", e))?;
+        Ok(json)
     }
 
     async fn fetch_utxo(&self, utxo: Vec<u8>) -> Result<Option<TransactionOutput>, anyhow::Error> {

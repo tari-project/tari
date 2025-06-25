@@ -66,4 +66,9 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
         &self,
         request: models::SyncUtxosByBlockRequest,
     ) -> Result<models::SyncUtxosByBlockResponse, Self::Error>;
+
+    async fn get_utxos_deleted_info(
+        &self,
+        request: models::GetUtxosDeletedInfoRequest,
+    ) -> Result<models::GetUtxosDeletedInfoResponse, Self::Error>;
 }

@@ -194,6 +194,7 @@ where
             return Ok(());
         }
 
+        let mut spent = Vec::with_capacity(mined_outputs.len());
         for batch in mined_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(
                 target: LOG_TARGET,
@@ -215,7 +216,7 @@ where
                     )
                 })?;
 
-            if response.len() != batch.len() {
+            if response.utxos.len() != batch.len() {
                 return Err(OutputManagerProtocolError::new(
                     self.operation_id,
                     OutputManagerError::InconsistentBaseNodeDataError(
@@ -226,16 +227,23 @@ where
 
             let mut unmined_and_invalid = Vec::with_capacity(batch.len());
             let mut unspent = Vec::with_capacity(batch.len());
-            for (output, data) in batch.iter().zip(response.iter()) {
+            let response_best_block_height = response.best_block_height;
+            let response_best_block_hash = FixedHash::try_from(response.best_block_hash.clone()).map_err(|_| {
+                OutputManagerProtocolError::new(
+                    self.operation_id,
+                    OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
+                )
+            })?;
+            for (output, data) in batch.iter().zip(response.utxos.iter()) {
                 // when checking mined height, 0 can be valid so we need to check the hash
-                if data.found_in_header.is_none() {
+                if data.found_in_header.is_some() {
                     // base node thinks this is unmined or does not know of it.
-                    unmined_and_invalid.push(output.hash);
-                    continue;
-                } else {
+                    // unmined_and_invalid.push(output.hash);
+                    // continue;
+                    // } else {
                     unspent.push((output.hash, true));
+                    continue;
                 }
-                todo!("Check if this is still needed, as we now have a query_deleted endpoint");
                 // if data.height_deleted_at == 0 && output.marked_deleted_at_height.is_some() {
                 //     // this is mined but not yet spent
                 //     unspent.push((output.hash, true));
@@ -250,31 +258,30 @@ where
                 //     continue;
                 // };
 
-                todo!("Check if this is still needed, as we now have a query_deleted endpoint");
-                // if data.height_deleted_at > 0 {
-                //     let confirmed = (response.best_block_height.saturating_sub(data.height_deleted_at)) >=
-                //         self.config.num_confirmations_required;
-                //     let block_hash = data.block_deleted_in.clone().try_into().map_err(|_| {
-                //         OutputManagerProtocolError::new(
-                //             self.operation_id,
-                //             OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
-                //         )
-                //     })?;
-                //     spent.push(SpentOutputInfoForBatch {
-                //         commitment: output.commitment.clone(),
-                //         confirmed,
-                //         mark_deleted_at_height: data.height_deleted_at,
-                //         mark_deleted_in_block: block_hash,
-                //     });
-                //     info!(
-                //         target: LOG_TARGET,
-                //         "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
-                //         output.commitment.to_hex(),
-                //         output.hash.to_hex(),
-                //         response.best_block_height,
-                //         self.operation_id
-                //     );
-                // }
+                if data.found_in_header.is_none() {
+                    // let confirmed = (response.best_block_height.saturating_sub(data.height_deleted_at)) >=
+                    //     self.config.num_confirmations_required;
+                    // let block_hash = .clone().try_into().map_err(|_| {
+                    //     OutputManagerProtocolError::new(
+                    //         self.operation_id,
+                    //         OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
+                    //     )
+                    // })?;
+                    spent.push(SpentOutputInfoForBatch {
+                        commitment: output.commitment.clone(),
+                        confirmed: false,
+                        mark_deleted_at_height: response_best_block_height,
+                        mark_deleted_in_block: response_best_block_hash.clone(),
+                    });
+                    info!(
+                        target: LOG_TARGET,
+                        "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
+                        output.commitment.to_hex(),
+                        output.hash.to_hex(),
+                        response.best_block_height,
+                        self.operation_id
+                    );
+                }
             }
             if !unmined_and_invalid.is_empty() {
                 self.db
@@ -286,9 +293,9 @@ where
                     .mark_outputs_as_unspent(unspent)
                     .for_protocol(self.operation_id)?;
             }
-            //     if !spent.is_empty() {
-            //         self.db.mark_outputs_as_spent(spent).for_protocol(self.operation_id)?;
-            //     }
+        }
+        if !spent.is_empty() {
+            self.db.mark_outputs_as_spent(spent).for_protocol(self.operation_id)?;
         }
         Ok(())
     }

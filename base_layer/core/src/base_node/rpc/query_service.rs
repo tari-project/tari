@@ -426,6 +426,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         // let hashes = request.hashes.clone().try_into()?;
         let mut utxos = vec![];
 
+        let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash = hash.try_into()?;
             let output = self.db().fetch_output(hash).await?;
@@ -438,17 +439,59 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
 
                 utxos.push(models::MinedUtxoInfo {
                     utxo_hash: hash.to_vec(),
-                    mined_in_hash: todo!(),
-                    mined_in_height: todo!(),
-                    mined_in_timestamp: todo!(),
+                    mined_in_hash: output.header_hash.to_vec(),
+                    mined_in_height: output.mined_height,
+                    mined_in_timestamp: output.mined_timestamp,
                 });
             }
         }
 
         Ok(models::GetUtxosMinedInfoResponse {
-            utxos: todo!(),
-            best_block_hash: todo!(),
-            best_block_height: todo!(),
+            utxos,
+            best_block_hash: tip_header.hash().to_vec(),
+            best_block_height: tip_header.height(),
+        })
+    }
+
+    async fn get_utxos_deleted_info(
+        &self,
+        request: models::GetUtxosDeletedInfoRequest,
+    ) -> Result<models::GetUtxosDeletedInfoResponse, Self::Error> {
+        request.validate()?;
+
+        // let hashes = request.hashes.clone().try_into()?;
+        let mut utxos = vec![];
+
+        let must_include_header = request.must_include_header.clone().try_into()?;
+        if self
+            .db()
+            .fetch_header_by_block_hash(must_include_header)
+            .await?
+            .is_none()
+        {
+            return Err(Error::HeaderHashNotFound);
+        }
+
+        let tip_header = self.db().fetch_tip_header().await?;
+        for hash in request.hashes {
+            let hash = hash.try_into()?;
+            let output = self.db().fetch_output(hash).await?;
+            // let header = self
+            //     .db()
+            //     .fetch_header_by_block_hash(output.block_hash())
+            //     .await?
+            //     .ok_or_else(|| Error::HeaderHashNotFound)?;
+
+            utxos.push(models::DeletedUtxoInfo {
+                utxo_hash: hash.to_vec(),
+                found_in_header: output.map(|o| (o.mined_height, o.header_hash.to_vec())),
+            });
+        }
+
+        Ok(models::GetUtxosDeletedInfoResponse {
+            utxos,
+            best_block_hash: tip_header.hash().to_vec(),
+            best_block_height: tip_header.height(),
         })
     }
 }

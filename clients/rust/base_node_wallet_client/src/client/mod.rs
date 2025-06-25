@@ -5,7 +5,14 @@ pub mod http;
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
 use tari_core::{
-    base_node::rpc::models::{self, BlockHeader, GetUtxosMinedInfoResponse, SyncUtxosByBlockResponse},
+    base_node::rpc::models::{
+        self,
+        BlockHeader,
+        DeletedUtxoInfo,
+        GetUtxosDeletedInfoResponse,
+        GetUtxosMinedInfoResponse,
+        SyncUtxosByBlockResponse,
+    },
     mempool::FeePerGramStat,
     transactions::{
         tari_amount::MicroMinotari,
@@ -47,7 +54,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
         &self,
         hashes: Vec<Vec<u8>>,
         must_include_header: Vec<u8>,
-    ) -> Result<Vec<DeletedUtxoInfo>, Error>;
+    ) -> Result<GetUtxosDeletedInfoResponse, Error>;
 
     async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, Error>;
 
@@ -58,9 +65,4 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
     ) -> Result<models::TxQueryResponse, Error>;
 
     async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, Error>;
-}
-
-pub struct DeletedUtxoInfo {
-    pub utxo_hash: Vec<u8>,
-    pub found_in_header: Option<(u64, Vec<u8>)>,
 }

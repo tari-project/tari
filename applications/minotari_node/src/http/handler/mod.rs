@@ -14,6 +14,7 @@ pub mod get_height_at_time;
 pub use get_height_at_time::__path_handle as __path_get_height_at_time;
 pub mod sync_utxos_by_block;
 pub use sync_utxos_by_block::__path_handle as __path_sync_utxos_by_block;
+pub mod get_utxos_deleted_info;
 pub mod get_utxos_mined_info;
 pub mod transaction_query;
 pub mod util;
