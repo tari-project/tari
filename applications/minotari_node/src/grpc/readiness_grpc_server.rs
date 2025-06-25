@@ -22,19 +22,27 @@
 
 use futures::channel::mpsc;
 use minotari_app_grpc::tari_rpc::{self, readiness_status::Status as ReadinessStatusEnum, ReadinessStatus};
+use tari_core::chain_storage::MigrationProgressEvent;
 use tokio::sync::watch;
 use tonic::{Request, Response, Status};
-
 pub struct ReadinessGrpcServer {
     readiness_service: ReadinessService,
 }
 
 pub struct ReadinessService {
     readiness_rx: watch::Receiver<ReadinessStatus>,
+    readiness_tx: watch::Sender<ReadinessStatus>,
+    lmdb_migration_status_rx: watch::Receiver<MigrationProgressEvent>,
+    lmdb_migration_status_tx: watch::Sender<MigrationProgressEvent>,
+}
+
+pub struct ReadinessStatusHandler {
+    pub readiness_tx: watch::Sender<ReadinessStatus>,
+    pub lmdb_migration_status_tx: watch::Sender<MigrationProgressEvent>,
 }
 
 impl ReadinessService {
-    pub fn new() -> (Self, watch::Sender<ReadinessStatus>) {
+    pub fn new() -> (Self, ReadinessStatusHandler) {
         let (readiness_tx, readiness_rx) = watch::channel(ReadinessStatus {
             status: ReadinessStatusEnum::NotReady.into(),
             description: ReadinessStatusEnum::NotReady.as_str_name().to_string(),
@@ -42,19 +50,63 @@ impl ReadinessService {
             total_blocks: 0,
             progress_percentage: 0.0,
         });
-        let sender = readiness_tx.clone();
-        (Self { readiness_rx }, sender)
+        let (lmdb_migration_status_tx, lmdb_migration_status_rx) = watch::channel(MigrationProgressEvent {
+            current_height: 0,
+            total_height: 0,
+            progress_percentage: 0.0,
+        });
+        let handler = ReadinessStatusHandler {
+            readiness_tx: readiness_tx.clone(),
+            lmdb_migration_status_tx: lmdb_migration_status_tx.clone(),
+        };
+        (
+            Self {
+                readiness_rx,
+                readiness_tx,
+                lmdb_migration_status_rx,
+                lmdb_migration_status_tx,
+            },
+            handler,
+        )
     }
 
     pub fn get_status(&self) -> ReadinessStatus {
-        self.readiness_rx.borrow().clone()
+        match self.readiness_rx.borrow().clone() {
+            ReadinessStatus {
+                status,
+                description,
+                current_block,
+                total_blocks,
+                progress_percentage,
+            } => {
+                let migration_status_code: i32 = ReadinessStatusEnum::MigratingInitializingLmdb.into();
+                if status == migration_status_code {
+                    let migration_status = self.lmdb_migration_status_rx.borrow();
+                    ReadinessStatus {
+                        status,
+                        description,
+                        current_block: migration_status.current_height,
+                        total_blocks: migration_status.total_height,
+                        progress_percentage: migration_status.progress_percentage,
+                    }
+                } else {
+                    ReadinessStatus {
+                        status,
+                        description,
+                        current_block,
+                        total_blocks,
+                        progress_percentage,
+                    }
+                }
+            },
+        }
     }
 }
 
 impl ReadinessGrpcServer {
-    pub fn new() -> (Self, watch::Sender<ReadinessStatus>) {
-        let (readiness_service, readiness_tx) = ReadinessService::new();
-        (Self { readiness_service }, readiness_tx)
+    pub fn new() -> (Self, ReadinessStatusHandler) {
+        let (readiness_service, handler) = ReadinessService::new();
+        (Self { readiness_service }, handler)
     }
 
     fn get_not_available_status(&self) -> Status {

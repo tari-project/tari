@@ -41,14 +41,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     payment_reference::generate_payment_reference,
     types::{
-        BadBlock,
-        BlockHash,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        PrivateKey,
-        Signature,
+        BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature,
         UncompressedCommitment,
     },
 };
@@ -57,6 +50,7 @@ use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
 };
+use tokio::sync::watch;
 
 use super::{
     cursors::KeyPrefixCursor,
@@ -66,12 +60,7 @@ use super::{
 };
 use crate::{
     blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
+        Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader,
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
@@ -81,56 +70,26 @@ use crate::{
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
-                fetch_db_entry_sizes,
-                lmdb_all,
-                lmdb_clear,
-                lmdb_delete,
-                lmdb_delete_each_where,
-                lmdb_delete_key_value,
-                lmdb_delete_keys_starting_with,
-                lmdb_exists,
-                lmdb_fetch_matching_after,
-                lmdb_filter_map_values,
-                lmdb_first_after,
-                lmdb_get,
-                lmdb_get_multiple,
-                lmdb_insert,
-                lmdb_insert_dup,
-                lmdb_last,
-                lmdb_len,
+                fetch_db_entry_sizes, lmdb_all, lmdb_clear, lmdb_delete, lmdb_delete_each_where, lmdb_delete_key_value,
+                lmdb_delete_keys_starting_with, lmdb_exists, lmdb_fetch_matching_after, lmdb_filter_map_values,
+                lmdb_first_after, lmdb_get, lmdb_get_multiple, lmdb_insert, lmdb_insert_dup, lmdb_last, lmdb_len,
                 lmdb_replace,
             },
             validator_node_store::ValidatorNodeStore,
-            TransactionInputRowData,
-            TransactionInputRowDataRef,
-            TransactionKernelRowData,
-            TransactionOutputRowData,
+            TransactionInputRowData, TransactionInputRowDataRef, TransactionKernelRowData, TransactionOutputRowData,
         },
         smt_hasher::SmtHasher,
         stats::DbTotalSizeStats,
         utxo_mined_info::OutputMinedInfo,
-        BlockchainBackend,
-        ChainTipData,
-        DbBasicStats,
-        DbSize,
-        HorizonData,
-        InputMinedInfo,
-        MmrTree,
-        Reorg,
-        TemplateRegistrationEntry,
-        ValidatorNodeEntry,
+        BlockchainBackend, ChainTipData, DbBasicStats, DbSize, HorizonData, InputMinedInfo, MmrTree, Reorg,
+        TemplateRegistrationEntry, ValidatorNodeEntry,
     },
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty, Difficulty, PowAlgorithm},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{
-            OutputType,
-            SpentOutput,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            ValidatorNodeRegistration,
+            OutputType, SpentOutput, TransactionInput, TransactionKernel, TransactionOutput, ValidatorNodeRegistration,
         },
     },
     PrunedKernelMmr,
@@ -182,6 +141,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
     consensus_manager: ConsensusManager,
+    progress_tracker: Option<watch::Sender<MigrationProgressEvent>>,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
@@ -230,7 +190,13 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager)
+    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, progress_tracker)
+}
+
+pub struct MigrationProgressEvent {
+    pub current_height: u64,
+    pub total_height: u64,
+    pub progress_percentage: f64,
 }
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
@@ -300,6 +266,8 @@ pub struct LMDBDatabase {
     jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
+    /// Progress tracker for the LMDB database
+    progress_tracker: Option<watch::Sender<MigrationProgressEvent>>,
 }
 
 impl LMDBDatabase {
@@ -307,6 +275,7 @@ impl LMDBDatabase {
         store: &LMDBStore,
         file_lock: File,
         consensus_manager: ConsensusManager,
+        progress_tracker: Option<watch::Sender<MigrationProgressEvent>>,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
         let mut db = Self {
@@ -346,6 +315,7 @@ impl LMDBDatabase {
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
             consensus_manager,
+            progress_tracker,
         };
 
         run_migrations(&mut db)?;
@@ -1542,8 +1512,8 @@ impl LMDBDatabase {
         let prev_shard_key = store.get_shard_key(
             current_epoch
                 .as_u64()
-                .saturating_sub(constants.validator_node_validity_period_epochs().as_u64()) *
-                constants.epoch_length(),
+                .saturating_sub(constants.validator_node_validity_period_epochs().as_u64())
+                * constants.epoch_length(),
             current_epoch.as_u64() * constants.epoch_length(),
             vn_reg.public_key(),
         )?;
@@ -1991,9 +1961,9 @@ impl BlockchainBackend for LMDBDatabase {
         // attempted; this is more efficient than relying on an error if the LMDB environment map size was reached with
         // the write operation, with cleanup, resize and re-try afterwards.
         let block_operations = txn.operations().iter().filter(|op| {
-            matches!(op, WriteOperation::InsertOrphanBlock { .. }) ||
-                matches!(op, WriteOperation::InsertTipBlockBody { .. }) ||
-                matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
+            matches!(op, WriteOperation::InsertOrphanBlock { .. })
+                || matches!(op, WriteOperation::InsertTipBlockBody { .. })
+                || matches!(op, WriteOperation::InsertChainOrphanBlock { .. })
         });
         let count = block_operations.count();
         if count > 0 {

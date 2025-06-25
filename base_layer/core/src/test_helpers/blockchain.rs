@@ -30,8 +30,7 @@ use std::{
 use jmt::{
     mock::MockTreeStore,
     storage::{TreeReader, TreeUpdateBatch, TreeWriter},
-    JellyfishMerkleTree,
-    KeyHash,
+    JellyfishMerkleTree, KeyHash,
 };
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -47,26 +46,9 @@ use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
-        create_lmdb_database,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainStorageError,
-        DbBasicStats,
-        DbKey,
-        DbTotalSizeStats,
-        DbTransaction,
-        DbValue,
-        HorizonData,
-        InputMinedInfo,
-        LMDBDatabase,
-        MmrTree,
-        OutputMinedInfo,
-        OwnedLmdbTreeReader,
-        Reorg,
-        SmtHasher,
-        TemplateRegistrationEntry,
+        create_lmdb_database, BlockAddResult, BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig,
+        ChainStorageError, DbBasicStats, DbKey, DbTotalSizeStats, DbTransaction, DbValue, HorizonData, InputMinedInfo,
+        LMDBDatabase, MmrTree, OutputMinedInfo, OwnedLmdbTreeReader, Reorg, SmtHasher, TemplateRegistrationEntry,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -74,11 +56,7 @@ use crate::{
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
         transaction_components::{
-            RangeProofType,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            WalletOutput,
+            RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         CryptoFactories,
@@ -168,7 +146,7 @@ impl TempDatabase {
         let rules = create_consensus_rules();
 
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules, None).unwrap()),
             path: temp_path,
             delete_on_drop: true,
         }
@@ -177,7 +155,7 @@ impl TempDatabase {
     pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
         let rules = create_consensus_rules();
         Self {
-            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules).unwrap()),
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default(), rules, None).unwrap()),
             path: temp_path.as_ref().to_path_buf(),
             delete_on_drop: true,
         }

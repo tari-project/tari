@@ -127,7 +127,7 @@ pub async fn run_base_node_with_cli(
 
     let (grpc_address, auth, tls_identity) = prepare_grpc_params(&config).await?;
 
-    let (readiness_grpc_server, readiness_tx) = ReadinessGrpcServer::new();
+    let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
     let mut readiness_grpc_shutdown = Shutdown::new();
     let readiness_task = task::spawn(run_grpc(
         readiness_grpc_server,
@@ -136,7 +136,7 @@ pub async fn run_base_node_with_cli(
         tls_identity.clone(),
         readiness_grpc_shutdown.to_signal(),
     ));
-    let _unused = readiness_tx.send(ReadinessStatus {
+    let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
         status: Status::StartingUp.into(),
         description: Status::StartingUp.as_str_name().to_string(),
         current_block: 0,
@@ -146,7 +146,7 @@ pub async fn run_base_node_with_cli(
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        let _unused = readiness_tx.send(ReadinessStatus {
+        let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
             status: Status::RecoveringPreparing.into(),
             description: Status::RecoveringPreparing.as_str_name().to_string(),
             current_block: 0,
@@ -154,30 +154,34 @@ pub async fn run_base_node_with_cli(
             progress_percentage: 0.0,
         });
         recovery::initiate_recover_db(&config.base_node)?;
-        let _unused = readiness_tx.send(ReadinessStatus {
+        let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
             status: Status::RecoveringRebuilding.into(),
             description: Status::RecoveringRebuilding.as_str_name().to_string(),
             current_block: 0,
             total_blocks: 0,
             progress_percentage: 0.0,
         });
-        recovery::run_recovery(&config.base_node, readiness_tx)
+        recovery::run_recovery(&config.base_node, readiness_handler.readiness_tx)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
     };
 
     // Build, node, build!
-    let ctx =
-        builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal(), &readiness_tx)
-            .await?;
+    let ctx = builder::configure_and_initialize_node(
+        config.clone(),
+        node_identity,
+        shutdown.to_signal(),
+        &readiness_handler.readiness_tx,
+    )
+    .await?;
 
     ctx.start()
         .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
-    let _unused = readiness_tx.send(ReadinessStatus {
+    let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
         status: Status::Ready.into(),
         description: Status::Ready.as_str_name().to_string(),
         current_block: 0,
