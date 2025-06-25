@@ -22,6 +22,7 @@
 
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase, MigrationProgressEvent};
 use serde::{Deserialize, Serialize};
+pub use stats_collector::{DatabaseStats, StatsCollector};
 use tari_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
 
@@ -35,6 +36,7 @@ mod lmdb;
 mod lmdb_db;
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
+mod stats_collector;
 mod validator_node_store;
 
 #[derive(Serialize, Deserialize, Debug)]
