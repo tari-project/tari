@@ -276,7 +276,7 @@ impl BaseNodeWalletClient for Client {
         hashes: Vec<Vec<u8>>,
         must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, anyhow::Error> {
-        debug!(target: LOG_TARGET, "Requesting deleted UTXOs for hashes {:?} from Base Node wallet service at {}", hashes, self.api_address);
+        debug!(target: LOG_TARGET, "Requesting deleted UTXOs for hashes {:?}, must include:{:?} from Base Node wallet", hashes, &must_include_header);
         let mut target_url = self.api_address.join("/get_utxos_deleted_info")?;
         target_url.set_query(Some(&format!(
             "hashes={}&must_include_header={}",

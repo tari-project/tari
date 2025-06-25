@@ -464,9 +464,15 @@ where
                     total_value_recovered += amount;
                 }
 
-                let block_hash = current_header_hash.try_into()?;
+                let block_hash: FixedHash = current_header_hash.try_into()?;
                 if let Some(scanned_block) = prev_scanned_block {
                     if block_hash != scanned_block.header_hash {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Saving scanned block at height {} with header hash {}",
+                            current_height,
+                            block_hash.to_hex()
+                        );
                         self.resources.db.save_scanned_block(scanned_block)?;
                         self.resources.db.clear_scanned_blocks_before_height(
                             current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
@@ -493,6 +499,7 @@ where
             }
         }
         // We need to update the last one
+        // TODO: why do we do this twice? Surely this is already done above?
         if let Some(scanned_block) = prev_scanned_block {
             self.resources.db.clear_scanned_blocks_before_height(
                 scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
