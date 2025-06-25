@@ -141,7 +141,6 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
     consensus_manager: ConsensusManager,
-    progress_tracker: Option<watch::Sender<MigrationProgressEvent>>,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
@@ -190,13 +189,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, progress_tracker)
-}
-
-pub struct MigrationProgressEvent {
-    pub current_height: u64,
-    pub total_height: u64,
-    pub progress_percentage: f64,
+    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager)
 }
 
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
@@ -266,8 +259,6 @@ pub struct LMDBDatabase {
     jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
-    /// Progress tracker for the LMDB database
-    progress_tracker: Option<watch::Sender<MigrationProgressEvent>>,
 }
 
 impl LMDBDatabase {
@@ -275,7 +266,6 @@ impl LMDBDatabase {
         store: &LMDBStore,
         file_lock: File,
         consensus_manager: ConsensusManager,
-        progress_tracker: Option<watch::Sender<MigrationProgressEvent>>,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
         let mut db = Self {
@@ -315,7 +305,6 @@ impl LMDBDatabase {
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
             consensus_manager,
-            progress_tracker,
         };
 
         run_migrations(&mut db)?;

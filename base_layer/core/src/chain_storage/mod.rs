@@ -59,7 +59,7 @@ mod lmdb_db;
 pub use lmdb_db::{
     create_lmdb_database, create_recovery_lmdb_database,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
-    LMDBDatabase, MigrationProgressEvent,
+    DatabaseStats, LMDBDatabase,
 };
 mod stats;
 pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};

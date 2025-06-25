@@ -195,7 +195,6 @@ pub async fn configure_and_initialize_node(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
                 rules,
-                None,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
             let _unused = readiness_status_tx.send(ReadinessStatus {
