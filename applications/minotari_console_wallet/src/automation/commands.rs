@@ -2768,30 +2768,35 @@ pub async fn command_runner(
                     Err(e) => eprintln!("ShowPayRef error! {}", e),
                 }
             },
-            FindPayRef(args) => match FixedHash::from_hex(&args.payment_reference_hex) {
-                Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
-                    Ok(Some(payment_details)) => {
-                        println!("Found PayRef: {}", args.payment_reference_hex);
-                        println!("Transaction ID: {}", payment_details.tx_id);
-                        println!("Amount: {}", payment_details.amount);
-                        println!("Direction: {:?}", payment_details.direction);
-                        println!("Block height: {}", payment_details.block_height);
-                        println!("Confirmations: {}", payment_details.confirmations);
-                        if let Some(timestamp) = payment_details.timestamp {
-                            println!("Timestamp: {}", timestamp);
-                        }
-                        if let Some(payment_id) = &payment_details.payment_id {
-                            println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
-                        }
+            FindPayRef(args) => {
+                // TODO: Get last scanned height. Perhaps just delete this command.
+                let tip_height = 0;
+
+                match FixedHash::from_hex(&args.payment_reference_hex) {
+                    Ok(payref) => match transaction_service.get_payment_by_reference(payref, tip_height).await {
+                        Ok(Some(payment_details)) => {
+                            println!("Found PayRef: {}", args.payment_reference_hex);
+                            println!("Transaction ID: {}", payment_details.tx_id);
+                            println!("Amount: {}", payment_details.amount);
+                            println!("Direction: {:?}", payment_details.direction);
+                            println!("Block height: {}", payment_details.block_height);
+                            println!("Confirmations: {}", payment_details.confirmations);
+                            if let Some(timestamp) = payment_details.timestamp {
+                                println!("Timestamp: {}", timestamp);
+                            }
+                            if let Some(payment_id) = &payment_details.payment_id {
+                                println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
+                            }
+                        },
+                        Ok(None) => {
+                            println!("No payment found for PayRef: {}", args.payment_reference_hex);
+                        },
+                        Err(e) => eprintln!("FindPayRef error! {}", e),
                     },
-                    Ok(None) => {
-                        println!("No payment found for PayRef: {}", args.payment_reference_hex);
+                    Err(e) => {
+                        eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
                     },
-                    Err(e) => eprintln!("FindPayRef error! {}", e),
-                },
-                Err(e) => {
-                    eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
-                },
+                }
             },
             ListTx => {
                 debug!(target: LOG_TARGET, "payref_debug: List all transactions command starting execution");

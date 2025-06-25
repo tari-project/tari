@@ -2220,7 +2220,7 @@ impl CompletedTransactionSql {
             direction: Some(c.direction as i32),
             send_count: c.send_count as i32,
             last_send_timestamp: c.last_send_timestamp.map(|t| t.naive_utc()),
-            confirmations: c.confirmations.map(|ic| ic as i64),
+            confirmations: None, // To be removed in future
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block.map(|v| v.to_vec()),
             mined_timestamp: c.mined_timestamp.map(|t| t.naive_utc()),
@@ -2320,7 +2320,6 @@ impl CompletedTransaction {
             send_count: c.send_count as u32,
             last_send_timestamp: c.last_send_timestamp.map(|t| t.and_utc()),
             transaction_signature,
-            confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),

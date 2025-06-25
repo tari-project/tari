@@ -1018,8 +1018,8 @@ where
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
             },
-            TransactionServiceRequest::GetPaymentByReference(payref) => self
-                .get_payment_by_reference(payref)
+            TransactionServiceRequest::GetPaymentByReference { payref, current_height } => self
+                .get_payment_by_reference(payref, current_height)
                 .map(TransactionServiceResponse::PaymentDetails),
             TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
                 match self.get_transaction_with_payref(payref)? {
@@ -3988,7 +3988,11 @@ where
     }
 
     /// Get payment details by PayRef
-    fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+    fn get_payment_by_reference(
+        &self,
+        payref: FixedHash,
+        current_height: u64,
+    ) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         let txn = match self.db.get_transaction_with_payref(&payref)? {
             Some(txn) => txn,
             None => return Ok(None), // No transaction found with the given PayRef
@@ -4004,11 +4008,6 @@ where
             None => return Ok(None), // This should not happen, but just in case
         };
 
-        let confirmations = match txn.confirmations {
-            Some(confirmations) => confirmations,
-            None => return Ok(None), // This should not happen, but just in case
-        };
-
         let payment_id_bytes = txn.payment_id.user_data_as_bytes();
 
         // Check if PayRef matches any sent output by generating proper PayRef
@@ -4021,7 +4020,7 @@ where
                     amount: txn.amount,
                     direction: txn.direction,
                     block_height: mined_height,
-                    confirmations,
+                    confirmations: current_height.saturating_sub(mined_height),
                     timestamp: Some(txn.timestamp),
                     payment_id: Some(payment_id_bytes),
                 }));
@@ -4038,7 +4037,7 @@ where
                     amount: txn.amount,
                     direction: txn.direction,
                     block_height: mined_height,
-                    confirmations,
+                    confirmations: current_height.saturating_sub(mined_height),
                     timestamp: Some(txn.timestamp),
                     payment_id: Some(payment_id_bytes),
                 }));
@@ -4055,7 +4054,7 @@ where
                     amount: txn.amount,
                     direction: txn.direction,
                     block_height: mined_height,
-                    confirmations,
+                    confirmations: current_height.saturating_sub(mined_height),
                     timestamp: Some(txn.timestamp),
                     payment_id: Some(payment_id_bytes),
                 }));
