@@ -30,6 +30,7 @@
 //! - Calculate operations per second
 //! - Estimate remaining time
 //! - Subscribe to progress updates via tokio watch channels
+//! - Support for multiple subscribers with additional watch sender channels
 //! - Non-async API for easy integration
 //!
 //! ## Usage Example
@@ -44,9 +45,17 @@
 //! // Subscribe to progress updates
 //! let mut progress_receiver = collector.subscribe();
 //!
+//! // Subscribe additional receivers for multiple consumers
+//! let mut ui_receiver = collector.subscribe_sender();
+//! let mut logging_receiver = collector.subscribe_sender();
+//!
+//! // Or add an existing sender
+//! let (external_sender, external_receiver) = tokio::sync::watch::channel(collector.current_stats());
+//! collector.add_sender(external_sender);
+//!
 //! // Simulate work being done
 //! for i in 0..=1000 {
-//!     // Update progress
+//!     // Update progress - all subscribers will receive the update
 //!     collector.update_progress(i);
 //!
 //!     // Check current stats
@@ -55,6 +64,7 @@
 //!
 //!     if i % 100 == 0 {
 //!         println!("Progress: {:.1}%, Ops/sec: {:.2}", percentage, ops_per_sec);
+//!         println!("Additional subscribers: {}", collector.additional_subscribers_count());
 //!     }
 //!
 //!     // Simulate some work
@@ -65,7 +75,10 @@
 //! assert!(collector.is_complete());
 //! ```
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use tokio::sync::watch;
 
@@ -153,6 +166,7 @@ impl DatabaseStats {
 pub struct StatsCollector {
     sender: watch::Sender<DatabaseStats>,
     receiver: watch::Receiver<DatabaseStats>,
+    additional_senders: Arc<Mutex<Vec<watch::Sender<DatabaseStats>>>>,
     start_time: Instant,
 }
 
@@ -165,6 +179,7 @@ impl StatsCollector {
         Self {
             sender,
             receiver,
+            additional_senders: Arc::new(Mutex::new(Vec::new())),
             start_time: Instant::now(),
         }
     }
@@ -177,6 +192,7 @@ impl StatsCollector {
         Self {
             sender,
             receiver,
+            additional_senders: Arc::new(Mutex::new(Vec::new())),
             start_time: Instant::now(),
         }
     }
@@ -195,7 +211,14 @@ impl StatsCollector {
     pub fn update_progress(&self, current_height: u64) {
         let mut stats = self.receiver.borrow().clone();
         stats.update_progress(current_height, self.start_time);
-        let _ = self.sender.send(stats);
+        let _ = self.sender.send(stats.clone());
+
+        // Send to all additional subscribers
+        if let Ok(senders) = self.additional_senders.lock() {
+            for sender in senders.iter() {
+                let _ = sender.send(stats.clone());
+            }
+        }
     }
 
     /// Set the total height for progress calculation
@@ -203,13 +226,27 @@ impl StatsCollector {
         let mut stats = self.receiver.borrow().clone();
         stats.total_height = total_height;
         stats.update_progress(stats.current_height, self.start_time);
-        let _ = self.sender.send(stats);
+        let _ = self.sender.send(stats.clone());
+
+        // Send to all additional subscribers
+        if let Ok(senders) = self.additional_senders.lock() {
+            for sender in senders.iter() {
+                let _ = sender.send(stats.clone());
+            }
+        }
     }
 
     /// Reset the stats collector with new parameters
     pub fn reset(&self, current_height: u64, total_height: u64) {
         let stats = DatabaseStats::new(current_height, total_height);
-        let _ = self.sender.send(stats);
+        let _ = self.sender.send(stats.clone());
+
+        // Send to all additional subscribers
+        if let Ok(senders) = self.additional_senders.lock() {
+            for sender in senders.iter() {
+                let _ = sender.send(stats.clone());
+            }
+        }
     }
 
     /// Get the progress percentage (0.0 to 100.0)
@@ -241,6 +278,42 @@ impl StatsCollector {
     pub fn heights(&self) -> (u64, u64) {
         let stats = self.receiver.borrow();
         (stats.current_height, stats.total_height)
+    }
+
+    /// Subscribe an additional watch sender to receive updates
+    /// Returns a receiver that will get all future updates
+    pub fn subscribe_sender(&self) -> watch::Receiver<DatabaseStats> {
+        let current_stats = self.receiver.borrow().clone();
+        let (sender, receiver) = watch::channel(current_stats);
+
+        if let Ok(mut senders) = self.additional_senders.lock() {
+            senders.push(sender);
+        }
+
+        receiver
+    }
+
+    /// Add an existing watch sender to receive updates
+    /// The sender will immediately receive the current stats
+    pub fn add_sender(&self, sender: watch::Sender<DatabaseStats>) {
+        let current_stats = self.receiver.borrow().clone();
+        let _ = sender.send(current_stats);
+
+        if let Ok(mut senders) = self.additional_senders.lock() {
+            senders.push(sender);
+        }
+    }
+
+    /// Remove all additional senders
+    pub fn clear_additional_senders(&self) {
+        if let Ok(mut senders) = self.additional_senders.lock() {
+            senders.clear();
+        }
+    }
+
+    /// Get the count of additional subscribers
+    pub fn additional_subscribers_count(&self) -> usize {
+        self.additional_senders.lock().map(|senders| senders.len()).unwrap_or(0)
     }
 }
 
@@ -353,5 +426,80 @@ mod tests {
         collector.reset(0, 200);
         assert_eq!(collector.heights(), (0, 200));
         assert_eq!(collector.progress_percentage(), 0.0);
+    }
+
+    #[test]
+    fn test_stats_collector_additional_subscribers() {
+        let collector = StatsCollector::with_total_height(100);
+
+        // Subscribe additional receivers
+        let mut receiver1 = collector.subscribe_sender();
+        let mut receiver2 = collector.subscribe_sender();
+
+        assert_eq!(collector.additional_subscribers_count(), 2);
+
+        // Initial state should be received
+        assert_eq!(receiver1.borrow().current_height, 0);
+        assert_eq!(receiver2.borrow().current_height, 0);
+
+        // Update progress
+        collector.update_progress(25);
+
+        // All receivers should get the update
+        let stats1 = receiver1.borrow_and_update();
+        let stats2 = receiver2.borrow_and_update();
+
+        assert_eq!(stats1.current_height, 25);
+        assert_eq!(stats2.current_height, 25);
+        assert_eq!(stats1.progress_percentage, 25.0);
+        assert_eq!(stats2.progress_percentage, 25.0);
+    }
+
+    #[test]
+    fn test_stats_collector_add_sender() {
+        let collector = StatsCollector::with_total_height(100);
+
+        // Set some initial progress
+        collector.update_progress(30);
+
+        // Create external sender/receiver pair
+        let initial_stats = DatabaseStats::default();
+        let (sender, mut receiver) = watch::channel(initial_stats);
+
+        // Add the sender
+        collector.add_sender(sender);
+
+        // Should immediately receive current stats
+        {
+            let stats = receiver.borrow_and_update();
+            assert_eq!(stats.current_height, 30);
+            assert_eq!(stats.progress_percentage, 30.0);
+        }
+
+        // Update progress again
+        collector.update_progress(60);
+
+        // External receiver should get the update
+        {
+            let updated_stats = receiver.borrow_and_update();
+            assert_eq!(updated_stats.current_height, 60);
+            assert_eq!(updated_stats.progress_percentage, 60.0);
+        }
+    }
+
+    #[test]
+    fn test_stats_collector_clear_additional_senders() {
+        let collector = StatsCollector::with_total_height(100);
+
+        // Add some subscribers
+        let _receiver1 = collector.subscribe_sender();
+        let _receiver2 = collector.subscribe_sender();
+
+        assert_eq!(collector.additional_subscribers_count(), 2);
+
+        // Clear all additional senders
+        collector.clear_additional_senders();
+
+        assert_eq!(collector.additional_subscribers_count(), 0);
     }
 }
