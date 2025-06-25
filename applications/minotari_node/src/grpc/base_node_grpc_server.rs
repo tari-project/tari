@@ -38,6 +38,7 @@ use minotari_app_grpc::{
 use minotari_app_utilities::consts;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     types::{
         CompressedCommitment,
@@ -59,7 +60,7 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainStorageError, MinedInfo},
     consensus::{ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
@@ -236,6 +237,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchPaymentReferencesStream = mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
+    type SearchPaymentReferencesViaOutputHashStream =
+        mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     #[allow(clippy::too_many_lines)]
@@ -2951,6 +2954,116 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::too_many_lines)]
+    async fn search_payment_references_via_output_hash(
+        &self,
+        request: Request<tari_rpc::FetchMatchingUtxosRequest>,
+    ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
+        self.check_method_enabled(GrpcMethod::SearchPaymentReferencesViaOutputHash)?;
+        let report_error_flag = self.report_error_flag();
+        trace!(target: LOG_TARGET, "Incoming GRPC request for SearchPaymentReferencesViaOutputHash");
+        let request = request.into_inner();
+
+        let hashes = request
+            .hashes
+            .into_iter()
+            .map(|s| s.try_into())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Invalid hashes provided '{}'", e)),
+                )
+            })?;
+
+        let mut node_service = self.node_service.clone();
+
+        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        task::spawn(async move {
+            for output_hash in &hashes {
+                match node_service.fetch_mined_info_by_output_hash(output_hash).await {
+                    Ok(MinedInfo {
+                        output: Some(output_info),
+                        ..
+                    }) => {
+                        let response = tari_rpc::PaymentReferenceResponse {
+                            payment_reference_hex: generate_payment_reference(
+                                &output_info.header_hash,
+                                &output_info.output.hash(),
+                            )
+                            .to_hex(),
+                            block_height: output_info.mined_height,
+                            block_hash: output_info.header_hash.to_vec(),
+                            mined_timestamp: output_info.mined_timestamp,
+                            commitment: output_info.output.commitment.to_vec(),
+                            is_spent: false,
+                            spent_height: 0,
+                            spent_block_hash: vec![],
+                            min_value_promise: output_info.output.minimum_value_promise.as_u64(),
+                            spent_timestamp: 0,
+                        };
+
+                        if tx.send(Ok(response)).await.is_err() {
+                            return;
+                        }
+                    },
+                    Ok(MinedInfo {
+                        input: Some(input_info),
+                        ..
+                    }) => match node_service.fetch_payref_by_output_hash(output_hash).await {
+                        Ok(Some(payref)) => {
+                            let response = tari_rpc::PaymentReferenceResponse {
+                                payment_reference_hex: payref.to_hex(),
+                                block_height: 0,
+                                block_hash: vec![],
+                                mined_timestamp: 0,
+                                commitment: vec![],
+                                is_spent: true,
+                                spent_height: input_info.spent_height,
+                                spent_block_hash: input_info.header_hash.to_vec(),
+                                min_value_promise: 0,
+                                spent_timestamp: input_info.spent_timestamp,
+                            };
+
+                            if tx.send(Ok(response)).await.is_err() {
+                                return;
+                            }
+                        },
+                        Ok(None) => {},
+                        Err(err) => {
+                            let _ignore = tx.send(Err(obscure_error_if_true(
+                                report_error_flag,
+                                Status::internal(format!("Error communicating with local base node: {}", err)),
+                            )));
+                            return;
+                        },
+                    },
+                    Ok(_) => {
+                        // mined info not found - no error, just no results for this output hash
+                        continue;
+                    },
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Error looking up mined info via output hash {}: {}", output_hash, e);
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Mined info via output hash  lookup error: {}", e)),
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                    },
+                }
+            }
+        });
+
+        trace!(
+            target: LOG_TARGET,
+            "Sending FindMatchingUtxos response stream to client"
+        );
+        Ok(Response::new(rx))
+    }
+
+    #[allow(clippy::too_many_lines)]
     async fn search_payment_references(
         &self,
         request: Request<tari_rpc::SearchPaymentReferencesRequest>,
@@ -3016,36 +3129,50 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 payrefs.push(payref_fixed_hash);
             }
             for payref in payrefs {
-                match node_service.fetch_output_by_payref(&payref).await {
-                    Ok(Some(output_info)) => {
-                        // Check if output is spent
-                        let output_hash = output_info.output.hash();
-                        let (is_spent, spent_height, spent_block_hash) = match node_service
-                            .check_output_spent_status(output_hash)
-                            .await
-                        {
-                            Ok(Some(input_info)) => (true, input_info.spent_height, input_info.header_hash.to_vec()),
-                            Ok(None) => (false, 0, vec![]),
-                            Err(_) => (false, 0, vec![]), // Default to not spent on error
-                        };
-
+                match node_service.fetch_mined_info_by_payref(&payref).await {
+                    Ok(MinedInfo {
+                        output: Some(output_info),
+                        ..
+                    }) => {
                         let response = tari_rpc::PaymentReferenceResponse {
                             payment_reference_hex: payref.to_hex(),
                             block_height: output_info.mined_height,
                             block_hash: output_info.header_hash.to_vec(),
                             mined_timestamp: output_info.mined_timestamp,
                             commitment: output_info.output.commitment.to_vec(),
-                            is_spent,
-                            spent_height,
-                            spent_block_hash,
+                            is_spent: false,
+                            spent_height: 0,
+                            spent_block_hash: vec![],
                             min_value_promise: output_info.output.minimum_value_promise.as_u64(),
+                            spent_timestamp: 0,
                         };
 
                         if tx.send(Ok(response)).await.is_err() {
                             return;
                         }
                     },
-                    Ok(None) => {
+                    Ok(MinedInfo {
+                        input: Some(input_info),
+                        ..
+                    }) => {
+                        let response = tari_rpc::PaymentReferenceResponse {
+                            payment_reference_hex: payref.to_hex(),
+                            block_height: 0,
+                            block_hash: vec![],
+                            mined_timestamp: 0,
+                            commitment: vec![],
+                            is_spent: true,
+                            spent_height: input_info.spent_height,
+                            spent_block_hash: input_info.header_hash.to_vec(),
+                            min_value_promise: 0,
+                            spent_timestamp: input_info.spent_timestamp,
+                        };
+
+                        if tx.send(Ok(response)).await.is_err() {
+                            return;
+                        }
+                    },
+                    Ok(_) => {
                         // PayRef not found - no error, just no results for this PayRef
                         continue;
                     },

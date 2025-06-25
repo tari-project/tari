@@ -66,11 +66,12 @@ pub enum GrpcMethod {
     GetTemplateRegistrations,
     GetSideChainUtxos,
     SearchPaymentReferences,
+    SearchPaymentReferencesViaOutputHash,
 }
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 37] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 38] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -108,11 +109,12 @@ impl GrpcMethod {
         GrpcMethod::GetTemplateRegistrations,
         GrpcMethod::GetSideChainUtxos,
         GrpcMethod::SearchPaymentReferences,
+        GrpcMethod::SearchPaymentReferencesViaOutputHash,
     ];
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 37>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 38>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -164,6 +166,7 @@ impl FromStr for GrpcMethod {
             "get_template_registrations" => Ok(GrpcMethod::GetTemplateRegistrations),
             "get_side_chain_utxos" => Ok(GrpcMethod::GetSideChainUtxos),
             "search_payment_references" => Ok(GrpcMethod::SearchPaymentReferences),
+            "search_payment_references_via_output_hash" => Ok(GrpcMethod::SearchPaymentReferencesViaOutputHash),
             _ => Err(format!("'{}' not supported", s)),
         }
     }
@@ -261,6 +264,7 @@ mod tests {
                 GrpcMethod::GetTemplateRegistrations => count += 1,
                 GrpcMethod::GetSideChainUtxos => count += 1,
                 GrpcMethod::SearchPaymentReferences => count += 1,
+                GrpcMethod::SearchPaymentReferencesViaOutputHash => count += 1,
             }
         }
         assert_eq!(count, GrpcMethod::ALL_VARIANTS.len());

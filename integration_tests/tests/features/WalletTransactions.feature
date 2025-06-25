@@ -185,7 +185,7 @@ Feature: Wallet Transactions
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 50 blocks
     Then all nodes are at height 50
     Then I wait for wallet WALLET_A to have at least 10000000000 uT

@@ -93,6 +93,8 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchPaymentReferencesStream = mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
+    type SearchPaymentReferencesViaOutputHashStream =
+        mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     async fn get_network_state(
@@ -365,6 +367,13 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
     async fn search_payment_references(
         &self,
         _request: Request<tari_rpc::SearchPaymentReferencesRequest>,
+    ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
+        return Err(self.get_not_available_status());
+    }
+
+    async fn search_payment_references_via_output_hash(
+        &self,
+        _request: Request<tari_rpc::FetchMatchingUtxosRequest>,
     ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
         return Err(self.get_not_available_status());
     }

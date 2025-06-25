@@ -59,7 +59,7 @@ use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{smt_hasher::SmtHasher, TemplateRegistrationEntry};
+use super::{smt_hasher::SmtHasher, MinedInfo, TemplateRegistrationEntry};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
@@ -454,10 +454,22 @@ where B: BlockchainBackend
         db.fetch_input(&output_hash)
     }
 
-    /// Returns a copy of the output mined info by payment reference
-    pub fn fetch_output_by_payref(&self, payref: FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    /// Returns a copy of the mined info by payment reference
+    pub fn fetch_mined_info_by_payref(&self, payref: FixedHash) -> Result<MinedInfo, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_output_by_payref(&payref)
+        db.fetch_mined_info_by_payref(&payref)
+    }
+
+    /// Returns a copy of the mined info by payment reference
+    pub fn fetch_mined_info_by_output_hash(&self, output_hash: HashOutput) -> Result<MinedInfo, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_mined_info_by_output_hash(&output_hash)
+    }
+
+    /// Returns a copy of the mined info by payment reference
+    pub fn fetch_payref_by_output_hash(&self, output_hash: HashOutput) -> Result<Option<FixedHash>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_payref_by_output_hash(&output_hash)
     }
 
     pub fn fetch_unspent_output_hash_by_commitment(

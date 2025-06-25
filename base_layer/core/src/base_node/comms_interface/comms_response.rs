@@ -27,12 +27,12 @@ use std::{
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{CompressedPublicKey, HashOutput, PrivateKey},
+    types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{InputMinedInfo, OutputMinedInfo, TemplateRegistrationEntry},
+    chain_storage::{InputMinedInfo, MinedInfo, OutputMinedInfo, TemplateRegistrationEntry},
     proof_of_work::Difficulty,
     transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
@@ -62,7 +62,9 @@ pub enum NodeCommsResponse {
     GetShardKeyResponse(Option<[u8; 32]>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
     OutputMinedInfo(Option<OutputMinedInfo>),
+    MinedInfo(MinedInfo),
     InputMinedInfo(Option<InputMinedInfo>),
+    PayRef(Option<FixedHash>),
 }
 
 impl Display for NodeCommsResponse {
@@ -101,7 +103,9 @@ impl Display for NodeCommsResponse {
             GetShardKeyResponse(_) => write!(f, "GetShardKeyResponse"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
             OutputMinedInfo(_) => write!(f, "OutputMinedInfo"),
+            MinedInfo(_) => write!(f, "MinedInfo"),
             InputMinedInfo(_) => write!(f, "InputMinedInfo"),
+            PayRef(_) => write!(f, "PayRef"),
         }
     }
 }
