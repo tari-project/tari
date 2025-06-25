@@ -1126,7 +1126,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         // assume full coinbase reward in case of single coinbase with zero value
         if coinbases.len() == 1 && coinbases[0].value == 0 {
-            coinbases[0].value = reward as u64;
+            coinbases[0].value = 1;
         }
         
         let mut total_shares = 0u128;
