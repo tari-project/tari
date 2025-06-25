@@ -30,19 +30,15 @@ use std::{
 
 use anyhow::anyhow;
 use log::*;
+use minotari_app_grpc::tari_rpc::{readiness_status::Status, ReadinessStatus};
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
 use tari_core::{
     chain_storage::{
-        async_db::AsyncBlockchainDb,
-        create_lmdb_database,
-        create_recovery_lmdb_database,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        Validators,
+        async_db::AsyncBlockchainDb, create_lmdb_database, create_recovery_lmdb_database, BlockchainBackend,
+        BlockchainDatabase, BlockchainDatabaseConfig, Validators,
     },
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -72,7 +68,10 @@ pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
     Ok(())
 }
 
-pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Error> {
+pub async fn run_recovery(
+    node_config: &BaseNodeConfig,
+    readiness_tx: tokio::sync::watch::Sender<ReadinessStatus>,
+) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
     let rules = ConsensusManager::builder(node_config.network).build().map_err(|e| {
         error!(target: LOG_TARGET, "Error configuring consensus manager: {}", e);
@@ -80,6 +79,13 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
+            readiness_tx.send(ReadinessStatus {
+                status: Status::RecoveringRebuildingDatabase.into(),
+                description: Status::RecoveringRebuildingDatabase.as_str_name().to_string(),
+                current_block: 0,
+                total_blocks: 0,
+                progress_percentage: 0.0,
+            })?;
             let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone())
                 .map_err(|e| {
                     error!(target: LOG_TARGET, "Error opening db: {}", e);
@@ -116,7 +122,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         difficulty_calculator,
     )?;
     db.start()?;
-    do_recovery(db.into(), temp_db).await?;
+    do_recovery(db.into(), temp_db, readiness_tx).await?;
 
     info!(
         target: LOG_TARGET,
@@ -132,6 +138,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
 async fn do_recovery<D: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<D>,
     source_backend: D,
+    readiness_tx: tokio::sync::watch::Sender<ReadinessStatus>,
 ) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
     let rules = ConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
@@ -170,6 +177,15 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         db.add_block(Arc::new(block))
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
+
+        readiness_tx.send(ReadinessStatus {
+            status: Status::RecoveringRebuildingDatabase.into(),
+            description: Status::RecoveringRebuildingDatabase.as_str_name().to_string(),
+            current_block: counter,
+            total_blocks: max_height,
+            progress_percentage: (counter as f64 / max_height as f64) * 100.0,
+        })?;
+
         if counter >= max_height {
             info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter);
             break;

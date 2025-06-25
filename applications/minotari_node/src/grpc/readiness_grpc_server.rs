@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::channel::mpsc;
-use minotari_app_grpc::tari_rpc;
+use minotari_app_grpc::tari_rpc::{self, readiness_status::Status as ReadinessStatusEnum, ReadinessStatus};
 use tokio::sync::watch;
 use tonic::{Request, Response, Status};
 
@@ -33,32 +33,15 @@ pub struct ReadinessService {
     readiness_rx: watch::Receiver<ReadinessStatus>,
 }
 
-#[derive(Clone)]
-pub enum ReadinessStatus {
-    Ready,
-    Recovering,
-    BuildingContext,
-    Migrating,
-    NotReady,
-    StartingUp,
-}
-
-impl From<ReadinessStatus> for i32 {
-    fn from(status: ReadinessStatus) -> i32 {
-        match status {
-            ReadinessStatus::NotReady => 0,
-            ReadinessStatus::StartingUp => 1,
-            ReadinessStatus::Migrating => 2,
-            ReadinessStatus::Recovering => 3,
-            ReadinessStatus::BuildingContext => 4,
-            ReadinessStatus::Ready => 5,
-        }
-    }
-}
-
 impl ReadinessService {
     pub fn new() -> (Self, watch::Sender<ReadinessStatus>) {
-        let (readiness_tx, readiness_rx) = watch::channel(ReadinessStatus::NotReady);
+        let (readiness_tx, readiness_rx) = watch::channel(ReadinessStatus {
+            status: ReadinessStatusEnum::NotReady.into(),
+            description: ReadinessStatusEnum::NotReady.as_str_name().to_string(),
+            current_block: 0,
+            total_blocks: 0,
+            progress_percentage: 0.0,
+        });
         let sender = readiness_tx.clone();
         (Self { readiness_rx }, sender)
     }

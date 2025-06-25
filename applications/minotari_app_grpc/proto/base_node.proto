@@ -176,15 +176,33 @@ enum BaseNodeState{
     SYNC_FAILED = 6;
 }
 
-enum ReadinessStatus{
-   NOT_READY = 0;
-   STARTING_UP = 1;
-   MIGRATING = 2;
-   RECOVERING = 3;
-   BUILDING_CONTEXT = 4;
-   READY = 5;
-}
+message ReadinessStatus {
+   enum Status {
+      NOT_READY = 0;
+      STARTING_UP = 1;
 
+      // Migration phase (10-19)
+      MIGRATING_PREPARING = 10;
+      MIGRATING_INITIALIZING_LMDB = 11;
+
+      // Recovery phase (20-29)
+      RECOVERING_PREPARING = 20;
+      RECOVERING_REBUILDING = 21;
+      RECOVERING_REBUILDING_DATABASE = 22;
+
+      // Context building phase (30-39)
+      BUILDING_CONTEXT_BLOCKCHAIN = 32;
+      BUILDING_CONTEXT_BOOTSTRAP = 34;
+
+      READY = 100;
+   }
+
+   Status status = 1;
+   string description = 2;
+   uint64 current_block = 3;
+   uint64 total_blocks = 4;
+   double progress_percentage = 5;
+}
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse {
     NewBlockTemplate new_block_template = 1;
