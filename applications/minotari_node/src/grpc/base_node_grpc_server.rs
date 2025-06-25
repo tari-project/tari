@@ -2368,17 +2368,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .clone()
                     .into_iter()
                     .map(|height| {
+                        let circulating_supply = consensus_manager.total_tokens_circulating_at_height(height)?.into();
                         let mined_rewards = consensus_manager.block_rewards_mined_at_height(height)?.into();
                         let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height)?.into();
                         let spendable_pre_mine = consensus_manager.pre_mine_spendable_at_height(height)?.into();
                         let total_spendable = consensus_manager.total_tokens_spendable_at_height(height)?.into();
+                        let total_pre_mine = consensus_manager.total_pre_mine_in_genesis_block().into();
+                        let time_locked_pre_mine = consensus_manager.time_locked_pre_mine(height)?.into();
 
                         Ok(tari_rpc::ValueAtHeightResponse {
+                            circulating_supply,
                             height,
                             mined_rewards,
                             spendable_rewards,
                             spendable_pre_mine,
                             total_spendable,
+                            total_pre_mine,
+                            time_locked_pre_mine,
                         })
                     })
                     .collect::<Result<Vec<tari_rpc::ValueAtHeightResponse>, String>>();

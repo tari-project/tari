@@ -237,13 +237,24 @@ message NetworkDifficultyResponse {
 
 // A generic single value response for a specific height
 message ValueAtHeightResponse {
-    // uint64 circulating_supply = 1;    // No longer used
+    // This is the total circulating token supply up to date ('mined_rewards + spendable_pre_mine').
+    uint64 circulating_supply = 1;
     // uint64 spendable_supply = 2;      // No longer used
+    // This is the block height the values are valid for.
     uint64 height = 3;
+    // This is the total mined rewards up to date, including time locked coinbase rewards that is not spendable.
     uint64 mined_rewards = 4;
+    // This is the total spendable minded rewards up to date, which excludes all coinbase rewards that is
+    // still time locked.
     uint64 spendable_rewards = 5;
+    // This is the total spendable pre-mine tokens released up to date, i.e. not time-locked anymore.
     uint64 spendable_pre_mine = 6;
+    // This is the total spendable token supply up to date ('spendable_rewards + spendable_pre_mine').
     uint64 total_spendable = 7;
+    // This is the total pre-mine tokens in the genesis block, time-locked and not time-locked.
+    uint64 total_pre_mine = 8;
+    // This is the total pre-mine tokens that are still time-locked up to date (`total_pre_mine - spendable_pre_mine`).
+    uint64 time_locked_pre_mine = 9;
 }
 
 // A generic uint value

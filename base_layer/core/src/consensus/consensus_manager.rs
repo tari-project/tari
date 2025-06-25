@@ -196,10 +196,31 @@ impl ConsensusManager {
             .ok_or_else(|| "total_tokens_spendable_at_height overflowed u128".to_string())
     }
 
+    /// Get the total circulating block rewards and spendable pre-mine at the specified height
+    #[cfg(feature = "base_node")]
+    pub fn total_tokens_circulating_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        let mined_rewards = self.block_rewards_mined_at_height(height)?;
+        let spendable_pre_mine = self.pre_mine_spendable_at_height(height)?;
+        mined_rewards
+            .checked_add(spendable_pre_mine)
+            .ok_or_else(|| "total_circulating_tokens_at_height overflowed u128".to_string())
+    }
+
     /// Get the total spendable pre-mine at the specified height
     #[cfg(feature = "base_node")]
     pub fn pre_mine_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
         pre_mine_spendable_at_height(height, self.network().as_network())
+    }
+
+    /// Get the total spendable pre-mine at the specified height
+    pub fn total_pre_mine_in_genesis_block(&self) -> MicroMinotari {
+        self.consensus_constants(0).pre_mine_value()
+    }
+
+    /// Get the total pre-mine that is still time-locked at the specified height
+    #[cfg(feature = "base_node")]
+    pub fn time_locked_pre_mine(&self, height: u64) -> Result<MicroMinotari, String> {
+        Ok(self.total_pre_mine_in_genesis_block() - self.pre_mine_spendable_at_height(height)?)
     }
 
     /// Get the total mined block rewards at the specified height (excluding pre-mine)
@@ -364,7 +385,7 @@ mod test {
     use std::str::FromStr;
 
     use super::*;
-    use crate::blocks::pre_mine::BLOCKS_PER_DAY;
+    use crate::{blocks::pre_mine::BLOCKS_PER_DAY, consensus::consensus_constants::MAINNET_PRE_MINE_VALUE};
 
     #[test]
     fn test_supply_at_block() {
@@ -428,15 +449,26 @@ mod test {
                 MicroMinotari::from_str("7716495870.271662 T"), // total
             ),
         ] {
+            let mined = mined.unwrap();
+            let spendable = spendable.unwrap();
+            let pre_mine = pre_mine.unwrap();
+            let total = total.unwrap();
+
             let mined_rewards = consensus_manager.block_rewards_mined_at_height(height).unwrap();
             let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height).unwrap();
             let total_spendable = consensus_manager.total_tokens_spendable_at_height(height).unwrap();
             let pre_mine_spendable = consensus_manager.pre_mine_spendable_at_height(height).unwrap();
+            let circulating_supply = consensus_manager.total_tokens_circulating_at_height(height).unwrap();
+            let total_pre_mine = consensus_manager.total_pre_mine_in_genesis_block();
+            let time_locked_pre_mine = consensus_manager.time_locked_pre_mine(height).unwrap();
 
-            assert_eq!(mined_rewards, mined.unwrap());
-            assert_eq!(spendable_rewards, spendable.unwrap());
-            assert_eq!(pre_mine_spendable, pre_mine.unwrap());
-            assert_eq!(total_spendable, total.unwrap());
+            assert_eq!(mined_rewards, mined);
+            assert_eq!(spendable_rewards, spendable);
+            assert_eq!(pre_mine_spendable, pre_mine);
+            assert_eq!(total_spendable, total);
+            assert_eq!(circulating_supply, mined + pre_mine);
+            assert_eq!(total_pre_mine, MAINNET_PRE_MINE_VALUE);
+            assert_eq!(time_locked_pre_mine, MAINNET_PRE_MINE_VALUE - pre_mine);
         }
     }
 }
