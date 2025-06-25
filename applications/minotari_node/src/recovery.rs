@@ -37,8 +37,13 @@ use tari_common::{
 };
 use tari_core::{
     chain_storage::{
-        async_db::AsyncBlockchainDb, create_lmdb_database, create_recovery_lmdb_database, BlockchainBackend,
-        BlockchainDatabase, BlockchainDatabaseConfig, Validators,
+        async_db::AsyncBlockchainDb,
+        create_lmdb_database,
+        create_recovery_lmdb_database,
+        BlockchainBackend,
+        BlockchainDatabase,
+        BlockchainDatabaseConfig,
+        Validators,
     },
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,

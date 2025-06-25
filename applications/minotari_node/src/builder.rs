@@ -32,7 +32,9 @@ use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, Com
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{
-        state_machine_service::states::StatusInfo, tari_pulse_service::TariPulseHandle, LocalNodeCommsInterface,
+        state_machine_service::states::StatusInfo,
+        tari_pulse_service::TariPulseHandle,
+        LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
@@ -181,7 +183,7 @@ pub async fn configure_and_initialize_node(
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
-            let _ = readiness_status_tx.send(ReadinessStatus {
+            let _unused = readiness_status_tx.send(ReadinessStatus {
                 status: Status::BuildingContextBlockchain.into(),
                 description: Status::BuildingContextBlockchain.as_str_name().to_string(),
                 current_block: 0,
@@ -197,7 +199,7 @@ pub async fn configure_and_initialize_node(
                 rules,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
-            let _ = readiness_status_tx.send(ReadinessStatus {
+            let _unused = readiness_status_tx.send(ReadinessStatus {
                 status: Status::BuildingContextBootstrap.into(),
                 description: Status::BuildingContextBootstrap.as_str_name().to_string(),
                 current_block: 0,

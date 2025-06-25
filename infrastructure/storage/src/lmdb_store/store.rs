@@ -13,8 +13,24 @@ use std::{
 };
 
 use lmdb_zero::{
-    db, error, error::LmdbResultExt, open, put, traits::AsLmdbBytes, ConstAccessor, Cursor, CursorIter, Database,
-    DatabaseOptions, EnvBuilder, Environment, Ignore, MaybeOwned, ReadTransaction, Stat, WriteAccessor,
+    db,
+    error,
+    error::LmdbResultExt,
+    open,
+    put,
+    traits::AsLmdbBytes,
+    ConstAccessor,
+    Cursor,
+    CursorIter,
+    Database,
+    DatabaseOptions,
+    EnvBuilder,
+    Environment,
+    Ignore,
+    MaybeOwned,
+    ReadTransaction,
+    Stat,
+    WriteAccessor,
     WriteTransaction,
 };
 use log::*;
@@ -515,9 +531,7 @@ impl LMDBDatabase {
 
     #[allow(clippy::ptr_arg)]
     fn write<K>(&self, key: &K, value: &Vec<u8>) -> Result<(), lmdb_zero::Error>
-    where
-        K: AsLmdbBytes + ?Sized,
-    {
+    where K: AsLmdbBytes + ?Sized {
         let env = self.db.env();
         let tx = WriteTransaction::new(env)?;
         {
@@ -633,9 +647,7 @@ impl LMDBDatabase {
 
     /// Checks whether a key exists in this database
     pub fn contains_key<K>(&self, key: &K) -> Result<bool, LMDBError>
-    where
-        K: AsLmdbBytes + ?Sized,
-    {
+    where K: AsLmdbBytes + ?Sized {
         let txn = ReadTransaction::new(self.db.env())?;
         let accessor = txn.access();
         let res: error::Result<&Ignore> = accessor.get(&self.db, key);
@@ -645,9 +657,7 @@ impl LMDBDatabase {
 
     /// Delete a record associated with `key` from the database. If the key is not found,
     pub fn remove<K>(&self, key: &K) -> Result<(), LMDBError>
-    where
-        K: AsLmdbBytes + ?Sized,
-    {
+    where K: AsLmdbBytes + ?Sized {
         let tx = WriteTransaction::new(self.db.env())?;
         {
             let mut accessor = tx.access();
@@ -659,9 +669,7 @@ impl LMDBDatabase {
     /// Create a read-only transaction on the current database and execute the instructions given in the closure. The
     /// transaction is automatically committed when the closure goes out of scope.
     pub fn with_read_transaction<F, R>(&self, f: F) -> Result<R, LMDBError>
-    where
-        F: FnOnce(LMDBReadTransaction) -> R,
-    {
+    where F: FnOnce(LMDBReadTransaction) -> R {
         let txn = ReadTransaction::new(self.env.clone())?;
         let access = txn.access();
         let wrapper = LMDBReadTransaction { db: &self.db, access };
@@ -670,9 +678,7 @@ impl LMDBDatabase {
 
     /// Create a transaction with write access on the current table.
     pub fn with_write_transaction<F>(&self, f: F) -> Result<(), LMDBError>
-    where
-        F: FnOnce(LMDBWriteTransaction) -> Result<(), LMDBError>,
-    {
+    where F: FnOnce(LMDBWriteTransaction) -> Result<(), LMDBError> {
         let txn = WriteTransaction::new(self.env.clone())?;
         let access = txn.access();
         let wrapper = LMDBWriteTransaction { db: &self.db, access };
@@ -727,17 +733,14 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
 
     /// Checks whether a key exists in this database
     pub fn exists<K>(&self, key: &K) -> Result<bool, LMDBError>
-    where
-        K: AsLmdbBytes + ?Sized,
-    {
+    where K: AsLmdbBytes + ?Sized {
         let res: error::Result<&Ignore> = self.access.get(self.db, key);
         let res = res.to_opt()?.is_some();
         Ok(res)
     }
 
     fn convert_value<V>(val: Result<Option<&[u8]>, error::Error>) -> Result<Option<V>, LMDBError>
-    where
-        for<'t> V: serde::de::DeserializeOwned, /* read this as, for *any* lifetime, t, we can convert a [u8] to V */
+    where for<'t> V: serde::de::DeserializeOwned /* read this as, for *any* lifetime, t, we can convert a [u8] to V */
     {
         match val {
             Ok(None) => Ok(None),
@@ -769,25 +772,19 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
 
     /// Checks whether a key exists in this database
     pub fn exists<K>(&self, key: &K) -> Result<bool, LMDBError>
-    where
-        K: AsLmdbBytes + ?Sized,
-    {
+    where K: AsLmdbBytes + ?Sized {
         let res: error::Result<&Ignore> = self.access.get(self.db, key);
         let res = res.to_opt()?.is_some();
         Ok(res)
     }
 
     pub fn delete<K>(&mut self, key: &K) -> Result<(), LMDBError>
-    where
-        K: AsLmdbBytes + ?Sized,
-    {
+    where K: AsLmdbBytes + ?Sized {
         Ok(self.access.del_key(self.db, key)?)
     }
 
     fn convert_value<V>(value: &V) -> Result<Vec<u8>, LMDBError>
-    where
-        V: serde::Serialize,
-    {
+    where V: serde::Serialize {
         let size = bincode::serialized_size(value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
         let mut buf = Vec::with_capacity(size.try_into().unwrap());
         bincode::serialize_into(&mut buf, value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;

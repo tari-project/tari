@@ -136,7 +136,7 @@ pub async fn run_base_node_with_cli(
         tls_identity.clone(),
         readiness_grpc_shutdown.to_signal(),
     ));
-    let _ = readiness_tx.send(ReadinessStatus {
+    let _unused = readiness_tx.send(ReadinessStatus {
         status: Status::StartingUp.into(),
         description: Status::StartingUp.as_str_name().to_string(),
         current_block: 0,
@@ -146,7 +146,7 @@ pub async fn run_base_node_with_cli(
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        let _ = readiness_tx.send(ReadinessStatus {
+        let _unused = readiness_tx.send(ReadinessStatus {
             status: Status::RecoveringPreparing.into(),
             description: Status::RecoveringPreparing.as_str_name().to_string(),
             current_block: 0,
@@ -154,7 +154,7 @@ pub async fn run_base_node_with_cli(
             progress_percentage: 0.0,
         });
         recovery::initiate_recover_db(&config.base_node)?;
-        let _ = readiness_tx.send(ReadinessStatus {
+        let _unused = readiness_tx.send(ReadinessStatus {
             status: Status::RecoveringRebuilding.into(),
             description: Status::RecoveringRebuilding.as_str_name().to_string(),
             current_block: 0,
@@ -177,7 +177,7 @@ pub async fn run_base_node_with_cli(
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
-    let _ = readiness_tx.send(ReadinessStatus {
+    let _unused = readiness_tx.send(ReadinessStatus {
         status: Status::Ready.into(),
         description: Status::Ready.as_str_name().to_string(),
         current_block: 0,

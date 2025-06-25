@@ -35,7 +35,12 @@ use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        identity_signature::IdentitySignature, node_id::NodeId, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim,
+        identity_signature::IdentitySignature,
+        node_id::NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerIdentityClaim,
     },
     types::{CommsPublicKey, CommsSecretKey},
 };
@@ -102,17 +107,13 @@ impl NodeIdentity {
 
     /// Generates a new random NodeIdentity for CommsPublicKey
     pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
-    where
-        R: CryptoRng + Rng,
-    {
+    where R: CryptoRng + Rng {
         let secret_key = CommsSecretKey::random(rng);
         Self::new(secret_key, vec![public_address], features)
     }
 
     pub fn random_multiple_addresses<R>(rng: &mut R, public_addresses: Vec<Multiaddr>, features: PeerFeatures) -> Self
-    where
-        R: CryptoRng + Rng,
-    {
+    where R: CryptoRng + Rng {
         let secret_key = CommsSecretKey::random(rng);
         Self::new(secret_key, public_addresses, features)
     }
