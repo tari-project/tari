@@ -32,7 +32,9 @@ use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, Com
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{
-        state_machine_service::states::StatusInfo, tari_pulse_service::TariPulseHandle, LocalNodeCommsInterface,
+        state_machine_service::states::StatusInfo,
+        tari_pulse_service::TariPulseHandle,
+        LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},

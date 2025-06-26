@@ -36,8 +36,7 @@
 //! ## Usage Example
 //!
 //! ```no_run
-//! use std::time::Duration;
-//! use std::thread;
+//! use std::{thread, time::Duration};
 //!
 //! // Create a stats collector for tracking 1000 operations
 //! let collector = StatsCollector::with_total_height(1000);
@@ -50,7 +49,8 @@
 //! let mut logging_receiver = collector.subscribe_sender();
 //!
 //! // Or add an existing sender
-//! let (external_sender, external_receiver) = tokio::sync::watch::channel(collector.current_stats());
+//! let (external_sender, external_receiver) =
+//!     tokio::sync::watch::channel(collector.current_stats());
 //! collector.add_sender(external_sender);
 //!
 //! // Simulate work being done
@@ -64,7 +64,10 @@
 //!
 //!     if i % 100 == 0 {
 //!         println!("Progress: {:.1}%, Ops/sec: {:.2}", percentage, ops_per_sec);
-//!         println!("Additional subscribers: {}", collector.additional_subscribers_count());
+//!         println!(
+//!             "Additional subscribers: {}",
+//!             collector.additional_subscribers_count()
+//!         );
 //!     }
 //!
 //!     // Simulate some work
@@ -295,9 +298,9 @@ impl Default for LMDBStatsCollector {
 
 #[cfg(test)]
 mod tests {
+    use std::{thread, time::Duration};
+
     use super::*;
-    use std::thread;
-    use std::time::Duration;
 
     #[test]
     fn test_database_stats_creation() {

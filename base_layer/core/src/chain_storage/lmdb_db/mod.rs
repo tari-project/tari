@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub use lmdb_db::{
-    create_lmdb_database, create_lmdb_database_with_stats_channel, create_recovery_lmdb_database, LMDBDatabase,
+    create_lmdb_database,
+    create_lmdb_database_with_stats_channel,
+    create_recovery_lmdb_database,
+    LMDBDatabase,
 };
 use serde::{Deserialize, Serialize};
 pub use stats_collector::DatabaseStats;
