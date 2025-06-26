@@ -77,34 +77,22 @@ impl ReadinessService {
     }
 
     pub fn get_status(&self) -> ReadinessStatus {
-        match self.readiness_rx.borrow().clone() {
+        let readiness_status = self.readiness_rx.borrow().clone();
+        let migration_status_code: i32 = ReadinessStatusEnum::MigratingInitializingLmdb.into();
+
+        if readiness_status.status == migration_status_code {
+            // During migration, use the latest LMDB status for progress information
+            let migration_status = self.lmdb_db_status_rx.borrow();
             ReadinessStatus {
-                status,
-                description,
-                current_block,
-                total_blocks,
-                progress_percentage,
-            } => {
-                let migration_status_code: i32 = ReadinessStatusEnum::MigratingInitializingLmdb.into();
-                if status == migration_status_code {
-                    let migration_status = self.lmdb_db_status_rx.borrow();
-                    ReadinessStatus {
-                        status,
-                        description,
-                        current_block: migration_status.current_height,
-                        total_blocks: migration_status.total_height,
-                        progress_percentage: migration_status.progress_percentage,
-                    }
-                } else {
-                    ReadinessStatus {
-                        status,
-                        description,
-                        current_block,
-                        total_blocks,
-                        progress_percentage,
-                    }
-                }
-            },
+                status: readiness_status.status,
+                description: readiness_status.description,
+                current_block: migration_status.current_height,
+                total_blocks: migration_status.total_height,
+                progress_percentage: migration_status.progress_percentage,
+            }
+        } else {
+            // For non-migration states, use the readiness status as-is
+            readiness_status
         }
     }
 }

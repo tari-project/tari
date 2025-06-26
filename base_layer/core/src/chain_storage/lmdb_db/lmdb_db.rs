@@ -111,6 +111,7 @@ use tari_utilities::{
     ByteArray,
 };
 use tokio::sync::watch;
+use tracing::field::debug;
 
 use super::{
     cursors::KeyPrefixCursor,
@@ -403,11 +404,13 @@ impl LMDBDatabase {
 
     /// Update progress in the stats collector
     pub fn update_stats(&self, current_height: u64) {
+        debug!("Updating stats to height {}", current_height);
         self.stats_collector.update_progress(current_height);
     }
 
     /// Set total height in the stats collector
     pub fn set_stats_total_height(&self, total_height: u64) {
+        debug!("Setting total height to {}", total_height);
         self.stats_collector.set_total_height(total_height);
     }
 
@@ -3113,7 +3116,9 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 )?;
 
                 // Update stats progress
-                db.update_stats(height);
+                if height % 50 == 0 {
+                    db.update_stats(height);
+                }
             }
             txn.commit()?;
             let txn = db.write_transaction()?;
@@ -3221,7 +3226,9 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 process_payref_for_height(db, height)?;
 
                 // Update stats progress
-                db.update_stats(height);
+                if height % 50 == 0 {
+                    db.update_stats(height);
+                }
             }
             info!(target: LOG_TARGET, "PayRef index rebuild completed");
         }
