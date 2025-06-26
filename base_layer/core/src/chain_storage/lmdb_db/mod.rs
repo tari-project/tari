@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
+pub use lmdb_db::{
+    create_lmdb_database, create_lmdb_database_with_stats_channel, create_recovery_lmdb_database, LMDBDatabase,
+};
 use serde::{Deserialize, Serialize};
-pub use stats_collector::{DatabaseStats, StatsCollector};
+pub use stats_collector::DatabaseStats;
 use tari_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
 

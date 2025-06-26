@@ -163,14 +163,14 @@ impl DatabaseStats {
 }
 
 /// StatsCollector for tracking database operation progress using tokio watch channels
-pub struct StatsCollector {
+pub struct LMDBStatsCollector {
     sender: watch::Sender<DatabaseStats>,
     receiver: watch::Receiver<DatabaseStats>,
     additional_senders: Arc<Mutex<Vec<watch::Sender<DatabaseStats>>>>,
     start_time: Instant,
 }
 
-impl StatsCollector {
+impl LMDBStatsCollector {
     /// Create a new StatsCollector with initial stats
     pub fn new() -> Self {
         let initial_stats = DatabaseStats::default();
@@ -317,7 +317,7 @@ impl StatsCollector {
     }
 }
 
-impl Default for StatsCollector {
+impl Default for LMDBStatsCollector {
     fn default() -> Self {
         Self::new()
     }
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_creation() {
-        let collector = StatsCollector::new();
+        let collector = LMDBStatsCollector::new();
         let stats = collector.current_stats();
 
         assert_eq!(stats.current_height, 0);
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_with_total_height() {
-        let collector = StatsCollector::with_total_height(1000);
+        let collector = LMDBStatsCollector::with_total_height(1000);
         let stats = collector.current_stats();
 
         assert_eq!(stats.current_height, 0);
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_progress_update() {
-        let collector = StatsCollector::with_total_height(100);
+        let collector = LMDBStatsCollector::with_total_height(100);
 
         collector.update_progress(25);
         assert_eq!(collector.progress_percentage(), 25.0);
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_subscription() {
-        let collector = StatsCollector::with_total_height(100);
+        let collector = LMDBStatsCollector::with_total_height(100);
         let mut receiver = collector.subscribe();
 
         // Initial state
@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_reset() {
-        let collector = StatsCollector::with_total_height(100);
+        let collector = LMDBStatsCollector::with_total_height(100);
 
         collector.update_progress(50);
         assert_eq!(collector.heights(), (50, 100));
@@ -430,7 +430,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_additional_subscribers() {
-        let collector = StatsCollector::with_total_height(100);
+        let collector = LMDBStatsCollector::with_total_height(100);
 
         // Subscribe additional receivers
         let mut receiver1 = collector.subscribe_sender();
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_add_sender() {
-        let collector = StatsCollector::with_total_height(100);
+        let collector = LMDBStatsCollector::with_total_height(100);
 
         // Set some initial progress
         collector.update_progress(30);
@@ -489,7 +489,7 @@ mod tests {
 
     #[test]
     fn test_stats_collector_clear_additional_senders() {
-        let collector = StatsCollector::with_total_height(100);
+        let collector = LMDBStatsCollector::with_total_height(100);
 
         // Add some subscribers
         let _receiver1 = collector.subscribe_sender();

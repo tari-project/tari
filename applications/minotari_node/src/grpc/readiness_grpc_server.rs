@@ -33,9 +33,9 @@ pub struct ReadinessGrpcServer {
 
 pub struct ReadinessService {
     readiness_rx: watch::Receiver<ReadinessStatus>,
-    readiness_tx: watch::Sender<ReadinessStatus>,
-    lmdb_migration_status_rx: watch::Receiver<DatabaseStats>,
-    lmdb_migration_status_tx: watch::Sender<DatabaseStats>,
+    _readiness_tx: watch::Sender<ReadinessStatus>,
+    lmdb_db_status_rx: watch::Receiver<DatabaseStats>,
+    _lmdb_db_status_tx: watch::Sender<DatabaseStats>,
 }
 
 pub struct ReadinessStatusHandler {
@@ -52,7 +52,7 @@ impl ReadinessService {
             total_blocks: 0,
             progress_percentage: 0.0,
         });
-        let (lmdb_migration_status_tx, lmdb_migration_status_rx) = watch::channel(DatabaseStats {
+        let (lmdb_db_status_tx, lmdb_db_status_rx) = watch::channel(DatabaseStats {
             current_height: 0,
             total_height: 0,
             progress_percentage: 0.0,
@@ -63,14 +63,14 @@ impl ReadinessService {
         });
         let handler = ReadinessStatusHandler {
             readiness_tx: readiness_tx.clone(),
-            lmdb_migration_status_tx: lmdb_migration_status_tx.clone(),
+            lmdb_migration_status_tx: lmdb_db_status_tx.clone(),
         };
         (
             Self {
                 readiness_rx,
-                readiness_tx,
-                lmdb_migration_status_rx,
-                lmdb_migration_status_tx,
+                _readiness_tx: readiness_tx.clone(),
+                lmdb_db_status_rx,
+                _lmdb_db_status_tx: lmdb_db_status_tx.clone(),
             },
             handler,
         )
@@ -87,7 +87,7 @@ impl ReadinessService {
             } => {
                 let migration_status_code: i32 = ReadinessStatusEnum::MigratingInitializingLmdb.into();
                 if status == migration_status_code {
-                    let migration_status = self.lmdb_migration_status_rx.borrow();
+                    let migration_status = self.lmdb_db_status_rx.borrow();
                     ReadinessStatus {
                         status,
                         description,

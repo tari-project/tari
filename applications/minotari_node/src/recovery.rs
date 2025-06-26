@@ -37,8 +37,8 @@ use tari_common::{
 };
 use tari_core::{
     chain_storage::{
-        async_db::AsyncBlockchainDb, create_lmdb_database, create_recovery_lmdb_database, BlockchainBackend,
-        BlockchainDatabase, BlockchainDatabaseConfig, Validators,
+        async_db::AsyncBlockchainDb, create_lmdb_database_with_stats_channel, create_recovery_lmdb_database,
+        BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig, Validators,
     },
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -86,14 +86,25 @@ pub async fn run_recovery(
                 total_blocks: 0,
                 progress_percentage: 0.0,
             })?;
-            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone())
-                .map_err(|e| {
-                    error!(target: LOG_TARGET, "Error opening db: {}", e);
-                    anyhow!("Could not open DB: {}", e)
-                })?;
+            let backend = create_lmdb_database_with_stats_channel(
+                &node_config.lmdb_path,
+                node_config.lmdb.clone(),
+                rules.clone(),
+                Some(readiness_handler.lmdb_migration_status_tx.clone()),
+            )
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error opening db: {}", e);
+                anyhow!("Could not open DB: {}", e)
+            })?;
             let temp_path = temp_dir().join("temp_recovery");
 
-            let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone(), rules.clone()).map_err(|e| {
+            let temp = create_lmdb_database_with_stats_channel(
+                &temp_path,
+                node_config.lmdb.clone(),
+                rules.clone(),
+                Some(readiness_handler.lmdb_migration_status_tx.clone()),
+            )
+            .map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
                 anyhow!("Could not open recovery DB: {}", e)
             })?;
