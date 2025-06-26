@@ -1324,7 +1324,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
 
         let mut completed_transactions = transaction_service
-            .get_completed_transactions(None, None, None, req.limit)
+            .get_completed_transactions(None, None, None, 0)
             .await
             .map_err(|err| {
                 Status::not_found(format!(
@@ -1334,7 +1334,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })?;
         completed_transactions.extend(
             transaction_service
-                .get_cancelled_completed_transactions(req.limit)
+                .get_cancelled_completed_transactions(0)
                 .await
                 .map_err(|err| {
                     Status::not_found(format!(
