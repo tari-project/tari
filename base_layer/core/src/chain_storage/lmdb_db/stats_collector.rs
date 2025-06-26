@@ -511,8 +511,8 @@ mod tests {
 
         // Update metadata
         let key = MetadataKey::ChainHeight;
-        let value = MetadataValue::Height(50);
-        collector.update_metadata(key.clone(), value.clone());
+        let value = MetadataValue::ChainHeight(50);
+        collector.update_metadata(key.clone(), &value);
 
         // Check if receiver got the metadata update
         let stats = receiver.borrow_and_update();
@@ -525,8 +525,8 @@ mod tests {
 
         // Set metadata
         let key = MetadataKey::ChainHeight;
-        let value = MetadataValue::Height(75);
-        stats.set_metadata(key.clone(), value.clone());
+        let value = MetadataValue::ChainHeight(75);
+        stats.set_metadata(key.clone(), &value);
 
         // Get metadata
         assert_eq!(stats.get_metadata(&key), Some(&value));
@@ -547,8 +547,8 @@ mod tests {
 
         // Update metadata
         let key = MetadataKey::ChainHeight;
-        let value = MetadataValue::Height(25);
-        collector.update_metadata(key.clone(), value.clone());
+        let value = MetadataValue::ChainHeight(25);
+        collector.update_metadata(key.clone(), &value);
 
         // All receivers should get the metadata update
         let stats1 = receiver1.borrow_and_update();
