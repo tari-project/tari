@@ -129,7 +129,6 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_service: BaseNodeServiceHandle,
-    last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
 }
 
@@ -194,7 +193,6 @@ where
             resources,
             request_stream: Some(request_stream),
             base_node_service,
-            last_seen_tip_height: None,
             validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
@@ -330,18 +328,12 @@ where
                 .update_output_metadata_signature(*uo)
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
             OutputManagerRequest::GetBalance => {
-                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
-                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
-                    Err(_) => None,
-                };
+                let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance(current_tip_for_time_lock_calculation)
                     .map(OutputManagerResponse::Balance)
             },
             OutputManagerRequest::GetBalancePaymentId(payment_id) => {
-                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
-                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
-                    Err(_) => None,
-                };
+                let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
                     .map(OutputManagerResponse::Balance)
             },
@@ -610,9 +602,6 @@ where
                     target: LOG_TARGET,
                     "Received Base Node State Change but no block changes"
                 );
-            },
-            BaseNodeEvent::NewBlockDetected(_hash, height) => {
-                self.last_seen_tip_height = Some(height);
             },
         }
     }
@@ -2179,7 +2168,7 @@ where
         let fee_calc = self.get_fee_calc();
 
         // Attempt to get the chain tip height
-        let chain_metadata = self.base_node_service.get_chain_metadata().await?;
+        let tip_height = self.resources.db.get_last_scanned_height()?;
 
         // Respecting the setting to not choose outputs that reveal the address
         if self.resources.config.autoignore_onesided_utxos {
@@ -2190,7 +2179,6 @@ where
             target: LOG_TARGET,
             "select_utxos selection criteria: {}", selection_criteria
         );
-        let tip_height = chain_metadata.as_ref().map(|m| m.best_block_height());
         let start_new = Instant::now();
         let uo = self
             .resources
@@ -2282,7 +2270,7 @@ where
                     TRANSACTION_INPUTS_LIMIT
                 )));
             }
-            let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.best_block_height());
+            let current_tip_for_time_lock_calculation = tip_height;
             let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
             let pending_incoming = balance.pending_incoming_balance;
             if utxos_total_value + pending_incoming >= amount + fee_with_change {

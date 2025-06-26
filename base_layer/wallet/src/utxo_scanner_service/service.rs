@@ -153,20 +153,6 @@ where
 
             loop {
                 tokio::select! {
-                    event = base_node_service_event_stream.recv() => {
-                        match event {
-                            Ok(e) => {
-                                if let BaseNodeEvent::NewBlockDetected(_hash, h) = (*e).clone() {
-                                        debug!(target: LOG_TARGET, "New block event received: {}", h);
-                                        if local_shutdown.is_triggered() {
-                                            debug!(target: LOG_TARGET, "Starting new round of UTXO scanning");
-                                            break;
-                                        }
-                                }
-                            },
-                            Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
-                        };
-                    },
                     _ = &mut task_join_handle => {
                         debug!(target: LOG_TARGET, "UTXO scanning round completed");
                         local_shutdown.trigger();

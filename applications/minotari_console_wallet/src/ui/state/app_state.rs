@@ -793,10 +793,7 @@ impl AppStateInner {
         debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", completed_transactions.len());
 
         // Get current tip height for confirmation calculations
-        let current_tip_height = match self.wallet.base_node_service.get_chain_metadata().await {
-            Ok(Some(metadata)) => metadata.best_block_height(),
-            _ => 0, // Default to 0 if we can't get chain height
-        };
+        let current_tip_height = self.wallet.db.get_last_scanned_height()?.unwrap_or(0);
 
         // Create lookup maps: TxId -> (PayRef hex, status)
         let mut payref_by_tx_id = HashMap::new();

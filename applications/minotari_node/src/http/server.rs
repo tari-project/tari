@@ -3,7 +3,11 @@
 
 use std::sync::Arc;
 
-use axum::{routing::get, Extension, Router};
+use axum::{
+    routing::{get, post},
+    Extension,
+    Router,
+};
 use log::{error, info};
 use tari_core::{base_node::rpc::BaseNodeWalletQueryService, chain_storage::BlockchainBackend};
 use tari_shutdown::ShutdownSignal;
@@ -61,9 +65,10 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 "/get_utxos_deleted_info",
                 get(handler::get_utxos_deleted_info::handle::<B>),
             )
-            .route("/transaction_query", get(handler::transaction_query::handle::<B>))
+            .route("/transactions", get(handler::transaction_query::handle::<B>))
             .route("/sync_utxos_by_block", get(handler::sync_utxos_by_block::handle::<B>))
             .route("/get_utxos_by_block", get(handler::get_utxos_by_block::handle::<B>))
+            .route("/json_rpc", post(handler::json_rpc::handle::<B>))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()));
         let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;

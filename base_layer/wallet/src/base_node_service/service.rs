@@ -47,7 +47,6 @@ const LOG_TARGET: &str = "wallet::base_node_service::service";
 /// State determined from Base Node Service Requests
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BaseNodeState {
-    pub node_id: Option<NodeId>,
     pub chain_metadata: Option<ChainMetadata>,
     pub is_synced: Option<bool>,
     pub updated: Option<DateTime<Utc>>,
@@ -136,9 +135,7 @@ where
 
         let shutdown_signal = self.shutdown_signal.clone();
         tokio::spawn(async move {
-            let monitor_fut = monitor.run();
-            futures::pin_mut!(monitor_fut);
-            future::select(shutdown_signal, monitor_fut).await;
+            monitor.run(shutdown_signal.clone()).await;
         });
     }
 
@@ -152,14 +149,6 @@ where
             "Handling Wallet Base Node Service Request: {:?}", request
         );
         match request {
-            BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata {
-                Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
-                None => {
-                    // if we don't have live state, check if we've previously stored state in the wallet db
-                    let metadata = self.db.get_chain_metadata()?;
-                    Ok(BaseNodeServiceResponse::ChainMetadata(metadata))
-                },
-            },
             BaseNodeServiceRequest::GetBaseNodeLatency => {
                 Ok(BaseNodeServiceResponse::Latency(self.state.read().await.latency))
             },

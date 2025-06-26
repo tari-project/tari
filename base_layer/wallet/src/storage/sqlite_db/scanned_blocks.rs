@@ -28,7 +28,7 @@ use tari_common_types::types::FixedHash;
 use tari_utilities::ByteArray;
 
 use crate::{
-    diesel::BoolExpressionMethods,
+    diesel::{BoolExpressionMethods, OptionalExtension},
     error::WalletStorageError,
     schema::scanned_blocks,
     utxo_scanner_service::service::ScannedBlock,
@@ -49,6 +49,15 @@ impl ScannedBlockSql {
         Ok(scanned_blocks::table
             .order(scanned_blocks::height.desc())
             .load::<ScannedBlockSql>(conn)?)
+    }
+
+    pub fn last_height(conn: &mut SqliteConnection) -> Result<Option<i64>, WalletStorageError> {
+        let result = scanned_blocks::table
+            .select(scanned_blocks::height)
+            .order(scanned_blocks::height.desc())
+            .first::<i64>(conn)
+            .optional()?;
+        Ok(result)
     }
 
     pub fn new(header_hash: Vec<u8>, height: i64) -> Self {

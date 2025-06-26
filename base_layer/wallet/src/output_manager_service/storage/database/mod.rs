@@ -134,6 +134,10 @@ where T: OutputManagerBackend + 'static
         Self { db: Arc::new(db) }
     }
 
+    pub fn get_last_scanned_height(&self) -> Result<Option<u64>, OutputManagerStorageError> {
+        self.db.get_last_scanned_height()
+    }
+
     pub fn add_unspent_output(&self, output: DbWalletOutput) -> Result<(), OutputManagerStorageError> {
         self.db.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
             output.commitment.clone(),

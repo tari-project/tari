@@ -66,3 +66,16 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 
     async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, Error>;
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JsonRpcResponse<T> {
+    pub result: Option<T>,
+    pub error: Option<String>,
+    pub id: u64,
+}
+
+impl<T> JsonRpcResponse<T> {
+    pub fn is_success(&self) -> bool {
+        self.error.is_none()
+    }
+}

@@ -34,19 +34,16 @@ pub type BaseNodeEventReceiver = broadcast::Receiver<Arc<BaseNodeEvent>>;
 /// API Request enum
 #[derive(Debug)]
 pub enum BaseNodeServiceRequest {
-    GetChainMetadata,
     GetBaseNodeLatency,
 }
 /// API Response enum
 #[derive(Debug)]
 pub enum BaseNodeServiceResponse {
-    ChainMetadata(Option<ChainMetadata>),
     Latency(Option<Duration>),
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeStateChanged(BaseNodeState),
-    NewBlockDetected(BlockHash, u64),
 }
 
 impl fmt::Display for BaseNodeEvent {
@@ -54,9 +51,6 @@ impl fmt::Display for BaseNodeEvent {
         match self {
             BaseNodeEvent::BaseNodeStateChanged(state) => {
                 write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
-            },
-            BaseNodeEvent::NewBlockDetected(hash, height) => {
-                write!(f, "NewBlockDetected: {} ({})", height, hash)
             },
         }
     }
@@ -83,13 +77,6 @@ impl BaseNodeServiceHandle {
 
     pub fn get_event_stream(&self) -> BaseNodeEventReceiver {
         self.event_stream_sender.subscribe()
-    }
-
-    pub async fn get_chain_metadata(&mut self) -> Result<Option<ChainMetadata>, BaseNodeServiceError> {
-        match self.handle.call(BaseNodeServiceRequest::GetChainMetadata).await?? {
-            BaseNodeServiceResponse::ChainMetadata(metadata) => Ok(metadata),
-            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
-        }
     }
 
     pub async fn get_base_node_latency(&mut self) -> Result<Option<Duration>, BaseNodeServiceError> {

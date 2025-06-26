@@ -37,9 +37,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct TariBaseNodeState {
-    /// The ID of the base node this wallet is connected to
-    pub node_id: Option<NodeId>,
-
     /// The current chain height, or the block number of the longest valid chain, or zero if there is no chain
     pub best_block_height: u64,
 
@@ -63,38 +60,6 @@ pub struct TariBaseNodeState {
     pub is_node_synced: bool,
     pub updated_at: u64,
     pub latency: u64,
-}
-
-/// Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
-///
-/// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut ByteVector` - Returns a ByteVector or null if the NodeId is None.
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn basenode_state_get_node_id(
-    ptr: *mut TariBaseNodeState,
-    error_out: *mut c_int,
-) -> *mut ByteVector {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if ptr.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-
-    match (*ptr).node_id {
-        None => ptr::null_mut(),
-        Some(ref node_id) => Box::into_raw(Box::new(ByteVector(node_id.to_vec()))),
-    }
 }
 
 /// Extracts height of th elongest chain from the `TariBaseNodeState`

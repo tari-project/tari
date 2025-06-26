@@ -63,7 +63,7 @@ use tokio::time::Instant;
 use zeroize::Zeroize;
 
 use crate::{
-    schema::{completed_transactions, inbound_transactions, outbound_transactions, payrefs},
+    schema::{completed_transactions, inbound_transactions, outbound_transactions, payrefs, scanned_blocks},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     transaction_service::{
         error::{TransactionKeyError, TransactionStorageError},
@@ -478,6 +478,29 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             );
         }
         Ok(())
+    }
+
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let result = scanned_blocks::table
+            .select(scanned_blocks::height)
+            .order(scanned_blocks::height.desc())
+            .first::<i64>(&mut conn)
+            .optional()?
+            .map(|h| h as u64);
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_last_scanned_height: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(result)
     }
 
     fn get_pending_transaction_counterparty_address_by_tx_id(

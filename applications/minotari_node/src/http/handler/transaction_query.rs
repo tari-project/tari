@@ -18,16 +18,16 @@ const LOG_TARGET: &str = "c::base_node::rpc::http::handler::transaction_query";
 #[derive(Deserialize, Debug)]
 pub struct TransactionQueryQueryParams {
     #[serde(deserialize_with = "from_hex")]
-    pub public_nonce: Vec<u8>,
+    pub excess_sig_nonce: Vec<u8>,
     #[serde(deserialize_with = "from_hex")]
-    pub signature: Vec<u8>,
+    pub excess_sig_sig: Vec<u8>,
 }
 
 impl From<TransactionQueryQueryParams> for models::Signature {
     fn from(params: TransactionQueryQueryParams) -> Self {
         Self {
-            public_nonce: params.public_nonce,
-            signature: params.signature,
+            public_nonce: params.excess_sig_nonce,
+            signature: params.excess_sig_sig,
         }
     }
 }

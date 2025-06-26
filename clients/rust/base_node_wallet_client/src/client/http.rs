@@ -27,7 +27,7 @@ use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 use url::Url;
 
-use crate::BaseNodeWalletClient;
+use crate::{BaseNodeWalletClient, JsonRpcResponse};
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
 
@@ -324,7 +324,41 @@ impl BaseNodeWalletClient for Client {
         &self,
         transaction: tari_core::transactions::transaction_components::Transaction,
     ) -> Result<TxSubmissionResponse, anyhow::Error> {
-        todo!()
+        debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {}", self.api_address);
+        let mut target_url = self.api_address.join("/jsonrpc")?;
+        let request_body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": "1",
+            "method": "submit_transaction",
+            "params": {
+                "transaction": transaction,
+            }
+        });
+
+        let res = self.http_client.post(target_url).json(&request_body).send().await?;
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ));
+        }
+        info!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {}", self.api_address);
+        let response = res.json::<JsonRpcResponse<TxSubmissionResponse>>().await?;
+        match response.result {
+            Some(result) => {
+                debug!(target: LOG_TARGET, "Transaction submission response: {:?}", result);
+                Ok(result)
+            },
+            None => {
+                let error_message = response.error.unwrap_or_else(|| "Unknown error".to_string());
+                warn!(target: LOG_TARGET, "Transaction submission failed: {}", error_message);
+                Err(anyhow!("Transaction submission failed: {}", error_message))
+            },
+        }
     }
 
     async fn transaction_query(
@@ -332,7 +366,27 @@ impl BaseNodeWalletClient for Client {
         excess_sig_nonce: Vec<u8>,
         excess_sig_sig: Vec<u8>,
     ) -> Result<TxQueryResponse, anyhow::Error> {
-        todo!()
+        debug!(target: LOG_TARGET, "Querying transaction with excess signature nonce {} and signature {}", excess_sig_nonce.to_hex(), excess_sig_sig.to_hex());
+        let mut target_url = self.api_address.join("/transactions")?;
+        target_url.set_query(Some(&format!(
+            "excess_sig_nonce={}&excess_sig_sig={}",
+            excess_sig_nonce.to_hex(),
+            excess_sig_sig.to_hex()
+        )));
+        let res = self.http_client.get(target_url).send().await?;
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            return Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ));
+        }
+        info!(target: LOG_TARGET, "Transaction query successful for excess signature nonce {} and signature {}", excess_sig_nonce.to_hex(), excess_sig_sig.to_hex());
+        let response = res.json::<TxQueryResponse>().await?;
+        Ok(response)
     }
 
     async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, anyhow::Error> {

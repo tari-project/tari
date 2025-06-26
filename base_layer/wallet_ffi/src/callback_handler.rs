@@ -410,9 +410,6 @@ where TBackend: TransactionBackend + 'static
                                     self.base_node_state_changed(state);
                                 },
 
-                                BaseNodeEvent::NewBlockDetected(_hash, _new_block_number) => {
-                                    //
-                                },
                             }
                         },
                         Err(_e) => error!(target: LOG_TARGET, "failed to receive base node state event"),
@@ -717,7 +714,6 @@ where TBackend: TransactionBackend + 'static
 
         let state = match state.chain_metadata {
             None => TariBaseNodeState {
-                node_id: state.node_id,
                 best_block_height: 0,
                 best_block_hash: BlockHash::zero(),
                 best_block_timestamp: 0,
@@ -729,7 +725,6 @@ where TBackend: TransactionBackend + 'static
             },
 
             Some(chain_metadata) => TariBaseNodeState {
-                node_id: state.node_id,
                 best_block_height: chain_metadata.best_block_height(),
                 best_block_hash: *chain_metadata.best_block_hash(),
                 best_block_timestamp: chain_metadata.timestamp(),

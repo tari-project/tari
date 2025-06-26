@@ -38,7 +38,12 @@ use tari_comms::{
     backoff::{Backoff, ExponentialBackoff},
     protocol::rpc::RpcError,
 };
-use tokio::{sync::RwLock, time};
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    select,
+    sync::RwLock,
+    time::{self, interval},
+};
 
 use crate::{
     base_node_service::{
@@ -85,115 +90,105 @@ where
         }
     }
 
-    pub async fn run(mut self) {
-        loop {
-            trace!(target: LOG_TARGET, "Beginning new base node monitoring round");
-            match self.monitor_node().await {
-                Ok(_) => continue,
-                Err(BaseNodeMonitorError::NodeShuttingDown) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Wallet Base Node Service chain metadata task shutting down because the shutdown signal was \
-                         received"
-                    );
-                    break;
-                },
-                Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
-                    warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
-                    self.update_state(BaseNodeState {
-                        node_id: None,
-                        chain_metadata: None,
-                        is_synced: None,
-                        updated: None,
-                        latency: None,
-                    })
-                    .await;
-                    if let Some(node_id) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
-                        self.wallet_connectivity.disconnect_base_node(node_id).await;
-                    }
-                    continue;
-                },
-                Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
-                Err(e @ BaseNodeMonitorError::WalletStorageError(_)) => {
-                    error!(target: LOG_TARGET, "{}", e);
-                    continue;
-                },
-            }
-        }
-        debug!(
-            target: LOG_TARGET,
-            "Base Node Service Monitor shutting down because it received the shutdown signal"
-        );
-    }
-
-    async fn monitor_node(&mut self) -> Result<(), BaseNodeMonitorError> {
-        let error_sleep_duration = Duration::from_secs(1);
-        // let mut base_node_watch = self.wallet_connectivity.get_current_base_node_watcher();
-        loop {
-            let timer = Instant::now();
-            let mut client = self.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
-
-            let base_node_id = match self.wallet_connectivity.get_current_base_node_peer_node_id() {
-                Some(n) => n,
-                None => {
-                    sleep(error_sleep_duration);
-                    continue;
-                },
-            };
-
-            let timer = Instant::now();
-            let tip_info = client
-                .get_tip_info()
-                .await
-                .map_err(|e| BaseNodeMonitorError::InvalidBaseNodeResponse(e.to_string()))?;
-            let chain_metadata = tip_info
-                .metadata
-                .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
-
-            let timer = Instant::now();
-            let latency = match client.get_last_request_latency() {
-                Some(latency) => latency,
-                None => {
-                    sleep(error_sleep_duration); // wait a bit for the latency to be set
-                    continue;
-                },
-            };
-            trace!(target: LOG_TARGET, "Obtain latency info in {} ms", timer.elapsed().as_millis());
-
-            self.db.set_chain_metadata(chain_metadata.clone())?;
-
-            let is_synced = tip_info.is_synced;
-            let best_block_height = chain_metadata.best_block_height();
-
-            let new_block = self
-                .update_state(BaseNodeState {
-                    node_id: Some(base_node_id.clone()),
-                    chain_metadata: Some(chain_metadata),
-                    is_synced: Some(is_synced),
-                    updated: Some(Utc::now()),
-                    latency: Some(latency),
+    pub async fn run(mut self, shutdown_signal: ShutdownSignal) {
+        match self.monitor_node(shutdown_signal).await {
+            Ok(_) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Wallet Base Node Service chain metadata task completed successfully"
+                );
+            },
+            Err(BaseNodeMonitorError::NodeShuttingDown) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Wallet Base Node Service chain metadata task shutting down because the shutdown signal was \
+                     received"
+                );
+            },
+            Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
+                warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
+                self.update_state(BaseNodeState {
+                    chain_metadata: None,
+                    is_synced: None,
+                    updated: None,
+                    latency: None,
                 })
                 .await;
+                if let Some(node_id) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
+                    self.wallet_connectivity.disconnect_base_node(node_id).await;
+                }
+            },
+            Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
+            Err(e @ BaseNodeMonitorError::WalletStorageError(_)) => {
+                error!(target: LOG_TARGET, "{}", e);
+            },
+        }
+    }
 
-            trace!(
-                target: LOG_TARGET,
-                "Base node {} Tip: {} ({}) Latency: {} ms",
-                base_node_id,
-                best_block_height,
-                if is_synced { "Synced" } else { "Syncing..." },
-                latency.as_millis()
-            );
+    async fn monitor_node(&mut self, mut shutdown_signal: ShutdownSignal) -> Result<(), BaseNodeMonitorError> {
+        let error_sleep_duration = Duration::from_secs(30);
+        // let mut base_node_watch = self.wallet_connectivity.get_current_base_node_watcher();
+        let mut interval = interval(Duration::from_secs(10));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-            // If there's a new block, try again immediately,
-            if new_block {
-                self.backoff_attempts = 0;
-            } else {
-                self.backoff_attempts += 1;
-                time::sleep(
-                    cmp::min(self.max_interval, self.backoff.calculate_backoff(self.backoff_attempts))
-                        .saturating_sub(latency),
-                )
-                .await;
+        loop {
+            select! {
+
+                        _ = shutdown_signal.wait() => {
+                                return Ok(());
+                        },
+                        _ = interval.tick() => {
+                            // continue to the next iteration
+                    let mut client = self.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+
+
+
+                    let timer = Instant::now();
+                    let tip_info = client
+                        .get_tip_info()
+                        .await
+                        .map_err(|e| BaseNodeMonitorError::InvalidBaseNodeResponse(e.to_string()))?;
+                    let chain_metadata = tip_info
+                        .metadata
+                        .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
+
+                    let timer = Instant::now();
+                    let latency = match client.get_last_request_latency() {
+                        Some(latency) => latency,
+                        None => {
+                            continue;
+                        },
+                    };
+                    debug!(
+                        target: LOG_TARGET,
+                        "Base node height:{} latency: {} ms",
+                        chain_metadata.best_block_height(),
+                        latency.as_millis()
+                    );
+
+                    // self.db.set_chain_metadata(chain_metadata.clone())?;
+
+                    let is_synced = tip_info.is_synced;
+                    let best_block_height = chain_metadata.best_block_height();
+
+                    self
+                        .update_state(BaseNodeState {
+                            chain_metadata: Some(chain_metadata),
+                            is_synced: Some(is_synced),
+                            updated: Some(Utc::now()),
+                            latency: Some(latency),
+                        })
+                        .await;
+
+                    trace!(
+                        target: LOG_TARGET,
+                        "Base node Tip: {} ({}) Latency: {} ms",
+                        best_block_height,
+                        if is_synced { "Synced" } else { "Syncing..." },
+                        latency.as_millis()
+                    );
+
+               }
             }
         }
 
@@ -203,26 +198,12 @@ where
     }
 
     // returns true if a new block, otherwise false
-    async fn update_state(&self, new_state: BaseNodeState) -> bool {
+    async fn update_state(&self, new_state: BaseNodeState) {
         let mut lock = self.state.write().await;
-        let (new_block_detected, height, hash) = match (new_state.chain_metadata.clone(), lock.chain_metadata.clone()) {
-            (Some(new_metadata), Some(old_metadata)) => (
-                new_metadata.best_block_hash() != old_metadata.best_block_hash(),
-                new_metadata.best_block_height(),
-                *new_metadata.best_block_hash(),
-            ),
-            (Some(new_metadata), _) => (true, new_metadata.best_block_height(), *new_metadata.best_block_hash()),
-            (None, _) => (false, 0, BlockHashType::default()),
-        };
-
-        if new_block_detected {
-            self.publish_event(BaseNodeEvent::NewBlockDetected(hash, height));
-        }
 
         *lock = new_state.clone();
 
         self.publish_event(BaseNodeEvent::BaseNodeStateChanged(new_state));
-        new_block_detected
     }
 
     fn publish_event(&self, event: BaseNodeEvent) {

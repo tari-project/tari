@@ -57,7 +57,7 @@ use crate::{
         },
         UtxoSelectionCriteria,
     },
-    schema::{known_one_sided_payment_scripts, outputs},
+    schema::{known_one_sided_payment_scripts, outputs, scanned_blocks},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
 };
 
@@ -535,6 +535,29 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         Ok(())
+    }
+
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let last_scanned_height: Option<i64> = scanned_blocks::table
+            .order_by(scanned_blocks::height.desc())
+            .select(scanned_blocks::height)
+            .first(&mut conn)
+            .optional()?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_last_scanned_height: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        Ok(last_scanned_height.map(|h| h as u64))
     }
 
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {

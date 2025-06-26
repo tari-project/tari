@@ -195,18 +195,6 @@ impl WalletGrpcServer {
     fn comms(&self) -> &CommsNode {
         &self.wallet.comms
     }
-
-    fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
-        // If we don't have the chain metadata, we hope that VNReg consensus constants did not change - worst case, we
-        // spend more than we need to or the transaction is rejected.
-        let height = self
-            .wallet
-            .db
-            .get_chain_metadata()?
-            .map(|m| m.best_block_height())
-            .unwrap_or_default();
-        Ok(self.rules.consensus_constants(height))
-    }
 }
 
 #[tonic::async_trait]
@@ -1608,47 +1596,50 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<RegisterValidatorNodeRequest>,
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
-        let request = request.into_inner();
-        let mut transaction_service = self.get_transaction_service();
-        let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
-            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
-        let validator_node_signature = request
-            .validator_node_signature
-            .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
-            .try_into()
-            .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+        // Deprecated for now
+        return Err(Status::unimplemented(
+            "RegisterValidatorNode is not implemented yet".to_string(),
+        ));
+        // let request = request.into_inner();
+        // let mut transaction_service = self.get_transaction_service();
+        // let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
+        //     .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+        // let validator_node_signature = request
+        //     .validator_node_signature
+        //     .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
+        //     .try_into()
+        //     .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
 
-        let constants = self.get_consensus_constants().map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
-            Status::internal("failed to fetch consensus constants")
-        })?;
+        //     error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+        //     Status::internal("failed to fetch consensus constants")
+        // })?;
 
-        let response = match transaction_service
-            .register_validator_node(
-                constants.validator_node_registration_min_deposit_amount(),
-                validator_node_public_key,
-                validator_node_signature,
-                UtxoSelectionCriteria::default(),
-                request.fee_per_gram.into(),
-                PaymentId::from_bytes(&request.payment_id),
-            )
-            .await
-        {
-            Ok(tx) => RegisterValidatorNodeResponse {
-                transaction_id: tx.as_u64(),
-                is_success: true,
-                failure_message: Default::default(),
-            },
-            Err(e) => {
-                error!(target: LOG_TARGET, "Transaction service error: {}", e);
-                RegisterValidatorNodeResponse {
-                    transaction_id: Default::default(),
-                    is_success: false,
-                    failure_message: e.to_string(),
-                }
-            },
-        };
-        Ok(Response::new(response))
+        // let response = match transaction_service
+        //     .register_validator_node(
+        //         constants.validator_node_registration_min_deposit_amount(),
+        //         validator_node_public_key,
+        //         validator_node_signature,
+        //         UtxoSelectionCriteria::default(),
+        //         request.fee_per_gram.into(),
+        //         PaymentId::from_bytes(&request.payment_id),
+        //     )
+        //     .await
+        // {
+        //     Ok(tx) => RegisterValidatorNodeResponse {
+        //         transaction_id: tx.as_u64(),
+        //         is_success: true,
+        //         failure_message: Default::default(),
+        //     },
+        //     Err(e) => {
+        //         error!(target: LOG_TARGET, "Transaction service error: {}", e);
+        //         RegisterValidatorNodeResponse {
+        //             transaction_id: Default::default(),
+        //             is_success: false,
+        //             failure_message: e.to_string(),
+        //         }
+        //     },
+        // };
+        // Ok(Response::new(response))
     }
 
     async fn import_transactions(

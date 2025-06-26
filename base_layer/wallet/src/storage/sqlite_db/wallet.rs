@@ -548,6 +548,14 @@ impl WalletBackend for WalletSqliteDatabase {
         }
     }
 
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, WalletStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        match ScannedBlockSql::last_height(&mut conn)? {
+            Some(height) => Ok(Some(height as u64)),
+            None => Ok(None),
+        }
+    }
+
     fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let sql_blocks = ScannedBlockSql::index(&mut conn)?;

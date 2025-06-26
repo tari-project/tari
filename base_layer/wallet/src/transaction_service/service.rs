@@ -203,7 +203,6 @@ pub struct TransactionService<
     timeout_update_watch: Watch<Duration>,
     wallet_db: WalletDatabase<TWalletBackend>,
     base_node_service: BaseNodeServiceHandle,
-    last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
     consensus_manager: ConsensusManager,
 }
@@ -332,7 +331,6 @@ where
             timeout_update_watch,
             base_node_service,
             wallet_db,
-            last_seen_tip_height: None,
             validation_in_progress: Arc::new(Mutex::new(())),
             consensus_manager,
         })
@@ -1073,9 +1071,6 @@ where
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
                 trace!(target: LOG_TARGET, "Received BaseNodeStateChanged event, but igoring",);
             },
-            BaseNodeEvent::NewBlockDetected(_hash, height) => {
-                self.last_seen_tip_height = Some(height);
-            },
         }
     }
 
@@ -1481,9 +1476,10 @@ where
         // Validate the aggregate signatures and script offset
         let factory = CommitmentFactory::default();
         let mut input_keys = UncompressedPublicKey::default();
+        let last_seen_tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         for input in transaction.transaction.body.inputs() {
             let context = ScriptContext::new(
-                self.last_seen_tip_height.unwrap_or(0),
+                last_seen_tip_height,
                 &[0; 32],
                 input
                     .commitment()
@@ -1544,6 +1540,20 @@ where
         Ok(tx_id)
     }
 
+    async fn get_tip_height(&self) -> Result<u64, TransactionServiceError> {
+        self.resources
+            .connectivity
+            .clone()
+            .obtain_base_node_wallet_rpc_client()
+            .await
+            .get_tip_info()
+            .await
+            .map_err(|e| TransactionServiceError::Other(e.to_string()))?
+            .metadata
+            .map(|m| m.best_block_height())
+            .ok_or(TransactionServiceError::Other("Tip height not available".to_string()))
+    }
+
     /// broadcasts a SHA-XTR atomic swap transaction
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -1568,7 +1578,9 @@ where
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+
+        let tip_height = self.get_tip_height().await?;
+
         let height = tip_height + (24 * 30);
 
         // lets create the HTLC script
@@ -1980,7 +1992,7 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
         let change_hashes = match stp.get_change_output()? {
@@ -2211,7 +2223,7 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let received_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
         let change_hashes = match stp.get_change_output()? {
@@ -2483,7 +2495,7 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
         let change_hashes = match stp.get_change_output()? {
