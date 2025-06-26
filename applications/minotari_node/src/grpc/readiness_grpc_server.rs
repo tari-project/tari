@@ -56,9 +56,7 @@ impl ReadinessService {
             current_height: 0,
             total_height: 0,
             progress_percentage: 0.0,
-            operations_per_second: 0.0,
             elapsed_time: Duration::from_millis(0),
-            estimated_remaining_time: None,
             last_updated: Instant::now(),
         });
         let handler = ReadinessStatusHandler {

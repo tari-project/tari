@@ -111,7 +111,6 @@ use tari_utilities::{
     ByteArray,
 };
 use tokio::sync::watch;
-use tracing::field::debug;
 
 use super::{
     cursors::KeyPrefixCursor,

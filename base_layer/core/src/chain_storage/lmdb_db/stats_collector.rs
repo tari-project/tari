@@ -88,9 +88,7 @@ pub struct DatabaseStats {
     pub current_height: u64,
     pub total_height: u64,
     pub progress_percentage: f64,
-    pub operations_per_second: f64,
     pub elapsed_time: Duration,
-    pub estimated_remaining_time: Option<Duration>,
     pub last_updated: Instant,
 }
 
@@ -100,9 +98,7 @@ impl Default for DatabaseStats {
             current_height: 0,
             total_height: 0,
             progress_percentage: 0.0,
-            operations_per_second: 0.0,
-            elapsed_time: Duration::from_secs(0),
-            estimated_remaining_time: None,
+            elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
         }
     }
@@ -121,9 +117,7 @@ impl DatabaseStats {
             current_height,
             total_height,
             progress_percentage,
-            operations_per_second: 0.0,
-            elapsed_time: Duration::from_secs(0),
-            estimated_remaining_time: None,
+            elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
         }
     }
@@ -140,20 +134,6 @@ impl DatabaseStats {
         } else {
             0.0
         };
-
-        // Calculate operations per second
-        if self.elapsed_time.as_millis() > 0 {
-            self.operations_per_second = self.current_height as f64 / self.elapsed_time.as_secs_f64();
-        }
-
-        // Estimate remaining time
-        if self.operations_per_second > 0.0 && self.current_height < self.total_height {
-            let remaining_operations = self.total_height - self.current_height;
-            let remaining_seconds = remaining_operations as f64 / self.operations_per_second;
-            self.estimated_remaining_time = Some(Duration::from_secs_f64(remaining_seconds));
-        } else if self.current_height >= self.total_height {
-            self.estimated_remaining_time = Some(Duration::from_secs(0));
-        }
     }
 
     /// Check if the operation is complete
@@ -252,16 +232,6 @@ impl LMDBStatsCollector {
     /// Get the progress percentage (0.0 to 100.0)
     pub fn progress_percentage(&self) -> f64 {
         self.receiver.borrow().progress_percentage
-    }
-
-    /// Get the current operations per second
-    pub fn operations_per_second(&self) -> f64 {
-        self.receiver.borrow().operations_per_second
-    }
-
-    /// Get the estimated remaining time
-    pub fn estimated_remaining_time(&self) -> Option<Duration> {
-        self.receiver.borrow().estimated_remaining_time
     }
 
     /// Check if the operation is complete
