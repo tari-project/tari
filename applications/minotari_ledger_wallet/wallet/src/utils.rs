@@ -20,8 +20,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::{String, ToString},
-    hash_domain,
     crypto::{hashing::DomainSeparatedHasher, keys::RistrettoSecretKey},
+    hash_domain,
     AppSW,
     KeyType,
     BIP32_COIN_TYPE,
@@ -164,9 +164,7 @@ fn get_raw_bip32_key(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
                 Ok(key_buffer)
             }
         },
-        Err(e) => {
-            return Err(cx_error_to_string(e))
-        },
+        Err(e) => return Err(cx_error_to_string(e)),
     }
 }
 
