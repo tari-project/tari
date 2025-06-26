@@ -1106,22 +1106,24 @@ where
     }
 
     async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
-        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
-            let db = self.db.clone();
-            let output_manager_handle = self.resources.output_manager_service.clone();
-            let metadata = self.wallet_db.get_chain_metadata().unwrap_or_default();
-            let tip_height = match metadata {
-                Some(val) => val.best_block_height(),
-                None => 0u64,
-            };
-            let event_publisher = self.event_publisher.clone();
-            tokio::spawn(check_detected_transactions(
-                output_manager_handle,
-                db,
-                event_publisher,
-                tip_height,
-            ));
-        }
+        // This is not needed, it will be validated elsewhere
+
+        // if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
+        //     let db = self.db.clone();
+        //     let output_manager_handle = self.resources.output_manager_service.clone();
+        //     let metadata = self.wallet_db.get_chain_metadata().unwrap_or_default();
+        //     let tip_height = match metadata {
+        //         Some(val) => val.best_block_height(),
+        //         None => 0u64,
+        //     };
+        //     let event_publisher = self.event_publisher.clone();
+        //     tokio::spawn(check_detected_transactions(
+        //         output_manager_handle,
+        //         db,
+        //         event_publisher,
+        //         tip_height,
+        //     ));
+        // }
     }
 
     /// Sends a new transaction to a single recipient

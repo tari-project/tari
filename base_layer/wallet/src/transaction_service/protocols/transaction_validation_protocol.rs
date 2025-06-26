@@ -103,6 +103,7 @@ where
         );
         // Fetch completed but unconfirmed transactions that were not imported
         let (state_changed, tip) = self.check_unconfirmed(base_node_wallet_client).await?;
+        debug!(target: LOG_TARGET, "Using tip height {} for validation", tip);
         check_detected_transactions(
             self.output_manager.clone(),
             self.db.clone(),
