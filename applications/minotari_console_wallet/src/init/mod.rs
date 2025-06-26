@@ -316,38 +316,6 @@ pub async fn set_peer_and_get_base_node_peer_config(
         },
     };
 
-    // If the user has not explicitly set a base node in the config, we try detect one
-    if !non_interactive_mode && config.custom_base_node.is_none() && !use_custom_base_node_peer {
-        if let Some(detected_node) = detect_local_base_node(config.network).await {
-            match selected_base_node {
-                Some(ref base_node) if base_node.public_key == detected_node.public_key => {
-                    // Skip asking because it's already set
-                },
-                Some(_) | None => {
-                    println!(
-                        "Local Base Node detected with public key {} and address {}",
-                        detected_node.public_key,
-                        detected_node
-                            .addresses
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    );
-                    if prompt(
-                        "Would you like to use this base node? IF YOU DID NOT START THIS BASE NODE YOU SHOULD SELECT \
-                         NO (Y/n)",
-                    ) {
-                        let address = detected_node.addresses.first().ok_or_else(|| {
-                            ExitError::new(ExitCode::ConfigError, "No address found for detected base node")
-                        })?;
-                        set_custom_base_node_peer_in_db(wallet, &detected_node.public_key, address)?;
-                        selected_base_node = Some(detected_node.into());
-                    }
-                },
-            }
-        }
-    }
     let peer_seeds = wallet.comms.peer_manager().get_seed_peers().await.map_err(|err| {
         ExitError::new(
             ExitCode::InterfaceError,
@@ -490,7 +458,7 @@ pub async fn init_wallet(
         e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
 
-    info!(
+    debug!(
         target: LOG_TARGET,
         "Wallet started in {}ms", now.elapsed().as_millis()
     );
@@ -638,12 +606,12 @@ pub async fn start_wallet(
         }
 
         debug!("validating transactions");
-        // if let Err(e) = wallet.transaction_service.validate_transactions().await {
-        //     error!(
-        //         target: LOG_TARGET,
-        //         "Problem validating and restarting transaction protocols: {}", e
-        //     );
-        // }
+        if let Err(e) = wallet.transaction_service.validate_transactions().await {
+            error!(
+                target: LOG_TARGET,
+                "Problem validating and restarting transaction protocols: {}", e
+            );
+        }
 
         // validate transaction outputs
         validate_txos(wallet).await?;

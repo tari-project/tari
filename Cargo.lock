@@ -4207,6 +4207,7 @@ dependencies = [
  "minotari_app_grpc",
  "minotari_app_utilities",
  "minotari_ledger_wallet_comms",
+ "minotari_node_wallet_client",
  "minotari_wallet",
  "qrcode",
  "rand 0.8.5",

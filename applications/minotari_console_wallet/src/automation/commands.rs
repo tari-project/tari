@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     cmp::{max, min},
     collections::HashMap,
@@ -39,6 +38,7 @@ use digest::Digest;
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
@@ -2770,7 +2770,9 @@ pub async fn command_runner(
             },
             FindPayRef(args) => {
                 // TODO: Get last scanned height. Perhaps just delete this command.
-                let tip_height = 0;
+                let tip_height = get_tip_height(&mut wallet.wallet_connectivity.clone())
+                    .await
+                    .unwrap_or(0);
 
                 match FixedHash::from_hex(&args.payment_reference_hex) {
                     Ok(payref) => match transaction_service.get_payment_by_reference(payref, tip_height).await {
@@ -3173,16 +3175,13 @@ fn load_tx_from_csv_file(file_path: PathBuf) -> Result<Vec<WalletTransaction>, C
     Ok(results)
 }
 
-#[allow(dead_code)]
-fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, data: &T) -> Result<(), CommandError> {
-    fs::create_dir_all(path.as_ref().parent().unwrap()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file = File::create(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    serde_json::to_writer_pretty(file, data).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    Ok(())
-}
+async fn get_tip_height<T: WalletConnectivityInterface>(wallet_connectivity: &mut T) -> Option<u64> {
+    let client = wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
 
-#[allow(dead_code)]
-fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, CommandError> {
-    let file = File::open(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    serde_json::from_reader(file).map_err(|e| CommandError::JsonFile(e.to_string()))
+    client
+        .get_tip_info()
+        .await
+        .ok()
+        .and_then(|t| t.metadata)
+        .map(|m| m.best_block_height())
 }

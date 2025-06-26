@@ -476,16 +476,30 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         for hash in request.hashes {
             let hash = hash.try_into()?;
             let output = self.db().fetch_output(hash).await?;
-            // let header = self
-            //     .db()
-            //     .fetch_header_by_block_hash(output.block_hash())
-            //     .await?
-            //     .ok_or_else(|| Error::HeaderHashNotFound)?;
 
-            utxos.push(models::DeletedUtxoInfo {
-                utxo_hash: hash.to_vec(),
-                found_in_header: output.map(|o| (o.mined_height, o.header_hash.to_vec())),
-            });
+            if let Some(output) = output {
+                // is it still unspent?
+                let input = self.db().fetch_input(hash).await?;
+                if let Some(i) = input {
+                    utxos.push(models::DeletedUtxoInfo {
+                        utxo_hash: hash.to_vec(),
+                        found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
+                        spent_in_header: Some((i.spent_height, i.header_hash.to_vec())),
+                    });
+                } else {
+                    utxos.push(models::DeletedUtxoInfo {
+                        utxo_hash: hash.to_vec(),
+                        found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
+                        spent_in_header: None,
+                    });
+                }
+            } else {
+                utxos.push(models::DeletedUtxoInfo {
+                    utxo_hash: hash.to_vec(),
+                    found_in_header: None,
+                    spent_in_header: None,
+                });
+            }
         }
 
         Ok(models::GetUtxosDeletedInfoResponse {

@@ -190,6 +190,12 @@ where
         last_mined_header_hash: Option<BlockHash>,
     ) -> Result<(), OutputManagerProtocolError> {
         let mined_outputs = self.db.fetch_mined_unspent_outputs().for_protocol(self.operation_id)?;
+        debug!(
+            target: LOG_TARGET,
+            "Found {} mined outputs to validate (Operation ID: {})",
+            mined_outputs.len(),
+            self.operation_id
+        );
         if mined_outputs.is_empty() {
             return Ok(());
         }
@@ -227,60 +233,43 @@ where
 
             let mut unmined_and_invalid = Vec::with_capacity(batch.len());
             let mut unspent = Vec::with_capacity(batch.len());
-            let response_best_block_height = response.best_block_height;
-            let response_best_block_hash = FixedHash::try_from(response.best_block_hash.clone()).map_err(|_| {
-                OutputManagerProtocolError::new(
-                    self.operation_id,
-                    OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
-                )
-            })?;
+            // let response_best_block_height = response.best_block_height;
+            // let response_best_block_hash = FixedHash::try_from(response.best_block_hash.clone()).map_err(|_| {
+            //     OutputManagerProtocolError::new(
+            //         self.operation_id,
+            //         OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
+            //     )
+            // })?;
             for (output, data) in batch.iter().zip(response.utxos.iter()) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Processing output comm:{}: hash {}, found in height:{:?}, spent in height {:?} (Operation ID: {})",
+                    output.commitment.to_hex(),
+                    output.hash.to_hex(),
+                    data.found_in_header.as_ref().map(|h| h.0),
+                    data.spent_in_header.as_ref().map(|h| h.0),
+
+                    self.operation_id
+                );
                 // when checking mined height, 0 can be valid so we need to check the hash
                 if data.found_in_header.is_some() {
-                    // base node thinks this is unmined or does not know of it.
-                    // unmined_and_invalid.push(output.hash);
-                    // continue;
-                    // } else {
-                    unspent.push((output.hash, true));
-                    continue;
-                }
-                // if data.height_deleted_at == 0 && output.marked_deleted_at_height.is_some() {
-                //     // this is mined but not yet spent
-                //     unspent.push((output.hash, true));
-                //     info!(
-                //         target: LOG_TARGET,
-                //         "Updating output comm:{}: hash {} as unspent at tip height {} (Operation ID: {})",
-                //         output.commitment.to_hex(),
-                //         output.hash.to_hex(),
-                //         response.best_block_height,
-                //         self.operation_id
-                //     );
-                //     continue;
-                // };
-
-                if data.found_in_header.is_none() {
-                    // let confirmed = (response.best_block_height.saturating_sub(data.height_deleted_at)) >=
-                    //     self.config.num_confirmations_required;
-                    // let block_hash = .clone().try_into().map_err(|_| {
-                    //     OutputManagerProtocolError::new(
-                    //         self.operation_id,
-                    //         OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
-                    //     )
-                    // })?;
-                    spent.push(SpentOutputInfoForBatch {
-                        commitment: output.commitment.clone(),
-                        confirmed: false,
-                        mark_deleted_at_height: response_best_block_height,
-                        mark_deleted_in_block: response_best_block_hash.clone(),
-                    });
-                    info!(
-                        target: LOG_TARGET,
-                        "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
-                        output.commitment.to_hex(),
-                        output.hash.to_hex(),
-                        response.best_block_height,
-                        self.operation_id
-                    );
+                    if let Some((spent_height, spent_hash)) = &data.spent_in_header {
+                        spent.push(SpentOutputInfoForBatch {
+                            commitment: output.commitment.clone(),
+                            confirmed: false,
+                            mark_deleted_at_height: *spent_height,
+                            mark_deleted_in_block: spent_hash.clone().try_into().map_err(|_| {
+                                OutputManagerProtocolError::new(
+                                    self.operation_id,
+                                    OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
+                                )
+                            })?,
+                        });
+                    } else {
+                        unspent.push((output.hash, true));
+                    }
+                } else {
+                    unmined_and_invalid.push(output.hash.clone());
                 }
             }
             if !unmined_and_invalid.is_empty() {
@@ -305,6 +294,12 @@ where
         wallet_client: &mut TWalletConnectivity::BaseNodeClient,
     ) -> Result<(), OutputManagerProtocolError> {
         let unconfirmed_outputs = self.db.fetch_unconfirmed_outputs().for_protocol(self.operation_id)?;
+        debug!(
+            target: LOG_TARGET,
+            "Found {} unconfirmed outputs to validate (Operation ID: {})",
+            unconfirmed_outputs.len(),
+            self.operation_id
+        );
 
         for batch in unconfirmed_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(

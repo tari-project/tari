@@ -21,4 +21,5 @@ pub struct GetUtxosDeletedInfoResponse {
 pub struct DeletedUtxoInfo {
     pub utxo_hash: Vec<u8>,
     pub found_in_header: Option<(u64, Vec<u8>)>,
+    pub spent_in_header: Option<(u64, Vec<u8>)>,
 }

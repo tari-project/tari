@@ -1005,10 +1005,10 @@ where
                 self.resources.config.num_confirmations_required = number;
                 Ok(TransactionServiceResponse::NumConfirmationsSet)
             },
-            // TransactionServiceRequest::ValidateTransactions => self
-            //     .start_transaction_validation_protocol(transaction_validation_join_handles)
-            //     .await
-            //     .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ValidateTransactions => self
+                .start_transaction_validation_protocol(transaction_validation_join_handles)
+                .await
+                .map(TransactionServiceResponse::ValidationStarted),
             // TransactionServiceRequest::ReValidateTransactions => self
             //     .start_transaction_revalidation(transaction_validation_join_handles)
             //     .await

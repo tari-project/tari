@@ -186,7 +186,22 @@ where
             self.operation_id
         );
         let op_id = self.operation_id;
+        let last_mined_transaction = self.db.fetch_last_mined_transaction().for_protocol(op_id)?;
+        if last_mined_transaction.is_none() {
+            debug!(
+                target: LOG_TARGET,
+                "No last mined transaction found, skipping reorg check (Operation ID: {})", self.operation_id
+            );
+            return Ok(());
+        }
         while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().for_protocol(op_id)? {
+            debug!(
+                target: LOG_TARGET,
+                "Checking last mined transaction with ID {}, mined in {:?} for reorgs (Operation ID: {})",
+                last_mined_transaction.tx_id,
+                last_mined_transaction.mined_height,
+                self.operation_id
+            );
             let mined_height = last_mined_transaction
                 .mined_height
                 .ok_or_else(|| {
