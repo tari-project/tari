@@ -126,6 +126,7 @@ use crate::{
             TransactionServiceResponse,
         },
         protocols::{
+            check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
@@ -141,7 +142,6 @@ use crate::{
             },
         },
         tasks::{
-            check_faux_transaction_status::check_detected_transactions,
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,

@@ -48,11 +48,11 @@ use crate::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
         handle::{TransactionEvent, TransactionEventSender},
+        protocols::check_faux_transaction_status::check_detected_transactions,
         storage::{
             database::{TransactionBackend, TransactionDatabase},
             sqlite_db::UnconfirmedTransactionInfo,
         },
-        tasks::check_faux_transaction_status::check_detected_transactions,
     },
     OperationId,
 };
@@ -102,14 +102,40 @@ where
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
         );
         // Fetch completed but unconfirmed transactions that were not imported
+        let (state_changed, tip) = self.check_unconfirmed(base_node_wallet_client).await?;
+        check_detected_transactions(
+            self.output_manager.clone(),
+            self.db.clone(),
+            self.event_publisher.clone(),
+            tip,
+        )
+        .await;
+        if state_changed {
+            self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
+        }
+        self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
+        Ok(self.operation_id)
+    }
+
+    async fn check_unconfirmed(
+        &mut self,
+        mut base_node_wallet_client: <TWalletConnectivity as WalletConnectivityInterface>::BaseNodeClient,
+    ) -> Result<(bool, u64), TransactionServiceProtocolError<OperationId>> {
+        debug!(
+            target: LOG_TARGET,
+            "Checking unconfirmed transactions against base node (Operation ID: {})", self.operation_id
+        );
         let unconfirmed_transactions = self
             .db
             .fetch_unconfirmed_transactions_info()
             .for_protocol(self.operation_id)
             .unwrap();
-
         let mut state_changed = false;
         let mut tip = 0;
+        let tip_info = base_node_wallet_client.get_tip_info().await.map_err(|e| {
+            TransactionServiceProtocolError::new(self.operation_id, TransactionServiceError::Other(e.to_string()))
+        })?;
+        tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
@@ -153,18 +179,7 @@ where
                 }
             }
         }
-        check_detected_transactions(
-            self.output_manager.clone(),
-            self.db.clone(),
-            self.event_publisher.clone(),
-            tip,
-        )
-        .await;
-        if state_changed {
-            self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
-        }
-        self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
-        Ok(self.operation_id)
+        Ok((state_changed, tip))
     }
 
     fn publish_event(&self, event: TransactionEvent) {
