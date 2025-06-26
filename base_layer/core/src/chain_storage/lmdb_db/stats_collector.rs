@@ -27,8 +27,6 @@
 //!
 //! ## Features
 //! - Track current and total progress (e.g., block heights)
-//! - Calculate operations per second
-//! - Estimate remaining time
 //! - Subscribe to progress updates via tokio watch channels
 //! - Support for multiple subscribers with additional watch sender channels
 //! - Non-async API for easy integration
@@ -38,7 +36,7 @@
 //! ```no_run
 //! use std::{thread, time::Duration};
 //!
-//! // Create a stats collector for tracking 1000 operations
+//! // Create a stats collector for tracking
 //! let collector = StatsCollector::with_total_height(1000);
 //!
 //! // Subscribe to progress updates
@@ -60,7 +58,6 @@
 //!
 //!     // Check current stats
 //!     let percentage = collector.progress_percentage();
-//!     let ops_per_sec = collector.operations_per_second();
 //!
 //!     if i % 100 == 0 {
 //!         println!("Progress: {:.1}%, Ops/sec: {:.2}", percentage, ops_per_sec);
@@ -321,10 +318,6 @@ mod tests {
 
         assert_eq!(stats.current_height, 25);
         assert_eq!(stats.progress_percentage, 25.0);
-        // Only check operations per second if enough time has elapsed
-        if stats.elapsed_time.as_millis() > 0 {
-            assert!(stats.operations_per_second > 0.0);
-        }
         assert!(!stats.is_complete());
     }
 
