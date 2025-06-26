@@ -145,16 +145,19 @@ ledgerctl delete "MinoTari Wallet"
 
 - Installation
 
+The following command has to be run from the root of the Tari ledger wallet repository, i.e. 
+`<TARI>/applications/minotari_ledger_wallet/wallet`.
+
 First locate `app_nanosplus.json`. It will either be in the ledger wallet root
-`/applications/minotari_ledger_wallet/wallet` or in its the target directory `./target/nanosplus/release`,
+`<TARI>/applications/minotari_ledger_wallet/wallet` or in its the target directory `./target/nanosplus/release`,
 then run one of the following commands to install the application:
 
 ```
 ledgerctl install app_nanosplus.json
 ```
 ```
-ledgerctl install .\target\nanosplus\release\app_nanosplus.json
-ledgerctl install .\target\stax\release\app_stax.json
+ledgerctl install ./target/nanosplus/release/app_nanosplus.json
+ledgerctl install ./target/stax/release/app_stax.json
 ```
 
 **Notes for Windows users:**
