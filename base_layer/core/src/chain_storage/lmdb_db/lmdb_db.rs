@@ -649,22 +649,24 @@ impl LMDBDatabase {
         output_hash: &HashOutput,
     ) -> Result<(), ChainStorageError> {
         // Forward mapping: payref -> output_hash
-        lmdb_insert(
-            txn,
-            &self.payref_to_output_index,
-            payref.as_slice(),
-            output_hash,
-            "payref_to_output_index",
-        )?;
+        // lmdb_insert(
+        //     txn,
+        //     &self.payref_to_output_index,
+        //     payref.as_slice(),
+        //     output_hash,
+        //     "payref_to_output_index",
+        // )?;
+        lmdb_replace(txn, &self.payref_to_output_index, payref.as_slice(), &output_hash, None)?;
 
         // Reverse mapping: output_hash -> payref
-        lmdb_insert(
-            txn,
-            &self.output_to_payref_index,
-            output_hash.as_slice(),
-            payref,
-            "output_to_payref_index",
-        )?;
+        // lmdb_insert(
+        //     txn,
+        //     &self.output_to_payref_index,
+        //     output_hash.as_slice(),
+        //     payref,
+        //     "output_to_payref_index",
+        // )?;
+        lmdb_replace(txn, &self.output_to_payref_index, output_hash.as_slice(), payref, None)?;
 
         Ok(())
     }
@@ -1192,7 +1194,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    /// Deletes both payref -> output_hash and output_hash -> payref from LMDB
+    // Deletes both payref -> output_hash and output_hash -> payref from LMDB
     fn delete_payref_index(
         &self,
         txn: &WriteTransaction<'_>,
@@ -1200,20 +1202,24 @@ impl LMDBDatabase {
         output_hash: &HashOutput,
     ) -> Result<(), ChainStorageError> {
         // Delete forward mapping
-        lmdb_delete(
+        let res1 = lmdb_delete(
             txn,
             &self.payref_to_output_index,
             payref.as_slice(),
             "payref_to_output_index",
-        )?;
+        );
 
         // Delete reverse mapping
-        lmdb_delete(
+        let res2 = lmdb_delete(
             txn,
             &self.output_to_payref_index,
             output_hash.as_slice(),
             "output_to_payref_index",
-        )?;
+        );
+
+        // Return error if either delete fails
+        res1?;
+        res2?;
 
         Ok(())
     }
@@ -3220,7 +3226,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // MIGRATION: Add payref index, rebuild payref index to recover deleted payrefs, add reverse payref index
         if (migrate_from_version == 2 || migrate_from_version == 3 || migrate_from_version == 4) && !payref_index_done {
             info!(target: LOG_TARGET, "Starting PayRef migration with reverse lookup");
-            let add_reverse_lookup = true;
 
             let read_txn = db.read_transaction()?;
             let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
@@ -3237,12 +3242,13 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             {
                 let txn = db.write_transaction()?;
                 lmdb_clear(&txn, &db.payref_to_output_index)?;
+                lmdb_clear(&txn, &db.output_to_payref_index)?;
                 txn.commit()?;
                 info!(target: LOG_TARGET, "Cleared PayRef index");
             }
 
             for height in 0..=chain_height {
-                process_payref_for_height(db, height, add_reverse_lookup)?;
+                process_payref_for_height(db, height)?;
             }
 
             payref_index_done = true;
@@ -3359,11 +3365,7 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
 }
 
 /// Process a batch of blocks for PayRef migration with error handling
-fn process_payref_for_height(
-    db: &LMDBDatabase,
-    height: u64,
-    add_reverse_lookup: bool,
-) -> Result<(), ChainStorageError> {
+fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), ChainStorageError> {
     info!(target: LOG_TARGET, "Processing PayRef migration for  {}", height);
     let read_txn = db.read_transaction()?;
     let read_header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
@@ -3391,6 +3393,10 @@ fn process_payref_for_height(
     drop(read_txn);
     let write_txn = db.write_transaction()?;
     for (payref, output_hash) in payrefs {
+        trace!(target: LOG_TARGET,
+            "Processing payref {} and output hash {} for height {}",
+            payref, output_hash, height
+        );
         lmdb_replace(
             &write_txn,
             &db.payref_to_output_index,
@@ -3398,15 +3404,13 @@ fn process_payref_for_height(
             &output_hash,
             None,
         )?;
-        if add_reverse_lookup {
-            lmdb_insert(
-                &write_txn,
-                &db.output_to_payref_index,
-                output_hash.as_slice(),
-                &payref,
-                "output_to_payref_index",
-            )?;
-        }
+        lmdb_replace(
+            &write_txn,
+            &db.output_to_payref_index,
+            output_hash.as_slice(),
+            &payref,
+            None,
+        )?;
     }
     write_txn.commit()?;
     // Commit the batch

@@ -3058,7 +3058,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         trace!(
             target: LOG_TARGET,
-            "Sending FindMatchingUtxos response stream to client"
+            "Sending SearchPaymentReferencesViaOutputHash response stream to client"
         );
         Ok(Response::new(rx))
     }

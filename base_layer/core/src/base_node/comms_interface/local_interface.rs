@@ -369,7 +369,7 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Fetch mined info by PayRef (Payment Reference)
+    /// Fetch mined info by output hash
     pub async fn fetch_mined_info_by_output_hash(
         &mut self,
         output_hash: &HashOutput,
@@ -384,7 +384,7 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Fetch mined info by PayRef (Payment Reference)
+    /// Fetch PayRef (Payment Reference) by output hash
     pub async fn fetch_payref_by_output_hash(
         &mut self,
         output_hash: &HashOutput,
