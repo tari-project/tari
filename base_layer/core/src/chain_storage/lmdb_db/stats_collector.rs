@@ -81,6 +81,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::Utc;
 use tokio::sync::watch;
 
 use super::lmdb_db::{MetadataKey, MetadataValue};
@@ -94,6 +95,7 @@ pub struct DatabaseStats {
     pub elapsed_time: Duration,
     pub last_updated: Instant,
     pub metadata: HashMap<MetadataKey, MetadataValue>,
+    pub timestamp: u64,
 }
 
 impl Default for DatabaseStats {
@@ -105,6 +107,7 @@ impl Default for DatabaseStats {
             elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
+            timestamp: Utc::now().timestamp_millis() as u64,
         }
     }
 }
@@ -125,6 +128,7 @@ impl DatabaseStats {
             elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
+            timestamp: Utc::now().timestamp_millis() as u64,
         }
     }
 
@@ -217,6 +221,7 @@ impl LMDBStatsCollector {
         // Send to all additional subscribers
         if let Ok(senders) = self.additional_senders.lock() {
             for sender in senders.iter() {
+                println!("[DEBUG] Sending stats to additional subscriber");
                 drop(sender.send(stats.clone()));
             }
         }
@@ -231,6 +236,7 @@ impl LMDBStatsCollector {
         // Send to all additional subscribers
         if let Ok(senders) = self.additional_senders.lock() {
             for sender in senders.iter() {
+                println!("[DEBUG] Sending stats to additional subscriber");
                 drop(sender.send(stats.clone()));
             }
         }
@@ -246,6 +252,7 @@ impl LMDBStatsCollector {
         // Send to all additional subscribers
         if let Ok(senders) = self.additional_senders.lock() {
             for sender in senders.iter() {
+                println!("[DEBUG] Sending stats to additional subscriber");
                 drop(sender.send(stats.clone()));
             }
         }

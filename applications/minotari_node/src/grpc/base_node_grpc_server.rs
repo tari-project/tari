@@ -27,6 +27,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use chrono::Utc;
 use either::Either;
 use futures::{channel::mpsc, SinkExt};
 use log::*;
@@ -529,6 +530,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 current_block: 0,
                 total_blocks: 0,
                 progress_percentage: 0.0,
+                timestamp: Utc::now().timestamp_millis() as u64,
             }),
         };
         trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");

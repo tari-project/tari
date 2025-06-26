@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::Utc;
 use futures::channel::mpsc;
 use minotari_app_grpc::tari_rpc::{self, readiness_status::Status as ReadinessStatusEnum, ReadinessStatus};
 use tari_core::chain_storage::DatabaseStats;
@@ -27,6 +28,17 @@ use tokio::sync::watch;
 use tonic::{Request, Response, Status};
 pub struct ReadinessGrpcServer {
     readiness_service: ReadinessService,
+}
+
+fn default_readiness_status() -> ReadinessStatus {
+    ReadinessStatus {
+        status: ReadinessStatusEnum::NotReady.into(),
+        description: ReadinessStatusEnum::NotReady.as_str_name().to_string(),
+        current_block: 0,
+        total_blocks: 0,
+        progress_percentage: 0.0,
+        timestamp: Utc::now().timestamp_millis() as u64,
+    }
 }
 
 pub struct ReadinessService {
@@ -41,15 +53,23 @@ pub struct ReadinessStatusHandler {
     pub lmdb_migration_status_tx: watch::Sender<DatabaseStats>,
 }
 
-impl ReadinessService {
-    pub fn new() -> (Self, ReadinessStatusHandler) {
-        let (readiness_tx, readiness_rx) = watch::channel(ReadinessStatus {
-            status: ReadinessStatusEnum::NotReady.into(),
-            description: ReadinessStatusEnum::NotReady.as_str_name().to_string(),
+impl ReadinessStatusHandler {
+    pub fn send_readiness_status(&self, status_kind: ReadinessStatusEnum) {
+        let status = ReadinessStatus {
+            status: status_kind.into(),
+            description: status_kind.as_str_name().to_string(),
             current_block: 0,
             total_blocks: 0,
             progress_percentage: 0.0,
-        });
+            timestamp: Utc::now().timestamp_millis() as u64,
+        };
+        self.readiness_tx.send(status).unwrap();
+    }
+}
+
+impl ReadinessService {
+    pub fn new() -> (Self, ReadinessStatusHandler) {
+        let (readiness_tx, readiness_rx) = watch::channel(default_readiness_status());
         let (lmdb_db_status_tx, lmdb_db_status_rx) = watch::channel(DatabaseStats::default());
         let handler = ReadinessStatusHandler {
             readiness_tx: readiness_tx.clone(),
@@ -68,17 +88,22 @@ impl ReadinessService {
 
     pub fn get_status(&self) -> ReadinessStatus {
         let readiness_status = self.readiness_rx.borrow().clone();
-        let migration_status_code: i32 = ReadinessStatusEnum::MigratingInitializingLmdb.into();
+        let migration_status = self.lmdb_db_status_rx.borrow();
 
-        if readiness_status.status == migration_status_code {
+        println!("Readiness status: {:?}", readiness_status);
+        println!("Migration status: {:?}", migration_status);
+
+        // Choose the status with the latest timestamp
+        if migration_status.timestamp > readiness_status.timestamp {
             // During migration, use the latest LMDB status for progress information
-            let migration_status = self.lmdb_db_status_rx.borrow();
+            println!("LMDB status: {:?}", migration_status);
             ReadinessStatus {
                 status: readiness_status.status,
                 description: readiness_status.description,
                 current_block: migration_status.current_height,
                 total_blocks: migration_status.total_height,
                 progress_percentage: migration_status.progress_percentage,
+                timestamp: migration_status.timestamp,
             }
         } else {
             // For non-migration states, use the readiness status as-is

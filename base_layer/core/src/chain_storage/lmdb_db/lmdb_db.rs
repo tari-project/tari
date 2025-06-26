@@ -447,7 +447,7 @@ impl LMDBDatabase {
     }
 
     /// Update progress in the stats collector
-    pub fn update_stats(&self, current_height: u64) {
+    pub fn update_stats_current_height(&self, current_height: u64) {
         debug!("Updating stats to height {}", current_height);
         self.stats_collector.update_progress(current_height);
     }
@@ -3162,7 +3162,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 
                 // Update stats progress
                 if height % 50 == 0 {
-                    db.update_stats(height);
+                    db.update_stats_current_height(height);
                 }
             }
             txn.commit()?;
@@ -3272,7 +3272,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 
                 // Update stats progress
                 if height % 50 == 0 {
-                    db.update_stats(height);
+                    db.update_stats_current_height(height);
                 }
             }
             info!(target: LOG_TARGET, "PayRef index rebuild completed");

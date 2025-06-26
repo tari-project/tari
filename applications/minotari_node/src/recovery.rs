@@ -30,7 +30,7 @@ use std::{
 
 use anyhow::anyhow;
 use log::*;
-use minotari_app_grpc::tari_rpc::{readiness_status::Status, ReadinessStatus};
+use minotari_app_grpc::tari_rpc::readiness_status::Status;
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
@@ -84,13 +84,8 @@ pub async fn run_recovery(
     })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            readiness_handler.readiness_tx.send(ReadinessStatus {
-                status: Status::MigratingInitializingLmdb.into(),
-                description: Status::MigratingInitializingLmdb.as_str_name().to_string(),
-                current_block: 0,
-                total_blocks: 0,
-                progress_percentage: 0.0,
-            })?;
+            println!("[DEBUG] Initializing LMDB database");
+            readiness_handler.send_readiness_status(Status::MigratingInitializingLmdb);
             let backend = create_lmdb_database_with_stats_channel(
                 &node_config.lmdb_path,
                 node_config.lmdb.clone(),
@@ -138,7 +133,7 @@ pub async fn run_recovery(
         difficulty_calculator,
     )?;
     db.start()?;
-    do_recovery(db.into(), temp_db, readiness_handler.readiness_tx).await?;
+    do_recovery(db.into(), temp_db, &readiness_handler).await?;
 
     info!(
         target: LOG_TARGET,
@@ -154,7 +149,7 @@ pub async fn run_recovery(
 async fn do_recovery<D: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<D>,
     source_backend: D,
-    readiness_tx: tokio::sync::watch::Sender<ReadinessStatus>,
+    readiness_status_handler: &ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
     let rules = ConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
@@ -194,13 +189,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
 
-        readiness_tx.send(ReadinessStatus {
-            status: Status::RecoveringRebuildingDatabase.into(),
-            description: Status::RecoveringRebuildingDatabase.as_str_name().to_string(),
-            current_block: counter,
-            total_blocks: max_height,
-            progress_percentage: (counter as f64 / max_height as f64) * 100.0,
-        })?;
+        readiness_status_handler.send_readiness_status(Status::RecoveringRebuildingDatabase);
 
         if counter >= max_height {
             info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter);

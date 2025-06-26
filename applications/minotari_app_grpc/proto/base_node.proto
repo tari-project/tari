@@ -202,6 +202,7 @@ message ReadinessStatus {
    uint64 current_block = 3;
    uint64 total_blocks = 4;
    double progress_percentage = 5;
+   uint64 timestamp = 6;
 }
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse {

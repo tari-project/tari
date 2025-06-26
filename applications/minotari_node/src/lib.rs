@@ -48,7 +48,7 @@ pub use grpc_method::GrpcMethod;
 use log::*;
 use minotari_app_grpc::{
     authentication::ServerAuthenticationInterceptor,
-    tari_rpc::{self, readiness_status::Status, ReadinessStatus},
+    tari_rpc::{self, readiness_status::Status},
     tls::identity::read_identity,
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
@@ -136,31 +136,13 @@ pub async fn run_base_node_with_cli(
         tls_identity.clone(),
         readiness_grpc_shutdown.to_signal(),
     ));
-    let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
-        status: Status::StartingUp.into(),
-        description: Status::StartingUp.as_str_name().to_string(),
-        current_block: 0,
-        total_blocks: 0,
-        progress_percentage: 0.0,
-    });
+    readiness_handler.send_readiness_status(Status::StartingUp);
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
-            status: Status::RecoveringPreparing.into(),
-            description: Status::RecoveringPreparing.as_str_name().to_string(),
-            current_block: 0,
-            total_blocks: 0,
-            progress_percentage: 0.0,
-        });
+        readiness_handler.send_readiness_status(Status::RecoveringPreparing);
         recovery::initiate_recover_db(&config.base_node)?;
-        let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
-            status: Status::RecoveringRebuilding.into(),
-            description: Status::RecoveringRebuilding.as_str_name().to_string(),
-            current_block: 0,
-            total_blocks: 0,
-            progress_percentage: 0.0,
-        });
+        readiness_handler.send_readiness_status(Status::RecoveringRebuilding);
         recovery::run_recovery(&config.base_node, readiness_handler)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
@@ -168,26 +150,16 @@ pub async fn run_base_node_with_cli(
     };
 
     // Build, node, build!
-    let ctx = builder::configure_and_initialize_node(
-        config.clone(),
-        node_identity,
-        shutdown.to_signal(),
-        &readiness_handler.readiness_tx,
-    )
-    .await?;
+    let ctx =
+        builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal(), &readiness_handler)
+            .await?;
 
     ctx.start()
         .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
-    let _unused = readiness_handler.readiness_tx.send(ReadinessStatus {
-        status: Status::Ready.into(),
-        description: Status::Ready.as_str_name().to_string(),
-        current_block: 0,
-        total_blocks: 0,
-        progress_percentage: 0.0,
-    });
+    readiness_handler.send_readiness_status(Status::Ready);
 
     // Go, GRPC, go go
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());

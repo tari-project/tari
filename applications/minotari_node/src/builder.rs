@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use log::*;
-use minotari_app_grpc::tari_rpc::{readiness_status::Status, ReadinessStatus};
+use minotari_app_grpc::tari_rpc::readiness_status::Status;
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
@@ -54,7 +54,12 @@ use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
 
-use crate::{bootstrap::BaseNodeBootstrapper, ApplicationConfig, DatabaseType};
+use crate::{
+    bootstrap::BaseNodeBootstrapper,
+    grpc::readiness_grpc_server::ReadinessStatusHandler,
+    ApplicationConfig,
+    DatabaseType,
+};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -179,17 +184,11 @@ pub async fn configure_and_initialize_node(
     app_config: Arc<ApplicationConfig>,
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
-    readiness_status_tx: &tokio::sync::watch::Sender<ReadinessStatus>,
+    readiness_status_handler: &ReadinessStatusHandler,
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
-            let _unused = readiness_status_tx.send(ReadinessStatus {
-                status: Status::BuildingContextBlockchain.into(),
-                description: Status::BuildingContextBlockchain.as_str_name().to_string(),
-                current_block: 0,
-                total_blocks: 0,
-                progress_percentage: 0.0,
-            });
+            readiness_status_handler.send_readiness_status(Status::BuildingContextBlockchain);
             let rules = ConsensusManager::builder(app_config.base_node.network)
                 .build()
                 .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
@@ -199,13 +198,7 @@ pub async fn configure_and_initialize_node(
                 rules,
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
-            let _unused = readiness_status_tx.send(ReadinessStatus {
-                status: Status::BuildingContextBootstrap.into(),
-                description: Status::BuildingContextBootstrap.as_str_name().to_string(),
-                current_block: 0,
-                total_blocks: 0,
-                progress_percentage: 0.0,
-            });
+            readiness_status_handler.send_readiness_status(Status::BuildingContextBootstrap);
             build_node_context(backend, app_config, node_identity, interrupt_signal).await?
         },
     };
