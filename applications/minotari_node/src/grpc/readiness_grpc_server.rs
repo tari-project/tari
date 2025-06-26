@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::{Duration, Instant};
-
 use futures::channel::mpsc;
 use minotari_app_grpc::tari_rpc::{self, readiness_status::Status as ReadinessStatusEnum, ReadinessStatus};
 use tari_core::chain_storage::DatabaseStats;
@@ -52,13 +50,7 @@ impl ReadinessService {
             total_blocks: 0,
             progress_percentage: 0.0,
         });
-        let (lmdb_db_status_tx, lmdb_db_status_rx) = watch::channel(DatabaseStats {
-            current_height: 0,
-            total_height: 0,
-            progress_percentage: 0.0,
-            elapsed_time: Duration::from_millis(0),
-            last_updated: Instant::now(),
-        });
+        let (lmdb_db_status_tx, lmdb_db_status_rx) = watch::channel(DatabaseStats::default());
         let handler = ReadinessStatusHandler {
             readiness_tx: readiness_tx.clone(),
             lmdb_migration_status_tx: lmdb_db_status_tx.clone(),

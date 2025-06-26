@@ -916,6 +916,7 @@ impl LMDBDatabase {
         v: &MetadataValue,
     ) -> Result<(), ChainStorageError> {
         lmdb_replace(txn, &self.metadata_db, &k.as_u32(), v, None)?;
+        self.stats_collector.update_metadata(k, v);
         Ok(())
     }
 
@@ -3007,8 +3008,8 @@ fn get_database(store: &LMDBStore, name: &str) -> Result<DatabaseRef, ChainStora
     Ok(handle.db())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-enum MetadataKey {
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
+pub enum MetadataKey {
     ChainHeight,
     BestBlock,
     AccumulatedWork,
@@ -3042,8 +3043,8 @@ impl fmt::Display for MetadataKey {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-enum MetadataValue {
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
     AccumulatedWork(U512),

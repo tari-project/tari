@@ -76,11 +76,14 @@
 //! ```
 
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use tokio::sync::watch;
+
+use super::lmdb_db::{MetadataKey, MetadataValue};
 
 /// Statistics data for database operations
 #[derive(Debug, Clone, PartialEq)]
@@ -90,6 +93,7 @@ pub struct DatabaseStats {
     pub progress_percentage: f64,
     pub elapsed_time: Duration,
     pub last_updated: Instant,
+    pub metadata: HashMap<MetadataKey, MetadataValue>,
 }
 
 impl Default for DatabaseStats {
@@ -100,6 +104,7 @@ impl Default for DatabaseStats {
             progress_percentage: 0.0,
             elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
+            metadata: HashMap::new(),
         }
     }
 }
@@ -119,7 +124,23 @@ impl DatabaseStats {
             progress_percentage,
             elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
+            metadata: HashMap::new(),
         }
+    }
+
+    /// Set metadata key-value pair
+    pub fn set_metadata(&mut self, key: MetadataKey, value: &MetadataValue) {
+        self.metadata.insert(key, value.to_owned());
+    }
+
+    /// Get metadata value by key
+    pub fn get_metadata(&self, key: &MetadataKey) -> Option<&MetadataValue> {
+        self.metadata.get(key)
+    }
+
+    /// Clear all metadata
+    pub fn clear_metadata(&mut self) {
+        self.metadata.clear();
     }
 
     /// Update progress with new current height
@@ -191,12 +212,26 @@ impl LMDBStatsCollector {
     pub fn update_progress(&self, current_height: u64) {
         let mut stats = self.receiver.borrow().clone();
         stats.update_progress(current_height, self.start_time);
-        let _ = self.sender.send(stats.clone());
+        drop(self.sender.send(stats.clone()));
 
         // Send to all additional subscribers
         if let Ok(senders) = self.additional_senders.lock() {
             for sender in senders.iter() {
-                let _ = sender.send(stats.clone());
+                drop(sender.send(stats.clone()));
+            }
+        }
+    }
+
+    /// Update metadata in the current stats
+    pub fn update_metadata(&self, key: MetadataKey, value: &MetadataValue) {
+        let mut stats = self.receiver.borrow().clone();
+        stats.set_metadata(key, value);
+        drop(self.sender.send(stats.clone()));
+
+        // Send to all additional subscribers
+        if let Ok(senders) = self.additional_senders.lock() {
+            for sender in senders.iter() {
+                drop(sender.send(stats.clone()));
             }
         }
     }
@@ -206,12 +241,12 @@ impl LMDBStatsCollector {
         let mut stats = self.receiver.borrow().clone();
         stats.total_height = total_height;
         stats.update_progress(stats.current_height, self.start_time);
-        let _ = self.sender.send(stats.clone());
+        drop(self.sender.send(stats.clone()));
 
         // Send to all additional subscribers
         if let Ok(senders) = self.additional_senders.lock() {
             for sender in senders.iter() {
-                let _ = sender.send(stats.clone());
+                drop(sender.send(stats.clone()));
             }
         }
     }
@@ -219,12 +254,12 @@ impl LMDBStatsCollector {
     /// Reset the stats collector with new parameters
     pub fn reset(&self, current_height: u64, total_height: u64) {
         let stats = DatabaseStats::new(current_height, total_height);
-        let _ = self.sender.send(stats.clone());
+        drop(self.sender.send(stats.clone()));
 
         // Send to all additional subscribers
         if let Ok(senders) = self.additional_senders.lock() {
             for sender in senders.iter() {
-                let _ = sender.send(stats.clone());
+                drop(sender.send(stats.clone()));
             }
         }
     }
@@ -267,7 +302,7 @@ impl LMDBStatsCollector {
     /// The sender will immediately receive the current stats
     pub fn add_sender(&self, sender: watch::Sender<DatabaseStats>) {
         let current_stats = self.receiver.borrow().clone();
-        let _ = sender.send(current_stats);
+        drop(sender.send(current_stats));
 
         if let Ok(mut senders) = self.additional_senders.lock() {
             senders.push(sender);
@@ -467,5 +502,59 @@ mod tests {
         collector.clear_additional_senders();
 
         assert_eq!(collector.additional_subscribers_count(), 0);
+    }
+
+    #[test]
+    fn test_stats_collector_update_metadata() {
+        let collector = LMDBStatsCollector::with_total_height(100);
+        let mut receiver = collector.subscribe();
+
+        // Update metadata
+        let key = MetadataKey::ChainHeight;
+        let value = MetadataValue::Height(50);
+        collector.update_metadata(key.clone(), value.clone());
+
+        // Check if receiver got the metadata update
+        let stats = receiver.borrow_and_update();
+        assert_eq!(stats.get_metadata(&key), Some(&value));
+    }
+
+    #[test]
+    fn test_database_stats_metadata() {
+        let mut stats = DatabaseStats::new(0, 100);
+
+        // Set metadata
+        let key = MetadataKey::ChainHeight;
+        let value = MetadataValue::Height(75);
+        stats.set_metadata(key.clone(), value.clone());
+
+        // Get metadata
+        assert_eq!(stats.get_metadata(&key), Some(&value));
+        assert_eq!(stats.get_metadata(&MetadataKey::PruningHorizon), None);
+
+        // Clear metadata
+        stats.clear_metadata();
+        assert_eq!(stats.get_metadata(&key), None);
+    }
+
+    #[test]
+    fn test_stats_collector_metadata_propagation() {
+        let collector = LMDBStatsCollector::with_total_height(100);
+
+        // Subscribe additional receivers
+        let mut receiver1 = collector.subscribe_sender();
+        let mut receiver2 = collector.subscribe_sender();
+
+        // Update metadata
+        let key = MetadataKey::ChainHeight;
+        let value = MetadataValue::Height(25);
+        collector.update_metadata(key.clone(), value.clone());
+
+        // All receivers should get the metadata update
+        let stats1 = receiver1.borrow_and_update();
+        let stats2 = receiver2.borrow_and_update();
+
+        assert_eq!(stats1.get_metadata(&key), Some(&value));
+        assert_eq!(stats2.get_metadata(&key), Some(&value));
     }
 }
