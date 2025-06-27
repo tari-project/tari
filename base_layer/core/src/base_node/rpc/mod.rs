@@ -20,20 +20,27 @@ use url::Url;
 
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
-use crate::{
-    base_node::rpc::models::{TxQueryResponse, TxSubmissionResponse},
-    proto,
-    proto::{
-        base_node::{
-            GetMempoolFeePerGramStatsRequest,
-            GetMempoolFeePerGramStatsResponse,
-            GetWalletQueryHttpServiceAddressResponse,
-            Signatures,
-            SyncUtxosByBlockRequest,
-            SyncUtxosByBlockResponse,
-        },
-        types::{Signature, Transaction},
+use crate::proto::{
+    self,
+    base_node::{
+        FetchMatchingUtxos,
+        FetchUtxosResponse,
+        GetMempoolFeePerGramStatsRequest,
+        GetMempoolFeePerGramStatsResponse,
+        GetWalletQueryHttpServiceAddressResponse,
+        QueryDeletedRequest,
+        QueryDeletedResponse,
+        Signatures,
+        SyncUtxosByBlockRequest,
+        SyncUtxosByBlockResponse,
+        TipInfoResponse,
+        TxQueryBatchResponses,
+        TxQueryResponse,
+        TxSubmissionResponse,
+        UtxoQueryRequest,
+        UtxoQueryResponses,
     },
+    types::{Signature, Transaction},
 };
 #[cfg(feature = "base_node")]
 use crate::{

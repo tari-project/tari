@@ -16,6 +16,7 @@ pub mod submit_transaction;
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc";
 
 pub async fn handle<B: BlockchainBackend + 'static>(
+    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Extension(mempool_service): Extension<MempoolHandle>,
     Json(params): Json<JsonRpcRequest>,
 ) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -37,7 +38,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             })?;
             let transaction = serde_json::from_value(tx.clone())
                 .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e.to_string()))))?;
-            match submit_transaction::handle(&mut (mempool_service.clone()), transaction).await {
+            match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
                 Ok(response) => Ok(Json(JsonRpcResponse {
                     result: serde_json::to_value(response).unwrap_or_default(),
                     error: None,

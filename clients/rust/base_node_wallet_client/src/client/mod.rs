@@ -71,7 +71,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 pub struct JsonRpcResponse<T> {
     pub result: Option<T>,
     pub error: Option<String>,
-    pub id: u64,
+    pub id: String,
 }
 
 impl<T> JsonRpcResponse<T> {

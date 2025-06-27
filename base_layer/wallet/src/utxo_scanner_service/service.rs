@@ -139,38 +139,37 @@ where
         }
 
         let mut main_shutdown = self.shutdown_signal.clone();
-        let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
+        let mut scanning_interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        scanning_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
-            let mut local_shutdown = Shutdown::new();
-            let task = self.create_task(local_shutdown.to_signal());
-            let mut task_join_handle = task::spawn(async move {
-                if let Err(err) = task.run().await {
-                    error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
-                }
-            })
-            .fuse();
+            tokio::select! {
+            _ = scanning_interval.tick() => {
+                let local_shutdown = main_shutdown.clone();
+                let task = self.create_task(local_shutdown);
+                let task_join_handle = task::spawn(async move {
+                    if let Err(err) = task.run().await {
+                        error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
+                    }
+                });
 
-            loop {
-                tokio::select! {
-                    _ = &mut task_join_handle => {
-                        debug!(target: LOG_TARGET, "UTXO scanning round completed");
-                        local_shutdown.trigger();
-                    }
-                    _ = main_shutdown.wait() => {
-                        // this will stop the task if its running, and let that thread exit gracefully
-                        local_shutdown.trigger();
-                        info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
-                        return Ok(());
-                    }
-                    Ok(_) = self.one_sided_message_watch.changed() => {
-                            self.resources.one_sided_payment_message = (*self.one_sided_message_watch.borrow()).clone();
+                info!(target: LOG_TARGET, "UTXO scanning round started");
+                // Wait for the task to complete or shutdown signal
+                match task_join_handle.await {
+                    Ok(_) => {
+                        debug!(target: LOG_TARGET, "UTXO scanning round completed successfully");
                     },
-                    Ok(_) = self.recovery_message_watch.changed() => {
-                            self.resources.recovery_message = (*self.recovery_message_watch.borrow()).clone();
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "UTXO scanning round failed: {}", e);
                     },
                 }
             }
+            _ = main_shutdown.wait() => {
+                // this will stop the task if its running, and let that thread exit gracefully
+                info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
+                return Ok(());
+            }
+                         }
         }
     }
 }
