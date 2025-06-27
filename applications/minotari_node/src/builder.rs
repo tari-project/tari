@@ -37,7 +37,13 @@ use tari_core::{
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
-    chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
+    chain_storage::{
+        create_lmdb_database_with_stats_channel,
+        BlockchainDatabase,
+        ChainStorageError,
+        LMDBDatabase,
+        Validators,
+    },
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool},
     proof_of_work::randomx_factory::RandomXFactory,
@@ -192,10 +198,11 @@ pub async fn configure_and_initialize_node(
             let rules = ConsensusManager::builder(app_config.base_node.network)
                 .build()
                 .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
-            let backend = create_lmdb_database(
+            let backend = create_lmdb_database_with_stats_channel(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
                 rules,
+                Some(readiness_status_handler.lmdb_migration_status_tx.clone()),
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
             readiness_status_handler.send_readiness_status(Status::BuildingContextBootstrap);

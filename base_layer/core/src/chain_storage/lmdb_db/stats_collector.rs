@@ -208,7 +208,11 @@ impl LMDBStatsCollector {
         }
     }
 
-    pub fn update_db_stats(&self, stats: DatabaseStats) {
+    fn get_current_timestamp(&self) -> u64 {
+        Utc::now().timestamp_millis() as u64
+    }
+
+    fn update_db_stats(&self, stats: DatabaseStats) {
         drop(self.sender.send(stats.clone()));
 
         // Send to all additional subscribers
@@ -222,6 +226,7 @@ impl LMDBStatsCollector {
     pub fn update_migration_stats(&self, stats: MigrationStats) {
         let new_stats = DatabaseStats {
             migration_stats: stats,
+            timestamp: self.get_current_timestamp(),
             ..self.receiver.borrow().clone()
         };
         self.update_db_stats(new_stats);
@@ -230,6 +235,7 @@ impl LMDBStatsCollector {
     pub fn update_transactions_stats(&self, stats: TransactionsStats) {
         let new_stats = DatabaseStats {
             transactions_stats: stats,
+            timestamp: self.get_current_timestamp(),
             ..self.receiver.borrow().clone()
         };
         self.update_db_stats(new_stats);
@@ -315,7 +321,6 @@ impl LMDBStatsCollector {
     pub fn add_sender(&self, sender: watch::Sender<DatabaseStats>) {
         let current_stats = self.receiver.borrow().clone();
         drop(sender.send(current_stats));
-
         if let Ok(mut senders) = self.additional_senders.lock() {
             senders.push(sender);
         }
