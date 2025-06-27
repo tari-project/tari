@@ -46,14 +46,7 @@ pub use cli::{
     SetBaseNodeArgs,
     WhoisArgs,
 };
-use init::{
-    change_password,
-    init_wallet,
-    set_peer_and_get_base_node_peer_config,
-    start_wallet,
-    tari_splash_screen,
-    WalletBoot,
-};
+use init::{change_password, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -230,38 +223,23 @@ pub fn run_wallet_with_cli(
         boot_mode = WalletBoot::Recovery;
     }
 
-    // get base node/s
-    let base_node_config = runtime.block_on(set_peer_and_get_base_node_peer_config(
-        &config.wallet,
-        &mut wallet,
-        cli.non_interactive_mode,
-    ))?;
-    let base_nodes_peers = base_node_config.get_base_node_peers()?;
-
     let wallet_mode = wallet_mode(&cli, boot_mode);
 
     // start wallet
-    runtime.block_on(start_wallet(&mut wallet, &base_nodes_peers, &wallet_mode))?;
+    runtime.block_on(start_wallet(&mut wallet, &wallet_mode))?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
 
     let result = match wallet_mode {
-        WalletMode::Tui => tui_mode(handle, &config.wallet, &base_node_config, wallet.clone()),
+        WalletMode::Tui => tui_mode(handle, &config.wallet, wallet.clone()),
         WalletMode::Grpc => grpc_mode(handle, &config.wallet, wallet.clone()),
-        WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, &base_node_config, wallet.clone(), path),
-        WalletMode::Command(command) => command_mode(
-            handle,
-            &cli,
-            &config.wallet,
-            &base_node_config,
-            wallet.clone(),
-            *command,
-        ),
+        WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, wallet.clone(), path),
+        WalletMode::Command(command) => command_mode(handle, &cli, &config.wallet, wallet.clone(), *command),
 
         WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
-            recovery_mode(handle, &base_node_config, &config.wallet, wallet_mode, wallet.clone())
+            recovery_mode(handle, &config.wallet, wallet_mode, wallet.clone())
         },
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,

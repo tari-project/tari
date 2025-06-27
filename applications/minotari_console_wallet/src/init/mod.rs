@@ -290,64 +290,6 @@ pub async fn change_password(
     })
 }
 
-/// Populates the PeerConfig struct from:
-/// 1. The custom peer in the wallet config if it exists
-/// 2. The custom peer in the wallet db if it exists
-/// 3. The detected local base node if any
-/// 4. The service peers defined in config they exist
-/// 5. The peer seeds defined in config
-pub async fn set_peer_and_get_base_node_peer_config(
-    config: &WalletConfig,
-    wallet: &mut WalletSqlite,
-    non_interactive_mode: bool,
-) -> Result<PeerConfig, ExitError> {
-    let mut use_custom_base_node_peer = false;
-    let mut selected_base_node = match config.custom_base_node {
-        Some(ref custom) => SeedPeer::from_str(custom)
-            .map(|node| Some(Peer::from(node)))
-            .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
-        None => {
-            if let Some(custom_base_node_peer) = get_custom_base_node_peer_from_db(wallet) {
-                use_custom_base_node_peer = true;
-                Some(custom_base_node_peer)
-            } else {
-                None
-            }
-        },
-    };
-
-    let peer_seeds = wallet.comms.peer_manager().get_seed_peers().await.map_err(|err| {
-        ExitError::new(
-            ExitCode::InterfaceError,
-            format!("Could not get seed peers from peer manager: {}", err),
-        )
-    })?;
-    // config
-    let base_node_peers = config
-        .base_node_service_peers
-        .iter()
-        .map(|s| SeedPeer::from_str(s))
-        .map(|r| r.map(Peer::from))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed base node peer: {}", err)))?;
-
-    let http_client_url = Url::parse(config.http_client_url.as_ref().ok_or_else(|| {
-        ExitError::new(
-            ExitCode::ConfigError,
-            format!("HTTP client URL is not set in the wallet config"),
-        )
-    })?)
-    .map_err(|e| {
-        ExitError::new(
-            ExitCode::ConfigError,
-            format!("HTTP Client URL is not a valid url:{}", e.to_string()),
-        )
-    })?;
-    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, http_client_url);
-
-    Ok(peer_config)
-}
-
 /// Determines which mode the wallet should run in.
 pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
@@ -559,39 +501,7 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
 }
 
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
-pub async fn start_wallet(
-    wallet: &mut WalletSqlite,
-    base_nodes: &[Peer],
-    wallet_mode: &WalletMode,
-) -> Result<(), ExitError> {
-    debug!(target: LOG_TARGET, "Setting base node peer");
-
-    if base_nodes.is_empty() {
-        return Err(ExitError::new(
-            ExitCode::WalletError,
-            "No base nodes configured to connect to",
-        ));
-    }
-    let selected_base_node = base_nodes.choose(&mut OsRng).expect("base_nodes is not empty");
-    let net_address = selected_base_node
-        .addresses
-        .best()
-        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
-
-    wallet
-        .set_base_node_peer(
-            selected_base_node.public_key.clone(),
-            Some(net_address.address().clone()),
-            Some(base_nodes.to_vec()),
-        )
-        .await
-        .map_err(|e| {
-            ExitError::new(
-                ExitCode::WalletError,
-                format!("Error setting wallet base node peer. {}", e),
-            )
-        })?;
-
+pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -> Result<(), ExitError> {
     // Restart transaction protocols if not running in script or command modes
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
         // NOTE: https://github.com/tari-project/tari/issues/5227

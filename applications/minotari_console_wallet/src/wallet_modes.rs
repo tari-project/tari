@@ -145,7 +145,6 @@ pub(crate) fn command_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
-    base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     command: CliCommands,
 ) -> Result<(), ExitError> {
@@ -167,15 +166,7 @@ pub(crate) fn command_mode(
     } else {
         force_exit_for_pre_mine_commands(&command)
     };
-    wallet_or_exit(
-        handle,
-        cli,
-        config,
-        base_node_config,
-        wallet,
-        force_exit,
-        force_interactive,
-    )
+    wallet_or_exit(handle, cli, config, wallet, force_exit, force_interactive)
 }
 
 fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
@@ -223,7 +214,6 @@ pub(crate) fn script_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
-    base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     path: PathBuf,
 ) -> Result<(), ExitError> {
@@ -268,15 +258,7 @@ pub(crate) fn script_mode(
         info!(target: LOG_TARGET, "Completed wallet script mode");
     }
 
-    wallet_or_exit(
-        handle,
-        cli,
-        config,
-        base_node_config,
-        wallet,
-        force_exit,
-        force_interactive,
-    )
+    wallet_or_exit(handle, cli, config, wallet, force_exit, force_interactive)
 }
 
 /// Prompts the user to continue to the wallet, or exit.
@@ -284,14 +266,13 @@ fn wallet_or_exit(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
-    base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     force_exit: bool,
     force_interactive: bool,
 ) -> Result<(), ExitError> {
     if force_interactive {
         info!(target: LOG_TARGET, "Starting TUI.");
-        tui_mode(handle.clone(), config, base_node_config, wallet.clone())
+        tui_mode(handle.clone(), config, wallet.clone())
     } else {
         if cli.command_mode_auto_exit {
             info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
@@ -320,19 +301,14 @@ fn wallet_or_exit(
                 },
                 _ => {
                     info!(target: LOG_TARGET, "Starting TUI.");
-                    tui_mode(handle, config, base_node_config, wallet)
+                    tui_mode(handle, config, wallet)
                 },
             }
         }
     }
 }
 
-pub fn tui_mode(
-    handle: Handle,
-    config: &WalletConfig,
-    base_node_config: &PeerConfig,
-    mut wallet: WalletSqlite,
-) -> Result<(), ExitError> {
+pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite) -> Result<(), ExitError> {
     let (events_broadcaster, _events_listener) = broadcast::channel(100);
 
     if config.grpc_enabled {
@@ -405,7 +381,6 @@ pub fn tui_mode(
 
 pub fn recovery_mode(
     handle: Handle,
-    base_node_config: &PeerConfig,
     wallet_config: &WalletConfig,
     wallet_mode: WalletMode,
     wallet: WalletSqlite,
@@ -415,11 +390,14 @@ pub fn recovery_mode(
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(
-        &wallet,
-        base_node_config.http_client_url.clone(),
-        wallet_config.recovery_retry_limit,
-    )) {
+    let url = Url::parse(
+        wallet_config
+            .http_client_url
+            .as_ref()
+            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "HTTP client URL is not set"))?,
+    )
+    .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid HTTP client URL: {}", e)))?;
+    match handle.block_on(wallet_recovery(&wallet, url, wallet_config.recovery_retry_limit)) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);
@@ -440,7 +418,7 @@ pub fn recovery_mode(
 
     match wallet_mode {
         WalletMode::RecoveryDaemon => grpc_mode(handle, wallet_config, wallet),
-        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet),
+        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, wallet),
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
             "Unsupported post recovery mode",
