@@ -377,23 +377,10 @@ pub fn tui_mode(
         events_broadcaster,
     );
 
-    let base_node_selected;
-    if let Some(peer) = base_node_config.base_node_custom.clone() {
-        base_node_selected = peer;
-    } else if let Some(peer) = get_custom_base_node_peer_from_db(&wallet) {
-        base_node_selected = peer;
-    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
-        base_node_selected = peer;
-    } else {
-        return Err(ExitError::new(ExitCode::WalletError, "Could not select a base node"));
-    }
-
     let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
         "Minotari Wallet".into(),
         wallet,
         config.clone(),
-        base_node_selected,
-        base_node_config.clone(),
         notifier,
     ))?;
 

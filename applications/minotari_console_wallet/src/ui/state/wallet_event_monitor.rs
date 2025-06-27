@@ -207,16 +207,6 @@ impl WalletEventMonitor {
                             warn!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
                         },
                 },
-                _ = base_node_changed.changed() => {
-                    let peer = base_node_changed.borrow().as_ref().cloned();
-                    if let Some(peer) = peer {
-                        self.trigger_base_node_peer_refresh(peer.get_current_peer()).await;
-                        self.trigger_balance_refresh();
-                        if self.should_we_trigger_tx_update_for_payref().await{
-                            self.trigger_full_tx_state_refresh().await;
-                        }
-                    }
-                }
                 result = base_node_events.recv() => {
                     match result {
                         Ok(msg) => {
@@ -322,14 +312,6 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.trigger_wallet_scanned_height_update(height).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
-        }
-    }
-
-    async fn trigger_base_node_peer_refresh(&mut self, peer: Peer) {
-        let mut inner = self.app_state_inner.write().await;
-
-        if let Err(e) = inner.refresh_base_node_peer(peer).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }
