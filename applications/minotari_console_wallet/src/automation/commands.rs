@@ -2624,24 +2624,7 @@ pub async fn command_runner(
                     ))?)
                     .map_err(|e| CommandError::General(format!("Not a valid url: {}", e.to_string())))?;
 
-                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds, http_client_url);
-
-                    let base_nodes = peer_config
-                        .get_base_node_peers()
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    new_wallet
-                        .set_base_node_peer(
-                            base_nodes[0].public_key.clone(),
-                            Some(
-                                base_nodes[0]
-                                    .last_address_used()
-                                    .ok_or(CommandError::General("No address found".to_string()))?,
-                            ),
-                            Some(base_nodes),
-                        )
-                        .await
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    wallet_recovery(&new_wallet, &peer_config, new_config.recovery_retry_limit)
+                    wallet_recovery(&new_wallet, http_client_url, new_config.recovery_retry_limit)
                         .await
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     print!("Wallet recovery completed");

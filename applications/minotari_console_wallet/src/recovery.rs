@@ -43,6 +43,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex::Hex, SafePassword};
 use tokio::{runtime::Runtime, sync::broadcast};
+use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::wallet_modes::PeerConfig;
@@ -98,11 +99,7 @@ pub fn get_seed_from_seed_words(
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
 #[allow(clippy::too_many_lines)]
-pub async fn wallet_recovery(
-    wallet: &WalletSqlite,
-    base_node_config: &PeerConfig,
-    retry_limit: usize,
-) -> Result<(), ExitError> {
+pub async fn wallet_recovery(wallet: &WalletSqlite, http_client_url: Url, retry_limit: usize) -> Result<(), ExitError> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
     // We dont care about the shutdown signal here, so we just create one
     let shutdown = Shutdown::new();
@@ -110,7 +107,7 @@ pub async fn wallet_recovery(
 
     let mut recovery_task =
         UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager, DefaultHttpClientFactory>::builder()
-        .with_client_factory(DefaultHttpClientFactory::new( base_node_config.http_client_url.clone()))
+        .with_client_factory(DefaultHttpClientFactory::new( http_client_url))
         // Do not make this a small number as wallet recovery needs to be resilient
         .with_retry_limit(retry_limit)
         .build_with_wallet(wallet, shutdown_signal).await

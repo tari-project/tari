@@ -430,7 +430,7 @@ pub fn recovery_mode(
     println!("Starting recovery...");
     match handle.block_on(wallet_recovery(
         &wallet,
-        base_node_config,
+        base_node_config.http_client_url.clone(),
         wallet_config.recovery_retry_limit,
     )) {
         Ok(_) => println!("Wallet recovered!"),
