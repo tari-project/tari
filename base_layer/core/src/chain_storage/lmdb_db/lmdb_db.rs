@@ -3180,6 +3180,11 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             }
 
             for height in 0..=chain_height {
+                if height % 100 == 0 {
+                    unsafe {
+                        LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
+                    }
+                }
                 process_payref_for_height(db, height)?;
             }
 
