@@ -27,7 +27,7 @@ pub use lmdb_db::{
     LMDBDatabase,
 };
 use serde::{Deserialize, Serialize};
-pub use stats_collector::DatabaseStats;
+pub use stats_collector::{DatabaseStats, LastOperation};
 use tari_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
 

@@ -48,7 +48,7 @@ pub use grpc_method::GrpcMethod;
 use log::*;
 use minotari_app_grpc::{
     authentication::ServerAuthenticationInterceptor,
-    tari_rpc::{self, readiness_status::Status},
+    tari_rpc::{self, readiness_status::State as ReadinessState},
     tls::identity::read_identity,
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
@@ -136,13 +136,13 @@ pub async fn run_base_node_with_cli(
         tls_identity.clone(),
         readiness_grpc_shutdown.to_signal(),
     ));
-    readiness_handler.send_readiness_status(Status::StartingUp);
+    readiness_handler.send_readiness_status(ReadinessState::StartingUp);
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        readiness_handler.send_readiness_status(Status::RecoveringPreparing);
+        readiness_handler.send_readiness_status(ReadinessState::RecoveringPreparing);
         recovery::initiate_recover_db(&config.base_node)?;
-        readiness_handler.send_readiness_status(Status::RecoveringRebuilding);
+        readiness_handler.send_readiness_status(ReadinessState::RecoveringRebuilding);
         recovery::run_recovery(&config.base_node, readiness_handler)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
@@ -159,7 +159,7 @@ pub async fn run_base_node_with_cli(
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
-    readiness_handler.send_readiness_status(Status::Ready);
+    readiness_handler.send_readiness_status(ReadinessState::Ready);
 
     // Go, GRPC, go go
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());

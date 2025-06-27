@@ -177,13 +177,12 @@ enum BaseNodeState{
 }
 
 message ReadinessStatus {
-   enum Status {
+   enum State {
       NOT_READY = 0;
       STARTING_UP = 1;
 
-      // Migration phase (10-19)
-      MIGRATING_PREPARING = 10;
-      MIGRATING_INITIALIZING_LMDB = 11;
+      // Database phase (10-19)
+      DATABASE_INITIALIZING = 10;
 
       // Recovery phase (20-29)
       RECOVERING_PREPARING = 20;
@@ -197,13 +196,27 @@ message ReadinessStatus {
       READY = 100;
    }
 
-   Status status = 1;
-   string description = 2;
-   uint64 current_block = 3;
-   uint64 total_blocks = 4;
-   double progress_percentage = 5;
+   oneof status {
+       State state = 1;
+       MigrationProgress migration = 2;
+       TransactionsProgress transactions = 3;
+   }
    uint64 timestamp = 6;
+
 }
+
+message MigrationProgress {
+   uint64 current_block = 1;
+   uint64 total_blocks = 2;
+   double progress_percentage = 3;
+}
+
+message TransactionsProgress {
+   uint64 current_operation = 1;
+   uint64 total_operations = 2;
+   double progress_percentage = 3;
+}
+
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse {
     NewBlockTemplate new_block_template = 1;

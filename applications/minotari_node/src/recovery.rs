@@ -30,7 +30,7 @@ use std::{
 
 use anyhow::anyhow;
 use log::*;
-use minotari_app_grpc::tari_rpc::readiness_status::Status;
+use minotari_app_grpc::tari_rpc::readiness_status::State as ReadinessState;
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
@@ -85,7 +85,7 @@ pub async fn run_recovery(
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
             println!("[DEBUG] Initializing LMDB database");
-            readiness_handler.send_readiness_status(Status::MigratingInitializingLmdb);
+            readiness_handler.send_readiness_status(ReadinessState::DatabaseInitializing);
             let backend = create_lmdb_database_with_stats_channel(
                 &node_config.lmdb_path,
                 node_config.lmdb.clone(),
@@ -189,7 +189,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
 
-        readiness_status_handler.send_readiness_status(Status::RecoveringRebuildingDatabase);
+        readiness_status_handler.send_readiness_status(ReadinessState::RecoveringRebuildingDatabase);
 
         if counter >= max_height {
             info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter);

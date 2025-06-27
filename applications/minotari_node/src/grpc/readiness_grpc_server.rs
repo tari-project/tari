@@ -22,8 +22,14 @@
 
 use chrono::Utc;
 use futures::channel::mpsc;
-use minotari_app_grpc::tari_rpc::{self, readiness_status::Status as ReadinessStatusEnum, ReadinessStatus};
-use tari_core::chain_storage::DatabaseStats;
+use minotari_app_grpc::tari_rpc::{
+    self,
+    readiness_status::{State, Status as ReadinessStatusEnum},
+    MigrationProgress,
+    ReadinessStatus,
+    TransactionsProgress,
+};
+use tari_core::chain_storage::{DatabaseStats, LastOperation};
 use tokio::sync::watch;
 use tonic::{Request, Response, Status};
 pub struct ReadinessGrpcServer {
@@ -32,11 +38,7 @@ pub struct ReadinessGrpcServer {
 
 fn default_readiness_status() -> ReadinessStatus {
     ReadinessStatus {
-        status: ReadinessStatusEnum::NotReady.into(),
-        description: ReadinessStatusEnum::NotReady.as_str_name().to_string(),
-        current_block: 0,
-        total_blocks: 0,
-        progress_percentage: 0.0,
+        status: Some(ReadinessStatusEnum::State(State::NotReady.into())),
         timestamp: Utc::now().timestamp_millis() as u64,
     }
 }
@@ -52,13 +54,9 @@ pub struct ReadinessStatusHandler {
 }
 
 impl ReadinessStatusHandler {
-    pub fn send_readiness_status(&self, status_kind: ReadinessStatusEnum) {
+    pub fn send_readiness_status(&self, status_state: State) {
         let status = ReadinessStatus {
-            status: status_kind.into(),
-            description: status_kind.as_str_name().to_string(),
-            current_block: 0,
-            total_blocks: 0,
-            progress_percentage: 0.0,
+            status: Some(ReadinessStatusEnum::State(status_state.into())),
             timestamp: Utc::now().timestamp_millis() as u64,
         };
         self.readiness_tx.send(status).unwrap();
@@ -84,22 +82,27 @@ impl ReadinessService {
 
     pub fn get_status(&self) -> ReadinessStatus {
         let readiness_status = self.readiness_rx.borrow().clone();
-        let migration_status = self.lmdb_db_status_rx.borrow();
-
-        println!("Readiness status: {:?}", readiness_status);
-        println!("Migration status: {:?}", migration_status);
+        let db_status = self.lmdb_db_status_rx.borrow();
 
         // Choose the status with the latest timestamp
-        if migration_status.timestamp > readiness_status.timestamp {
-            // During migration, use the latest LMDB status for progress information
-            println!("LMDB status: {:?}", migration_status);
+        if db_status.timestamp > readiness_status.timestamp {
+            // Cast latest DB status to ReadinessStatus
+            let latest_db_status = match db_status.last_operation {
+                LastOperation::Migration => ReadinessStatusEnum::Migration(MigrationProgress {
+                    current_block: db_status.migration_stats.current_height,
+                    total_blocks: db_status.migration_stats.total_height,
+                    progress_percentage: db_status.migration_stats.progress_percentage,
+                }),
+                LastOperation::Transactions => ReadinessStatusEnum::Transactions(TransactionsProgress {
+                    current_operation: db_status.transactions_stats.current_operation as u64,
+                    total_operations: db_status.transactions_stats.total_operations as u64,
+                    progress_percentage: db_status.transactions_stats.progress_percentage,
+                }),
+                _ => ReadinessStatusEnum::State(State::DatabaseInitializing.into()),
+            };
             ReadinessStatus {
-                status: readiness_status.status,
-                description: readiness_status.description,
-                current_block: migration_status.migration_stats.current_height,
-                total_blocks: migration_status.migration_stats.total_height,
-                progress_percentage: migration_status.migration_stats.progress_percentage,
-                timestamp: migration_status.timestamp,
+                status: Some(latest_db_status),
+                timestamp: db_status.timestamp,
             }
         } else {
             // For non-migration states, use the readiness status as-is

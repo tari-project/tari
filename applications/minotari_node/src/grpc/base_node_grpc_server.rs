@@ -33,7 +33,13 @@ use futures::{channel::mpsc, SinkExt};
 use log::*;
 use minotari_app_grpc::{
     conversions::transaction_output::grpc_output_with_payref,
-    tari_rpc::{self, readiness_status, CalcType, ReadinessStatus, Sorting},
+    tari_rpc::{
+        self,
+        readiness_status::{State as ReadinessState, Status as ReadinessStatusEnum},
+        CalcType,
+        ReadinessStatus,
+        Sorting,
+    },
 };
 use minotari_app_utilities::consts;
 use tari_common_types::{
@@ -525,11 +531,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             num_connections: connected_peers.len() as u64,
             liveness_results: liveness,
             readiness_status: Some(ReadinessStatus {
-                status: readiness_status::Status::Ready.into(),
-                description: readiness_status::Status::Ready.as_str_name().to_string(),
-                current_block: 0,
-                total_blocks: 0,
-                progress_percentage: 0.0,
+                status: Some(ReadinessStatusEnum::State(ReadinessState::Ready.into())),
                 timestamp: Utc::now().timestamp_millis() as u64,
             }),
         };

@@ -75,7 +75,7 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use chrono::Utc;
@@ -102,10 +102,18 @@ pub struct TransactionsStats {
 pub struct DatabaseStats {
     pub migration_stats: MigrationStats,
     pub transactions_stats: TransactionsStats,
-    pub elapsed_time: Duration,
     pub last_updated: Instant,
     pub metadata: HashMap<MetadataKey, MetadataValue>,
     pub timestamp: u64,
+    pub last_operation: LastOperation,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LastOperation {
+    Migration,
+    Transactions,
+    Metadata,
+    None,
 }
 
 impl Default for DatabaseStats {
@@ -113,10 +121,10 @@ impl Default for DatabaseStats {
         Self {
             migration_stats: MigrationStats::default(),
             transactions_stats: TransactionsStats::default(),
-            elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
             timestamp: Utc::now().timestamp_millis() as u64,
+            last_operation: LastOperation::None,
         }
     }
 }
@@ -137,16 +145,17 @@ impl DatabaseStats {
                 total_height,
                 progress_percentage,
             },
-            elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
             timestamp: Utc::now().timestamp_millis() as u64,
+            last_operation: LastOperation::Migration,
         }
     }
 
     /// Set metadata key-value pair
     pub fn set_metadata(&mut self, key: MetadataKey, value: &MetadataValue) {
         self.metadata.insert(key, value.to_owned());
+        self.last_operation = LastOperation::Metadata;
     }
 
     /// Get metadata value by key
@@ -157,11 +166,13 @@ impl DatabaseStats {
     /// Clear all metadata
     pub fn clear_metadata(&mut self) {
         self.metadata.clear();
+        self.last_operation = LastOperation::Metadata;
     }
 
     pub fn set_migration_total_height(&mut self, total_height: u64) {
         self.migration_stats.total_height = total_height;
         self.timestamp = Utc::now().timestamp_millis() as u64;
+        self.last_operation = LastOperation::Migration;
     }
 
     /// Update progress with new current height
@@ -175,16 +186,19 @@ impl DatabaseStats {
         } else {
             0.0
         };
+        self.last_operation = LastOperation::Migration;
     }
 
     pub fn set_total_operations(&mut self, total_operations: usize) {
         self.transactions_stats.total_operations = total_operations;
         self.timestamp = Utc::now().timestamp_millis() as u64;
+        self.last_operation = LastOperation::Transactions;
     }
 
     pub fn set_current_operations(&mut self, total_operations_completed: usize) {
         self.transactions_stats.current_operation = total_operations_completed;
         self.timestamp = Utc::now().timestamp_millis() as u64;
+        self.last_operation = LastOperation::Transactions;
     }
 }
 
@@ -227,6 +241,7 @@ impl LMDBStatsCollector {
         let new_stats = DatabaseStats {
             migration_stats: stats,
             timestamp: self.get_current_timestamp(),
+            last_operation: LastOperation::Migration,
             ..self.receiver.borrow().clone()
         };
         self.update_db_stats(new_stats);
@@ -236,6 +251,7 @@ impl LMDBStatsCollector {
         let new_stats = DatabaseStats {
             transactions_stats: stats,
             timestamp: self.get_current_timestamp(),
+            last_operation: LastOperation::Transactions,
             ..self.receiver.borrow().clone()
         };
         self.update_db_stats(new_stats);

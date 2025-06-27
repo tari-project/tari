@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use log::*;
-use minotari_app_grpc::tari_rpc::readiness_status::Status;
+use minotari_app_grpc::tari_rpc::readiness_status::State as ReadinessState;
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
@@ -194,7 +194,7 @@ pub async fn configure_and_initialize_node(
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
-            readiness_status_handler.send_readiness_status(Status::BuildingContextBlockchain);
+            readiness_status_handler.send_readiness_status(ReadinessState::BuildingContextBlockchain);
             let rules = ConsensusManager::builder(app_config.base_node.network)
                 .build()
                 .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
@@ -205,7 +205,7 @@ pub async fn configure_and_initialize_node(
                 Some(readiness_status_handler.lmdb_migration_status_tx.clone()),
             )
             .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
-            readiness_status_handler.send_readiness_status(Status::BuildingContextBootstrap);
+            readiness_status_handler.send_readiness_status(ReadinessState::BuildingContextBootstrap);
             build_node_context(backend, app_config, node_identity, interrupt_signal).await?
         },
     };
