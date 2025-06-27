@@ -318,17 +318,6 @@ where
                 TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Other(e.to_string()))
             })?;
 
-        if !(response.is_synced ||
-            (response.location == TxLocation::Mined &&
-                response.confirmations >= self.resources.config.num_confirmations_required))
-        {
-            info!(
-                target: LOG_TARGET,
-                "Base Node reports not being synced, submission will be retried."
-            );
-            return Ok(false);
-        }
-
         // Mined?
         if response.location == TxLocation::Mined {
             info!(

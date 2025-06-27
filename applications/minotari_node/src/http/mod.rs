@@ -24,7 +24,8 @@ pub fn create_base_node_wallet_http_server<B: BlockchainBackend + 'static>(
 ) -> server::Server<impl BaseNodeWalletQueryService> {
     server::Server::new(
         port,
-        query_service::Service::new(db, state_machine, mempool),
+        query_service::Service::new(db, state_machine, mempool.clone()),
+        mempool,
         shutdown_signal,
     )
 }

@@ -9,7 +9,11 @@ use axum::{
     Router,
 };
 use log::{error, info};
-use tari_core::{base_node::rpc::BaseNodeWalletQueryService, chain_storage::BlockchainBackend};
+use tari_core::{
+    base_node::rpc::BaseNodeWalletQueryService,
+    chain_storage::BlockchainBackend,
+    mempool::{service::MempoolHandle, Mempool},
+};
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{io, net::TcpListener};
@@ -41,14 +45,16 @@ pub struct ApiDoc;
 pub struct Server<S> {
     port: u16,
     query_service: Arc<S>,
+    mempool_handle: MempoolHandle,
     shutdown_signal: ShutdownSignal,
 }
 
 impl<S: BaseNodeWalletQueryService> Server<S> {
-    pub fn new(port: u16, query_service: S, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(port: u16, query_service: S, mempool: MempoolHandle, shutdown_signal: ShutdownSignal) -> Self {
         Self {
             port,
             query_service: Arc::new(query_service),
+            mempool_handle: mempool,
             shutdown_signal,
         }
     }
@@ -70,7 +76,9 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .route("/get_utxos_by_block", get(handler::get_utxos_by_block::handle::<B>))
             .route("/json_rpc", post(handler::json_rpc::handle::<B>))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
-            .layer(Extension(self.query_service.clone()));
+            .layer(Extension(self.query_service.clone()))
+            .layer(Extension(self.mempool_handle.clone()));
+
         let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
 
         // spawn server

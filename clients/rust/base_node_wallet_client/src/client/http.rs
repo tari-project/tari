@@ -325,7 +325,7 @@ impl BaseNodeWalletClient for Client {
         transaction: tari_core::transactions::transaction_components::Transaction,
     ) -> Result<TxSubmissionResponse, anyhow::Error> {
         debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {}", self.api_address);
-        let mut target_url = self.api_address.join("/jsonrpc")?;
+        let mut target_url = self.api_address.join("/json_rpc")?;
         let request_body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": "1",

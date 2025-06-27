@@ -16,11 +16,9 @@ pub enum TxLocation {
 #[derive(Serialize, Deserialize)]
 pub struct TxQueryResponse {
     pub location: TxLocation,
-    pub best_block_hash: Vec<u8>,
-    pub confirmations: u64,
-    pub is_synced: bool,
-    pub best_block_height: u64,
-    pub mined_timestamp: u64,
+    pub mined_height: Option<u64>,
+    pub mined_header_hash: Option<Vec<u8>>,
+    pub mined_timestamp: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -138,7 +138,7 @@ where
         })?;
         tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
-            let (mined, unmined, tip_info) = self
+            let (mined, unmined) = self
                 .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
                 .await
                 .for_protocol(self.operation_id)?;
@@ -149,12 +149,11 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (mined_tx, mined_height, mined_in_block, num_confirmations, mined_timestamp) in &mined {
+            for (mined_tx, mined_height, mined_in_block, mined_timestamp) in &mined {
                 debug!(
                     target: LOG_TARGET,
-                    "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
+                    "Updating transaction {} as mined (Operation ID: {})",
                     mined_tx.tx_id,
-                    *num_confirmations >= self.config.num_confirmations_required,
                     self.operation_id
                 );
                 self.update_transaction_as_mined(
@@ -162,22 +161,19 @@ where
                     &mined_tx.status,
                     mined_in_block,
                     *mined_height,
-                    *num_confirmations,
+                    tip.saturating_sub(*mined_height),
                     *mined_timestamp,
                 )
                 .await?;
                 state_changed = true;
             }
-            if let Some((tip_height, tip_block, tip_mined_timestamp)) = tip_info {
-                tip = tip_height;
-                for unmined_tx in &unmined {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
-                    );
-                    self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
-                        .await?;
-                }
+            for unmined_tx in &unmined {
+                debug!(
+                    target: LOG_TARGET,
+                    "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
+                );
+                self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
+                    .await?;
             }
         }
         Ok((state_changed, tip))
@@ -278,9 +274,8 @@ where
         base_node_client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<
         (
-            Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64, u64)>,
+            Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64)>,
             Vec<UnconfirmedTransactionInfo>,
-            Option<(u64, BlockHash, u64)>,
         ),
         TransactionServiceError,
     > {
@@ -300,7 +295,7 @@ where
                 target: LOG_TARGET,
                 "No transactions needed to query with the base node (Operation ID: {})", self.operation_id
             );
-            return Ok((mined, unmined, None));
+            return Ok((mined, unmined));
         }
 
         info!(
@@ -310,8 +305,6 @@ where
             self.operation_id
         );
 
-        let mut best_block_height = 0;
-        let mut best_block_hash = BlockHash::default();
         let mut tip_mined_timestamp = 0;
         for (sig, unconfirmed_tx) in batch_signatures {
             let response = base_node_client
@@ -321,23 +314,34 @@ where
                 )
                 .await
                 .map_err(|e| TransactionServiceError::Other(e.to_string()))?;
-            best_block_hash = response
-                .best_block_hash
-                .clone()
-                .try_into()
-                .map_err(|e| TransactionServiceError::Other(format!("Could not convert best block hash: {}", e)))?;
-            best_block_height = response.best_block_height;
-            tip_mined_timestamp = response.mined_timestamp;
             if response.location == TxLocation::Mined {
-                mined.push((
-                    (*unconfirmed_tx).clone(),
-                    response.best_block_height,
-                    response.best_block_hash.try_into().map_err(|e| {
-                        TransactionServiceError::Other(format!("Could not convert best block hash: {}", e))
-                    })?,
-                    response.confirmations,
-                    response.mined_timestamp,
-                ));
+                let (mined_height, mined_hash, timestamp) = match response.mined_height {
+                    Some(height) => {
+                        let hash = response.mined_header_hash.ok_or_else(|| {
+                            TransactionServiceError::Other("Mined header hash is missing".to_string())
+                        })?;
+                        let timestamp = response
+                            .mined_timestamp
+                            .ok_or_else(|| TransactionServiceError::Other("Mined timestamp is missing".to_string()))?;
+                        (
+                            height,
+                            hash.try_into().map_err(|e| {
+                                TransactionServiceError::Other(format!("Could not convert best block hash: {}", e))
+                            })?,
+                            timestamp,
+                        )
+                    },
+                    None => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Transaction {} is mined but has no height (Operation ID: {})",
+                            &unconfirmed_tx.tx_id,
+                            self.operation_id,
+                        );
+                        continue;
+                    },
+                };
+                mined.push(((*unconfirmed_tx).clone(), mined_height, mined_hash, timestamp));
             } else {
                 warn!(
                     target: LOG_TARGET,
@@ -349,11 +353,7 @@ where
             }
         }
 
-        Ok((
-            mined,
-            unmined,
-            Some((best_block_height, best_block_hash, tip_mined_timestamp)),
-        ))
+        Ok((mined, unmined))
     }
 
     async fn get_base_node_block_at_height(

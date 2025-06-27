@@ -101,14 +101,11 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             Some((_, block_hash)) => match db.fetch_header_by_block_hash(block_hash).await? {
                 None => (),
                 Some(header) => {
-                    let confirmations = chain_metadata.best_block_height().saturating_sub(header.height);
                     let response = TxQueryResponse {
                         location: TxLocation::Mined,
-                        best_block_hash: block_hash.to_vec(),
-                        confirmations,
-                        is_synced,
-                        best_block_height: chain_metadata.best_block_height(),
-                        mined_timestamp: header.timestamp.as_u64(),
+                        mined_header_hash: Some(block_hash.to_vec()),
+                        mined_height: Some(header.height),
+                        mined_timestamp: Some(header.timestamp.as_u64()),
                     };
                     return Ok(response);
                 },
@@ -120,11 +117,9 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let mempool_response = match mempool.get_tx_state_by_excess_sig(signature.clone()).await? {
             TxStorageResponse::UnconfirmedPool => TxQueryResponse {
                 location: TxLocation::InMempool,
-                best_block_hash: vec![],
-                confirmations: 0,
-                is_synced,
-                best_block_height: chain_metadata.best_block_height(),
-                mined_timestamp: 0,
+                mined_header_hash: None,
+                mined_height: None,
+                mined_timestamp: None,
             },
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredOrphan |
@@ -135,11 +130,9 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored,
-                best_block_hash: vec![],
-                confirmations: 0,
-                is_synced,
-                best_block_height: chain_metadata.best_block_height(),
-                mined_timestamp: 0,
+                mined_timestamp: None,
+                mined_height: None,
+                mined_header_hash: None,
             },
         };
 
@@ -386,19 +379,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         &self,
         signature: crate::base_node::rpc::models::Signature,
     ) -> Result<TxQueryResponse, Self::Error> {
-        let state_machine = self.state_machine();
-
-        // Determine if we are synced
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match status_watch.borrow().state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
-
         let signature = signature.try_into().map_err(Error::SignatureConversion)?;
 
         let mut response = self.fetch_kernel(signature).await?;
-        response.is_synced = is_synced;
 
         Ok(response)
     }
