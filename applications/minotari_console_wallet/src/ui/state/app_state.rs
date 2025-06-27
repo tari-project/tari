@@ -90,7 +90,6 @@ use crate::{
         ui_error::UiError,
     },
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";

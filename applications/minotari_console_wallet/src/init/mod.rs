@@ -88,7 +88,7 @@ use zxcvbn::zxcvbn;
 use crate::{
     cli::Cli,
     utils::db::{get_custom_base_node_peer_from_db, set_custom_base_node_peer_in_db},
-    wallet_modes::{PeerConfig, WalletMode},
+    wallet_modes::WalletMode,
     ApplicationConfig,
 };
 

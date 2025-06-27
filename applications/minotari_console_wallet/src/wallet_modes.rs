@@ -69,76 +69,10 @@ pub enum WalletMode {
 
 #[derive(Debug, Clone)]
 pub struct ConsoleWalletConfig {
-    pub base_node_config: PeerConfig,
-    pub base_node_selected: Peer,
     pub notify_script: Option<PathBuf>,
     pub wallet_mode: WalletMode,
     pub grpc_address: Option<Multiaddr>,
     pub recovery_retry_limit: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct PeerConfig {
-    pub base_node_custom: Option<Peer>,
-    pub base_node_peers: Vec<Peer>,
-    pub peer_seeds: Vec<Peer>,
-    pub http_client_url: Url,
-}
-
-impl PeerConfig {
-    /// Create a new PeerConfig
-    pub fn new(
-        base_node_custom: Option<Peer>,
-        base_node_peers: Vec<Peer>,
-        peer_seeds: Vec<Peer>,
-        http_client_url: Url,
-    ) -> Self {
-        Self {
-            base_node_custom,
-            base_node_peers,
-            peer_seeds,
-            http_client_url,
-        }
-    }
-
-    /// Get the prioritised base node peer from the PeerConfig.
-    /// 1. Custom Base Node
-    /// 2. All configured Base Node Peers (a random node will be prioritised)
-    /// 3. All configured Peer Seeds (a random node will be prioritised)
-    pub fn get_base_node_peers(&self) -> Result<Vec<Peer>, ExitError> {
-        if let Some(base_node) = self.base_node_custom.clone() {
-            Ok(vec![base_node])
-        } else if !self.base_node_peers.is_empty() {
-            Ok(self.base_node_peers.clone())
-        } else if !self.peer_seeds.is_empty() {
-            Ok(self.peer_seeds.clone())
-        } else {
-            Err(ExitError::new(
-                ExitCode::ConfigError,
-                "No peer seeds or base node peer defined in config!",
-            ))
-        }
-    }
-
-    /// Returns all the peers from the PeerConfig.
-    /// In order: Custom base node, service peers, peer seeds.
-    pub fn get_all_peers(&self) -> Vec<Peer> {
-        let num_peers = self.base_node_peers.len();
-        let num_seeds = self.peer_seeds.len();
-
-        let mut peers = if let Some(peer) = self.base_node_custom.clone() {
-            let mut peers = Vec::with_capacity(1 + num_peers + num_seeds);
-            peers.push(peer);
-            peers
-        } else {
-            Vec::with_capacity(num_peers + num_seeds)
-        };
-
-        peers.extend(self.base_node_peers.clone());
-        peers.extend(self.peer_seeds.clone());
-
-        peers
-    }
 }
 
 pub(crate) fn command_mode(

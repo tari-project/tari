@@ -46,8 +46,6 @@ use tokio::{runtime::Runtime, sync::broadcast};
 use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::wallet_modes::PeerConfig;
-
 pub const LOG_TARGET: &str = "wallet::recovery";
 
 /// Prompt the user to input their seed words in a single line.

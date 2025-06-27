@@ -52,7 +52,6 @@ use crate::{
         state::AppState,
         MAX_WIDTH,
     },
-    wallet_modes::PeerConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::ui::app";

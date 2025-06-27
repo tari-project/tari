@@ -154,7 +154,6 @@ use crate::{
     init::init_wallet,
     recovery::{get_seed_from_seed_words, wallet_recovery},
     utils::db::{get_custom_base_node_peer_from_db, CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
