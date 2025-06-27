@@ -37,7 +37,7 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use tari_storage::lmdb_store::BYTES_PER_MB;
+use tari_storage::lmdb_store::{LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_utilities::hex::to_hex;
 
 use crate::chain_storage::{
@@ -142,18 +142,29 @@ where
 {
     let val_buf = serialize(val, size_hint)?;
     let start = Instant::now();
-    let res = txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
-        if let lmdb_zero::Error::Code(code) = &e {
-            if *code == lmdb_zero::error::MAP_FULL {
-                return ChainStorageError::DbResizeRequired(Some(val_buf.len()));
-            }
+    let max_resizes = 1;
+    for i in 0..max_resizes {
+        match txn.access().put(db, key, &val_buf, put::Flags::empty()) {
+            Ok(_) => {},
+            Err(Error::Code(error::MAP_FULL)) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Database resize required (resized {} time(s) in this transaction)",
+                    i + 1
+                );
+                unsafe {
+                    LMDBStore::resize(db.env(), &LMDBConfig::default(), None)?;
+                }
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not replace value in lmdb transaction: {:?}", e
+                );
+                return Err(ChainStorageError::AccessError(e.to_string()));
+            },
         }
-        error!(
-            target: LOG_TARGET,
-            "Could not replace value in lmdb transaction: {:?}", e
-        );
-        ChainStorageError::AccessError(e.to_string())
-    });
+    }
     if val_buf.len() >= BYTES_PER_MB {
         let write_time = start.elapsed();
         trace!(
@@ -162,7 +173,7 @@ where
             write_time
         );
     }
-    res
+    Ok(())
 }
 
 /// Deletes the given key. An error is returned if the key does not exist

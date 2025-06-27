@@ -448,19 +448,19 @@ where B: BlockchainBackend
         db.fetch_output(&output_hash)
     }
 
-    /// Returns a copy of the current input mined info
+    /// Returns optional input mined info for the given output hash
     pub fn fetch_input(&self, output_hash: HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_input(&output_hash)
     }
 
-    /// Returns a copy of the mined info by payment reference
+    /// Returns the mined info for the given payment reference
     pub fn fetch_mined_info_by_payref(&self, payref: FixedHash) -> Result<MinedInfo, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_mined_info_by_payref(&payref)
     }
 
-    /// Returns a copy of the mined info by output hash
+    /// Returns the mined info for the given output hash
     pub fn fetch_mined_info_by_output_hash(&self, output_hash: HashOutput) -> Result<MinedInfo, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_mined_info_by_output_hash(&output_hash)

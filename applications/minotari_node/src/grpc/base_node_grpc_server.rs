@@ -2958,7 +2958,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn search_payment_references_via_output_hash(
         &self,
         request: Request<tari_rpc::FetchMatchingUtxosRequest>,
-    ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
+    ) -> Result<Response<Self::SearchPaymentReferencesViaOutputHashStream>, Status> {
         self.check_method_enabled(GrpcMethod::SearchPaymentReferencesViaOutputHash)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();

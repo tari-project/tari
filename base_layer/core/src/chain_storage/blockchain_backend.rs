@@ -96,10 +96,10 @@ pub trait BlockchainBackend: Send + Sync {
         spend_status_at_header: Option<&HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
-    /// Fetch a specific output. Returns the output
+    /// Returns optional output mined info for the given output hash
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
 
-    /// Fetch a specific input. Returns the input
+    /// Returns optional input mined info for the given output hash
     fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
