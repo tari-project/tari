@@ -70,9 +70,6 @@
 //!     // Simulate some work
 //!     thread::sleep(Duration::from_millis(10));
 //! }
-//!
-//! // Check if complete
-//! assert!(collector.is_complete());
 //! ```
 
 use std::{
@@ -86,12 +83,25 @@ use tokio::sync::watch;
 
 use super::lmdb_db::{MetadataKey, MetadataValue};
 
-/// Statistics data for database operations
-#[derive(Debug, Clone, PartialEq)]
-pub struct DatabaseStats {
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct MigrationStats {
     pub current_height: u64,
     pub total_height: u64,
     pub progress_percentage: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TransactionsStats {
+    pub current_operation: usize,
+    pub total_operations: usize,
+    pub progress_percentage: f64,
+}
+
+/// Statistics data for database operations
+#[derive(Debug, Clone, PartialEq)]
+pub struct DatabaseStats {
+    pub migration_stats: MigrationStats,
+    pub transactions_stats: TransactionsStats,
     pub elapsed_time: Duration,
     pub last_updated: Instant,
     pub metadata: HashMap<MetadataKey, MetadataValue>,
@@ -101,9 +111,8 @@ pub struct DatabaseStats {
 impl Default for DatabaseStats {
     fn default() -> Self {
         Self {
-            current_height: 0,
-            total_height: 0,
-            progress_percentage: 0.0,
+            migration_stats: MigrationStats::default(),
+            transactions_stats: TransactionsStats::default(),
             elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
@@ -122,9 +131,12 @@ impl DatabaseStats {
         };
 
         Self {
-            current_height,
-            total_height,
-            progress_percentage,
+            transactions_stats: TransactionsStats::default(),
+            migration_stats: MigrationStats {
+                current_height,
+                total_height,
+                progress_percentage,
+            },
             elapsed_time: Duration::from_millis(0),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
@@ -147,23 +159,32 @@ impl DatabaseStats {
         self.metadata.clear();
     }
 
+    pub fn set_migration_total_height(&mut self, total_height: u64) {
+        self.migration_stats.total_height = total_height;
+        self.timestamp = Utc::now().timestamp_millis() as u64;
+    }
+
     /// Update progress with new current height
-    pub fn update_progress(&mut self, current_height: u64, start_time: Instant) {
-        self.current_height = current_height;
-        self.last_updated = Instant::now();
-        self.elapsed_time = self.last_updated - start_time;
+    pub fn update_migration_progress(&mut self, current_height: u64) {
+        self.migration_stats.current_height = current_height;
+        self.timestamp = Utc::now().timestamp_millis() as u64;
 
         // Update progress percentage
-        self.progress_percentage = if self.total_height > 0 {
-            (self.current_height as f64 / self.total_height as f64) * 100.0
+        self.migration_stats.progress_percentage = if self.migration_stats.total_height > 0 {
+            (self.migration_stats.current_height as f64 / self.migration_stats.total_height as f64) * 100.0
         } else {
             0.0
         };
     }
 
-    /// Check if the operation is complete
-    pub fn is_complete(&self) -> bool {
-        self.current_height >= self.total_height && self.total_height > 0
+    pub fn set_total_operations(&mut self, total_operations: usize) {
+        self.transactions_stats.total_operations = total_operations;
+        self.timestamp = Utc::now().timestamp_millis() as u64;
+    }
+
+    pub fn set_current_operations(&mut self, total_operations_completed: usize) {
+        self.transactions_stats.current_operation = total_operations_completed;
+        self.timestamp = Utc::now().timestamp_millis() as u64;
     }
 }
 
@@ -172,7 +193,6 @@ pub struct LMDBStatsCollector {
     sender: watch::Sender<DatabaseStats>,
     receiver: watch::Receiver<DatabaseStats>,
     additional_senders: Arc<Mutex<Vec<watch::Sender<DatabaseStats>>>>,
-    start_time: Instant,
 }
 
 impl LMDBStatsCollector {
@@ -185,8 +205,34 @@ impl LMDBStatsCollector {
             sender,
             receiver,
             additional_senders: Arc::new(Mutex::new(Vec::new())),
-            start_time: Instant::now(),
         }
+    }
+
+    pub fn update_db_stats(&self, stats: DatabaseStats) {
+        drop(self.sender.send(stats.clone()));
+
+        // Send to all additional subscribers
+        if let Ok(senders) = self.additional_senders.lock() {
+            for sender in senders.iter() {
+                drop(sender.send(stats.clone()));
+            }
+        }
+    }
+
+    pub fn update_migration_stats(&self, stats: MigrationStats) {
+        let new_stats = DatabaseStats {
+            migration_stats: stats,
+            ..self.receiver.borrow().clone()
+        };
+        self.update_db_stats(new_stats);
+    }
+
+    pub fn update_transactions_stats(&self, stats: TransactionsStats) {
+        let new_stats = DatabaseStats {
+            transactions_stats: stats,
+            ..self.receiver.borrow().clone()
+        };
+        self.update_db_stats(new_stats);
     }
 
     /// Create a new StatsCollector with specified total height
@@ -198,7 +244,6 @@ impl LMDBStatsCollector {
             sender,
             receiver,
             additional_senders: Arc::new(Mutex::new(Vec::new())),
-            start_time: Instant::now(),
         }
     }
 
@@ -215,81 +260,41 @@ impl LMDBStatsCollector {
     /// Update the current progress
     pub fn update_progress(&self, current_height: u64) {
         let mut stats = self.receiver.borrow().clone();
-        stats.update_progress(current_height, self.start_time);
-        drop(self.sender.send(stats.clone()));
-
-        // Send to all additional subscribers
-        if let Ok(senders) = self.additional_senders.lock() {
-            for sender in senders.iter() {
-                println!("[DEBUG] Sending stats to additional subscriber");
-                drop(sender.send(stats.clone()));
-            }
-        }
+        stats.update_migration_progress(current_height);
+        self.update_db_stats(stats);
     }
 
     /// Update metadata in the current stats
     pub fn update_metadata(&self, key: MetadataKey, value: &MetadataValue) {
         let mut stats = self.receiver.borrow().clone();
         stats.set_metadata(key, value);
-        drop(self.sender.send(stats.clone()));
-
-        // Send to all additional subscribers
-        if let Ok(senders) = self.additional_senders.lock() {
-            for sender in senders.iter() {
-                println!("[DEBUG] Sending stats to additional subscriber");
-                drop(sender.send(stats.clone()));
-            }
-        }
+        self.update_db_stats(stats);
     }
 
     /// Set the total height for progress calculation
     pub fn set_total_height(&self, total_height: u64) {
-        let mut stats = self.receiver.borrow().clone();
+        let mut stats = self.receiver.borrow().clone().migration_stats;
         stats.total_height = total_height;
-        stats.update_progress(stats.current_height, self.start_time);
-        drop(self.sender.send(stats.clone()));
-
-        // Send to all additional subscribers
-        if let Ok(senders) = self.additional_senders.lock() {
-            for sender in senders.iter() {
-                println!("[DEBUG] Sending stats to additional subscriber");
-                drop(sender.send(stats.clone()));
-            }
-        }
+        self.update_migration_stats(stats);
     }
 
     /// Reset the stats collector with new parameters
     pub fn reset(&self, current_height: u64, total_height: u64) {
         let stats = DatabaseStats::new(current_height, total_height);
-        drop(self.sender.send(stats.clone()));
-
-        // Send to all additional subscribers
-        if let Ok(senders) = self.additional_senders.lock() {
-            for sender in senders.iter() {
-                drop(sender.send(stats.clone()));
-            }
-        }
+        self.update_db_stats(stats);
     }
 
-    /// Get the progress percentage (0.0 to 100.0)
-    pub fn progress_percentage(&self) -> f64 {
-        self.receiver.borrow().progress_percentage
+    pub fn set_current_operations(&self, current_operations: usize) {
+        let mut stats = self.receiver.borrow().clone().transactions_stats;
+        stats.current_operation = current_operations;
+        self.update_transactions_stats(stats);
     }
 
-    /// Check if the operation is complete
-    pub fn is_complete(&self) -> bool {
-        self.receiver.borrow().is_complete()
-    }
-
-    /// Get elapsed time since collector was created/reset
-    pub fn elapsed_time(&self) -> Duration {
-        self.receiver.borrow().elapsed_time
-    }
-
-    /// Get the current and total heights as a tuple
-    pub fn heights(&self) -> (u64, u64) {
-        let stats = self.receiver.borrow();
-        (stats.current_height, stats.total_height)
+    // TODO it makes no sense at all why does it tries to modify the stats?
+    pub fn set_total_operations(&self, total_operations: usize) {
+        let mut stats = self.receiver.borrow().clone().transactions_stats;
+        stats.total_operations = total_operations;
+        self.update_transactions_stats(stats);
     }
 
     /// Subscribe an additional watch sender to receive updates
@@ -343,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_database_stats_creation() {
-        let stats = DatabaseStats::new(50, 100);
+        let stats = DatabaseStats::new(50, 100).migration_stats;
         assert_eq!(stats.current_height, 50);
         assert_eq!(stats.total_height, 100);
         assert_eq!(stats.progress_percentage, 50.0);
@@ -352,31 +357,31 @@ mod tests {
     #[test]
     fn test_database_stats_progress_update() {
         let mut stats = DatabaseStats::new(0, 100);
-        let start_time = Instant::now();
 
         // Simulate some time passing
         thread::sleep(Duration::from_millis(100));
-        stats.update_progress(25, start_time);
+        stats.update_migration_progress(25);
+
+        let stats = stats.migration_stats;
 
         assert_eq!(stats.current_height, 25);
         assert_eq!(stats.progress_percentage, 25.0);
-        assert!(!stats.is_complete());
     }
 
     #[test]
     fn test_database_stats_completion() {
         let mut stats = DatabaseStats::new(0, 100);
-        let start_time = Instant::now();
 
-        stats.update_progress(100, start_time);
-        assert!(stats.is_complete());
+        stats.update_migration_progress(100);
+
+        let stats = stats.migration_stats;
         assert_eq!(stats.progress_percentage, 100.0);
     }
 
     #[test]
     fn test_stats_collector_creation() {
         let collector = LMDBStatsCollector::new();
-        let stats = collector.current_stats();
+        let stats = collector.current_stats().migration_stats;
 
         assert_eq!(stats.current_height, 0);
         assert_eq!(stats.total_height, 0);
@@ -386,7 +391,7 @@ mod tests {
     #[test]
     fn test_stats_collector_with_total_height() {
         let collector = LMDBStatsCollector::with_total_height(1000);
-        let stats = collector.current_stats();
+        let stats = collector.current_stats().migration_stats;
 
         assert_eq!(stats.current_height, 0);
         assert_eq!(stats.total_height, 1000);
@@ -398,13 +403,12 @@ mod tests {
         let collector = LMDBStatsCollector::with_total_height(100);
 
         collector.update_progress(25);
-        assert_eq!(collector.progress_percentage(), 25.0);
-        assert_eq!(collector.heights(), (25, 100));
-        assert!(!collector.is_complete());
+        let stats = collector.current_stats().migration_stats;
+        assert_eq!(stats.current_height, 25);
+        assert_eq!(stats.progress_percentage, 25.0);
 
         collector.update_progress(100);
-        assert_eq!(collector.progress_percentage(), 100.0);
-        assert!(collector.is_complete());
+        assert_eq!(stats.total_height, 100);
     }
 
     #[test]
@@ -412,14 +416,15 @@ mod tests {
         let collector = LMDBStatsCollector::with_total_height(100);
         let mut receiver = collector.subscribe();
 
+        let stats = receiver.borrow_and_update().migration_stats.clone();
         // Initial state
-        assert_eq!(receiver.borrow().current_height, 0);
+        assert_eq!(stats.current_height, 0);
 
         // Update progress
         collector.update_progress(50);
 
         // Check if receiver got the update
-        let stats = receiver.borrow_and_update();
+        let stats = receiver.borrow_and_update().migration_stats.clone();
         assert_eq!(stats.current_height, 50);
         assert_eq!(stats.progress_percentage, 50.0);
     }
@@ -427,13 +432,13 @@ mod tests {
     #[test]
     fn test_stats_collector_reset() {
         let collector = LMDBStatsCollector::with_total_height(100);
+        let mut receiver = collector.subscribe();
 
         collector.update_progress(50);
-        assert_eq!(collector.heights(), (50, 100));
-
         collector.reset(0, 200);
-        assert_eq!(collector.heights(), (0, 200));
-        assert_eq!(collector.progress_percentage(), 0.0);
+        let stats = receiver.borrow_and_update().migration_stats.clone();
+        assert_eq!(stats.current_height, 0);
+        assert_eq!(stats.progress_percentage, 0.0);
     }
 
     #[test]
@@ -446,16 +451,19 @@ mod tests {
 
         assert_eq!(collector.additional_subscribers_count(), 2);
 
+        let stats1 = receiver1.borrow_and_update().migration_stats.clone();
+        let stats2 = receiver2.borrow_and_update().migration_stats.clone();
+
         // Initial state should be received
-        assert_eq!(receiver1.borrow().current_height, 0);
-        assert_eq!(receiver2.borrow().current_height, 0);
+        assert_eq!(stats1.current_height, 0);
+        assert_eq!(stats2.current_height, 0);
 
         // Update progress
         collector.update_progress(25);
 
         // All receivers should get the update
-        let stats1 = receiver1.borrow_and_update();
-        let stats2 = receiver2.borrow_and_update();
+        let stats1 = receiver1.borrow_and_update().migration_stats.clone();
+        let stats2 = receiver2.borrow_and_update().migration_stats.clone();
 
         assert_eq!(stats1.current_height, 25);
         assert_eq!(stats2.current_height, 25);
@@ -479,7 +487,7 @@ mod tests {
 
         // Should immediately receive current stats
         {
-            let stats = receiver.borrow_and_update();
+            let stats = receiver.borrow_and_update().migration_stats.clone();
             assert_eq!(stats.current_height, 30);
             assert_eq!(stats.progress_percentage, 30.0);
         }
@@ -489,7 +497,7 @@ mod tests {
 
         // External receiver should get the update
         {
-            let updated_stats = receiver.borrow_and_update();
+            let updated_stats = receiver.borrow_and_update().migration_stats.clone();
             assert_eq!(updated_stats.current_height, 60);
             assert_eq!(updated_stats.progress_percentage, 60.0);
         }

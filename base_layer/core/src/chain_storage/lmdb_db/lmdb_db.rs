@@ -477,6 +477,7 @@ impl LMDBDatabase {
 
         let number_of_operations = txn.operations().len();
         let write_txn = self.write_transaction()?;
+        self.stats_collector.set_total_operations(number_of_operations);
         for (i, op) in txn.operations().iter().enumerate() {
             trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {} ({} of {})", op, i + 1, number_of_operations);
             match op {
@@ -640,6 +641,7 @@ impl LMDBDatabase {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
             }
+            self.stats_collector.set_current_operations(i + 1);
         }
         write_txn.commit()?;
 

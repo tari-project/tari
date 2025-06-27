@@ -43,9 +43,7 @@ fn default_readiness_status() -> ReadinessStatus {
 
 pub struct ReadinessService {
     readiness_rx: watch::Receiver<ReadinessStatus>,
-    _readiness_tx: watch::Sender<ReadinessStatus>,
     lmdb_db_status_rx: watch::Receiver<DatabaseStats>,
-    _lmdb_db_status_tx: watch::Sender<DatabaseStats>,
 }
 
 pub struct ReadinessStatusHandler {
@@ -78,9 +76,7 @@ impl ReadinessService {
         (
             Self {
                 readiness_rx,
-                _readiness_tx: readiness_tx.clone(),
                 lmdb_db_status_rx,
-                _lmdb_db_status_tx: lmdb_db_status_tx.clone(),
             },
             handler,
         )
@@ -100,9 +96,9 @@ impl ReadinessService {
             ReadinessStatus {
                 status: readiness_status.status,
                 description: readiness_status.description,
-                current_block: migration_status.current_height,
-                total_blocks: migration_status.total_height,
-                progress_percentage: migration_status.progress_percentage,
+                current_block: migration_status.migration_stats.current_height,
+                total_blocks: migration_status.migration_stats.total_height,
+                progress_percentage: migration_status.migration_stats.progress_percentage,
                 timestamp: migration_status.timestamp,
             }
         } else {
