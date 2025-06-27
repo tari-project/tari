@@ -4799,23 +4799,6 @@ struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords
 void payment_record_destroy(struct TariPaymentRecord *record);
 
 /**
- * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut ByteVector` - Returns a ByteVector or null if the NodeId is None.
- *
- * # Safety
- * None
- */
-struct ByteVector *basenode_state_get_node_id(struct TariBaseNodeState *ptr,
-                                              int *error_out);
-
-/**
  * Extracts height of th elongest chain from the `TariBaseNodeState`
  *
  * ## Arguments
