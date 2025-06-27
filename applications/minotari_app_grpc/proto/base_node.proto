@@ -612,4 +612,6 @@ message PaymentReferenceResponse {
     uint64 min_value_promise = 9;
     // Timestamp when the output was spent - will be 0 for unspent outputs
     uint64 spent_timestamp = 10;
+    // Output hash of the output
+    bytes output_hash = 11;
 }

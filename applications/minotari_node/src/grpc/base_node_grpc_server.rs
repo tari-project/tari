@@ -60,7 +60,7 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{ChainStorageError, MinedInfo},
+    chain_storage::ChainStorageError,
     consensus::{ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
@@ -2961,8 +2961,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
         self.check_method_enabled(GrpcMethod::SearchPaymentReferencesViaOutputHash)?;
         let report_error_flag = self.report_error_flag();
-        trace!(target: LOG_TARGET, "Incoming GRPC request for SearchPaymentReferencesViaOutputHash");
         let request = request.into_inner();
+        trace!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for SearchPaymentReferencesViaOutputHash: {} hashes",
+            request.hashes.len()
+        );
 
         let hashes = request
             .hashes
@@ -2981,66 +2985,40 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
         task::spawn(async move {
             for output_hash in &hashes {
+                let mut response = tari_rpc::PaymentReferenceResponse::default();
                 match node_service.fetch_mined_info_by_output_hash(output_hash).await {
-                    Ok(MinedInfo {
-                        output: Some(output_info),
-                        ..
-                    }) => {
-                        let response = tari_rpc::PaymentReferenceResponse {
-                            payment_reference_hex: generate_payment_reference(
-                                &output_info.header_hash,
-                                &output_info.output.hash(),
-                            )
-                            .to_hex(),
-                            block_height: output_info.mined_height,
-                            block_hash: output_info.header_hash.to_vec(),
-                            mined_timestamp: output_info.mined_timestamp,
-                            commitment: output_info.output.commitment.to_vec(),
-                            is_spent: false,
-                            spent_height: 0,
-                            spent_block_hash: vec![],
-                            min_value_promise: output_info.output.minimum_value_promise.as_u64(),
-                            spent_timestamp: 0,
-                        };
-
-                        if tx.send(Ok(response)).await.is_err() {
-                            return;
+                    Ok(mined_info) => {
+                        let has_output = mined_info.output.is_some();
+                        let has_input = mined_info.input.is_some();
+                        if let Some(output_info) = mined_info.output {
+                            response.payment_reference_hex =
+                                generate_payment_reference(&output_info.header_hash, output_hash).to_hex();
+                            response.block_height = output_info.mined_height;
+                            response.block_hash = output_info.header_hash.to_vec();
+                            response.mined_timestamp = output_info.mined_timestamp;
+                            response.commitment = output_info.output.commitment.to_vec();
+                            response.min_value_promise = output_info.output.minimum_value_promise.as_u64();
+                            response.output_hash = output_info.output.hash().to_vec();
                         }
-                    },
-                    Ok(MinedInfo {
-                        input: Some(input_info),
-                        ..
-                    }) => match node_service.fetch_payref_by_output_hash(output_hash).await {
-                        Ok(Some(payref)) => {
-                            let response = tari_rpc::PaymentReferenceResponse {
-                                payment_reference_hex: payref.to_hex(),
-                                block_height: 0,
-                                block_hash: vec![],
-                                mined_timestamp: 0,
-                                commitment: vec![],
-                                is_spent: true,
-                                spent_height: input_info.spent_height,
-                                spent_block_hash: input_info.header_hash.to_vec(),
-                                min_value_promise: 0,
-                                spent_timestamp: input_info.spent_timestamp,
-                            };
-
+                        if let Some(input_info) = mined_info.input {
+                            response.is_spent = true;
+                            response.spent_height = input_info.spent_height;
+                            response.spent_block_hash = input_info.header_hash.to_vec();
+                            response.spent_timestamp = input_info.spent_timestamp;
+                            if response.output_hash.is_empty() {
+                                response.output_hash = input_info.input.output_hash().to_vec();
+                            }
+                        }
+                        if has_output || has_input {
+                            trace!(
+                                target: LOG_TARGET,
+                                "GRPC request SearchPaymentReferencesViaOutputHash for {} found",
+                                output_hash
+                            );
                             if tx.send(Ok(response)).await.is_err() {
                                 return;
                             }
-                        },
-                        Ok(None) => {},
-                        Err(err) => {
-                            let _ignore = tx.send(Err(obscure_error_if_true(
-                                report_error_flag,
-                                Status::internal(format!("Error communicating with local base node: {}", err)),
-                            )));
-                            return;
-                        },
-                    },
-                    Ok(_) => {
-                        // mined info not found - no error, just no results for this output hash
-                        continue;
+                        }
                     },
                     Err(e) => {
                         warn!(target: LOG_TARGET, "Error looking up mined info via output hash {}: {}", output_hash, e);
@@ -3129,52 +3107,35 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 payrefs.push(payref_fixed_hash);
             }
             for payref in payrefs {
+                let mut response = tari_rpc::PaymentReferenceResponse::default();
                 match node_service.fetch_mined_info_by_payref(&payref).await {
-                    Ok(MinedInfo {
-                        output: Some(output_info),
-                        ..
-                    }) => {
-                        let response = tari_rpc::PaymentReferenceResponse {
-                            payment_reference_hex: payref.to_hex(),
-                            block_height: output_info.mined_height,
-                            block_hash: output_info.header_hash.to_vec(),
-                            mined_timestamp: output_info.mined_timestamp,
-                            commitment: output_info.output.commitment.to_vec(),
-                            is_spent: false,
-                            spent_height: 0,
-                            spent_block_hash: vec![],
-                            min_value_promise: output_info.output.minimum_value_promise.as_u64(),
-                            spent_timestamp: 0,
-                        };
-
-                        if tx.send(Ok(response)).await.is_err() {
-                            return;
+                    Ok(mined_info) => {
+                        let has_output = mined_info.output.is_some();
+                        let has_input = mined_info.input.is_some();
+                        if let Some(output_info) = mined_info.output {
+                            response.payment_reference_hex = payref.to_hex();
+                            response.block_height = output_info.mined_height;
+                            response.block_hash = output_info.header_hash.to_vec();
+                            response.mined_timestamp = output_info.mined_timestamp;
+                            response.commitment = output_info.output.commitment.to_vec();
+                            response.min_value_promise = output_info.output.minimum_value_promise.as_u64();
+                            response.output_hash = output_info.output.hash().to_vec();
                         }
-                    },
-                    Ok(MinedInfo {
-                        input: Some(input_info),
-                        ..
-                    }) => {
-                        let response = tari_rpc::PaymentReferenceResponse {
-                            payment_reference_hex: payref.to_hex(),
-                            block_height: 0,
-                            block_hash: vec![],
-                            mined_timestamp: 0,
-                            commitment: vec![],
-                            is_spent: true,
-                            spent_height: input_info.spent_height,
-                            spent_block_hash: input_info.header_hash.to_vec(),
-                            min_value_promise: 0,
-                            spent_timestamp: input_info.spent_timestamp,
-                        };
-
-                        if tx.send(Ok(response)).await.is_err() {
-                            return;
+                        if let Some(input_info) = mined_info.input {
+                            response.is_spent = true;
+                            response.spent_height = input_info.spent_height;
+                            response.spent_block_hash = input_info.header_hash.to_vec();
+                            response.spent_timestamp = input_info.spent_timestamp;
+                            if response.output_hash.is_empty() {
+                                response.output_hash = input_info.input.output_hash().to_vec();
+                            }
                         }
-                    },
-                    Ok(_) => {
-                        // PayRef not found - no error, just no results for this PayRef
-                        continue;
+                        if has_output || has_input {
+                            trace!(target: LOG_TARGET, "GRPC request SearchPaymentReferences for {} found", payref);
+                            if tx.send(Ok(response)).await.is_err() {
+                                return;
+                            }
+                        }
                     },
                     Err(e) => {
                         warn!(target: LOG_TARGET, "Error looking up PayRef {}: {}", payref, e);

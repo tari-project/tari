@@ -466,12 +466,6 @@ where B: BlockchainBackend
         db.fetch_mined_info_by_output_hash(&output_hash)
     }
 
-    /// Returns a copy of the payment reference by output hash
-    pub fn fetch_payref_by_output_hash(&self, output_hash: HashOutput) -> Result<Option<FixedHash>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_payref_by_output_hash(&output_hash)
-    }
-
     pub fn fetch_unspent_output_hash_by_commitment(
         &self,
         commitment: CompressedCommitment,

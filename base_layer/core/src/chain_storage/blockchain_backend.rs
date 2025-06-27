@@ -115,9 +115,6 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch mined info by output hash
     fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError>;
 
-    /// Fetch PayRef (Payment Reference) by output hash
-    fn fetch_payref_by_output_hash(&self, output_hash: &HashOutput) -> Result<Option<FixedHash>, ChainStorageError>;
-
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
 

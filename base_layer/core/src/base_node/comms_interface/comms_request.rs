@@ -86,7 +86,6 @@ pub enum NodeCommsRequest {
     },
     FetchMinedInfoByPayRef(FixedHash),
     FetchMinedInfoByOutputHash(HashOutput),
-    FetchPayRefByOutputHash(HashOutput),
     FetchOutputMinedInfo(HashOutput),
     CheckOutputSpentStatus(HashOutput),
 }
@@ -148,9 +147,6 @@ impl Display for NodeCommsRequest {
             },
             FetchMinedInfoByOutputHash(payref) => {
                 write!(f, "FetchMinedInfoByOutputHash ({})", payref)
-            },
-            FetchPayRefByOutputHash(payref) => {
-                write!(f, "FetchPayRefByOutputHash ({})", payref)
             },
             FetchOutputMinedInfo(output_hash) => {
                 write!(f, "FetchOutputMinedInfo ({})", output_hash)

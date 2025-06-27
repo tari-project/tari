@@ -323,10 +323,6 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_mined_info_by_output_hash(output_hash)
     }
 
-    fn fetch_payref_by_output_hash(&self, output_hash: &HashOutput) -> Result<Option<FixedHash>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_payref_by_output_hash(output_hash)
-    }
-
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_outputs_in_block(header_hash)
     }

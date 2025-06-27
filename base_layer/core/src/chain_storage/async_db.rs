@@ -279,8 +279,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo, "fetch_mined_info_by_payref");
 
     make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> MinedInfo, "fetch_mined_info_by_output_hash");
-
-    make_async_fn!(fetch_payref_by_output_hash(output_hash: HashOutput) -> Option<FixedHash>, "fetch_payref_by_output_hash");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

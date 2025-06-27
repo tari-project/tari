@@ -376,25 +376,10 @@ impl LocalNodeCommsInterface {
     ) -> Result<MinedInfo, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMinedInfoByPayRef(*output_hash))
+            .call(NodeCommsRequest::FetchMinedInfoByOutputHash(*output_hash))
             .await??
         {
             NodeCommsResponse::MinedInfo(mined_info) => Ok(mined_info),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
-    }
-
-    /// Fetch PayRef (Payment Reference) by output hash
-    pub async fn fetch_payref_by_output_hash(
-        &mut self,
-        output_hash: &HashOutput,
-    ) -> Result<Option<FixedHash>, CommsInterfaceError> {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::FetchPayRefByOutputHash(*output_hash))
-            .await??
-        {
-            NodeCommsResponse::PayRef(payref) => Ok(payref),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

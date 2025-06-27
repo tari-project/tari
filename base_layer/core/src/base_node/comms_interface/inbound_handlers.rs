@@ -462,10 +462,6 @@ where B: BlockchainBackend + 'static
                 let output_info = self.blockchain_db.fetch_mined_info_by_output_hash(output_hash).await?;
                 Ok(NodeCommsResponse::MinedInfo(output_info))
             },
-            NodeCommsRequest::FetchPayRefByOutputHash(output_hash) => {
-                let payref = self.blockchain_db.fetch_payref_by_output_hash(output_hash).await?;
-                Ok(NodeCommsResponse::PayRef(payref))
-            },
             NodeCommsRequest::FetchOutputMinedInfo(output_hash) => {
                 let output_info = self.blockchain_db.fetch_output(output_hash).await?;
                 Ok(NodeCommsResponse::OutputMinedInfo(output_info))
