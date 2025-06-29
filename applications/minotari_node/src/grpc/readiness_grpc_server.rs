@@ -27,9 +27,8 @@ use minotari_app_grpc::tari_rpc::{
     readiness_status::{State, Status as ReadinessStatusEnum},
     MigrationProgress,
     ReadinessStatus,
-    TransactionsProgress,
 };
-use tari_core::chain_storage::{DatabaseStats, LastOperation};
+use tari_core::chain_storage::DatabaseStats;
 use tokio::sync::watch;
 use tonic::{Request, Response, Status};
 pub struct ReadinessGrpcServer {
@@ -81,25 +80,17 @@ impl ReadinessService {
     }
 
     pub fn get_status(&self) -> ReadinessStatus {
-        let readiness_status = self.readiness_rx.borrow().clone();
+        let readiness_status = *self.readiness_rx.borrow();
         let db_status = self.lmdb_db_status_rx.borrow();
 
         // Choose the status with the latest timestamp
         if db_status.timestamp > readiness_status.timestamp {
             // Cast latest DB status to ReadinessStatus
-            let latest_db_status = match db_status.last_operation {
-                LastOperation::Migration => ReadinessStatusEnum::Migration(MigrationProgress {
-                    current_block: db_status.migration_stats.current_height,
-                    total_blocks: db_status.migration_stats.total_height,
-                    progress_percentage: db_status.migration_stats.progress_percentage,
-                }),
-                LastOperation::Transactions => ReadinessStatusEnum::Transactions(TransactionsProgress {
-                    current_operation: db_status.transactions_stats.current_operation as u64,
-                    total_operations: db_status.transactions_stats.total_operations as u64,
-                    progress_percentage: db_status.transactions_stats.progress_percentage,
-                }),
-                _ => ReadinessStatusEnum::State(State::DatabaseInitializing.into()),
-            };
+            let latest_db_status = ReadinessStatusEnum::Migration(MigrationProgress {
+                current_block: db_status.migration_stats.current_height,
+                total_blocks: db_status.migration_stats.total_height,
+                progress_percentage: db_status.migration_stats.progress_percentage,
+            });
             ReadinessStatus {
                 status: Some(latest_db_status),
                 timestamp: db_status.timestamp,

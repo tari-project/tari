@@ -197,4 +197,10 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Creates a reader to construct a JMT
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError>;
+
+    /// Stats reporting methods for long-running operations
+    /// Set the total number of steps for progress tracking
+    fn set_stats_total_height(&self, total: u64);
+    /// Update the current progress step
+    fn update_stats_progress(&self, current: u64);
 }

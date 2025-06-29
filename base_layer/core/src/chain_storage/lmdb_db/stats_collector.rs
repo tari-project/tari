@@ -90,41 +90,22 @@ pub struct MigrationStats {
     pub progress_percentage: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct TransactionsStats {
-    pub current_operation: usize,
-    pub total_operations: usize,
-    pub progress_percentage: f64,
-}
-
 /// Statistics data for database operations
 #[derive(Debug, Clone, PartialEq)]
 pub struct DatabaseStats {
     pub migration_stats: MigrationStats,
-    pub transactions_stats: TransactionsStats,
     pub last_updated: Instant,
     pub metadata: HashMap<MetadataKey, MetadataValue>,
     pub timestamp: u64,
-    pub last_operation: LastOperation,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum LastOperation {
-    Migration,
-    Transactions,
-    Metadata,
-    None,
 }
 
 impl Default for DatabaseStats {
     fn default() -> Self {
         Self {
             migration_stats: MigrationStats::default(),
-            transactions_stats: TransactionsStats::default(),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
             timestamp: Utc::now().timestamp_millis() as u64,
-            last_operation: LastOperation::None,
         }
     }
 }
@@ -139,7 +120,6 @@ impl DatabaseStats {
         };
 
         Self {
-            transactions_stats: TransactionsStats::default(),
             migration_stats: MigrationStats {
                 current_height,
                 total_height,
@@ -148,14 +128,12 @@ impl DatabaseStats {
             last_updated: Instant::now(),
             metadata: HashMap::new(),
             timestamp: Utc::now().timestamp_millis() as u64,
-            last_operation: LastOperation::Migration,
         }
     }
 
     /// Set metadata key-value pair
     pub fn set_metadata(&mut self, key: MetadataKey, value: &MetadataValue) {
         self.metadata.insert(key, value.to_owned());
-        self.last_operation = LastOperation::Metadata;
     }
 
     /// Get metadata value by key
@@ -166,13 +144,11 @@ impl DatabaseStats {
     /// Clear all metadata
     pub fn clear_metadata(&mut self) {
         self.metadata.clear();
-        self.last_operation = LastOperation::Metadata;
     }
 
     pub fn set_migration_total_height(&mut self, total_height: u64) {
         self.migration_stats.total_height = total_height;
         self.timestamp = Utc::now().timestamp_millis() as u64;
-        self.last_operation = LastOperation::Migration;
     }
 
     /// Update progress with new current height
@@ -186,19 +162,6 @@ impl DatabaseStats {
         } else {
             0.0
         };
-        self.last_operation = LastOperation::Migration;
-    }
-
-    pub fn set_total_operations(&mut self, total_operations: usize) {
-        self.transactions_stats.total_operations = total_operations;
-        self.timestamp = Utc::now().timestamp_millis() as u64;
-        self.last_operation = LastOperation::Transactions;
-    }
-
-    pub fn set_current_operations(&mut self, total_operations_completed: usize) {
-        self.transactions_stats.current_operation = total_operations_completed;
-        self.timestamp = Utc::now().timestamp_millis() as u64;
-        self.last_operation = LastOperation::Transactions;
     }
 }
 
@@ -241,17 +204,6 @@ impl LMDBStatsCollector {
         let new_stats = DatabaseStats {
             migration_stats: stats,
             timestamp: self.get_current_timestamp(),
-            last_operation: LastOperation::Migration,
-            ..self.receiver.borrow().clone()
-        };
-        self.update_db_stats(new_stats);
-    }
-
-    pub fn update_transactions_stats(&self, stats: TransactionsStats) {
-        let new_stats = DatabaseStats {
-            transactions_stats: stats,
-            timestamp: self.get_current_timestamp(),
-            last_operation: LastOperation::Transactions,
             ..self.receiver.borrow().clone()
         };
         self.update_db_stats(new_stats);
@@ -304,19 +256,6 @@ impl LMDBStatsCollector {
     pub fn reset(&self, current_height: u64, total_height: u64) {
         let stats = DatabaseStats::new(current_height, total_height);
         self.update_db_stats(stats);
-    }
-
-    pub fn set_current_operations(&self, current_operations: usize) {
-        let mut stats = self.receiver.borrow().clone().transactions_stats;
-        stats.current_operation = current_operations;
-        self.update_transactions_stats(stats);
-    }
-
-    // TODO it makes no sense at all why does it tries to modify the stats?
-    pub fn set_total_operations(&self, total_operations: usize) {
-        let mut stats = self.receiver.borrow().clone().transactions_stats;
-        stats.total_operations = total_operations;
-        self.update_transactions_stats(stats);
     }
 
     /// Subscribe an additional watch sender to receive updates

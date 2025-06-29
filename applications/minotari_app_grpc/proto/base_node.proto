@@ -199,7 +199,6 @@ message ReadinessStatus {
    oneof status {
        State state = 1;
        MigrationProgress migration = 2;
-       TransactionsProgress transactions = 3;
    }
    uint64 timestamp = 6;
 
@@ -208,12 +207,6 @@ message ReadinessStatus {
 message MigrationProgress {
    uint64 current_block = 1;
    uint64 total_blocks = 2;
-   double progress_percentage = 3;
-}
-
-message TransactionsProgress {
-   uint64 current_operation = 1;
-   uint64 total_operations = 2;
    double progress_percentage = 3;
 }
 

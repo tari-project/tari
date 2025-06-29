@@ -442,6 +442,10 @@ impl BlockchainBackend for TempDatabase {
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
         self.db.as_ref().unwrap().create_smt_reader()
     }
+
+    fn set_stats_total_height(&self, _total: u64) {}
+
+    fn update_stats_progress(&self, _current: u64) {}
 }
 
 pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
