@@ -449,7 +449,7 @@ impl LMDBDatabase {
     /// Update progress in the stats collector
     pub fn update_stats_current_height(&self, current_height: u64) {
         debug!("Updating stats to height {}", current_height);
-        self.stats_collector.update_progress(current_height);
+        self.stats_collector.update_migration_progress(current_height);
     }
 
     /// Set total height in the stats collector
@@ -2899,7 +2899,7 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn update_stats_progress(&self, current: u64) {
-        self.stats_collector.update_progress(current);
+        self.stats_collector.update_migration_progress(current);
     }
 }
 
@@ -3080,8 +3080,8 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    println!("Running migrations");
     const MIGRATION_VERSION: u64 = 3;
+    db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
@@ -3089,17 +3089,16 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         Some(MetadataValue::MigrationVersion(n)) => n,
         Some(_) | None => 0,
     };
+    db.stats_collector().set_current_db_version(last_migrated_version);
     info!(
         target: LOG_TARGET,
         "Blockchain database is at v{} (required version: {})", last_migrated_version, MIGRATION_VERSION
     );
     drop(txn);
 
-    println!("Last migration version: {}", last_migrated_version);
     for migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
         // Add migrations here
         if migrate_from_version == 0 {
-            println!("Reading transactions");
             let txn = db.read_transaction()?;
 
             let chain_height = match fetch_chain_height(&txn, &db.metadata_db) {
@@ -3109,7 +3108,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     continue;
                 },
             };
-            println!("chain height: {}", chain_height);
 
             let k = MetadataKey::AccumulatedWork;
 
@@ -3139,13 +3137,10 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     "Replaced tip accumulated data ",
                 );
             }
-            println!("fetched value from metadata: {:?}", val);
 
             let txn = db.write_transaction()?;
-            println!("wrote transaction");
 
             for height in 0..=chain_height {
-                println!("Processing height: {}", height);
                 let block_accum_data: V0BLockHeaderAccumulatedData =
                     lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
                         ChainStorageError::ValueNotFound {
@@ -3172,8 +3167,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     &new_block_accum_data,
                     None,
                 )?;
-
-                println!("Processing height2 {}", height);
 
                 // Update stats progress
                 if height % 50 == 0 {
@@ -3230,7 +3223,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 info!(target: LOG_TARGET, "No migration to perform for version network");
                 continue;
             }
-            println!("Migrating block heights with incorrect accumulated difficulty");
             let mut last_correct_height = 0;
             for (height, correct_difficulty) in known_good_difficulties {
                 let txn = db.read_transaction()?;
@@ -3250,14 +3242,12 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     break;
                 }
             }
-            println!("Last correct height: {}", last_correct_height);
             if last_correct_height == 0 {
                 // this will happen only happen if the db is below the fork height of the RxT fork
                 info!(target: LOG_TARGET, "No migration to perform for version network");
                 continue;
             }
             // lets rewind to last known good accumulated difficulty so the db can be correctly calculated again
-            println!("Rewinding to height {}", last_correct_height);
             rewind_to_height(db, last_correct_height)?;
         }
         if migrate_from_version == 2 {
@@ -3283,7 +3273,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             }
 
             for height in 0..=chain_height {
-                println!("Processing PayRef for height {}", height);
                 process_payref_for_height(db, height)?;
             }
             info!(target: LOG_TARGET, "PayRef index rebuild completed");

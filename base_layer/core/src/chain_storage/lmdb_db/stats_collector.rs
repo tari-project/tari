@@ -88,6 +88,8 @@ pub struct MigrationStats {
     pub current_height: u64,
     pub total_height: u64,
     pub progress_percentage: f64,
+    pub current_db_version: u64,
+    pub target_db_version: u64,
 }
 
 /// Statistics data for database operations
@@ -124,6 +126,8 @@ impl DatabaseStats {
                 current_height,
                 total_height,
                 progress_percentage,
+                current_db_version: 0,
+                target_db_version: 0,
             },
             last_updated: Instant::now(),
             metadata: HashMap::new(),
@@ -132,8 +136,13 @@ impl DatabaseStats {
     }
 
     /// Set metadata key-value pair
-    pub fn set_metadata(&mut self, key: MetadataKey, value: &MetadataValue) {
+    fn set_metadata(&mut self, key: MetadataKey, value: &MetadataValue) {
         self.metadata.insert(key, value.to_owned());
+        if key == MetadataKey::MigrationVersion {
+            if let MetadataValue::MigrationVersion(version) = value {
+                self.migration_stats.current_db_version = *version;
+            }
+        }
     }
 
     /// Get metadata value by key
@@ -200,7 +209,7 @@ impl LMDBStatsCollector {
         }
     }
 
-    pub fn update_migration_stats(&self, stats: MigrationStats) {
+    fn update_migration_stats(&self, stats: MigrationStats) {
         let new_stats = DatabaseStats {
             migration_stats: stats,
             timestamp: self.get_current_timestamp(),
@@ -231,8 +240,22 @@ impl LMDBStatsCollector {
         self.receiver.borrow().clone()
     }
 
+    /// Set the target database version for migration
+    pub fn set_target_db_version(&self, target_version: u64) {
+        let mut stats = self.receiver.borrow().clone();
+        stats.migration_stats.target_db_version = target_version;
+        self.update_db_stats(stats);
+    }
+
+    /// Set the current database version for migration
+    pub fn set_current_db_version(&self, current_version: u64) {
+        let mut stats = self.receiver.borrow().clone();
+        stats.migration_stats.current_db_version = current_version;
+        self.update_db_stats(stats);
+    }
+
     /// Update the current progress
-    pub fn update_progress(&self, current_height: u64) {
+    pub fn update_migration_progress(&self, current_height: u64) {
         let mut stats = self.receiver.borrow().clone();
         stats.update_migration_progress(current_height);
         self.update_db_stats(stats);
@@ -362,12 +385,12 @@ mod tests {
     fn test_stats_collector_progress_update() {
         let collector = LMDBStatsCollector::with_total_height(100);
 
-        collector.update_progress(25);
+        collector.update_migration_progress(25);
         let stats = collector.current_stats().migration_stats;
         assert_eq!(stats.current_height, 25);
         assert_eq!(stats.progress_percentage, 25.0);
 
-        collector.update_progress(100);
+        collector.update_migration_progress(100);
         assert_eq!(stats.total_height, 100);
     }
 
@@ -381,7 +404,7 @@ mod tests {
         assert_eq!(stats.current_height, 0);
 
         // Update progress
-        collector.update_progress(50);
+        collector.update_migration_progress(50);
 
         // Check if receiver got the update
         let stats = receiver.borrow_and_update().migration_stats.clone();
@@ -394,7 +417,7 @@ mod tests {
         let collector = LMDBStatsCollector::with_total_height(100);
         let mut receiver = collector.subscribe();
 
-        collector.update_progress(50);
+        collector.update_migration_progress(50);
         collector.reset(0, 200);
         let stats = receiver.borrow_and_update().migration_stats.clone();
         assert_eq!(stats.current_height, 0);
@@ -419,7 +442,7 @@ mod tests {
         assert_eq!(stats2.current_height, 0);
 
         // Update progress
-        collector.update_progress(25);
+        collector.update_migration_progress(25);
 
         // All receivers should get the update
         let stats1 = receiver1.borrow_and_update().migration_stats.clone();
@@ -436,7 +459,7 @@ mod tests {
         let collector = LMDBStatsCollector::with_total_height(100);
 
         // Set some initial progress
-        collector.update_progress(30);
+        collector.update_migration_progress(30);
 
         // Create external sender/receiver pair
         let initial_stats = DatabaseStats::default();
@@ -453,7 +476,7 @@ mod tests {
         }
 
         // Update progress again
-        collector.update_progress(60);
+        collector.update_migration_progress(60);
 
         // External receiver should get the update
         {

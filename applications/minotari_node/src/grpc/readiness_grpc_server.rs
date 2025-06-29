@@ -90,6 +90,8 @@ impl ReadinessService {
                 current_block: db_status.migration_stats.current_height,
                 total_blocks: db_status.migration_stats.total_height,
                 progress_percentage: db_status.migration_stats.progress_percentage,
+                current_db_version: db_status.migration_stats.current_db_version,
+                target_db_version: db_status.migration_stats.target_db_version,
             });
             ReadinessStatus {
                 status: Some(latest_db_status),

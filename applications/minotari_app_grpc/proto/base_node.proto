@@ -208,6 +208,8 @@ message MigrationProgress {
    uint64 current_block = 1;
    uint64 total_blocks = 2;
    double progress_percentage = 3;
+   uint64 current_db_version = 4;
+   uint64 target_db_version = 5;
 }
 
 /// return type of GetNewBlockTemplate
