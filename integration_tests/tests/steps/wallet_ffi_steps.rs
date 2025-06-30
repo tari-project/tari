@@ -398,13 +398,7 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
         );
         let status = completed_transaction.get_status();
         assert_ne!(status, -1, "Status '{}', expected not -1", status);
-        let confirmations = completed_transaction.get_confirmations();
-        assert!(
-            if status == 6 { confirmations >= 1 } else { true },
-            "Confirmations '{}' (with status '{}'), expected >= 1",
-            confirmations,
-            status
-        );
+
         let cancellation_reason = completed_transaction.get_cancellation_reason();
         assert!(
             if status == 6 { cancellation_reason == -1 } else { true },

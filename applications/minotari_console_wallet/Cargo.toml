@@ -77,7 +77,6 @@ tonic = "0.13.1"
 unicode-segmentation = "1.6.0"
 unicode-width = "0.1"
 url = "2.3.1"
-zeroize = "1"
 zxcvbn = "2"
 tui = { version = "^0.19", default-features = false, features = ["crossterm"] }
 

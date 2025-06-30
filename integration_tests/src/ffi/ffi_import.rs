@@ -317,10 +317,7 @@ extern "C" {
         error_out: *mut c_int,
     ) -> c_uint;
     pub fn completed_transaction_is_outbound(tx: *mut TariCompletedTransaction, error_out: *mut c_int) -> bool;
-    pub fn completed_transaction_get_confirmations(
-        tx: *mut TariCompletedTransaction,
-        error_out: *mut c_int,
-    ) -> c_ulonglong;
+
     pub fn completed_transaction_get_cancellation_reason(
         tx: *mut TariCompletedTransaction,
         error_out: *mut c_int,

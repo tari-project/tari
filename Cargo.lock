@@ -4242,7 +4242,6 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "url",
- "zeroize",
  "zxcvbn",
 ]
 
