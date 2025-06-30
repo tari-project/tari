@@ -32,24 +32,31 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 use url::Url;
 
 use super::handle::WalletConnectivityHandle;
-use crate::{client::http_client_factory::DefaultHttpClientFactory, util::watch::Watch};
+use crate::{
+    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
+    util::watch::Watch,
+};
 
-pub struct WalletConnectivityInitializer {
+pub struct WalletConnectivityInitializer<TClientFactory: HttpClientFactory> {
     http_node_url: Url,
+    phantom: std::marker::PhantomData<TClientFactory>,
 }
 
-impl WalletConnectivityInitializer {
+impl<T: HttpClientFactory> WalletConnectivityInitializer<T> {
     pub fn new(http_node_url: Url) -> Self {
-        Self { http_node_url }
+        Self {
+            http_node_url,
+            phantom: std::marker::PhantomData,
+        }
     }
 }
 
 #[async_trait]
-impl ServiceInitializer for WalletConnectivityInitializer {
+impl<T: HttpClientFactory> ServiceInitializer for WalletConnectivityInitializer<T> {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let base_node_watch = Watch::new(None);
 
-        let factory = DefaultHttpClientFactory::new(self.http_node_url.clone());
+        let factory = T::new(self.http_node_url.clone());
         context.register_handle(WalletConnectivityHandle::new(base_node_watch.clone(), factory));
 
         Ok(())

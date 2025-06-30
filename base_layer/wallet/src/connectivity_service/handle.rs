@@ -48,10 +48,7 @@ pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
 }
 
 impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletClientFactory> {
-    pub(super) fn new(
-        base_node_watch: Watch<Option<BaseNodePeerManager>>,
-        client_factory: TWalletClientFactory,
-    ) -> Self {
+    pub fn new(base_node_watch: Watch<Option<BaseNodePeerManager>>, client_factory: TWalletClientFactory) -> Self {
         let (online_status_watch, _) = watch::channel(OnlineStatus::Connecting);
         Self {
             base_node_watch,

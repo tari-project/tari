@@ -103,7 +103,7 @@ use url::Url;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
-    client::http_client_factory::HttpClientFactory,
+    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     config::WalletConfig,
     connectivity_service::{
         BaseNodePeerManager,
@@ -257,7 +257,7 @@ where
                 config.contacts_online_ping_window,
             ))
             .add_initializer(BaseNodeServiceInitializer::default())
-            .add_initializer(WalletConnectivityInitializer::new(
+            .add_initializer(WalletConnectivityInitializer::<DefaultHttpClientFactory>::new(
                 config
                     .http_client_url
                     .as_ref()

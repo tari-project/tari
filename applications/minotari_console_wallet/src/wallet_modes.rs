@@ -559,7 +559,6 @@ mod test {
                 CliCommands::InitShaAtomicSwap(_) => {},
                 CliCommands::FinaliseShaAtomicSwap(_) => {},
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
-                CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
                 CliCommands::PreMineSpendBackupUtxo(_) => {},

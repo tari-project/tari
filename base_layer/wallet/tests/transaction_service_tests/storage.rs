@@ -345,7 +345,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             last_send_timestamp: None,
 
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -391,7 +390,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_completed_tx = db.get_completed_transaction(completed_txs[0].tx_id).unwrap();
     assert_eq!(retrieved_completed_tx.send_count, 2);
     assert!(retrieved_completed_tx.last_send_timestamp.is_some());
-    assert!(retrieved_completed_tx.confirmations.is_none());
 
     assert!(db.fetch_last_mined_transaction().unwrap().is_none());
 
@@ -412,7 +410,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
 
     let retrieved_completed_tx = db.get_completed_transaction(completed_txs[0].tx_id).unwrap();
-    assert_eq!(retrieved_completed_tx.confirmations, Some(5));
 
     let any_completed_tx = db.get_any_transaction(completed_txs[0].tx_id).unwrap().unwrap();
     if let WalletTransaction::Completed(tx) = any_completed_tx {

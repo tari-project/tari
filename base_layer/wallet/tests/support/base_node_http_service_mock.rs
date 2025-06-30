@@ -1,17 +1,27 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Error;
 use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use minotari_wallet::{output_manager_service::resources, utxo_scanner_service::service::HttpClientFactory};
+use minotari_wallet::client::http_client_factory::HttpClientFactory;
 use tari_core::{
-    base_node::rpc::models::{self, BlockHeader, BlockUtxoInfo, SyncUtxosByBlockResponse},
-    blocks,
+    base_node::rpc::models::{
+        self,
+        BlockHeader,
+        BlockUtxoInfo,
+        GetUtxosDeletedInfoResponse,
+        GetUtxosMinedInfoResponse,
+        SyncUtxosByBlockResponse,
+        TxSubmissionResponse,
+    },
+    mempool::FeePerGramStat,
+    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
 use tokio::sync::{mpsc, RwLock};
+use url::Url;
 
 use crate::support::comms_rpc::UtxosByBlock;
 
@@ -70,6 +80,50 @@ impl HttpBaseNodeMock {
 
 #[async_trait]
 impl BaseNodeWalletClient for HttpBaseNodeMock {
+    fn get_address(&self) -> std::string::String {
+        todo!()
+    }
+
+    fn is_online(&self) -> bool {
+        todo!()
+    }
+
+    fn get_last_request_latency(&self) -> Option<Duration> {
+        todo!()
+    }
+
+    async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error> {
+        todo!()
+    }
+
+    async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
+        todo!()
+    }
+
+    async fn query_deleted_utxos(
+        &self,
+        hashes: Vec<Vec<u8>>,
+        must_include_header: Vec<u8>,
+    ) -> Result<GetUtxosDeletedInfoResponse, Error> {
+        todo!()
+    }
+
+    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
+        todo!()
+    }
+
+    async fn transaction_query(
+        &self,
+        excess_sig_nonce: Vec<u8>,
+        excess_sig_sig: Vec<u8>,
+    ) -> Result<models::TxQueryResponse, Error> {
+        todo!()
+    }
+
+    async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, Error> {
+        todo!()
+    }
+
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error> {
         let state = self.state.read().await;
         if let Some(tip_info) = &state.tip_info {
@@ -222,6 +276,10 @@ impl Default for MockHttpClientFactory {
 
 impl HttpClientFactory for MockHttpClientFactory {
     type Client = HttpBaseNodeMock;
+
+    fn new(_node_url: Url) -> Self {
+        Self::default()
+    }
 
     fn create_http_client(&self) -> Self::Client {
         self.mock.clone()

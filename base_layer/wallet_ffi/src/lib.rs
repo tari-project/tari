@@ -81,7 +81,7 @@ use log4rs::{
 };
 use minotari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
-    client::http_client_factory::DefaultHttpClientFactory,
+    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     connectivity_service::WalletConnectivityInterface,
     error::{WalletError, WalletStorageError},
     output_manager_service::{

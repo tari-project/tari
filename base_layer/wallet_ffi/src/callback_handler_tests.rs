@@ -567,7 +567,6 @@ mod test {
 
         base_node_event_sender
             .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
-                node_id: Some(NodeId::new()),
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(true),
                 updated: DateTime::from_timestamp_millis(ts_now.timestamp_millis() - (60 * 1000)),

@@ -20,15 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![allow(dead_code, unused)]
-
 use std::ptr;
 
 use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use minotari_wallet::{
-    client::http_client_factory::DefaultHttpClientFactory,
+    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     connectivity_service::WalletConnectivityHandle,
     error::WalletError,
     storage::sqlite_db::wallet::WalletSqliteDatabase,

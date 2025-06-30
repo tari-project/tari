@@ -32,7 +32,7 @@ use tokio::sync::broadcast;
 use url::Url;
 
 use crate::{
-    client::http_client_factory::DefaultHttpClientFactory,
+    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
