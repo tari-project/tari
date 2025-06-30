@@ -19,12 +19,15 @@ where D: Deserializer<'de> {
     }
     let mut res = Vec::new();
     for s in s.split(',') {
-        if !s.is_empty() && !s.chars().all(|c| c.is_ascii_hexdigit()) {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            continue; // Skip empty segments
+        }
+        if !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(serde::de::Error::custom("Invalid hex string"));
         }
-        let bytes = hex::from_hex(s).map_err(serde::de::Error::custom)?;
+        let bytes = hex::from_hex(trimmed).map_err(serde::de::Error::custom)?;
         res.push(bytes);
     }
-
     Ok(res)
 }

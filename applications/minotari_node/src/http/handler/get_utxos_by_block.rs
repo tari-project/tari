@@ -41,7 +41,7 @@ impl From<GetUtxosByBlockQueryParams> for GetUtxosByBlockRequest {
     params(GetUtxosByBlockQueryParams),
     path = "/get_utxos_by_block",
     responses(
-        (status = 200, description = "UTXOs returned successfully for the header", body = SyncUtxosByBlockResponse),
+        (status = 200, description = "UTXOs returned successfully for the header", body = GetUtxosByBlockResponse),
         (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at height: 10"})),
     ),
 )]

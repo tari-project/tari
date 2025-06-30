@@ -35,7 +35,10 @@ pub async fn handle<B: BlockchainBackend + 'static>(
                 .map_err(|e| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e.to_string()))))?;
             match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
                 Ok(response) => Ok(Json(JsonRpcResponse {
-                    result: serde_json::to_value(response).unwrap_or_default(),
+                    result: serde_json::to_value(response).unwrap_or_else(|e| {
++                        warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
++                        serde_json::Value::Null
++                    }),
                     error: None,
                     id: request.id,
                 })),

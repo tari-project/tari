@@ -20,7 +20,7 @@ use crate::http::handler::{
     ErrorResponse,
 };
 
-const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_utxos_mined_info";
+const LOG_TARGET: &str = "c::base_node::rpc::http::handler::get_utxos_deleted_info";
 
 #[derive(Deserialize, Debug, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]

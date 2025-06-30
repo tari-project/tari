@@ -28,7 +28,7 @@ pub struct GetHeaderByHeightQueryParams {
     path = "/get_header_by_height",
     responses(
         (status = 200, description = "Block header returned successfully", body = BlockHeader),
-        (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at height: 10"})),
+        (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at specified time"})),
     ),
 )]
 pub async fn handle<B: BlockchainBackend + 'static>(

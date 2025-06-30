@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![allow(dead_code, unused)]
-
 use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
@@ -504,12 +502,6 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
 pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -> Result<(), ExitError> {
     // Restart transaction protocols if not running in script or command modes
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
-        // NOTE: https://github.com/tari-project/tari/issues/5227
-        debug!("revalidating all transactions");
-        // if let Err(e) = wallet.transaction_service.revalidate_all_transactions().await {
-        //     error!(target: LOG_TARGET, "Failed to revalidate all transactions: {}", e);
-        // }
-
         debug!("restarting transaction protocols");
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
             error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
