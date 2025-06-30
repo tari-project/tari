@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{BaseNodePeerManager, WalletConnectivityHandle},
+    connectivity_service::WalletConnectivityHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
-        handle::{OutputManagerEvent, OutputManagerHandle},
+        handle::OutputManagerHandle,
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
@@ -38,7 +38,6 @@ use minotari_wallet::{
         },
         UtxoSelectionCriteria,
     },
-    storage::sqlite_db::wallet,
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
     util::watch::Watch,
@@ -52,13 +51,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, CompressedPublicKey, FixedHash},
 };
-use tari_comms::{
-    peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
-    test_utils::node_identity::build_node_identity,
-};
 use tari_core::{
-    blocks::BlockHeader,
     borsh::SerializedSize,
     covenants::Covenant,
     transactions::{
@@ -84,12 +77,10 @@ use tari_shutdown::Shutdown;
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
-    time::sleep,
 };
 
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
-    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     data::get_temp_sqlite_database_connection,
     utils::{make_input, make_input_with_features},
 };
@@ -101,7 +92,7 @@ fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
 
 struct TestOmsService {
     pub output_manager_handle: OutputManagerHandle,
-    pub wallet_connectivity_mock: WalletConnectivityHandle<MockHttpClientFactory>,
+    pub _wallet_connectivity_mock: WalletConnectivityHandle<MockHttpClientFactory>,
     pub _shutdown: Shutdown,
     pub _transaction_service_handle: TransactionServiceHandle,
     pub _node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
@@ -112,7 +103,7 @@ struct TestOmsService {
 #[allow(clippy::too_many_lines)]
 async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     backend: T,
-    with_connection: bool,
+    _with_connection: bool,
 ) -> TestOmsService {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
@@ -126,7 +117,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let constants = create_consensus_constants(0);
 
-    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (sender, _receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
     let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
 
@@ -175,7 +166,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
-    height: Option<u64>,
+    _height: Option<u64>,
 ) -> (
     OutputManagerHandle,
     Shutdown,
@@ -196,7 +187,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
 
     let constants = create_consensus_constants(0);
 
-    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (sender, _receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
 
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());

@@ -20,15 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr;
-
 use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use minotari_wallet::{
     client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
-    connectivity_service::WalletConnectivityHandle,
-    error::WalletError,
     storage::sqlite_db::wallet::WalletSqliteDatabase,
     utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletKeyManager,
@@ -39,41 +35,11 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_crypto::tari_utilities::Hidden;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex::Hex, SafePassword};
-use tokio::{runtime::Runtime, sync::broadcast};
+use tari_utilities::SafePassword;
+use tokio::sync::broadcast;
 use url::Url;
-use zeroize::{Zeroize, Zeroizing};
 
 pub const LOG_TARGET: &str = "wallet::recovery";
-
-/// Prompt the user to input their seed words in a single line.
-pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
-    debug!(target: LOG_TARGET, "Prompting for seed words.");
-    let mut rl = Editor::<()>::new();
-
-    loop {
-        println!("Recovery Mode");
-        println!();
-        println!("Type or paste all of your seed words on one line, only separated by spaces.");
-        let input = Hidden::hide(rl.readline(">> ").map_err(|e| ExitError::new(ExitCode::IOError, e))?);
-        let seed_words: SeedWords = SeedWords::new(
-            input
-                .reveal()
-                .split_whitespace()
-                .map(|s| Hidden::hide(s.to_string()))
-                .collect(),
-        );
-
-        match CipherSeed::from_mnemonic(&seed_words, None) {
-            Ok(seed) => break Ok(seed),
-            Err(e) => {
-                debug!(target: LOG_TARGET, "MnemonicError parsing seed words: {}", e);
-                println!("Failed to parse seed words! Did you type them correctly?");
-                continue;
-            },
-        }
-    }
-}
 
 /// Return seed matching the seed words.
 pub fn get_seed_from_seed_words(

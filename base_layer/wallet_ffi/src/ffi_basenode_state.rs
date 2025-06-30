@@ -296,10 +296,6 @@ pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TariBaseNodeState,
 
 #[cfg(test)]
 mod tests {
-    use tari_common_types::types::FixedHash;
-
-    use super::*;
-    use crate::{TariPublicKey, UncompressedTariPublicKey};
 
     #[test]
     fn test_basenode_state_ffi_accessors() {

@@ -40,7 +40,6 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus},
         types::{CompressedPublicKey, PrivateKey},
     };
-    use tari_comms::peer_manager::NodeId;
     use tari_comms_dht::event::DhtEvent;
     use tari_contacts::contacts_service::{
         handle::{ContactsLivenessData, ContactsLivenessEvent},

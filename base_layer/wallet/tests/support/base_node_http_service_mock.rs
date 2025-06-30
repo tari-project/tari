@@ -46,18 +46,12 @@ impl State {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct HttpBaseNodeMock {
     state: Arc<RwLock<State>>,
 }
 
 impl HttpBaseNodeMock {
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(RwLock::new(State::default())),
-        }
-    }
-
     pub async fn set_utxos_by_block(&self, utxos_by_block: Vec<UtxosByBlock>) -> Result<(), Error> {
         let mut s = self.state.write().await;
         s.set_utxos_by_block(utxos_by_block);
@@ -92,35 +86,35 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         todo!()
     }
 
-    async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error> {
+    async fn get_utxos_mined_info(&self, _hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error> {
         todo!()
     }
 
-    async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
+    async fn fetch_utxo(&self, _hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
         todo!()
     }
 
     async fn query_deleted_utxos(
         &self,
-        hashes: Vec<Vec<u8>>,
-        must_include_header: Vec<u8>,
+        _hashes: Vec<Vec<u8>>,
+        _must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, Error> {
         todo!()
     }
 
-    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
+    async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
         todo!()
     }
 
     async fn transaction_query(
         &self,
-        excess_sig_nonce: Vec<u8>,
-        excess_sig_sig: Vec<u8>,
+        _excess_sig_nonce: Vec<u8>,
+        _excess_sig_sig: Vec<u8>,
     ) -> Result<models::TxQueryResponse, Error> {
         todo!()
     }
 
-    async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, Error> {
+    async fn get_mempool_fee_per_gram_stats(&self, _count: u64) -> Result<FeePerGramStat, Error> {
         todo!()
     }
 
@@ -164,7 +158,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         let mut utxos = Vec::new();
         for ub in state.utxos_by_block.values() {
             if ub.header_hash.to_vec() == header_hash {
-                utxos.extend(ub.utxos.iter().map(|o| o.clone()));
+                utxos.extend(ub.utxos.iter().cloned());
             }
         }
         let header = state.blocks.values().find(|h| h.hash().to_vec() == header_hash);
@@ -205,7 +199,6 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         let state = self.state.clone();
         tokio::spawn(async move {
             let state = state.read().await;
-            let mut current_height = 0;
             let mut blocks = vec![];
             let page_size = 5;
 
@@ -231,7 +224,6 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
                                 .collect(),
                             mined_timestamp: header.timestamp.as_u64(),
                         });
-                        current_height = height;
                     }
                 }
                 if blocks.len() >= page_size || height == end_height {

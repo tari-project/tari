@@ -23,13 +23,11 @@
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
-    sync::Arc,
     time::Duration,
 };
 
 use chrono::{Duration as ChronoDuration, Utc};
 use minotari_wallet::{
-    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     output_manager_service::storage::{models::DbWalletOutput, OutputSource},
     storage::{
         database::WalletDatabase,
@@ -67,7 +65,6 @@ use tari_core::{
     },
 };
 use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_seconds};
-use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
 use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
@@ -90,7 +87,6 @@ pub struct UtxoScannerTestInterface {
     scanner_service: Option<UtxoScannerService<WalletSqliteDatabase, MemoryDbKeyManager, MockHttpClientFactory>>,
     scanner_handle: UtxoScannerHandle,
     wallet_db: WalletDatabase<WalletSqliteDatabase>,
-    base_node_service_event_publisher: broadcast::Sender<Arc<BaseNodeEvent>>,
     http_service_state: HttpBaseNodeMock,
     rpc_service_state: BaseNodeWalletRpcMockState,
     _rpc_mock_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
@@ -110,11 +106,6 @@ async fn setup(
     one_sided_message: Option<String>,
 ) -> UtxoScannerTestInterface {
     let shutdown = Shutdown::new();
-
-    // Base Node Service Mock
-    let (sender, receiver_bns) = reply_channel::unbounded();
-    let (event_publisher_bns, _) = broadcast::channel(100);
-    let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
 
     // BaseNodeRpcService Mock
     let service = BaseNodeWalletRpcMockService::new();
@@ -171,9 +162,6 @@ async fn setup(
     let recovery_message_watch = Watch::new("unset".to_string());
     let one_sided_message_watch = Watch::new("unset".to_string());
 
-    let recovery_message_watch_receiver = recovery_message_watch.get_receiver();
-    let one_sided_message_watch_receiver = one_sided_message_watch.get_receiver();
-
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
 
     let mut scanner_service_builder =
@@ -218,7 +206,6 @@ async fn setup(
         http_service_state: mock_client,
         scanner_handle,
         wallet_db,
-        base_node_service_event_publisher: event_publisher_bns,
         rpc_service_state,
         _rpc_mock_server: mock_server,
         _comms_connectivity_mock_state: comms_connectivity_mock_state,

@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
+use std::{mem::size_of, sync::Arc, time::Duration};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::Utc;
 use futures::StreamExt;
 use minotari_wallet::{
-    connectivity_service::{BaseNodePeerManager, WalletConnectivityHandle},
+    connectivity_service::WalletConnectivityHandle,
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
@@ -34,12 +34,7 @@ use minotari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::{
         config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
-        protocols::{
-            transaction_broadcast_protocol::TransactionBroadcastProtocol,
-            transaction_validation_protocol::TransactionValidationProtocol,
-        },
+        handle::{TransactionEventReceiver, TransactionEventSender},
         service::TransactionServiceResources,
         storage::{
             database::TransactionDatabase,
@@ -49,7 +44,6 @@ use minotari_wallet::{
     },
     util::watch::Watch,
     utxo_scanner_service::handle::UtxoScannerHandle,
-    Wallet,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -59,28 +53,17 @@ use tari_common_types::{
 };
 use tari_comms::{
     peer_manager::PeerFeatures,
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+    protocol::rpc::mock::MockRpcServer,
     test_utils::node_identity::build_node_identity,
     NodeIdentity,
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
-        rpc::BaseNodeWalletRpcServer,
-    },
-    blocks::BlockHeader,
+    self,
+    base_node::rpc::BaseNodeWalletRpcServer,
     consensus::ConsensusManager,
-    proto::{
-        base_node::{
-            TxLocation as TxLocationProto,
-            TxQueryBatchResponse as TxQueryBatchResponseProto,
-            TxQueryBatchResponses as TxQueryBatchResponsesProto,
-        },
-        types::Signature as SignatureProto,
-    },
     transactions::{
-        tari_amount::{uT, MicroMinotari, T},
+        tari_amount::{uT, MicroMinotari},
         test_helpers::schema_to_transaction,
         transaction_components::{
             payment_id::{PaymentId, TxType},
@@ -94,16 +77,16 @@ use tari_core::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
-use tokio::{sync::broadcast, task, time::sleep};
+use tokio::{sync::broadcast, task};
 
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
-    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    comms_rpc::BaseNodeWalletRpcMockService,
     utils::make_input,
 };
 
+#[allow(dead_code)]
 pub async fn setup() -> (
     TransactionServiceResources<
         TransactionServiceSqliteDatabase,
@@ -121,17 +104,11 @@ pub async fn setup() -> (
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let service = BaseNodeWalletRpcMockService::new();
-    let rpc_service_state = service.get_state();
 
     let server = BaseNodeWalletRpcServer::new(service);
-    let protocol_name = server.as_protocol_name();
 
     let mut mock_rpc_server = MockRpcServer::new(server, server_node_identity.clone());
     mock_rpc_server.serve();
-
-    let mut connection = mock_rpc_server
-        .create_connection(server_node_identity.to_peer(), protocol_name.into())
-        .await;
 
     // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
@@ -224,6 +201,8 @@ pub async fn setup() -> (
     )
 }
 
+// Allow dead code while the tests are commented out
+#[allow(dead_code)]
 pub async fn add_transaction_to_database(
     tx_id: TxId,
     amount: MicroMinotari,
@@ -258,6 +237,7 @@ pub async fn add_transaction_to_database(
 
 /// Simple task that responds with a OutputManagerResponse::TransactionCancelled response to any request made on this
 /// channel
+#[allow(dead_code)]
 pub async fn oms_reply_channel_task(
     mut receiver: Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
 ) {
@@ -361,16 +341,16 @@ async fn tx_broadcast_protocol_submit_success() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_rejection() {
-    let (
-        resources,
-        _outbound_mock_state,
-        server_node_identity,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-        wallet_connectivity,
-    ) = setup().await;
-    let mut event_stream = resources.event_publisher.subscribe();
+    // let (
+    //     resources,
+    //     _outbound_mock_state,
+    //     server_node_identity,
+    //     _shutdown,
+    //     _temp_dir,
+    //     _transaction_event_receiver,
+    //     wallet_connectivity,
+    // ) = setup().await;
+    // let mut event_stream = resources.event_publisher.subscribe();
 
     // add_transaction_to_database(1u64.into(), 1 * T, None, resources.db.clone()).await;
     // let timeout_update_watch = Watch::new(Duration::from_secs(1));
@@ -613,15 +593,15 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_already_mined() {
-    let (
-        resources,
-        _outbound_mock_state,
-        server_node_identity,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-        wallet_connectivity,
-    ) = setup().await;
+    // let (
+    //     resources,
+    //     _outbound_mock_state,
+    //     server_node_identity,
+    //     _shutdown,
+    //     _temp_dir,
+    //     _transaction_event_receiver,
+    //     wallet_connectivity,
+    // ) = setup().await;
     // add_transaction_to_database(1u64.into(), 1 * T, None, resources.db.clone()).await;
 
     // // Set Base Node to respond with AlreadyMined
@@ -777,15 +757,15 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
-    let (
-        resources,
-        _outbound_mock_state,
-        server_node_identity,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-        wallet_connectivity,
-    ) = setup().await;
+    // let (
+    //     resources,
+    //     _outbound_mock_state,
+    //     server_node_identity,
+    //     _shutdown,
+    //     _temp_dir,
+    //     _transaction_event_receiver,
+    //     wallet_connectivity,
+    // ) = setup().await;
     // Now we add the connection
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
@@ -958,16 +938,16 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_revalidation() {
-    let (
-        resources,
-        _outbound_mock_state,
-        server_node_identity,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-        wallet_connectivity,
-    ) = setup().await;
-    // Now we add the connection
+    // let (
+    //     resources,
+    //     _outbound_mock_state,
+    //     server_node_identity,
+    //     _shutdown,
+    //     _temp_dir,
+    //     _transaction_event_receiver,
+    //     wallet_connectivity,
+    // ) = setup().await;
+    // // Now we add the connection
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
@@ -1107,15 +1087,15 @@ async fn tx_revalidation() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_validation_protocol_reorg() {
-    let (
-        resources,
-        _outbound_mock_state,
-        server_node_identity,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-        wallet_connectivity,
-    ) = setup().await;
+    // let (
+    //     resources,
+    //     _outbound_mock_state,
+    //     server_node_identity,
+    //     _shutdown,
+    //     _temp_dir,
+    //     _transaction_event_receiver,
+    //     wallet_connectivity,
+    // ) = setup().await;
     // Now we add the connection
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())

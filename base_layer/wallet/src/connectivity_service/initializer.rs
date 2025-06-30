@@ -32,10 +32,7 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 use url::Url;
 
 use super::handle::WalletConnectivityHandle;
-use crate::{
-    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
-    util::watch::Watch,
-};
+use crate::{client::http_client_factory::HttpClientFactory, util::watch::Watch};
 
 pub struct WalletConnectivityInitializer<TClientFactory: HttpClientFactory> {
     http_node_url: Url,
