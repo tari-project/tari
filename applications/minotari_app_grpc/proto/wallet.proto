@@ -224,6 +224,10 @@ service Wallet {
   // ```
   rpc GetCompleteAddress (Empty) returns (GetCompleteAddressResponse);
 
+  rpc PrepareOneSidedTransactionForSigning (PrepareOneSidedTransactionForSigningRequest)  returns (PrepareOneSidedTransactionForSigningResponse);
+
+  rpc BroadcastSignedOneSidedTransaction  (BroadcastSignedOneSidedTransactionRequest)  returns (BroadcastSignedOneSidedTransactionResponse);
+
   // This call supports standard interactive transactions (Mimblewimble),
   // one-sided transactions, and one-sided-to-stealth-address transactions.
   // Each recipient must include a valid Tari address, amount, fee, and payment type.
@@ -1170,6 +1174,28 @@ message GetCompleteAddressResponse {
   string interactive_address_emoji = 5;
   // Emoji-encoded version of the one-sided address.
   string one_sided_address_emoji = 6;
+}
+
+// A request to preapre a one sided transaction for offline signing
+message PrepareOneSidedTransactionForSigningRequest {
+  PaymentRecipient recipient = 1;
+}
+
+message PrepareOneSidedTransactionForSigningResponse {
+  bool is_success = 1;
+  string result = 2;
+  string failure_message = 3;
+}
+
+// A request to broadcast a signed one sided transaction
+message BroadcastSignedOneSidedTransactionRequest {
+  string request = 1;
+}
+
+message BroadcastSignedOneSidedTransactionResponse {
+  bool is_success = 1;
+  uint64 transaction_id = 2;
+  string failure_message = 3;
 }
 
 // A request to send funds to one or more recipients.

@@ -22,7 +22,8 @@
 use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
 
 use blake2::Blake2b;
-use digest::consts::U64;
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use digest::consts::{U32, U64};
 use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
@@ -38,6 +39,7 @@ use minotari_ledger_wallet_comms::accessor_methods::{
 use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
+    encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     key_branches::{
         TransactionKeyManagerBranch,
         KERNEL_NONCE,
@@ -78,8 +80,9 @@ use tari_key_manager::{
     key_manager_service::{AddResult, KeyDigest},
 };
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
-use tari_utilities::ByteArray;
+use tari_utilities::{ByteArray, Hidden};
 use tokio::sync::RwLock;
+use zeroize::Zeroize;
 
 use crate::transactions::transaction_key_manager::{
     error::KeyManagerServiceError,
@@ -1700,5 +1703,63 @@ where TBackend: TransactionKeyManagerBackend + 'static
         let public_key = CompressedPublicKey::from_secret_key(&private_key);
         let public_key = spend_key.to_public_key()? + &public_key.to_public_key()?;
         Ok(CompressedPublicKey::new_from_pk(public_key))
+    }
+
+    async fn prepare_cipher(
+        &self,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<XChaCha20Poly1305, KeyManagerServiceError> {
+        let encryption_key = match encryption_key_id {
+            Some(key_id) => self.get_private_key(key_id).await?,
+            None => self.get_private_view_key().await?,
+        };
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerTransactionsHashDomain>::new_with_label("key_encryption");
+        let hash = hasher.chain(encryption_key.as_bytes()).finalize();
+        let key_ga = Key::from_slice(hash.as_ref());
+        Ok(XChaCha20Poly1305::new(key_ga))
+    }
+
+    async fn encrypt_key(
+        &self,
+        key: PrivateKey,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError> {
+        let cipher = self.prepare_cipher(encryption_key_id).await?;
+        let domain = b"key".to_vec();
+
+        let encrypted = encrypt_bytes_integral_nonce(&cipher, domain.clone(), Hidden::hide(key.to_vec()))
+            .map_err(KeyManagerServiceError::EncryptionFailed)?;
+
+        Ok(encrypted)
+    }
+
+    pub async fn encrypted_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError> {
+        let key = self.get_private_key(key_id).await?;
+        self.encrypt_key(key, encryption_key_id).await
+    }
+
+    pub async fn import_encrypted_key(
+        &self,
+        encrypted: Vec<u8>,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        let cipher = self.prepare_cipher(encryption_key_id).await?;
+        let domain = b"key".to_vec();
+
+        let mut decrypted_data = decrypt_bytes_integral_nonce(&cipher, domain.clone(), &encrypted)
+            .map_err(KeyManagerServiceError::DecryptionFailed)?;
+
+        let key = PrivateKey::from_vec(&decrypted_data)
+            .map_err(|err| KeyManagerServiceError::DecryptionFailed(err.to_string()))?;
+
+        decrypted_data.zeroize();
+
+        let imported_key = self.import_key(key).await?;
+        Ok(imported_key)
     }
 }

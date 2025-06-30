@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.7.0-pre.0](https://github.com/tari-project/tari/compare/v4.6.2-pre.0...v4.7.0-pre.0) (2025-06-26)
+
+
+### Features
+
+* offline signing ([#7122](https://github.com/tari-project/tari/issues/7122)) ([86539c8](https://github.com/tari-project/tari/commit/86539c858cd452a3194267f97c34f2a2324d9659))
+
+
+### Bug Fixes
+
+* get_all_completed_transactions limit issues ([#7267](https://github.com/tari-project/tari/issues/7267)) ([da3f82d](https://github.com/tari-project/tari/commit/da3f82db3108357adb34bcacaf240be9bf9a8bbd))
+* ledger builds ([#7260](https://github.com/tari-project/tari/issues/7260)) ([d3676ef](https://github.com/tari-project/tari/commit/d3676ef8a921c50968bc57bbfded8c77e072c565))
+
+### [4.6.2-pre.0](https://github.com/tari-project/tari/compare/v4.6.1-pre.0...v4.6.2-pre.0) (2025-06-24)
+
+
+### Bug Fixes
+
+* remove long timeout in interactive_tx till tx is persisted into db ([#7252](https://github.com/tari-project/tari/issues/7252)) ([3a78aba](https://github.com/tari-project/tari/commit/3a78aba2a5ed8c764525687ede683cc726ac880a))
+
+### [4.6.1-pre.0](https://github.com/tari-project/tari/compare/v4.6.0-pre.0...v4.6.1-pre.0) (2025-06-23)
+
+
+### Features
+
+* readiness status during initialization ([#7240](https://github.com/tari-project/tari/issues/7240)) ([078cad8](https://github.com/tari-project/tari/commit/078cad82efab14e79df411fa00c350b909402bda))
+
+
+### Bug Fixes
+
+* database cannot resize on jmt write ([#7244](https://github.com/tari-project/tari/issues/7244)) ([1df5cfe](https://github.com/tari-project/tari/commit/1df5cfeb91472cac482169b2e18605b540242845))
+* minotari_merge_mining_proxy returns Tari block hash even if submit_to_origin is disabled ([#7242](https://github.com/tari-project/tari/issues/7242)) ([d21f99c](https://github.com/tari-project/tari/commit/d21f99ce982b534b976f08c0808bd59c6d3aff54))
+
 ## [4.6.0-pre.0](https://github.com/tari-project/tari/compare/v4.5.0-pre.0...v4.6.0-pre.0) (2025-06-20)
 
 

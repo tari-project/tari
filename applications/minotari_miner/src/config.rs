@@ -35,7 +35,10 @@ use std::{
 
 use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::Network, SubConfigPath};
+use tari_common::{
+    configuration::{utils::deserialize_string_or_struct, Network},
+    SubConfigPath,
+};
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_core::{proof_of_work::PowAlgorithm, transactions::transaction_components::RangeProofType};
 
@@ -54,7 +57,8 @@ pub struct MinerConfig {
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
     pub mine_on_tip_only: bool,
-    /// The proof of work algorithm to use
+    /// The proof of work algorithm to use (Sha3x or RandomXT)
+    #[serde(deserialize_with = "deserialize_string_or_struct")]
     pub proof_of_work_algo: PowAlgorithm,
     /// Will check tip with node every N seconds and restart mining if height already taken and option
     /// `mine_on_tip_only` is set to true

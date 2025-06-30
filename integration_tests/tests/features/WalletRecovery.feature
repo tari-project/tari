@@ -10,13 +10,13 @@ Feature: Wallet Recovery
       #   And I have 1 base nodes connected to all seed nodes
       When I have wallet WALLET_A connected to all seed nodes
       When I have wallet WALLET_B connected to all seed nodes
-      When I have mining node MINER connected to base node NODE and wallet WALLET_A
+      When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
       When mining node MINER mines 10 blocks
         When I mine 5 blocks on NODE
       #   When I wait for wallet WALLET_A to have at least 55000000000 uT
         Then all nodes are at height 15
       #   And I send a one-sided transaction of 200000 uT from wallet WALLET_A to wallet WALLET_B at fee 25
-      When I have mining node MINER_B connected to base node NODE and wallet WALLET_B
+      When I have SHA3X mining node MINER_B connected to base node NODE and wallet WALLET_B
       When mining node MINER_B mines 2 blocks
         When I mine 5 blocks on NODE
         Then all nodes are at height 22
@@ -32,7 +32,7 @@ Feature: Wallet Recovery
     Scenario Outline: Multiple Wallet recovery from seed node @missing-steps
       Given I have a seed node NODE
       #   And I have <NumWallets> non-default wallets connected to all seed nodes using DirectAndStoreAndForward
-      #   And I have individual mining nodes connected to each wallet and base node NODE
+      #   And I have SHA3X individual mining nodes connected to each wallet and base node NODE
       #   Then I have each mining node mine 3 blocks
       #   Then all nodes are at height 3*<NumWallets>
       #   Then I stop all wallets
@@ -57,7 +57,7 @@ Feature: Wallet Recovery
       #   And I have 1 base nodes connected to all seed nodes
       When I have wallet WALLET_A connected to all seed nodes
       When I have wallet WALLET_B connected to all seed nodes
-      When I have mining node MINER connected to base node NODE and wallet WALLET_A
+      When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
       When mining node MINER mines 10 blocks
         Then all nodes are at height 10
       #   And I stop wallet WALLET_B

@@ -48,6 +48,11 @@ use minotari_wallet::{
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionServiceHandle},
+        offline_signing::models::{
+            PrepareOneSidedTransactionForSigningResult,
+            SignedOneSidedTransactionResult,
+            TransactionResult,
+        },
         storage::models::WalletTransaction,
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
@@ -2838,6 +2843,93 @@ pub async fn command_runner(
                         }
                     },
                     Err(e) => eprintln!("ListTxs error! {}", e),
+                }
+            },
+            PrepareOneSidedTransactionForSigning(args) => {
+                let destination = args.destination.clone();
+                let payment_id =
+                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await);
+                let mut wallet_transaction_service = transaction_service.clone();
+                let result = wallet_transaction_service
+                    .prepare_one_sided_transaction_for_signing(
+                        destination,
+                        args.amount,
+                        UtxoSelectionCriteria::default(),
+                        OutputFeatures::default(),
+                        config.fee_per_gram * uT,
+                        payment_id,
+                    )
+                    .await
+                    .map_err(CommandError::TransactionServiceError);
+                match result {
+                    Ok(data) => {
+                        let json_data = data
+                            .to_json()
+                            .map_err(|e| CommandError::SerializationError(e.to_string()))?;
+                        fs::write(&args.output_file, json_data).map_err(|err| CommandError::FileWriteError {
+                            file_path: args.output_file,
+                            err,
+                        })?;
+                    },
+                    Err(e) => eprintln!("PrepareOneSidedTransactionForSigning error! {}", e),
+                }
+            },
+            SignOneSidedTransaction(args) => {
+                let metadata = fs::metadata(&args.input_file).map_err(|err| CommandError::FileReadError {
+                    file_path: args.input_file.clone(),
+                    err,
+                })?;
+                let max_size = 10_000_000; // 10MB limit
+                if metadata.len() > max_size {
+                    return Err(CommandError::InvalidArgument("Input file too large".to_string()));
+                }
+
+                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
+                    file_path: args.input_file,
+                    err,
+                })?;
+                let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)?;
+
+                let mut wallet_transaction_service = transaction_service.clone();
+                let result = wallet_transaction_service
+                    .sign_one_sided_transaction(request)
+                    .await
+                    .map_err(CommandError::TransactionServiceError);
+                match result {
+                    Ok(data) => {
+                        let json_data = data
+                            .to_json()
+                            .map_err(|e| CommandError::SerializationError(e.to_string()))?;
+                        fs::write(&args.output_file, json_data).map_err(|err| CommandError::FileWriteError {
+                            file_path: args.output_file,
+                            err,
+                        })?;
+                    },
+                    Err(e) => eprintln!("SignOneSidedTransaction error! {}", e),
+                }
+            },
+            BroadcastSignedOneSidedTransaction(args) => {
+                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
+                    file_path: args.input_file,
+                    err,
+                })?;
+                let request = SignedOneSidedTransactionResult::from_json(&data)?;
+
+                let mut wallet_transaction_service = transaction_service.clone();
+                let result = wallet_transaction_service
+                    .broadcast_signed_one_sided_transaction(request)
+                    .await
+                    .map_err(CommandError::TransactionServiceError);
+                match result {
+                    Ok(tx_id) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "broadcast-signed-one-sided-transaction concluded with tx_id {}", tx_id
+                        );
+                        println!("Transaction ID: {}", tx_id);
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("BroadcastSignedOneSidedTransaction error! {}", e),
                 }
             },
         }

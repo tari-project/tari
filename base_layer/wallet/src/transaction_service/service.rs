@@ -124,6 +124,7 @@ use crate::{
             TransactionServiceRequest,
             TransactionServiceResponse,
         },
+        offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -660,6 +661,39 @@ where
                 .await?;
                 return Ok(());
             },
+            TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
+                destination,
+                amount,
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+                payment_id,
+            } => {
+                self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
+                let mut offline_signing = OfflineSigner::new(self.resources.clone());
+                offline_signing
+                    .prepare_one_sided_transaction_for_signing(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        *output_features,
+                        fee_per_gram,
+                        payment_id,
+                    )
+                    .await
+                    .map(|v| TransactionServiceResponse::OneSidedTransactionPreparedForSigning(Box::new(v)))
+            },
+            TransactionServiceRequest::SignOneSidedTransaction { request } => {
+                let offline_signing = OfflineSigner::new(self.resources.clone());
+                offline_signing
+                    .sign_locked_transaction(request)
+                    .await
+                    .map(|v| TransactionServiceResponse::SignedOneSidedTransaction(Box::new(v)))
+            },
+            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => self
+                .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::SendOneSidedTransaction {
                 destination,
                 amount,
@@ -4108,6 +4142,77 @@ where
         let transactions = self.db.get_transaction_with_payref(&payref)?;
 
         Ok(transactions)
+    }
+
+    async fn submit_signed_one_sided_transaction(
+        &mut self,
+        request: SignedOneSidedTransactionResult,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let tx_id = request.request.tx_id;
+        let dest_address = request.request.info.recipient.address;
+        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
+        let amount = request.request.info.recipient.amount;
+        let payment_id = request.request.info.payment_id;
+        // Use original keys generated in this wallet (they correspond to keys with the same values)
+        let change = match (
+            request.signed_transaction.change_output,
+            request.request.info.change_output,
+        ) {
+            (Some(change), Some(original)) => {
+                let mut change = change.clone();
+                change.spending_key_id = original.output_pair.output.spending_key_id;
+                Some(vec![change])
+            },
+            _ => None,
+        };
+
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        let fee = request.signed_transaction.transaction.body.get_total_fee()?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id, change)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new_with_output_hashes(
+                tx_id,
+                self.resources.one_sided_tari_address.clone(),
+                dest_address.clone(),
+                amount,
+                fee,
+                request.signed_transaction.transaction.clone(),
+                TransactionStatus::Completed,
+                Utc::now(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                payment_id,
+                request.signed_transaction.sent_hashes,
+                vec![],
+                request.signed_transaction.change_hashes,
+            )?,
+        )
+        .await?;
+
+        tokio::spawn(send_finalized_transaction_message(
+            tx_id,
+            request.signed_transaction.transaction,
+            dest_address.comms_public_key().clone(),
+            self.resources.outbound_message_service.clone(),
+            self.resources.config.direct_send_timeout,
+            self.resources.config.transaction_routing_mechanism,
+        ));
+
+        Ok(tx_id)
     }
 }
 
