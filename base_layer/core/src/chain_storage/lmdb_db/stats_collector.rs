@@ -199,12 +199,16 @@ impl LMDBStatsCollector {
     }
 
     fn update_db_stats(&self, stats: DatabaseStats) {
-        drop(self.sender.send(stats.clone()));
+        if let Err(e) = self.sender.send(stats.clone()) {
+            log::warn!("Failed to send stats update to primary channel: {}", e);
+        }
 
         // Send to all additional subscribers
         if let Ok(senders) = self.additional_senders.lock() {
             for sender in senders.iter() {
-                drop(sender.send(stats.clone()));
+                if let Err(e) = sender.send(stats.clone()) {
+                    log::debug!("Failed to send stats update to additional subscriber: {}", e);
+                }
             }
         }
     }
@@ -298,7 +302,9 @@ impl LMDBStatsCollector {
     /// The sender will immediately receive the current stats
     pub fn add_sender(&self, sender: watch::Sender<DatabaseStats>) {
         let current_stats = self.receiver.borrow().clone();
-        drop(sender.send(current_stats));
+        if let Err(e) = sender.send(current_stats) {
+            log::warn!("Failed to send initial stats to added sender: {}", e);
+        }
         if let Ok(mut senders) = self.additional_senders.lock() {
             senders.push(sender);
         }

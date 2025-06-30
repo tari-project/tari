@@ -80,8 +80,7 @@
 //!
 //! The stats collector is automatically updated during:
 //! - Database migrations
-//! - Block processing operations
-//! - Any operation that calls `update_stats()` or `set_stats_total_height()`
+//! - Metadata updates
 use std::{
     cmp::max,
     convert::TryFrom,
@@ -444,18 +443,6 @@ impl LMDBDatabase {
     /// Get a reference to the stats collector
     pub fn stats_collector(&self) -> &LMDBStatsCollector {
         &self.stats_collector
-    }
-
-    /// Update progress in the stats collector
-    pub fn update_stats_current_height(&self, current_height: u64) {
-        debug!("Updating stats to height {}", current_height);
-        self.stats_collector.update_migration_progress(current_height);
-    }
-
-    /// Set total height in the stats collector
-    pub fn set_stats_total_height(&self, total_height: u64) {
-        debug!("Setting total height to {}", total_height);
-        self.stats_collector.set_total_height(total_height);
     }
 
     /// Try to establish a read lock on the LMDB database. If an exclusive write lock has been previously acquired, this
@@ -3170,7 +3157,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 
                 // Update stats progress
                 if height % 50 == 0 {
-                    db.update_stats_current_height(height);
+                    db.update_stats_progress(height);
                 }
             }
             txn.commit()?;

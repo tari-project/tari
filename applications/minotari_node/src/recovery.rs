@@ -84,7 +84,6 @@ pub async fn run_recovery(
     })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            println!("[DEBUG] Initializing LMDB database");
             readiness_handler.send_readiness_status(ReadinessState::DatabaseInitializing);
             let backend = create_lmdb_database_with_stats_channel(
                 &node_config.lmdb_path,
