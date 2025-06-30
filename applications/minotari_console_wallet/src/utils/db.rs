@@ -21,13 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use minotari_wallet::{error::WalletStorageError, WalletSqlite};
+use minotari_wallet::WalletSqlite;
 use tari_common_types::types::CompressedPublicKey;
 use tari_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
 

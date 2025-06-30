@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// This is here because this crate is used as a lib and a binary, mainly to support Cucumber tests. In future, something
+// should be done so this is not needed.
+#![allow(dead_code, unused)]
 use std::{fs, io, path::PathBuf, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
