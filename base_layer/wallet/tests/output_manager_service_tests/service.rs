@@ -156,7 +156,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     TestOmsService {
         output_manager_handle: output_manager_service_handle,
-        wallet_connectivity_mock,
+        _wallet_connectivity_mock: wallet_connectivity_mock,
         _shutdown: shutdown,
         _transaction_service_handle: ts_handle,
         _node_event: event_publisher_bns,

@@ -32,14 +32,42 @@ use minotari_wallet::{
 };
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_crypto::tari_utilities::Hidden;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
 use tari_shutdown::Shutdown;
-use tari_utilities::SafePassword;
+use tari_utilities::{Hidden, SafePassword};
 use tokio::sync::broadcast;
 use url::Url;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
+
+/// Prompt the user to input their seed words in a single line.
+pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
+    debug!(target: LOG_TARGET, "Prompting for seed words.");
+    let mut rl = Editor::<()>::new();
+
+    loop {
+        println!("Recovery Mode");
+        println!();
+        println!("Type or paste all of your seed words on one line, only separated by spaces.");
+        let input = Hidden::hide(rl.readline(">> ").map_err(|e| ExitError::new(ExitCode::IOError, e))?);
+        let seed_words: SeedWords = SeedWords::new(
+            input
+                .reveal()
+                .split_whitespace()
+                .map(|s| Hidden::hide(s.to_string()))
+                .collect(),
+        );
+
+        match CipherSeed::from_mnemonic(&seed_words, None) {
+            Ok(seed) => break Ok(seed),
+            Err(e) => {
+                debug!(target: LOG_TARGET, "MnemonicError parsing seed words: {}", e);
+                println!("Failed to parse seed words! Did you type them correctly?");
+                continue;
+            },
+        }
+    }
+}
 
 /// Return seed matching the seed words.
 pub fn get_seed_from_seed_words(

@@ -50,7 +50,7 @@ use init::{change_password, init_wallet, start_wallet, tari_splash_screen, Walle
 use log::*;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
+use recovery::get_seed_from_seed_words;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
@@ -65,7 +65,10 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, prompt_wallet_type, wallet_mode};
+use crate::{
+    init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, prompt_wallet_type, wallet_mode},
+    recovery::prompt_private_key_from_seed_words,
+};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 

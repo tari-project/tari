@@ -139,11 +139,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Error> {
         let state = self.state.read().await;
         let mut last_header = 0;
-        let headers = state
-            .blocks
-            .values()
-            .sorted_by(|a, b| a.height.cmp(&b.height))
-            .into_iter();
+        let headers = state.blocks.values().sorted_by(|a, b| a.height.cmp(&b.height));
         for header in headers {
             if header.timestamp.as_u64() >= epoch_time {
                 return Ok(last_header);

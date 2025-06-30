@@ -472,7 +472,6 @@ async fn setup_transaction_service_no_comms(
         output_manager_service_event_publisher,
         ts_db: ts_service_db,
         oms_db,
-        wallet_database: wallet_db,
     }
 }
 
