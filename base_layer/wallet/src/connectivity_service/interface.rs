@@ -20,15 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{any, time::Duration};
-
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_comms::{
     peer_manager::{NodeId, Peer},
-    protocol::rpc::RpcClientLease,
     types::CommsPublicKey,
 };
-use tari_core::transactions::transaction_components::Transaction;
 use tokio::sync::watch;
 
 use crate::connectivity_service::{handle::OnlineStatus, BaseNodePeerManager};

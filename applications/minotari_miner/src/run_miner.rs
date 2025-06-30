@@ -168,7 +168,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 
         if let Err(e) = verify_base_node_responses(&mut base_node_client, &config).await {
             if let MinerError::BaseNodeNotResponding(_) = e {
-                error!(target: LOG_TARGET, "{}", e.to_string());
+                error!(target: LOG_TARGET, "{}", e);
                 println!();
                 let msg = "Could not connect to the base node. \nAre the base node's gRPC mining methods allowed in \
                            its 'config.toml'? Please ensure these methods are enabled in:\n  \

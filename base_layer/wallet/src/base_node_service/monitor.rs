@@ -20,30 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    cmp,
-    convert::TryFrom,
-    future::Future,
-    sync::Arc,
-    thread::sleep,
-    time::{Duration, Instant},
-};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use chrono::Utc;
 use futures::{future, future::Either};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash as BlockHashType};
-use tari_comms::{
-    backoff::{Backoff, ExponentialBackoff},
-    protocol::rpc::RpcError,
-};
+use tari_comms::{backoff::ExponentialBackoff, protocol::rpc::RpcError};
 use tari_shutdown::ShutdownSignal;
-use tokio::{
-    select,
-    sync::RwLock,
-    time::{self, interval},
-};
+use tokio::{select, sync::RwLock, time::interval};
 
 use crate::{
     base_node_service::{
@@ -126,8 +111,7 @@ where
     }
 
     async fn monitor_node(&mut self, mut shutdown_signal: ShutdownSignal) -> Result<(), BaseNodeMonitorError> {
-        let error_sleep_duration = Duration::from_secs(30);
-        // let mut base_node_watch = self.wallet_connectivity.get_current_base_node_watcher();
+        let mut base_node_watch = self.wallet_connectivity.get_current_base_node_watcher();
         let mut interval = interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -139,11 +123,10 @@ where
                         },
                         _ = interval.tick() => {
                             // continue to the next iteration
-                    let mut client = self.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
+                    let  client = self.wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
 
 
 
-                    let timer = Instant::now();
                     let tip_info = client
                         .get_tip_info()
                         .await
@@ -152,7 +135,6 @@ where
                         .metadata
                         .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
 
-                    let timer = Instant::now();
                     let latency = match client.get_last_request_latency() {
                         Some(latency) => latency,
                         None => {

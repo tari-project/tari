@@ -141,7 +141,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     };
     if let Err(e) = verify_base_node_responses(&mut base_node_client).await {
         if let MmProxyError::BaseNodeNotResponding(_) = e {
-            error!(target: LOG_TARGET, "{}", e.to_string());
+            error!(target: LOG_TARGET, "{}", e);
             println!();
             let msg = "Are the base node's gRPC mining methods allowed in its 'config.toml'? Please ensure these \
                        methods are enabled in:\n  'grpc_server_allow_methods': \"get_new_block_template\", \

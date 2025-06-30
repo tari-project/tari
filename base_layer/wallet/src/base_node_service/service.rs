@@ -23,10 +23,9 @@
 use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
-use futures::{future, StreamExt};
+use futures::StreamExt;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::RwLock;

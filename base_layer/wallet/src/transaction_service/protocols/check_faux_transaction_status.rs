@@ -24,7 +24,6 @@ const SAFETY_HEIGHT_MARGIN: u64 = 3000;
 
 use std::sync::Arc;
 
-use bincode::de;
 use log::*;
 use tari_common_types::types::FixedHash;
 

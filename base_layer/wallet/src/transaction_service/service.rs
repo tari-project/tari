@@ -59,7 +59,6 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
-    mempool::FeePerGramStat,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     proto::base_node as base_node_proto,
     transactions::{
@@ -108,7 +107,7 @@ use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
-        handle::{OutputManagerEvent, OutputManagerHandle},
+        handle::OutputManagerHandle,
         service::UseOutput,
         storage::models::SpendingPriority,
         UtxoSelectionCriteria,
@@ -118,7 +117,6 @@ use crate::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
-            FeePerGramStatsResponse,
             PaymentDetails,
             TransactionEvent,
             TransactionEventSender,
@@ -127,7 +125,6 @@ use crate::{
         },
         offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
-            check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
@@ -401,13 +398,7 @@ where
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
             tokio::select! {
-                event = output_manager_event_stream.recv() => {
-                    match event {
-                        Ok(msg) => self.handle_output_manager_service_event(msg).await,
-                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
-                    };
-                },
-                // Base Node Monitoring Service event
+               // Base Node Monitoring Service event
                 event = base_node_service_event_stream.recv() => {
                     match event {
                         Ok(msg) => self.handle_base_node_service_event(msg).await,
@@ -1087,7 +1078,7 @@ where
         let mut connectivity = self.resources.connectivity.clone();
 
         let query_base_node_fut = async move {
-            let mut client = connectivity.obtain_base_node_wallet_rpc_client().await;
+            let client = connectivity.obtain_base_node_wallet_rpc_client().await;
 
             let resp = client
                 .get_mempool_fee_per_gram_stats(count)
@@ -1139,27 +1130,6 @@ where
             },
             UtxoScannerEvent::ScanningFailed => {},
         }
-    }
-
-    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
-        // This is not needed, it will be validated elsewhere
-
-        // if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
-        //     let db = self.db.clone();
-        //     let output_manager_handle = self.resources.output_manager_service.clone();
-        //     let metadata = self.wallet_db.get_chain_metadata().unwrap_or_default();
-        //     let tip_height = match metadata {
-        //         Some(val) => val.best_block_height(),
-        //         None => 0u64,
-        //     };
-        //     let event_publisher = self.event_publisher.clone();
-        //     tokio::spawn(check_detected_transactions(
-        //         output_manager_handle,
-        //         db,
-        //         event_publisher,
-        //         tip_height,
-        //     ));
-        // }
     }
 
     /// Sends a new transaction to a single recipient
@@ -3596,7 +3566,6 @@ where
             self.resources.output_manager_service.clone(),
         );
 
-        let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
         let validation_in_progress = self.validation_in_progress.clone();
 
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();

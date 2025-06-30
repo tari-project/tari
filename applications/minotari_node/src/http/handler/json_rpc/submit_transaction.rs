@@ -33,35 +33,35 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             match response {
                 TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
                     accepted: true,
-                    rejection_reason: TxSubmissionRejectionReason::None.into(),
+                    rejection_reason: TxSubmissionRejectionReason::None,
                     is_synced,
                 },
 
                 TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
                     accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::Orphan.into(),
+                    rejection_reason: TxSubmissionRejectionReason::Orphan,
                     is_synced,
                 },
                 TxStorageResponse::NotStoredFeeTooLow => TxSubmissionResponse {
                     accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::FeeTooLow.into(),
+                    rejection_reason: TxSubmissionRejectionReason::FeeTooLow,
                     is_synced,
                 },
                 TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
                     accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::TimeLocked.into(),
+                    rejection_reason: TxSubmissionRejectionReason::TimeLocked,
                     is_synced,
                 },
                 TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
                     accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::ValidationFailed.into(),
+                    rejection_reason: TxSubmissionRejectionReason::ValidationFailed,
                     is_synced,
                 },
                 TxStorageResponse::NotStoredAlreadySpent |
                 TxStorageResponse::ReorgPool |
                 TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
                     accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::AlreadyMined.into(),
+                    rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
                     is_synced,
                 },
             }

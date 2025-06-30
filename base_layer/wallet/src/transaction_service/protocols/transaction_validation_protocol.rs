@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-};
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
@@ -32,13 +28,7 @@ use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::{BlockHash, Signature},
 };
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
-use tari_core::{
-    self,
-    base_node::rpc::models::TxLocation,
-    blocks::BlockHeader,
-    proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
-};
+use tari_core::{self, base_node::rpc::models::TxLocation};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -94,9 +84,9 @@ where
     }
 
     pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
-        let mut base_node_wallet_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
+        let base_node_wallet_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
-        self.check_for_reorgs(&mut base_node_wallet_client).await?;
+        self.check_for_reorgs(&base_node_wallet_client).await?;
         debug!(
             target: LOG_TARGET,
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
@@ -120,7 +110,7 @@ where
 
     async fn check_unconfirmed(
         &mut self,
-        mut base_node_wallet_client: <TWalletConnectivity as WalletConnectivityInterface>::BaseNodeClient,
+        base_node_wallet_client: <TWalletConnectivity as WalletConnectivityInterface>::BaseNodeClient,
     ) -> Result<(bool, u64), TransactionServiceProtocolError<OperationId>> {
         debug!(
             target: LOG_TARGET,
@@ -132,14 +122,13 @@ where
             .for_protocol(self.operation_id)
             .unwrap();
         let mut state_changed = false;
-        let mut tip = 0;
         let tip_info = base_node_wallet_client.get_tip_info().await.map_err(|e| {
             TransactionServiceProtocolError::new(self.operation_id, TransactionServiceError::Other(e.to_string()))
         })?;
-        tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
+        let tip = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined) = self
-                .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
+                .query_base_node_for_transactions(batch, &base_node_wallet_client)
                 .await
                 .for_protocol(self.operation_id)?;
             debug!(
@@ -305,7 +294,7 @@ where
             self.operation_id
         );
 
-        let mut tip_mined_timestamp = 0;
+        let tip_mined_timestamp = 0;
         for (sig, unconfirmed_tx) in batch_signatures {
             let response = base_node_client
                 .transaction_query(

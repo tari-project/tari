@@ -23,11 +23,9 @@
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_comms::{
     peer_manager::{NodeId, Peer},
-    protocol::rpc::RpcClientLease,
     types::CommsPublicKey,
 };
-use tari_core::base_node::sync::rpc::BaseNodeSyncRpcClient;
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, watch};
 
 use crate::{
     client::http_client_factory::HttpClientFactory,

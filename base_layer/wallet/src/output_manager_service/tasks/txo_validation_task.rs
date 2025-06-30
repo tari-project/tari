@@ -29,8 +29,6 @@ use chrono::{Duration, Utc};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::{BlockHash, FixedHash};
-use tari_comms::protocol::rpc::RpcError::RequestFailed;
-use tari_core::blocks::BlockHeader;
 use tari_utilities::hex::Hex;
 use tokio::sync::watch;
 
@@ -102,8 +100,7 @@ where
 
         self.update_unconfirmed_outputs(&mut base_node_client).await?;
 
-        self.update_spent_outputs(&mut base_node_client, last_mined_header)
-            .await?;
+        self.update_spent_outputs(&base_node_client, last_mined_header).await?;
 
         self.update_invalid_outputs(&mut base_node_client).await?;
 
@@ -189,6 +186,11 @@ where
         wallet_client: &TWalletConnectivity::BaseNodeClient,
         last_mined_header_hash: Option<BlockHash>,
     ) -> Result<(), OutputManagerProtocolError> {
+        let last_scanned_height = self
+            .db
+            .get_last_scanned_height()
+            .for_protocol(self.operation_id)?
+            .unwrap_or(0);
         let mined_outputs = self.db.fetch_mined_unspent_outputs().for_protocol(self.operation_id)?;
         debug!(
             target: LOG_TARGET,
@@ -256,7 +258,8 @@ where
                     if let Some((spent_height, spent_hash)) = &data.spent_in_header {
                         spent.push(SpentOutputInfoForBatch {
                             commitment: output.commitment.clone(),
-                            confirmed: false,
+                            confirmed: spent_height.saturating_add(self.config.num_confirmations_required) <=
+                                last_scanned_height,
                             mark_deleted_at_height: *spent_height,
                             mark_deleted_in_block: spent_hash.clone().try_into().map_err(|_| {
                                 OutputManagerProtocolError::new(
@@ -269,7 +272,7 @@ where
                         unspent.push((output.hash, true));
                     }
                 } else {
-                    unmined_and_invalid.push(output.hash.clone());
+                    unmined_and_invalid.push(output.hash);
                 }
             }
             if !unmined_and_invalid.is_empty() {
@@ -539,7 +542,7 @@ where
                     output: output.clone(),
                     mined_at_height: returned_output.mined_in_height,
                     mined_block_hash: FixedHash::try_from(returned_output.mined_in_hash.clone())
-                        .map_err(|e| OutputManagerError::UnexpectedApiResponse)?,
+                        .map_err(|_| OutputManagerError::UnexpectedApiResponse)?,
                     mined_timestamp: returned_output.mined_in_timestamp,
                 });
             } else {

@@ -3,11 +3,7 @@ use std::sync::Arc;
 use axum::{http::StatusCode, Extension, Json};
 use log::debug;
 use serde::{Deserialize, Serialize};
-use tari_core::{
-    base_node::rpc::query_service,
-    chain_storage::BlockchainBackend,
-    mempool::{service::MempoolHandle, Mempool},
-};
+use tari_core::{base_node::rpc::query_service, chain_storage::BlockchainBackend, mempool::service::MempoolHandle};
 
 use crate::http::handler::ErrorResponse;
 
@@ -18,9 +14,8 @@ const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc";
 pub async fn handle<B: BlockchainBackend + 'static>(
     Extension(query_service): Extension<Arc<query_service::Service<B>>>,
     Extension(mempool_service): Extension<MempoolHandle>,
-    Json(params): Json<JsonRpcRequest>,
+    Json(request): Json<JsonRpcRequest>,
 ) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let request: JsonRpcRequest = params.into();
     debug!(target: LOG_TARGET, "Received JSON-RPC request: {request:?}");
 
     // let response = query_service

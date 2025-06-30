@@ -12,7 +12,7 @@ use log::{error, info};
 use tari_core::{
     base_node::rpc::BaseNodeWalletQueryService,
     chain_storage::BlockchainBackend,
-    mempool::{service::MempoolHandle, Mempool},
+    mempool::service::MempoolHandle,
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;

@@ -6,12 +6,10 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
-use serde::de;
 use tari_core::{
     base_node::rpc::models::{
         self,
         BlockHeader,
-        DeletedUtxoInfo,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
@@ -20,7 +18,11 @@ use tari_core::{
         TxSubmissionResponse,
     },
     mempool::FeePerGramStat,
-    transactions::{tari_amount::MicroMinotari, transaction_components::TransactionOutput},
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::TransactionOutput,
+        transaction_key_manager::schema::imported_keys::timestamp,
+    },
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
@@ -57,6 +59,12 @@ impl Clone for Client {
         }
     }
 }
+impl Client {
+    fn set_last_latency(&self, duration: std::time::Duration) {
+        let mut last_latency = self.last_latency.write().expect("rwlock poisoned");
+        *last_latency = Some((duration, Instant::now()));
+    }
+}
 
 #[async_trait]
 impl BaseNodeWalletClient for Client {
@@ -68,18 +76,19 @@ impl BaseNodeWalletClient for Client {
         self.last_latency
             .read()
             .expect("rwlock poisoned")
-            .map(|latency| latency.1.elapsed() < std::time::Duration::from_secs(10))
+            .map(|latency| latency.1.elapsed() < std::time::Duration::from_secs(60))
             .unwrap_or(false)
     }
 
     async fn get_tip_info(&self) -> Result<TipInfoResponse, anyhow::Error> {
-        let start_time = std::time::Instant::now();
         debug!(target: LOG_TARGET, "Requesting tip info from Base Node wallet service at {}", self.api_address);
+        let timer = Instant::now();
         let res = self
             .http_client
             .get(self.api_address.join("/get_tip_info")?)
             .send()
             .await?;
+        self.set_last_latency(timer.elapsed());
 
         let res = if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
@@ -93,9 +102,6 @@ impl BaseNodeWalletClient for Client {
         } else {
             Ok(res.json::<TipInfoResponse>().await?)
         };
-        let duration = start_time.elapsed();
-        let mut lock = *self.last_latency.write().expect("rwlock poisoned");
-        lock = Some((duration, Instant::now()));
         res
     }
 
@@ -103,7 +109,9 @@ impl BaseNodeWalletClient for Client {
         debug!(target: LOG_TARGET, "Requesting block header at height {} from Base Node wallet service at {}", height, self.api_address);
         let mut target_url = self.api_address.join("/get_header_by_height")?;
         target_url.set_query(Some(format!("height={}", height).as_str()));
+        let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
+        self.set_last_latency(timer.elapsed());
         if res.status() == StatusCode::NOT_FOUND {
             debug!(target: LOG_TARGET, "No block header found at height {} from Base Node wallet service at {}", height, self.api_address);
             return Ok(None);
@@ -136,7 +144,9 @@ impl BaseNodeWalletClient for Client {
         debug!(target: LOG_TARGET, "Requesting block height at epoch time {} from Base Node wallet service at {}", epoch_time, self.api_address);
         let mut target_url = self.api_address.join("/get_height_at_time")?;
         target_url.set_query(Some(format!("time={}", epoch_time).as_str()));
+        let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
+        self.set_last_latency(timer.elapsed());
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
@@ -155,12 +165,14 @@ impl BaseNodeWalletClient for Client {
         debug!(target: LOG_TARGET, "Requesting UTXOs for block with header hash {} from Base Node wallet service at {}", header_hash.to_hex(), self.api_address);
         let mut target_url = self.api_address.join("/get_utxos_by_block")?;
         target_url.set_query(Some(&format!("header_hash={}", header_hash.to_hex())));
+        let timer = Instant::now();
         let res = self
             .http_client
             .get(target_url)
             .json(&models::GetUtxosByBlockRequest { header_hash })
             .send()
             .await?;
+        self.set_last_latency(timer.elapsed());
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
@@ -251,7 +263,9 @@ impl BaseNodeWalletClient for Client {
             "hashes={}",
             hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(",")
         )));
+        let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
+        self.set_last_latency(timer.elapsed());
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
@@ -283,7 +297,9 @@ impl BaseNodeWalletClient for Client {
             hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(","),
             must_include_header.to_hex()
         )));
+        let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
+        self.set_last_latency(timer.elapsed());
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
@@ -306,7 +322,9 @@ impl BaseNodeWalletClient for Client {
         debug!(target: LOG_TARGET, "Requesting UTXO with hash {} from Base Node wallet service at {}", utxo.to_hex(), self.api_address);
         let mut target_url = self.api_address.join("/fetch_utxo")?;
         target_url.set_query(Some(&format!("utxo={}", utxo.to_hex())));
+        let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
+        self.set_last_latency(timer.elapsed());
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
@@ -325,7 +343,7 @@ impl BaseNodeWalletClient for Client {
         transaction: tari_core::transactions::transaction_components::Transaction,
     ) -> Result<TxSubmissionResponse, anyhow::Error> {
         debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {}", self.api_address);
-        let mut target_url = self.api_address.join("/json_rpc")?;
+        let target_url = self.api_address.join("/json_rpc")?;
         let request_body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": "1",
@@ -373,7 +391,9 @@ impl BaseNodeWalletClient for Client {
             excess_sig_nonce.to_hex(),
             excess_sig_sig.to_hex()
         )));
+        let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
+        self.set_last_latency(timer.elapsed());
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
@@ -389,7 +409,7 @@ impl BaseNodeWalletClient for Client {
         Ok(response)
     }
 
-    async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, anyhow::Error> {
+    async fn get_mempool_fee_per_gram_stats(&self, _count: u64) -> Result<FeePerGramStat, anyhow::Error> {
         Ok(FeePerGramStat {
             order: 1,
             min_fee_per_gram: MicroMinotari::from(1),

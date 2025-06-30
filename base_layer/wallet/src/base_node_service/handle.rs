@@ -22,7 +22,6 @@
 
 use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -82,7 +81,6 @@ impl BaseNodeServiceHandle {
     pub async fn get_base_node_latency(&mut self) -> Result<Option<Duration>, BaseNodeServiceError> {
         match self.handle.call(BaseNodeServiceRequest::GetBaseNodeLatency).await?? {
             BaseNodeServiceResponse::Latency(latency) => Ok(latency),
-            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
         }
     }
 }

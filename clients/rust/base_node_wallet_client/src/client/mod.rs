@@ -8,16 +8,12 @@ use tari_core::{
     base_node::rpc::models::{
         self,
         BlockHeader,
-        DeletedUtxoInfo,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
     },
     mempool::FeePerGramStat,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{Transaction, TransactionOutput},
-    },
+    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;

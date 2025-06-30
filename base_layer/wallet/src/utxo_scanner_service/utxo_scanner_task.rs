@@ -28,7 +28,7 @@ use std::{
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use log::*;
-use minotari_node_wallet_client::{http, BaseNodeWalletClient};
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
@@ -184,7 +184,7 @@ where
                 next_header = wallet_service_client
                     .get_header_by_height(last_scanned_block.height + 1)
                     .await?;
-                if !next_header.is_none() {
+                if next_header.is_some() {
                     break;
                 }
                 height = height.saturating_sub(1);
@@ -297,8 +297,8 @@ where
             tip_info
                 .metadata
                 .as_ref()
-                .map(|m| m.best_block_hash().clone())
-                .unwrap_or_else(|| FixedHash::default()),
+                .map(|m| *m.best_block_hash())
+                .unwrap_or_else(FixedHash::default),
             tip_info.metadata.as_ref().map(|m| m.best_block_height()).unwrap_or(0),
         ))
     }
@@ -420,6 +420,7 @@ where
             }
 
             let response = response?;
+            #[allow(clippy::cast_possible_wrap)]
             for response in response.blocks {
                 let current_height = response.height;
                 let current_header_hash = response.header_hash;
@@ -451,7 +452,7 @@ where
                     let outputs = block
                         .outputs
                         .iter()
-                        .filter(|o| found_outputs.iter().any(|f| &f.commitment == o.commitment.as_bytes()))
+                        .filter(|o| found_outputs.iter().any(|f| f.commitment == o.commitment.as_bytes()))
                         .cloned()
                         .collect::<Vec<_>>();
 
@@ -649,7 +650,7 @@ where
                     wo.clone(),
                     source_address,
                     import_status.clone(),
-                    tx_id.clone(),
+                    *tx_id,
                     current_height,
                     mined_timestamp,
                     to.clone(),
@@ -682,14 +683,6 @@ where
             .db
             .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
         Ok(())
-    }
-
-    fn check_recovery_mode(&self) -> Result<bool, anyhow::Error> {
-        self.resources
-            .db
-            .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
-            .map(|x| x.is_some())
-            .map_err(anyhow::Error::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
     fn clear_recovery_mode(&self) -> Result<(), anyhow::Error> {

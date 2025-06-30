@@ -26,7 +26,6 @@ use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
-use url::Url;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
@@ -129,8 +128,6 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             output_manager_service: wallet.output_manager_service.clone(),
             transaction_service: wallet.transaction_service.clone(),
             one_sided_tari_address,
-            recovery_message: self.recovery_message.clone(),
-            one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset: wallet.config.birthday_offset,
             client_factory: client_factory.clone(),
         };
@@ -181,8 +178,6 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             output_manager_service,
             transaction_service,
             one_sided_tari_address,
-            recovery_message: self.recovery_message.clone(),
-            one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset,
             client_factory,
         };

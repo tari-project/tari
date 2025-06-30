@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -33,7 +32,7 @@ use tari_common_types::{
     types::Signature,
 };
 use tari_core::{
-    base_node::rpc::models::{TxLocation, TxSubmissionRejectionReason, TxSubmissionResponse},
+    base_node::rpc::models::{TxLocation, TxSubmissionRejectionReason},
     transactions::{transaction_components::Transaction, transaction_key_manager::TransactionKeyManagerInterface},
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -190,18 +189,12 @@ where
         client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let response = match client.submit_transaction(tx.clone()).await {
-            Ok(r) => match TxSubmissionResponse::try_from(r) {
-                Ok(r) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Transaction (TxId: {}) submission response from Base Node: {:?}", self.tx_id, r
-                    );
-                    r
-                },
-                Err(_) => {
-                    trace!(target: LOG_TARGET, "Could not convert proto TxSubmission Response");
-                    return Ok(false);
-                },
+            Ok(r) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) submission response from Base Node: {:?}", self.tx_id, r
+                );
+                r
             },
             Err(e) => {
                 info!(

@@ -20,26 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use chrono::NaiveDateTime;
-use futures::FutureExt;
 use log::*;
-use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{BlockHash, HashOutput},
 };
 use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{broadcast, watch},
     task,
 };
-use url::Url;
 
 use crate::{
-    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    base_node_service::handle::BaseNodeServiceHandle,
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
@@ -49,7 +44,6 @@ use crate::{
         handle::UtxoScannerEvent,
         utxo_scanner_task::UtxoScannerTask,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
-        RECOVERY_KEY,
     },
 };
 
@@ -135,7 +129,7 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    pub async fn run(mut self) -> Result<(), WalletError> {
+    pub async fn run(self) -> Result<(), WalletError> {
         info!(target: LOG_TARGET, "{:?}: UTXO scanning service starting", self.mode);
 
         if self.mode == UtxoScannerMode::Recovery {
@@ -183,22 +177,6 @@ where
                          }
         }
     }
-
-    fn should_scan(&self, new_hash: BlockHash) -> bool {
-        let mut should_trigger_scanning = false;
-        if let Some(last_block_tip_scanned) = self.last_block_tip_scanned {
-            if let Some(block_tip_to_scan_to) = self.block_tip_to_scan_to {
-                if last_block_tip_scanned != new_hash && block_tip_to_scan_to != new_hash {
-                    should_trigger_scanning = true;
-                }
-            }
-        } else if self.block_tip_to_scan_to.is_none() || self.block_tip_to_scan_to != Some(new_hash) {
-            should_trigger_scanning = true;
-        } else {
-            // Nothing here
-        }
-        should_trigger_scanning
-    }
 }
 
 #[derive(Clone)]
@@ -209,8 +187,6 @@ where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
     pub(crate) output_manager_service: OutputManagerHandle,
     pub(crate) transaction_service: TransactionServiceHandle,
     pub(crate) one_sided_tari_address: TariAddress,
-    pub(crate) recovery_message: String,
-    pub(crate) one_sided_payment_message: String,
     pub(crate) birthday_offset: u16,
     pub(crate) client_factory: THttpClientFactory,
 }

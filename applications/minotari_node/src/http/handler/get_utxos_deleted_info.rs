@@ -4,19 +4,10 @@ use std::sync::Arc;
 
 use axum::{extract::Query, http::StatusCode, Extension, Json};
 use log::debug;
-use minotari_app_grpc::tari_rpc::{FetchMatchingUtxosRequest, FetchMatchingUtxosResponse};
 use serde::Deserialize;
 use tari_core::{
     base_node::rpc::{
-        models::{
-            GetUtxosByBlockRequest,
-            GetUtxosByBlockResponse,
-            GetUtxosDeletedInfoRequest,
-            GetUtxosDeletedInfoResponse,
-            GetUtxosMinedInfoRequest,
-            GetUtxosMinedInfoResponse,
-            SyncUtxosByBlockResponse,
-        },
+        models::{GetUtxosDeletedInfoRequest, GetUtxosDeletedInfoResponse},
         query_service,
         BaseNodeWalletQueryService,
     },
