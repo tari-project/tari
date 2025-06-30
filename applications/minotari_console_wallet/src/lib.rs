@@ -239,14 +239,9 @@ pub fn run_wallet_with_cli(
         WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, wallet.clone(), path),
         WalletMode::Command(command) => command_mode(handle, &cli, &config.wallet, wallet.clone(), *command),
 
-        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(
-            handle,
-            &base_node_config,
-            &config.wallet,
-            wallet_mode,
-            wallet.clone(),
-            cli.skip_recovery,
-        ),
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
+            recovery_mode(handle, &config.wallet, wallet_mode, wallet.clone(), cli.skip_recovery)
+        },
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
             "Invalid wallet mode - are you trying too many command options at once?",

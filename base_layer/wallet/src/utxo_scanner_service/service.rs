@@ -46,7 +46,6 @@ use crate::{
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::{
-        error::UtxoScannerError,
         handle::UtxoScannerEvent,
         utxo_scanner_task::UtxoScannerTask,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
@@ -183,14 +182,6 @@ where
             }
                          }
         }
-    }
-
-    pub fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
-        self.resources
-            .db
-            .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
-            .map(|x| x.is_some())
-            .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
     fn should_scan(&self, new_hash: BlockHash) -> bool {

@@ -40,7 +40,7 @@ use tari_core::{
     one_sided::public_key_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
+        transaction_components::{payment_id::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
         transaction_key_manager::TransactionKeyManagerInterface,
     },
 };

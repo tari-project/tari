@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_wallet_client"
-version = "4.4.0-pre.0"
+version = "4.7.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",

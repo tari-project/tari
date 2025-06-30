@@ -3578,16 +3578,6 @@ where
         self.start_transaction_validation_protocol(join_handles).await
     }
 
-    async fn start_rejected_transaction_revalidation(
-        &mut self,
-        join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        >,
-    ) -> Result<OperationId, TransactionServiceError> {
-        self.resources.db.mark_all_rejected_transactions_as_unvalidated()?;
-        self.start_transaction_validation_protocol(join_handles).await
-    }
-
     async fn start_transaction_validation_protocol(
         &mut self,
         join_handles: &mut FuturesUnordered<

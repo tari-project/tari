@@ -2014,22 +2014,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "get_fee_per_gram_stats: Incoming GRPC request with count: {}",
             message.block_count
         );
-        let block_count = usize::try_from(message.block_count)
-            .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?;
+        let block_count = message.block_count;
 
         let mut transaction_service = self.get_transaction_service();
-        let stats = transaction_service
+        let stat = transaction_service
             .get_fee_per_gram_stats_per_block(block_count)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         let mut fee_stats = Vec::new();
-        for stat in stats.stats {
-            fee_stats.push(FeePerGramStat {
-                average_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
-                min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
-                max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
-            });
-        }
+        fee_stats.push(FeePerGramStat {
+            average_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
+            min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
+            max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
+        });
         Ok(Response::new(GetFeePerGramStatsResponse {
             fee_per_gram_stats: fee_stats,
         }))
