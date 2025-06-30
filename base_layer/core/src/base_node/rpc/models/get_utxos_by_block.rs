@@ -23,6 +23,7 @@ pub struct GetUtxosByBlockResponse {
     pub mined_timestamp: u64,
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn transaction_output_schema() -> Schema {
     Schema::Object(
         Object::builder()

@@ -363,7 +363,7 @@ impl LMDBStore {
                 target: LOG_TARGET,
                 "Could not retrieve LMDB information for {}. {}",
                 self.path,
-                e.to_string()
+                e
             ),
             Ok(info) => {
                 let size_mb = info.mapsize / BYTES_PER_MB;
@@ -382,7 +382,7 @@ impl LMDBStore {
                 target: LOG_TARGET,
                 "Could not retrieve LMDB statistics for {}. {}",
                 self.path,
-                e.to_string()
+                e
             ),
             Ok(stats) => {
                 let page_size = stats.psize / 1024;
@@ -571,7 +571,7 @@ impl LMDBDatabase {
                 target: LOG_TARGET,
                 "Could not retrieve LMDB statistics for {}. {}",
                 self.name,
-                e.to_string()
+                e
             ),
             Ok(stats) => {
                 let page_size = stats.psize / 1024;

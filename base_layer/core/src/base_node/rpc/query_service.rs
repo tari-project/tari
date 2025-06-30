@@ -87,15 +87,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
     async fn fetch_kernel(&self, signature: types::Signature) -> Result<TxQueryResponse, Error> {
         let db = self.db();
-        let chain_metadata = db.get_chain_metadata().await?;
-        let state_machine = self.state_machine();
 
-        // Determine if we are synced
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
         match db.fetch_kernel_by_excess_sig(signature.clone()).await? {
             None => (),
             Some((_, block_hash)) => match db.fetch_header_by_block_hash(block_hash).await? {
@@ -381,7 +373,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     ) -> Result<TxQueryResponse, Self::Error> {
         let signature = signature.try_into().map_err(Error::SignatureConversion)?;
 
-        let mut response = self.fetch_kernel(signature).await?;
+        let response = self.fetch_kernel(signature).await?;
 
         Ok(response)
     }

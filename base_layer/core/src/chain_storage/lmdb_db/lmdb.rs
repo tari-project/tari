@@ -273,7 +273,7 @@ where
             if e == Error::Code(error::NOTFOUND) {
                 return Ok(result);
             }
-            error!(target: LOG_TARGET, "Error in lmdb_get_multiple:{}", e.to_string());
+            error!(target: LOG_TARGET, "Error in lmdb_get_multiple:{}", e);
             // No matches
             return Err(e.into());
         },

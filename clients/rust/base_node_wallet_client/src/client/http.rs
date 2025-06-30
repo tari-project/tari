@@ -390,6 +390,11 @@ impl BaseNodeWalletClient for Client {
     }
 
     async fn get_mempool_fee_per_gram_stats(&self, count: u64) -> Result<FeePerGramStat, anyhow::Error> {
-        todo!()
+        Ok(FeePerGramStat {
+            order: 1,
+            min_fee_per_gram: MicroMinotari::from(1),
+            avg_fee_per_gram: MicroMinotari::from(1),
+            max_fee_per_gram: MicroMinotari::from(1),
+        }) // Placeholder implementation
     }
 }

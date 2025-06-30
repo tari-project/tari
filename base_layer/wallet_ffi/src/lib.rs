@@ -81,6 +81,7 @@ use log4rs::{
 };
 use minotari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
+    client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::WalletConnectivityInterface,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -252,7 +253,7 @@ pub struct TariContacts(Vec<TariContact>);
 pub type TariContact = Contact;
 pub type TariCompletedTransaction = CompletedTransaction;
 pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
-// pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
+pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
 pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
@@ -5033,36 +5034,6 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
     }
 
     false
-}
-
-/// Gets the number of confirmations of a TariCompletedTransaction
-///
-/// ## Arguments
-/// `tx` - The TariCompletedTransaction
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a 0 if any pointer argument is null.
-///
-/// ## Returns
-/// `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_confirmations(
-    tx: *mut TariCompletedTransaction,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if tx.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
-        return 0;
-    }
-
-    (*tx).confirmations.unwrap_or(0)
 }
 
 /// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled

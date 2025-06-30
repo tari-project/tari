@@ -69,6 +69,8 @@ struct EncryptedData;
 
 struct FeePerGramStat;
 
+struct FeePerGramStatsResponse;
+
 struct InboundTransaction;
 
 struct OutboundTransaction;
@@ -242,6 +244,8 @@ typedef struct P2pConfig TariCommsConfig;
 typedef struct Balance TariBalance;
 
 typedef struct FeePerGramStat TariFeePerGramStat;
+
+typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
 /**
  * Payment Record FFI Types
@@ -2516,23 +2520,6 @@ unsigned int completed_transaction_get_transaction_type(const TariCompletedTrans
  */
 bool completed_transaction_is_outbound(TariCompletedTransaction *tx,
                                        int *error_out);
-
-/**
- * Gets the number of confirmations of a TariCompletedTransaction
- *
- * ## Arguments
- * `tx` - The TariCompletedTransaction
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a 0 if any pointer argument is null.
- *
- * ## Returns
- * `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
- *
- * # Safety
- * None
- */
-unsigned long long completed_transaction_get_confirmations(TariCompletedTransaction *tx,
-                                                           int *error_out);
 
 /**
  * Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled

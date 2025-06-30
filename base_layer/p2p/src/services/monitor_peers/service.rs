@@ -209,7 +209,7 @@ impl MonitorPeersService {
                                         debug!(
                                             target: LOG_TARGET,
                                             "Liveness event error: {:?} ({})",
-                                            event_str, e.to_string()
+                                            event_str, e
                                         );
                                     },
                                 }

@@ -315,7 +315,7 @@ impl SeedStrap {
                     seed_peer_node_id_str,
                     peer_idx_loop + 1,
                     peers_count,
-                    candidate_node_id.to_string()
+                    candidate_node_id
                 );
 
                 if new_peer_candidate.public_key == *self.context.node_identity.public_key() {
@@ -362,7 +362,7 @@ impl SeedStrap {
                             seed_peer_node_id_str,
                             peer_idx_loop + 1,
                             peers_count,
-                            valid_peer.node_id.to_string(),
+                            valid_peer.node_id,
                             seed_peer_node_id_str,
                             is_new_peer
                         );

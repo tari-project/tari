@@ -92,10 +92,10 @@ impl MultiaddrWithStats {
         if self.address == other.address {
             trace!(
                 target: LOG_TARGET, "merge: '{}, {:?}, {:?}' and '{}, {:?}, {:?}'",
-                self.address.to_string(),
+                self.address,
                 self.last_seen,
                 self.quality_score,
-                other.address.to_string(),
+                other.address,
                 other.last_seen,
                 other.quality_score
             );
@@ -201,7 +201,7 @@ impl MultiaddrWithStats {
     pub fn mark_last_seen_now(&mut self) -> &mut Self {
         trace!(
             target: LOG_TARGET, "mark_last_seen_now: from {}, address '{}', previous {:?}",
-            self.source, self.address.to_string(), self.last_seen
+            self.source, self.address, self.last_seen
         );
         self.last_seen = Some(Utc::now().naive_utc());
         self.last_failed_reason = None;
