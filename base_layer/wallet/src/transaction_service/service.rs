@@ -392,7 +392,6 @@ where
         > = FuturesUnordered::new();
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
-        let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
         let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
@@ -3526,16 +3525,6 @@ where
             })?;
 
         Ok(())
-    }
-
-    async fn start_transaction_revalidation(
-        &mut self,
-        join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        >,
-    ) -> Result<OperationId, TransactionServiceError> {
-        self.resources.db.mark_all_non_coinbases_transactions_as_unvalidated()?;
-        self.start_transaction_validation_protocol(join_handles).await
     }
 
     async fn start_rejected_transaction_revalidation(

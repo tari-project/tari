@@ -138,7 +138,7 @@ where
                             self.last_rejection = None;
                             continue;
                     },
-                    result = self.query_or_submit_transaction(completed_tx.clone(), &mut client).fuse() => {
+                    result = self.query_or_submit_transaction(completed_tx.clone(), &client).fuse() => {
                         match self.mode {
                             TxBroadcastMode::TransactionSubmission => {
                                 if result? {

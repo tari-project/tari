@@ -18,11 +18,7 @@ use tari_core::{
         TxSubmissionResponse,
     },
     mempool::FeePerGramStat,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::TransactionOutput,
-        transaction_key_manager::schema::imported_keys::timestamp,
-    },
+    transactions::{tari_amount::MicroMinotari, transaction_components::TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;

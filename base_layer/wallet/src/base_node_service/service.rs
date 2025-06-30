@@ -125,9 +125,7 @@ where
 
     fn spawn_monitor(&self) {
         let monitor = BaseNodeMonitor::new(
-            Duration::from_secs(60),
             self.state.clone(),
-            self.db.clone(),
             self.wallet_connectivity.clone(),
             self.event_publisher.clone(),
         );

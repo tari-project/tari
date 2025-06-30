@@ -1085,7 +1085,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             warn!(
                 target: LOG_TARGET,
                 "Could not get new block template: {}",
-                e.to_string()
+                e
             );
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;

@@ -48,11 +48,10 @@ impl WalletConnectivityInitializer {
 #[async_trait]
 impl ServiceInitializer for WalletConnectivityInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, _receiver) = mpsc::channel(5);
         let base_node_watch = Watch::new(None);
 
         let factory = DefaultHttpClientFactory::new(self.http_node_url.clone());
-        context.register_handle(WalletConnectivityHandle::new(sender, base_node_watch.clone(), factory));
+        context.register_handle(WalletConnectivityHandle::new(base_node_watch.clone(), factory));
 
         Ok(())
     }

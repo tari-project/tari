@@ -20,13 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
-use futures::{future, future::Either};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_comms::{backoff::ExponentialBackoff, protocol::rpc::RpcError};
+use tari_comms::protocol::rpc::RpcError;
 use tari_shutdown::ShutdownSignal;
 use tokio::{select, sync::RwLock, time::interval};
 
@@ -37,39 +36,26 @@ use crate::{
     },
     connectivity_service::WalletConnectivityInterface,
     error::WalletStorageError,
-    storage::database::{WalletBackend, WalletDatabase},
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
 
-pub struct BaseNodeMonitor<TBackend, TWalletConnectivity> {
-    max_interval: Duration,
-    backoff: ExponentialBackoff,
-    backoff_attempts: usize,
+pub struct BaseNodeMonitor<TWalletConnectivity> {
     state: Arc<RwLock<BaseNodeState>>,
-    db: WalletDatabase<TBackend>,
     wallet_connectivity: TWalletConnectivity,
     event_publisher: BaseNodeEventSender,
 }
 
-impl<TBackend, TWalletConnectivity> BaseNodeMonitor<TBackend, TWalletConnectivity>
-where
-    TBackend: WalletBackend + 'static,
-    TWalletConnectivity: WalletConnectivityInterface,
+impl<TWalletConnectivity> BaseNodeMonitor<TWalletConnectivity>
+where TWalletConnectivity: WalletConnectivityInterface
 {
     pub fn new(
-        max_interval: Duration,
         state: Arc<RwLock<BaseNodeState>>,
-        db: WalletDatabase<TBackend>,
         wallet_connectivity: TWalletConnectivity,
         event_publisher: BaseNodeEventSender,
     ) -> Self {
         Self {
-            max_interval: Duration::from_secs(60).max(max_interval),
-            backoff: ExponentialBackoff::default(),
-            backoff_attempts: 0,
             state,
-            db,
             wallet_connectivity,
             event_publisher,
         }
@@ -83,13 +69,7 @@ where
                     "Wallet Base Node Service chain metadata task completed successfully"
                 );
             },
-            Err(BaseNodeMonitorError::NodeShuttingDown) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Wallet Base Node Service chain metadata task shutting down because the shutdown signal was \
-                     received"
-                );
-            },
+
             Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
                 warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
                 self.update_state(BaseNodeState {
@@ -99,9 +79,6 @@ where
                     latency: None,
                 })
                 .await;
-                if let Some(node_id) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
-                    self.wallet_connectivity.disconnect_base_node(node_id).await;
-                }
             },
             Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
             Err(e @ BaseNodeMonitorError::WalletStorageError(_)) => {
@@ -111,7 +88,6 @@ where
     }
 
     async fn monitor_node(&mut self, mut shutdown_signal: ShutdownSignal) -> Result<(), BaseNodeMonitorError> {
-        let mut base_node_watch = self.wallet_connectivity.get_current_base_node_watcher();
         let mut interval = interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -195,25 +171,10 @@ where
 
 #[derive(thiserror::Error, Debug)]
 enum BaseNodeMonitorError {
-    #[error("Node is shutting down")]
-    NodeShuttingDown,
     #[error("Rpc error: {0}")]
     RpcFailed(#[from] RpcError),
     #[error("Invalid base node response: {0}")]
     InvalidBaseNodeResponse(String),
     #[error("Wallet storage error: {0}")]
     WalletStorageError(#[from] WalletStorageError),
-}
-
-async fn interrupt<F1, F2>(interrupt: F1, fut: F2) -> Option<F2::Output>
-where
-    F1: Future,
-    F2: Future,
-{
-    tokio::pin!(interrupt);
-    tokio::pin!(fut);
-    match future::select(interrupt, fut).await {
-        Either::Left(_) => None,
-        Either::Right((v, _)) => Some(v),
-    }
 }

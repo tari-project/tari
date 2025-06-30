@@ -40,13 +40,8 @@ pub enum OnlineStatus {
     Offline = 2,
 }
 
-pub enum WalletConnectivityRequest {
-    DisconnectBaseNode(NodeId),
-}
-
 #[derive(Clone)]
 pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
-    sender: mpsc::Sender<WalletConnectivityRequest>,
     base_node_watch: Watch<Option<BaseNodePeerManager>>,
     client_factory: TWalletClientFactory,
     online_status_watch: watch::Sender<OnlineStatus>,
@@ -54,13 +49,11 @@ pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
 
 impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletClientFactory> {
     pub(super) fn new(
-        sender: mpsc::Sender<WalletConnectivityRequest>,
         base_node_watch: Watch<Option<BaseNodePeerManager>>,
         client_factory: TWalletClientFactory,
     ) -> Self {
         let (online_status_watch, _) = watch::channel(OnlineStatus::Connecting);
         Self {
-            sender,
             base_node_watch,
             client_factory,
             online_status_watch,
@@ -99,13 +92,6 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
     /// BaseNodeWalletRpcClient RPC session.
     async fn obtain_base_node_wallet_rpc_client(&mut self) -> Self::BaseNodeClient {
         self.client_factory.create_http_client()
-    }
-
-    async fn disconnect_base_node(&mut self, node_id: NodeId) {
-        let _unused = self
-            .sender
-            .send(WalletConnectivityRequest::DisconnectBaseNode(node_id))
-            .await;
     }
 
     fn get_connectivity_status(&self) -> OnlineStatus {
