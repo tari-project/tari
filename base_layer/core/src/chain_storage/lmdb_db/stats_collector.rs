@@ -204,12 +204,16 @@ impl LMDBStatsCollector {
         }
 
         // Send to all additional subscribers
-        if let Ok(senders) = self.additional_senders.lock() {
-            for sender in senders.iter() {
-                if let Err(e) = sender.send(stats.clone()) {
-                    log::debug!("Failed to send stats update to additional subscriber: {}", e);
+        if let Ok(mut senders) = self.additional_senders.lock() {
+            senders.retain(|sender| {
+                match sender.send(stats.clone()) {
+                    Ok(_) => true, // Keep this sender
+                    Err(e) => {
+                        log::debug!("Removing failed stats subscriber: {}", e);
+                        false // Remove this sender
+                    },
                 }
-            }
+            });
         }
     }
 
