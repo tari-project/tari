@@ -1058,40 +1058,20 @@ impl LMDBDatabase {
 
         for (_, utxo) in &output_rows {
             let output_hash = utxo.hash;
-            trace!(target: LOG_TARGET, "Deleting UTXO `{}`", output_hash);
+            let payref = Self::generate_payment_reference_for_output(block_hash, &output_hash);
+            trace!(target: LOG_TARGET, "Deleting UTXO `{}` with payref `{}`", output_hash, payref);
             lmdb_delete(
                 txn,
                 &self.txos_hash_to_index_db,
                 utxo.hash.as_slice(),
                 "txos_hash_to_index_db",
             )?;
-
-            // Clean up PayRef index for this output during reorg
-            // Only clean PayRef if output was actually created (not spent in same block, not burned)
-            let should_cleanup_payref =
-                !inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) && !utxo.output.is_burned();
-
-            if should_cleanup_payref {
-                let payref_bytes = Self::generate_payment_reference_for_output(block_hash, &output_hash);
-                // Delete the PayRef index entry with proper error handling
-                match lmdb_delete(
-                    txn,
-                    &self.payref_to_output_index,
-                    payref_bytes.as_slice(),
-                    "payref_to_output_index",
-                ) {
-                    Ok(()) => {
-                        debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex())
-                    },
-                    Err(ChainStorageError::ValueNotFound { .. }) => {
-                        // Expected case for outputs that didn't have PayRefs
-                    },
-                    Err(e) => {
-                        error!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e);
-                        return Err(e);
-                    },
-                }
-            }
+            lmdb_delete(
+                txn,
+                &self.payref_to_output_index,
+                payref.as_slice(),
+                "payref_to_output_index",
+            )?;
 
             // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
             // does not exist here
@@ -2999,6 +2979,10 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     let mut payref_index_done = false;
 
     for migrate_from_version in last_migrated_version..MIGRATION_VERSION {
+        unsafe {
+            LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
+        }
+
         // MIGRATION: Accumulated difficulty migration after the 3rd mining algorithm was introduced
         if migrate_from_version == 0 {
             let txn = db.read_transaction()?;
@@ -3184,7 +3168,16 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             drop(read_txn);
 
             for height in 0..=chain_height {
-                if height % 100 == 0 {
+                // The average size added to the db per block for payrefs for the first 16,500 blocks was approximately
+                // 4,209 bytes as measured on a mainnet node and for the next 17,500 blocks approximately 7,550 bytes.
+                // The highest measured value is much less than the theoretical maximum of
+                // `(1000 coinbases + 900 outputs) * 2 * 32 bytes per output = 242,200 bytes per block`. The
+                // default db maspize increase is 128MB when we have less than 64MB free space left, so we should be
+                // checking how long it will take to fill up 64MB. Taking the biggest measured value we end up with
+                // approximately 8888 blocks to consume 64MB wirth of payref data. Theoretically, we can fill up 64MB
+                // with 277 block's worth of payrefs. To test if the db needs resizing every 1000 blocks is deemed
+                // practical and safe.
+                if height % 1000 == 0 {
                     unsafe {
                         LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
                     }

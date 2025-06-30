@@ -438,7 +438,7 @@ impl LMDBStore {
                 size_used_bytes / BYTES_PER_MB,
                 size_left_bytes / BYTES_PER_MB
             );
-            Self::resize(env, config, Some(increase_threshold_by.unwrap_or_default()))?;
+            Self::resize(env, config, increase_threshold_by)?;
         }
         Ok(())
     }
