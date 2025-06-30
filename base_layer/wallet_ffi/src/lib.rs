@@ -151,7 +151,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -8719,6 +8719,7 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8732,6 +8733,7 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_completed_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransactions {
     if error_out.is_null() {
@@ -8745,12 +8747,15 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
         return ptr::null_mut();
     }
 
-    let completed_transactions = (*wallet).runtime.block_on(
+    let completed_transactions =
         (*wallet)
-            .wallet
-            .transaction_service
-            .get_completed_transactions(None, None, None),
-    );
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                None,
+                None,
+                None,
+                max_search_limit,
+            ));
     match completed_transactions {
         Ok(completed_transactions) => {
             // The frontend specification calls for completed transactions that have not yet been mined to be
@@ -8780,6 +8785,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8793,6 +8799,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransactions {
     if error_out.is_null() {
@@ -8816,12 +8823,16 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 pending.push(tx.clone());
             }
 
-            if let Ok(completed_txs) = (*wallet).runtime.block_on(
+            if let Ok(completed_txs) =
                 (*wallet)
-                    .wallet
-                    .transaction_service
-                    .get_completed_transactions(None, None, None),
-            ) {
+                    .runtime
+                    .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                        None,
+                        None,
+                        None,
+                        max_search_limit,
+                    ))
+            {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
@@ -8854,6 +8865,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8867,6 +8879,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransactions {
     if error_out.is_null() {
@@ -8888,12 +8901,16 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
             for tx in &pending_transactions {
                 pending.push(tx.clone());
             }
-            if let Ok(completed_txs) = (*wallet).runtime.block_on(
+            if let Ok(completed_txs) =
                 (*wallet)
-                    .wallet
-                    .transaction_service
-                    .get_completed_transactions(None, None, None),
-            ) {
+                    .runtime
+                    .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                        None,
+                        None,
+                        None,
+                        max_search_limit,
+                    ))
+            {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
@@ -8920,6 +8937,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -8933,6 +8951,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     wallet: *mut TariWallet,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransactions {
     if error_out.is_null() {
@@ -8949,7 +8968,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         (*wallet)
             .wallet
             .transaction_service
-            .get_cancelled_completed_transactions(),
+            .get_cancelled_completed_transactions(max_search_limit),
     ) {
         Ok(txs) => txs,
         Err(e) => {
@@ -9006,7 +9025,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         completed.push(inbound_tx);
     }
     for tx in &outbound_transactions {
-        let mut outbound_tx = CompletedTransaction::from(tx.clone());
+        let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
         outbound_tx.source_address = wallet_address.clone();
         completed.push(outbound_tx);
     }
@@ -9049,27 +9068,23 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
         (*wallet)
             .wallet
             .transaction_service
-            .get_completed_transactions(None, None, None),
+            .get_completed_transaction(transaction_id.into()),
     );
 
     match completed_transactions {
-        Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions
-                .iter()
-                .find(|tx| tx.tx_id == TxId::from(transaction_id))
+        Ok(completed_transaction) => {
+            if completed_transaction.status != TransactionStatus::Completed &&
+                completed_transaction.status != TransactionStatus::Broadcast
             {
-                if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
-                    let completed = tx.clone();
-                    return Box::into_raw(Box::new(completed));
-                }
+                let completed = completed_transaction.clone();
+                return Box::into_raw(Box::new(completed));
             }
-            *error_out = 108;
         },
         Err(e) => {
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
         },
     }
-
+    *error_out = 108;
     ptr::null_mut()
 }
 
@@ -9078,6 +9093,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -9092,6 +9108,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransaction {
     if error_out.is_null() {
@@ -9109,12 +9126,15 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
         .runtime
         .block_on((*wallet).wallet.transaction_service.get_pending_inbound_transactions());
 
-    let completed_transactions = (*wallet).runtime.block_on(
+    let completed_transactions =
         (*wallet)
-            .wallet
-            .transaction_service
-            .get_completed_transactions(None, None, None),
-    );
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                None,
+                None,
+                None,
+                max_search_limit,
+            ));
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -9154,6 +9174,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `transaction_id` - The TransactionId
+/// `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -9168,6 +9189,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     wallet: *mut TariWallet,
     transaction_id: c_ulonglong,
+    max_search_limit: c_ulonglong,
     error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransaction {
     if error_out.is_null() {
@@ -9185,12 +9207,15 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
         .runtime
         .block_on((*wallet).wallet.transaction_service.get_pending_outbound_transactions());
 
-    let completed_transactions = (*wallet).runtime.block_on(
+    let completed_transactions =
         (*wallet)
-            .wallet
-            .transaction_service
-            .get_completed_transactions(None, None, None),
-    );
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_completed_transactions(
+                None,
+                None,
+                None,
+                max_search_limit,
+            ));
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -9264,7 +9289,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
         (*wallet)
             .wallet
             .transaction_service
-            .get_cancelled_completed_transactions(),
+            .get_cancelled_completed_transactions(0),
     ) {
         Ok(txs) => txs,
         Err(e) => {
@@ -9303,7 +9328,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
             },
         };
         if let Some(tx) = outbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-            let mut outbound_tx = CompletedTransaction::from(tx.clone());
+            let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
             outbound_tx.source_address = address;
             transaction = Some(outbound_tx);
         } else {
@@ -12823,7 +12848,6 @@ mod test {
                         sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
                             .unwrap(),
                         sender_one_sided: false,
-                        amount: MicroMinotari::from(123456),
                         fee: MicroMinotari::from(123),
                         tx_type,
                         user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -12836,6 +12860,7 @@ mod test {
                         fee: MicroMinotari::from(123),
                         tx_type,
                         user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                        sent_output_hashes: vec![],
                     },
                 ] {
                     let wallet_output = (*alice_wallet).runtime.block_on(create_test_input(

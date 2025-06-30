@@ -95,15 +95,6 @@ where
     pub async fn run(mut self) -> Result<(), anyhow::Error> {
         if self.mode == UtxoScannerMode::Recovery {
             self.set_recovery_mode()?;
-        } else {
-            let in_progress = self.check_recovery_mode()?;
-            if in_progress {
-                warn!(
-                    target: LOG_TARGET,
-                    "Scanning round aborted as a Recovery is in progress"
-                );
-                return Ok(());
-            }
         }
 
         loop {
@@ -162,9 +153,14 @@ where
             value_recovered,
             time_taken: elapsed,
         });
+        debug!(
+            target: LOG_TARGET,
+            "{:?}: Published events 'UtxoScannerEvent::Progress(..{})' and 'UtxoScannerEvent::Completed(..{})'",
+            self.mode, final_height, final_height,
+        );
 
-        // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
         if self.mode == UtxoScannerMode::Recovery {
+            // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
             self.clear_recovery_mode()?;
         }
         Ok(())
@@ -239,7 +235,8 @@ where
                 if last_scanned_block.header_hash == tip_hash {
                     debug!(
                         target: LOG_TARGET,
-                        "Scanning complete to current tip (height: {}) in {:.2?}",
+                        "{:?}: Scanning complete to current tip (height: {}) in {:.2?}",
+                        self.mode,
                         last_scanned_block.height,
                         timer.elapsed()
                     );
@@ -263,7 +260,8 @@ where
 
             info!(
                 target: LOG_TARGET,
-                "Scanning UTXO's from height = {} to current tip_height = {} (starting header_hash: {})",
+                "{:?}: Scanning UTXO's from height = {} to current tip_height = {} (starting header_hash: {})",
+                self.mode,
                 next_block_to_scan.height,
                 tip_height,
                 next_block_to_scan.header_hash.to_hex(),
@@ -313,7 +311,8 @@ where
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
-            "Found {} cached previously scanned blocks",
+            "{:?}: Found {} cached previously scanned blocks",
+            self.mode,
             scanned_blocks.len()
         );
 
@@ -356,7 +355,7 @@ where
         if let Some(block) = last_missing_scanned_block {
             warn!(
                 target: LOG_TARGET,
-                "Reorg detected on base node. Removing scanned blocks from height {}", block.height
+                "{:?}: Reorg detected on base node. Removing scanned blocks from height {}", self.mode, block.height
             );
             self.resources.db.clear_scanned_blocks_from_and_higher(block.height)?;
         }
@@ -364,7 +363,8 @@ where
         if let Some(sb) = found_scanned_block {
             debug!(
                 target: LOG_TARGET,
-                "Last scanned block found at height {} (Header Hash: {})",
+                "{:?}: Last scanned block found at height {} (Header Hash: {})",
+                self.mode,
                 sb.height,
                 sb.header_hash.to_hex()
             );
@@ -376,8 +376,8 @@ where
         } else {
             warn!(
                 target: LOG_TARGET,
-                "Reorg detected on base node. No previously scanned block headers found, resuming scan from wallet \
-                 birthday"
+                "{:?}: Reorg detected on base node. No previously scanned block headers found, resuming scan from wallet \
+                 birthday", self.mode
             );
             Ok(None)
         }
@@ -614,7 +614,8 @@ where
         let one_sided_time = start.elapsed();
         trace!(
             target: LOG_TARGET,
-            "Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            "{:?}: Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            self.mode,
             scanned_time.as_millis(),
             one_sided_time.as_millis(),
         );
@@ -664,8 +665,9 @@ where
                 ))) => {
                     info!(
                         target: LOG_TARGET,
-                        "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
+                        "{:?}: Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
                          ignoring it as this is not a real error",
+                        self.mode,
                         tx_id
                     );
                 },
@@ -728,7 +730,8 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO with value {},  imported into wallet as 'ImportStatus::{}'", wallet_output.value, import_status
+            "{:?}: UTXO with value {},  imported into wallet as 'ImportStatus::{}'",
+            self.mode, wallet_output.value, import_status
         );
 
         Ok(tx_id)
@@ -755,7 +758,7 @@ where
             .get_height_at_time(epoch_time_scanning_start)
             .await
             .unwrap_or_else(|e| {
-                warn!(target: LOG_TARGET, "Problem requesting `height_at_time` from Base Node: {}", e);
+                warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
                 0
             });
         let header = match client.get_header_by_height(block_height_scanning_start).await? {

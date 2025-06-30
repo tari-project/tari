@@ -46,15 +46,21 @@ use tari_common_types::types::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
-    extended_range_proof::{ExtendedRangeProofService, Statement},
+    extended_range_proof::ExtendedRangeProofService,
+    tari_utilities::hex::Hex,
+};
+#[cfg(feature = "base_node")]
+use tari_crypto::{
+    extended_range_proof::Statement,
     keys::SecretKey,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
-    tari_utilities::hex::Hex,
 };
 use tari_hashing::TransactionHashDomain;
 use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
+#[cfg(feature = "base_node")]
+use crate::transactions::transaction_components::RangeProofType;
 use crate::{
     borsh::SerializedSize,
     consensus::DomainSeparatedConsensusHasher,
@@ -66,7 +72,6 @@ use crate::{
             EncryptedData,
             OutputFeatures,
             OutputType,
-            RangeProofType,
             TransactionError,
             TransactionInput,
             WalletOutput,
@@ -235,6 +240,7 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
+    #[cfg(feature = "base_node")]
     pub(crate) fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
         match self.features.range_proof_type {
             RangeProofType::RevealedValue => match self.revealed_value_range_proof_check() {
@@ -267,6 +273,7 @@ impl TransactionOutput {
     // As an alternate range proof check, the value of the commitment with a deterministic ephemeral_commitment nonce
     // `r_a` of zero can optionally be bound into the metadata signature. This is a much faster check than the full
     // range proof verification.
+    #[cfg(feature = "base_node")]
     fn revealed_value_range_proof_check(&self) -> Result<(), RangeProofError> {
         if self.features.range_proof_type != RangeProofType::RevealedValue {
             return Err(RangeProofError::InvalidRangeProof {
@@ -554,6 +561,7 @@ impl Ord for TransactionOutput {
 }
 
 /// Performs batched range proof verification for an arbitrary number of outputs
+#[cfg(feature = "base_node")]
 pub(crate) fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],

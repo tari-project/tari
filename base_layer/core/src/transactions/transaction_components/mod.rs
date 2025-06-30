@@ -58,6 +58,7 @@ mod kernel_builder;
 mod kernel_features;
 mod kernel_sum;
 mod output_features;
+pub mod payment_id;
 pub use output_features::CoinBaseExtra;
 mod output_features_version;
 mod output_type;

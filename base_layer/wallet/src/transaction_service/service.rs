@@ -65,7 +65,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CodeTemplateRegistration,
             KernelFeatures,
             OutputFeatures,
@@ -125,6 +125,7 @@ use crate::{
             TransactionServiceRequest,
             TransactionServiceResponse,
         },
+        offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
             check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
@@ -659,6 +660,39 @@ where
                 .await?;
                 return Ok(());
             },
+            TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
+                destination,
+                amount,
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+                payment_id,
+            } => {
+                self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
+                let mut offline_signing = OfflineSigner::new(self.resources.clone());
+                offline_signing
+                    .prepare_one_sided_transaction_for_signing(
+                        destination,
+                        amount,
+                        selection_criteria,
+                        *output_features,
+                        fee_per_gram,
+                        payment_id,
+                    )
+                    .await
+                    .map(|v| TransactionServiceResponse::OneSidedTransactionPreparedForSigning(Box::new(v)))
+            },
+            TransactionServiceRequest::SignOneSidedTransaction { request } => {
+                let offline_signing = OfflineSigner::new(self.resources.clone());
+                offline_signing
+                    .sign_locked_transaction(request)
+                    .await
+                    .map(|v| TransactionServiceResponse::SignedOneSidedTransaction(Box::new(v)))
+            },
+            TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request } => self
+                .submit_signed_one_sided_transaction(request, transaction_broadcast_join_handles)
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::SendOneSidedTransaction {
                 destination,
                 amount,
@@ -897,9 +931,10 @@ where
                 payment_id,
                 block_hash,
                 block_height,
+                max_limit,
             } => Ok(TransactionServiceResponse::CompletedTransactions(
                 self.db
-                    .get_completed_transactions(payment_id, block_hash, block_height)?,
+                    .get_completed_transactions(payment_id, block_hash, block_height, max_limit)?,
             )),
             TransactionServiceRequest::GetCompletedTransactionsByAddresses {
                 source_address,
@@ -918,9 +953,11 @@ where
                     self.db.get_cancelled_pending_outbound_transactions()?,
                 ))
             },
-            TransactionServiceRequest::GetCancelledCompletedTransactions => Ok(
-                TransactionServiceResponse::CompletedTransactions(self.db.get_cancelled_completed_transactions()?),
-            ),
+            TransactionServiceRequest::GetCancelledCompletedTransactions(max_limit) => {
+                Ok(TransactionServiceResponse::CompletedTransactions(
+                    self.db.get_cancelled_completed_transactions(max_limit)?,
+                ))
+            },
             TransactionServiceRequest::GetCompletedTransaction(tx_id) => Ok(
                 TransactionServiceResponse::CompletedTransaction(Box::new(self.db.get_completed_transaction(tx_id)?)),
             ),
@@ -1011,6 +1048,10 @@ where
             //     .start_transaction_revalidation(transaction_validation_join_handles)
             //     .await
             // .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReValidateRejectedTransactions => self
+                .start_rejected_transaction_revalidation(transaction_validation_join_handles)
+                .await
+                .map(TransactionServiceResponse::ValidationStarted),
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -1023,7 +1064,7 @@ where
                 match self.get_transaction_with_payref(payref)? {
                     Some(tx) => Ok(TransactionServiceResponse::CompletedTransaction(Box::new(tx))),
                     None => Err(TransactionServiceError::TransactionStorageError(
-                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions),
+                        TransactionStorageError::ValueNotFound(DbKey::CompletedTransactions(1)),
                     ))?,
                 }
             },
@@ -1521,7 +1562,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id)
+            .confirm_pending_transaction(tx_id, None)
             .await?;
 
         // Notify that the transaction was successfully resolved.
@@ -1602,7 +1643,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
-            amount,
             fee_per_gram,
             None,
         );
@@ -1628,12 +1668,6 @@ where
         // but the returned value is not used
         let _single_round_sender_data = stp
             .build_single_round_message(&self.resources.transaction_key_manager_service)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1730,14 +1764,7 @@ where
 
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
-        let change_hashes = match stp.get_change_output()? {
-            Some(change_output) => vec![
-                change_output
-                    .hash(&self.resources.transaction_key_manager_service)
-                    .await?,
-            ],
-            None => vec![],
-        };
+
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output.clone(),
@@ -1764,6 +1791,20 @@ where
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
+        let change_hashes = match stp.get_finalized_change_output()? {
+            Some(change_output) => {
+                let hash = change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?;
+                self.resources
+                    .output_manager_service
+                    .confirm_pending_transaction(tx_id, Some(vec![change_output]))
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+                vec![hash]
+            },
+            None => vec![],
+        };
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -1839,7 +1880,6 @@ where
             PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
-                amount,
                 fee_per_gram,
                 if dest_address == self.resources.one_sided_tari_address ||
                     dest_address == self.resources.interactive_tari_address
@@ -1995,14 +2035,7 @@ where
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
-        let change_hashes = match stp.get_change_output()? {
-            Some(change_output) => vec![
-                change_output
-                    .hash(&self.resources.transaction_key_manager_service)
-                    .await?,
-            ],
-            None => vec![],
-        };
+
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2028,6 +2061,15 @@ where
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
+        let (change_hashes, change) = match stp.get_finalized_change_output()? {
+            Some(change_output) => {
+                let hash = change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?;
+                (vec![hash], Some(vec![change_output]))
+            },
+            None => (vec![], None),
+        };
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -2047,7 +2089,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id)
+            .confirm_pending_transaction(tx_id, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
@@ -2187,7 +2229,6 @@ where
         let payment_id = PaymentId::AddressAndData {
             sender_address: self.resources.interactive_tari_address.clone(),
             sender_one_sided: true,
-            amount,
             fee: stp.get_fee_amount().unwrap_or_default(),
             tx_type: TxType::PaymentToOther,
             user_data: vec![],
@@ -2226,14 +2267,7 @@ where
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let received_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
-        let change_hashes = match stp.get_change_output()? {
-            Some(change_output) => vec![
-                change_output
-                    .hash(&self.resources.transaction_key_manager_service)
-                    .await?,
-            ],
-            None => vec![],
-        };
+
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2259,6 +2293,15 @@ where
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
+        let (change_hashes, change) = match stp.get_finalized_change_output()? {
+            Some(change_output) => {
+                let hash = change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?;
+                (vec![hash], Some(vec![change_output]))
+            },
+            None => (vec![], None),
+        };
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -2278,7 +2321,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id)
+            .confirm_pending_transaction(tx_id, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
@@ -2359,7 +2402,6 @@ where
         let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
-            amount,
             fee_per_gram,
             Some(TxType::Burn),
         );
@@ -2498,14 +2540,6 @@ where
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
-        let change_hashes = match stp.get_change_output()? {
-            Some(change_output) => vec![
-                change_output
-                    .hash(&self.resources.transaction_key_manager_service)
-                    .await?,
-            ],
-            None => vec![],
-        };
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output,
@@ -2542,6 +2576,16 @@ where
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
+
+        let (change_hashes, change) = match stp.get_finalized_change_output()? {
+            Some(change_output) => {
+                let hash = change_output
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await?;
+                (vec![hash], Some(vec![change_output]))
+            },
+            None => (vec![], None),
+        };
         info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -2560,7 +2604,7 @@ where
 
         self.resources
             .output_manager_service
-            .confirm_pending_transaction(tx_id)
+            .confirm_pending_transaction(tx_id, change)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.submit_transaction(
@@ -3067,18 +3111,16 @@ where
 
             // Check if this transaction has already been received and cancelled.
             if let Ok(Some(any_tx)) = self.db.get_any_cancelled_transaction(data.tx_id) {
-                let tx = CompletedTransaction::from(any_tx);
-
-                if tx.source_address.comms_public_key() != &source_pubkey {
+                if any_tx.source_address().unwrap_or_default().comms_public_key() != &source_pubkey {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);
                 }
                 trace!(
                     target: LOG_TARGET,
                     "A repeated Transaction (TxId: {}) has been received but has been previously cancelled or rejected",
-                    tx.tx_id
+                    data.tx_id
                 );
                 tokio::spawn(send_transaction_cancelled_message(
-                    tx.tx_id,
+                    data.tx_id,
                     source_pubkey,
                     self.resources.outbound_message_service.clone(),
                 ));
@@ -3323,7 +3365,10 @@ where
                                             },
                                         }
                                     },
-                                    _ => payment_id = Some(ro.output.payment_id.clone()),
+                                    _ => {
+                                        payment_id = Some(ro.output.payment_id.clone());
+                                        amount = Some(ro.output.value);
+                                    },
                                 };
                             }
                             received_hashes
@@ -3520,6 +3565,26 @@ where
         >,
     ) -> Result<OperationId, TransactionServiceError> {
         self.resources.db.mark_all_non_coinbases_transactions_as_unvalidated()?;
+        self.start_transaction_validation_protocol(join_handles).await
+    }
+
+    async fn start_rejected_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) -> Result<OperationId, TransactionServiceError> {
+        self.resources.db.mark_all_rejected_transactions_as_unvalidated()?;
+        self.start_transaction_validation_protocol(join_handles).await
+    }
+
+    async fn start_rejected_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
+        >,
+    ) -> Result<OperationId, TransactionServiceError> {
+        self.resources.db.mark_all_rejected_transactions_as_unvalidated()?;
         self.start_transaction_validation_protocol(join_handles).await
     }
 
@@ -3805,29 +3870,23 @@ where
         {
             (
                 match tx_type {
-                    TxType::PaymentToOther | TxType::Burn => TransactionDirection::Outbound,
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
+                    TxType::PaymentToOther |
+                    TxType::Burn |
                     TxType::CodeTemplateRegistration |
+                    TxType::ValidatorNodeRegistration |
+                    TxType::CoinSplit |
+                    TxType::PaymentToSelf => TransactionDirection::Outbound,
+                    TxType::CoinJoin |
                     TxType::ClaimAtomicSwap |
                     TxType::HtlcAtomicSwapRefund |
                     TxType::ImportedUtxoNoneRewindable |
                     TxType::Coinbase => TransactionDirection::Inbound,
                 },
                 amount,
-                match tx_type {
-                    TxType::PaymentToOther | TxType::ImportedUtxoNoneRewindable => recipient_address.clone(),
-                    TxType::Burn => TariAddress::default(),
-                    TxType::PaymentToSelf |
-                    TxType::CoinSplit |
-                    TxType::CoinJoin |
-                    TxType::ValidatorNodeRegistration |
-                    TxType::CodeTemplateRegistration |
-                    TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund |
-                    TxType::Coinbase => self.resources.one_sided_tari_address.clone(),
+                if tx_type == TxType::Burn {
+                    TariAddress::default()
+                } else {
+                    recipient_address.clone()
                 },
             )
         } else {
@@ -4085,6 +4144,77 @@ where
         let transactions = self.db.get_transaction_with_payref(&payref)?;
 
         Ok(transactions)
+    }
+
+    async fn submit_signed_one_sided_transaction(
+        &mut self,
+        request: SignedOneSidedTransactionResult,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let tx_id = request.request.tx_id;
+        let dest_address = request.request.info.recipient.address;
+        self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
+        let amount = request.request.info.recipient.amount;
+        let payment_id = request.request.info.payment_id;
+        // Use original keys generated in this wallet (they correspond to keys with the same values)
+        let change = match (
+            request.signed_transaction.change_output,
+            request.request.info.change_output,
+        ) {
+            (Some(change), Some(original)) => {
+                let mut change = change.clone();
+                change.spending_key_id = original.output_pair.output.spending_key_id;
+                Some(vec![change])
+            },
+            _ => None,
+        };
+
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        let fee = request.signed_transaction.transaction.body.get_total_fee()?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id, change)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new_with_output_hashes(
+                tx_id,
+                self.resources.one_sided_tari_address.clone(),
+                dest_address.clone(),
+                amount,
+                fee,
+                request.signed_transaction.transaction.clone(),
+                TransactionStatus::Completed,
+                Utc::now(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                payment_id,
+                request.signed_transaction.sent_hashes,
+                vec![],
+                request.signed_transaction.change_hashes,
+            )?,
+        )
+        .await?;
+
+        tokio::spawn(send_finalized_transaction_message(
+            tx_id,
+            request.signed_transaction.transaction,
+            dest_address.comms_public_key().clone(),
+            self.resources.outbound_message_service.clone(),
+            self.resources.config.direct_send_timeout,
+            self.resources.config.transaction_routing_mechanism,
+        ));
+
+        Ok(tx_id)
     }
 }
 

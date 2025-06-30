@@ -15,26 +15,27 @@ name: Build docker images - workflow_call/on-demand
         type: string
         description: 'Rust toolchain'
         default: stable
-      arch:
-        type: string
-        default: x86-64
       features:
         type: string
         default: 'safe,libtor,metrics'
       version:
         type: string
-        description: 'build tag/version'
+        description: 'build minotari tag/version'
       tag_alias:
         type: string
-        description: 'build tag alias'
+        description: 'build minotari tag alias'
+      tari_network:
+        type: string
+        description: 'target testNet'
       build_items:
         type: string
         default: minotari_sha3_miner
         description: 'build images'
       platforms:
         type: string
-        # linux/arm64, linux/amd64
+        # linux/arm64,linux/amd64
         default: linux/amd64
+        description: 'docker target build platform(s)'
 
 env:
   DAYS_to_EXPIRE: 30
@@ -43,88 +44,23 @@ permissions:
   contents: read
 
 jobs:
-  envs_setup:
+  builds_envs_setup:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set_matrix.outputs.matrix }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      TARI_NETWORK: ${{ steps.set-tari-network.outputs.TARI_NETWORK }}
+      TARI_TARGET_NETWORK: ${{ steps.set-tari-network.outputs.TARI_TARGET_NETWORK }}
 
     steps:
       - name: checkout tari
         uses: actions/checkout@v4
 
       - name: Set Matrix
-        id: set_matrix
+        id: set-matrix
         shell: bash
         run: |
+          # set -xuo pipefail
           build_items=${{ inputs.build_items }}
-          echo "Building with ${build_items}."
-          if [ -z "${build_items}" ] || [ "${build_items}" = "minotari_all" ] ; then
-            echo "Build all Minotari images"
-            matrix_selection=$( jq -s -c '.[]' ./buildtools/docker_rig/tarisuite.json )
-          elif [ "${build_items:0:9}" = "minotari_" ] ; then
-            echo "Build only selected minotari images - ${build_items}"
-            matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
-              | select(."image_name"==$jsonVar)]' ./buildtools/docker_rig/tarisuite.json )
-          elif [ "${build_items}" = "all" ] ; then
-            echo "Build all images"
-            matrix_selection=$( jq -c '. += input' ./buildtools/docker_rig/tarisuite.json ./buildtools/docker_rig/3rdparty.json )
-          elif [ "${build_items:0:8}" = "3rdparty" ] ; then
-            echo "Build only 3rdparty images - ${build_items}"
-            matrix_selection=$( jq -s -c '.[]' ./buildtools/docker_rig/3rdparty.json )
-          else
-            echo "Build only selected 3rdparty images - ${build_items}"
-            matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
-              | select(."image_name"==$jsonVar)]' ./buildtools/docker_rig/3rdparty.json )
-          #  "!! Broken selection? !!"
-          #  exit 1
-          fi
-
-          # ToDo: Add error checking
-
-          # Setup the json build matrix
-          matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .[]}')
-
-          echo $matrix
-          echo $matrix | jq .
-          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
-
-  docker_build:
-    name: Docker building ${{ matrix.builds.image_name }}
-    needs: envs_setup
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.envs_setup.outputs.matrix) }}
-
-    permissions:
-      contents: read
-      packages: write
-
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: checkout tari
-        uses: actions/checkout@v4
-
-      - name: Declare TestNet for tags
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        shell: bash
-        run: |
-          source ./buildtools/multinet_envs.sh ${{github.ref_name}}
-          echo ${TARI_NETWORK}
-          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
-          echo ${TARI_TARGET_NETWORK}
-          echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_ENV
-
-      - name: Setup expiration for none releases
-        if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}
-        shell: bash
-        run: |
-          echo "EXPIRATION=${{ env.DAYS_to_EXPIRE }}d" >> $GITHUB_ENV
-
-      - name: environment setup
-        shell: bash
-        run: |
-          IMAGE_NAME=${{ matrix.builds.image_name }}
           if [ -z "${{ inputs.version }}" ] ; then
             echo "Get tari version"
             TARI_SOURCE_ROOT="./"
@@ -137,36 +73,91 @@ jobs:
           else
             VERSION=${{ inputs.version }}
           fi
-          echo "Setting ${VERSION} as docker tag"
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          if [ ! -z "${{ inputs.tag_alias }}" ] ; then
-            if [ -z "${{ env.TARI_NETWORK }}" ] ; then
-              echo "Setup tag_alias"
-              echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}" >> $GITHUB_ENV
-            else
-              echo "Setup tag_alias with network"
-              echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ env.TARI_NETWORK }}" >> $GITHUB_ENV
-            fi
+
+          cd buildtools/docker_rig
+          source ./build-matrix.sh "${{ inputs.build_items }}" "${VERSION}" "${{ inputs.platforms }}"
+
+          echo "${matrix}"
+          echo "${matrix}" | jq .
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
+
+      - name: Declare TestNet for tags/branches
+        id: set-tari-network
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] && [ -z "${{ inputs.tari_network }}" ]; then
+            # Case: A version tag push (e.g., v1.0.0), not manually triggered
+            echo "Using $GITHUB_REF_NAME for multinet_envs.sh"
+            source ./buildtools/multinet_envs.sh "$GITHUB_REF_NAME"
+          else
+            # Case: Manually triggered workflow, or non-tag
+            echo "Using ${{ inputs.tari_network }} for multinet_envs.sh"
+            source ./buildtools/multinet_envs.sh "${{ inputs.tari_network }}"
           fi
+          echo "${TARI_NETWORK}"
+          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_OUTPUT
+          echo "${TARI_TARGET_NETWORK}"
+          echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_OUTPUT
+
+  docker_builds:
+    name: Docker ${{ matrix.builds.arch }} ${{ matrix.builds.image_name }} build
+    needs: builds_envs_setup
+
+    continue-on-error: true
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.builds_envs_setup.outputs.matrix) }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    runs-on: ${{ matrix.builds.runner }}
+
+    env:
+      TARI_NETWORK: ${{ needs.builds_envs_setup.outputs.TARI_NETWORK }}
+      TARI_TARGET_NETWORK: ${{ needs.builds_envs_setup.outputs.TARI_TARGET_NETWORK }}
+
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v4
+
+      - name: Setup expiration for none releases
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+            echo "No Expire for release"
+          else
+            echo "Expires in ${{ env.DAYS_to_EXPIRE }} days"
+            echo "EXPIRATION=${{ env.DAYS_to_EXPIRE }}d" >> $GITHUB_ENV
+          fi
+
+      - name: environment setup
+        shell: bash
+        run: |
+          IMAGE_NAME=${{ matrix.builds.image_name }}
           if [ "${IMAGE_NAME:0:9}" = "minotari_" ] ; then
             echo "Minotari builds"
-            echo "DOCKERFILE=tarilabs" >> $GITHUB_ENV
             echo "APP_NAME=${{ matrix.builds.app_name }}" >> $GITHUB_ENV
             echo "APP_EXEC=${{ matrix.builds.app_exec }}" >> $GITHUB_ENV
+
+            if [ ! -z "${{ inputs.tag_alias }}" ] ; then
+              echo "Setup tag_alias with network"
+              echo "TAG_ALIASQ=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ env.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+              echo "TAG_ALIASG=ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ env.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+            fi
+            echo "DSuffix=-${{ env.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
           else
             echo "3rd Party builds - ${IMAGE_NAME}"
-            if [ -f "./buildtools/docker_rig/${IMAGE_NAME}.Dockerfile" ] ; then
-              echo "DOCKERFILE=${IMAGE_NAME}" >> $GITHUB_ENV
-              SUBTAG=$(awk -v search="^ARG ${IMAGE_NAME^^}?_VERSION=" -F '=' '$0 ~ search \
-                { gsub(/["]/, "", $2); printf("%s",$2) }' \
-                "./buildtools/docker_rig/${IMAGE_NAME}.Dockerfile")
-              echo "Docker subtag - ${SUBTAG}"
-              echo "VERSION=${SUBTAG}_${VERSION}" >> $GITHUB_ENV
-              echo "DOCKER_SUBTAG=--build-arg ${IMAGE_NAME^^}_VERSION=${SUBTAG}" >> $GITHUB_ENV
-            else
-              "!! ${IMAGE_NAME}.Dockerfile file not found !!"
-              exit 1
-            fi
+            echo "DOCKER_SUBTAG=${{ matrix.builds.build_args }}" >> $GITHUB_ENV
+            echo "DSuffix=-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+          fi
+          # What about riscv?
+          if [[ "${{ matrix.builds.arch }}" == "amd64" ]]; then
+            echo "cargo_arch=x86-64" >> $GITHUB_ENV
+          else
+            echo "cargo_arch=aarch64" >> $GITHUB_ENV
           fi
 
       - name: Set up QEMU for Docker
@@ -180,18 +171,31 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            #name/${{ matrix.builds.image_name }}
+            # name/${{ matrix.builds.image_name }}
             ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}
+            ${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}
           tags: |
-            type=raw,value=latest-${{ env.TARI_NETWORK }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=schedule
             type=ref,event=tag
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
+            type=ref,event=branch,enable=${{ startsWith(matrix.builds.image_name, 'minotari_') }}
+            type=ref,event=pr,enable=${{ startsWith(matrix.builds.image_name, 'minotari_') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha
           labels: |
+            maintainer=${{ github.actor }}
             quay.expires-after=${{ env.EXPIRATION }}
+            org.opencontainers.image.vendor=TariLabs
+            org.opencontainers.image.title=${{ matrix.builds.image_name }}
+            org.opencontainers.image.description=Tari docker image ${{ matrix.builds.image_name }} for ${{ matrix.builds.arch }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ matrix.builds.version }}
+          flavor: |
+            # latest=${{ startsWith(github.ref, 'refs/tags/v') }}
+            latest=false
+            suffix=${{ env.DSuffix }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -212,15 +216,15 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./buildtools/docker_rig/${{ env.DOCKERFILE }}.Dockerfile
-          platforms: ${{ inputs.platforms }}
+          file: ./buildtools/docker_rig/${{ matrix.builds.dockerfile }}
+          platforms: ${{ matrix.builds.platform }}
           push: true
           provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VERSION=${{ env.VERSION }}
-            ARCH=${{ inputs.arch }}
+            VERSION=${{ matrix.builds.version }}
+            ARCH=${{ env.cargo_arch }}
             FEATURES=${{ inputs.features }}
             APP_NAME=${{ matrix.builds.app_name }}
             APP_EXEC=${{ matrix.builds.app_exec }}
@@ -228,10 +232,122 @@ jobs:
             TARI_TARGET_NETWORK=${{ env.TARI_TARGET_NETWORK }}
             ${{ env.DOCKER_SUBTAG }}
           tags: |
+            ${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ matrix.builds.version }}${{ env.DSuffix }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:${{ matrix.builds.version }}${{ env.DSuffix }}
             ${{ steps.meta.outputs.tags }}
-            ${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ env.VERSION }}
-            ${{ env.TAG_ALIAS }}
+            ${{ env.TAG_ALIASQ }}
+            ${{ env.TAG_ALIASG }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
 
       - name: Image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+        run: |
+          echo "Docker Digest - ${{ steps.docker_build.outputs.digest }}"
+          echo "Docker Image - ${{ matrix.builds.image_name }}:${{ matrix.builds.version }}${{ env.DSuffix }}"
+
+  multi-arch-create-manifest:
+    needs: [ builds_envs_setup, docker_builds ]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to Registries
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login ${{ secrets.DOCKER_PROVIDER }} -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+
+      - name: Pre for multi-arch image merge
+        env:
+          BMATRIX: ${{ needs.builds_envs_setup.outputs.matrix }}
+          TARI_NETWORK: ${{ needs.builds_envs_setup.outputs.TARI_NETWORK }}
+        run: |
+          # set -xuo pipefail
+          echo '${{ env.BMATRIX }}' | jq -r
+
+          # Get all multi-arch image_names (have both amd64 and arm64), with version
+          mapfile -t multiarch_images < <(
+            echo '${{ env.BMATRIX }}' | jq -r '
+              .builds
+                | group_by(.image_name)
+                | map(select((map(.arch) | index("amd64")) and (map(.arch) | index("arm64"))))
+                | map({image_name: .[0].image_name, version: .[0].version})
+                | unique
+                | map("\(.image_name):\(.version)")
+                | .[]
+              '
+            )
+
+          if [ ${#multiarch_images[@]} -eq 0 ]; then
+            echo "No multi-arch Docker images found."
+            mapfile -t all_images < <(
+              echo '${{ env.BMATRIX }}' | jq -r '.builds[].image_name' | sort -u)
+                for img in "${all_images[@]}"; do
+                  if [[ ! " ${multiarch_images[*]} " =~ " ${img} " ]]; then
+                    echo "Image '$img' has only one architecture built."
+                  fi
+                done
+          else
+            echo "Found ${#multiarch_images[@]} multi-arch Docker images."
+            echo "${multiarch_images[*]}"
+            for DENTRY in "${multiarch_images[@]}"; do
+              DNAME="${DENTRY%%:*}"
+              DVERSION="${DENTRY##*:}"
+              if [ "${DNAME:0:9}" = "minotari_" ] ; then
+                DSUFFIX=-${{ env.TARI_NETWORK }}
+              else
+                DSUFFIX=
+              fi
+              echo "Multi-arch ${DNAME} processing ..."
+              for DREGISTRY in ghcr.io quay.io; do
+                if [[ "${DREGISTRY}" == "ghcr.io" ]]; then
+                  REPO="${{ github.repository_owner }}"
+                else
+                  REPO="${{ secrets.DOCKER_REPO }}"
+                fi
+
+                echo "Registry run - ${DREGISTRY}"
+                echo "Creating multi-arch image for ${REPO}/${DNAME} for ${DVERSION}${DSUFFIX}"
+                docker manifest create \
+                  ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX} \
+                    --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-amd64 \
+                    --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-arm64
+
+                echo "Inspect multi-arch image for ${REPO}/${DNAME}"
+                docker manifest inspect ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX} > manifest.json
+                cat manifest.json
+                echo "Pushing multi-arch image for ${REPO}/${DNAME}"
+                docker manifest push ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX} || true
+
+                if [[ "${{ inputs.tag_alias }}" =~ ^latest-.*$ ]]; then
+                  echo "Latest Alis Multi-Arch tag - ${{ inputs.tag_alias }}"
+                  docker manifest create \
+                    ${DREGISTRY}/${REPO}/${DNAME}:${{ inputs.tag_alias }}${DSUFFIX} \
+                      --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-amd64 \
+                      --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-arm64
+                  docker manifest push ${DREGISTRY}/${REPO}/${DNAME}:${{ inputs.tag_alias }}${DSUFFIX} || true
+                fi
+
+                if [[ "${GITHUB_REF}" =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+                  echo "Release Multi-Arch Tag - ${GITHUB_REF_NAME} for ${GITHUB_REF}"
+                  docker manifest create \
+                    ${DREGISTRY}/${REPO}/${DNAME}:${GITHUB_REF_NAME} \
+                      --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-amd64 \
+                      --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-arm64
+                  docker manifest push ${DREGISTRY}/${REPO}/${DNAME}:${GITHUB_REF_NAME} || true
+                fi
+
+                if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+.*$ ]]; then
+                  echo "Latest Release Multi-Arch tag - $GITHUB_REF_NAME for $GITHUB_REF using ${DVERSION}${DSUFFIX}"
+                  docker manifest create \
+                    ${DREGISTRY}/${REPO}/${DNAME}:latest${DSUFFIX} \
+                      --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-amd64 \
+                      --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-arm64
+                  #docker manifest annotate ${DREGISTRY}/${REPO}/${DNAME}:latest${DSUFFIX} --file manifest.json
+                  docker manifest push ${DREGISTRY}/${REPO}/${DNAME}:latest${DSUFFIX} || true
+                fi
+              done
+            done
+          fi

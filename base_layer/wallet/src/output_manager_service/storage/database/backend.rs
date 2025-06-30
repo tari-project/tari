@@ -66,7 +66,11 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
     /// This method confirms that a transaction negotiation is complete and outputs can be fully encumbered. This
     /// reserves these outputs until the transaction is confirmed or cancelled
-    fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    fn confirm_encumbered_outputs(
+        &self,
+        tx_id: TxId,
+        change_outputs_to_update: &[DbWalletOutput],
+    ) -> Result<(), OutputManagerStorageError>;
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
     /// transaction negotiation
     fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError>;

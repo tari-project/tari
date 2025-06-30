@@ -25,8 +25,13 @@
 use std::{fs, io::Stdout, path::PathBuf};
 
 use clap::Parser;
+use futures::TryFutureExt;
 use log::*;
-use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
+use minotari_app_grpc::{
+    authentication::ServerAuthenticationInterceptor,
+    tari_rpc::{wallet_server::Wallet, GetBalanceRequest},
+    tls::identity::read_identity,
+};
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::{
@@ -39,6 +44,7 @@ use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
     codegen::InterceptedService,
     transport::{Identity, Server, ServerTlsConfig},
+    Request,
 };
 use tui::backend::CrosstermBackend;
 use url::Url;
@@ -318,35 +324,37 @@ pub fn recovery_mode(
     wallet_config: &WalletConfig,
     wallet_mode: WalletMode,
     wallet: WalletSqlite,
+    skip_recovery: bool,
 ) -> Result<(), ExitError> {
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER_A);
+    if !skip_recovery {
+        // Do not remove this println!
+        const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
+        println!("{}", CUCUMBER_TEST_MARKER_A);
 
-    println!("Starting recovery...");
-    let url = Url::parse(
-        wallet_config
-            .http_client_url
-            .as_ref()
-            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "HTTP client URL is not set"))?,
-    )
-    .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid HTTP client URL: {}", e)))?;
-    match handle.block_on(wallet_recovery(&wallet, url, wallet_config.recovery_retry_limit)) {
-        Ok(_) => println!("Wallet recovered!"),
-        Err(e) => {
-            error!(target: LOG_TARGET, "Recovery failed: {}", e);
-            println!(
-                "Recovery failed. Restarting the console wallet will restart the recovery process from where you left \
-                 off. If you want to start with a fresh wallet then delete the wallet data file"
-            );
+        let url = Url::parse(
+            wallet_config
+                .http_client_url
+                .as_ref()
+                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "HTTP client URL is not set"))?,
+        )
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid HTTP client URL: {}", e)))?;
+        match handle.block_on(wallet_recovery(&wallet, url, wallet_config.recovery_retry_limit)) {
+            Ok(_) => println!("Wallet recovered!"),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Recovery failed: {}", e);
+                println!(
+                    "Recovery failed. Restarting the console wallet will restart the recovery process from where you \
+                     left off. If you want to start with a fresh wallet then delete the wallet data file"
+                );
 
-            return Err(e);
-        },
+                return Err(e);
+            },
+        }
+
+        // Do not remove this println!
+        const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Recovery mode completed)";
+        println!("{}", CUCUMBER_TEST_MARKER_B);
     }
-
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Recovery mode completed)";
-    println!("{}", CUCUMBER_TEST_MARKER_B);
 
     println!("Starting TUI.");
 
@@ -382,6 +390,8 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
                     Err(e) => return Err(e),
                 }
             }
+
+            handle.block_on(async { grpc.start_balance_debouncer_event_monitor().await });
 
             handle
                 .block_on(run_grpc(grpc, address, auth, tls_identity, wallet))
@@ -528,6 +538,9 @@ mod test {
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
                 CliCommands::ImportPaperWallet(_) => {},
+                CliCommands::PrepareOneSidedTransactionForSigning(_) => {},
+                CliCommands::SignOneSidedTransaction(_) => {},
+                CliCommands::BroadcastSignedOneSidedTransaction(_) => {},
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true

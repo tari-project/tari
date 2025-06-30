@@ -56,7 +56,7 @@ pub async fn register_merge_mining_proxy_process(
         name: merge_mining_proxy_name.clone(),
         base_node_name,
         wallet_name,
-        port: get_port(18000..18499).unwrap(),
+        port: get_port(world, 18000..18499).unwrap(),
         origin_submission,
         id: 0,
     };

@@ -85,7 +85,6 @@ diesel::table! {
         last_send_timestamp -> Nullable<Timestamp>,
         payment_id -> Nullable<Binary>,
         sent_output_hashes -> Nullable<Binary>,
-        change_output_hashes -> Nullable<Binary>,
         user_payment_id -> Nullable<Binary>,
     }
 }

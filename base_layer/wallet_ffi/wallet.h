@@ -3941,6 +3941,7 @@ struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3953,6 +3954,7 @@ struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,
  * prevent a memory leak
  */
 struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariWallet *wallet,
+                                                                    unsigned long long max_search_limit,
                                                                     int *error_out);
 
 /**
@@ -3962,6 +3964,7 @@ struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariW
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3974,6 +3977,7 @@ struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariW
  * TariPendingInboundTransactions to prevent a memory leak
  */
 struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(struct TariWallet *wallet,
+                                                                               unsigned long long max_search_limit,
                                                                                int *error_out);
 
 /**
@@ -3983,6 +3987,7 @@ struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(s
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3995,6 +4000,7 @@ struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(s
  * TariPendingOutboundTransactions to prevent a memory leak
  */
 struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions(struct TariWallet *wallet,
+                                                                                 unsigned long long max_search_limit,
                                                                                  int *error_out);
 
 /**
@@ -4003,6 +4009,7 @@ struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -4015,6 +4022,7 @@ struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions
  * prevent a memory leak
  */
 struct TariCompletedTransactions *wallet_get_cancelled_transactions(struct TariWallet *wallet,
+                                                                    unsigned long long max_search_limit,
                                                                     int *error_out);
 
 /**
@@ -4044,6 +4052,7 @@ TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWall
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -4057,6 +4066,7 @@ TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWall
  */
 TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(struct TariWallet *wallet,
                                                                             unsigned long long transaction_id,
+                                                                            unsigned long long max_search_limit,
                                                                             int *error_out);
 
 /**
@@ -4065,6 +4075,7 @@ TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(stru
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -4078,6 +4089,7 @@ TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(stru
  */
 TariPendingOutboundTransaction *wallet_get_pending_outbound_transaction_by_id(struct TariWallet *wallet,
                                                                               unsigned long long transaction_id,
+                                                                              unsigned long long max_search_limit,
                                                                               int *error_out);
 
 /**

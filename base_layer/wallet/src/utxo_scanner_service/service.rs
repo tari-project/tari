@@ -26,7 +26,10 @@ use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_common_types::{tari_address::TariAddress, types::HashOutput};
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{BlockHash, HashOutput},
+};
 use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
@@ -43,9 +46,11 @@ use crate::{
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::{
+        error::UtxoScannerError,
         handle::UtxoScannerEvent,
         utxo_scanner_task::UtxoScannerTask,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
+        RECOVERY_KEY,
     },
 };
 
@@ -65,6 +70,8 @@ pub struct UtxoScannerService<
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) base_node_service: BaseNodeServiceHandle,
+    block_tip_to_scan_to: Option<BlockHash>,
+    last_block_tip_scanned: Option<BlockHash>,
     one_sided_message_watch: watch::Receiver<String>,
     recovery_message_watch: watch::Receiver<String>,
     pub(crate) key_manager: TKeyManagerInterface,
@@ -88,6 +95,7 @@ where
         recovery_message_watch: watch::Receiver<String>,
         key_manager: TKeyManagerInterface,
     ) -> Self {
+        debug!(target: LOG_TARGET, "{:?}: New scanning service created", mode);
         Self {
             resources,
             retry_limit,
@@ -95,6 +103,8 @@ where
             shutdown_signal,
             event_sender,
             base_node_service,
+            block_tip_to_scan_to: None,
+            last_block_tip_scanned: None,
             one_sided_message_watch,
             recovery_message_watch,
             key_manager,
@@ -125,14 +135,16 @@ where
         self.event_sender.subscribe()
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn run(mut self) -> Result<(), WalletError> {
-        info!(target: LOG_TARGET, "UTXO scanning service starting");
+        info!(target: LOG_TARGET, "{:?}: UTXO scanning service starting", self.mode);
 
         if self.mode == UtxoScannerMode::Recovery {
             let task = self.create_task(self.shutdown_signal.clone());
             task::spawn(async move {
+                trace!(target: LOG_TARGET, "{:?}: Spawning new UTXO recovery task", self.mode);
                 if let Err(err) = task.run().await {
-                    error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
+                    error!(target: LOG_TARGET, "{:?}: Error scanning UTXOs: {}", self.mode, err);
                 }
             });
             return Ok(());
@@ -171,6 +183,30 @@ where
             }
                          }
         }
+    }
+
+    pub fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
+        self.resources
+            .db
+            .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
+            .map(|x| x.is_some())
+            .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
+    }
+
+    fn should_scan(&self, new_hash: BlockHash) -> bool {
+        let mut should_trigger_scanning = false;
+        if let Some(last_block_tip_scanned) = self.last_block_tip_scanned {
+            if let Some(block_tip_to_scan_to) = self.block_tip_to_scan_to {
+                if last_block_tip_scanned != new_hash && block_tip_to_scan_to != new_hash {
+                    should_trigger_scanning = true;
+                }
+            }
+        } else if self.block_tip_to_scan_to.is_none() || self.block_tip_to_scan_to != Some(new_hash) {
+            should_trigger_scanning = true;
+        } else {
+            // Nothing here
+        }
+        should_trigger_scanning
     }
 }
 

@@ -515,14 +515,6 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -
             error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
         }
 
-        debug!("validating transactions");
-        if let Err(e) = wallet.transaction_service.validate_transactions().await {
-            error!(
-                target: LOG_TARGET,
-                "Problem validating and restarting transaction protocols: {}", e
-            );
-        }
-
         // validate transaction outputs
         validate_txos(wallet).await?;
     }

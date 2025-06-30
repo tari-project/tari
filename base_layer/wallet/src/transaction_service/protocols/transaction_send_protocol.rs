@@ -38,7 +38,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, OutputFeatures},
+        transaction_components::{payment_id::PaymentId, OutputFeatures},
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::{
             proto::protocol as proto,
@@ -281,18 +281,6 @@ where
             ));
         }
 
-        let mut change_hashes = Vec::new();
-        let change_output = sender_protocol
-            .get_change_output()
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-        if let Some(output) = change_output {
-            change_hashes.push(
-                output
-                    .hash(&self.resources.transaction_key_manager_service)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
-            );
-        };
         let mut spent_inputs = Vec::new();
         let spent_outputs = sender_protocol
             .get_spent_inputs()
@@ -320,7 +308,6 @@ where
             Utc::now(),
             true, // This does not matter for the check
             spent_inputs.clone(),
-            change_hashes.clone(),
         );
 
         // Attempt to send the initial transaction
@@ -329,6 +316,28 @@ where
             store_and_forward_send_result: false,
             transaction_status: TransactionStatus::Queued,
         };
+        // Add pending outbound transaction if it does not exist
+        if !self
+            .resources
+            .db
+            .transaction_exists(tx_id)
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
+        {
+            let fee = sender_protocol
+                .get_fee_amount()
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            outbound_tx.fee = fee;
+            outbound_tx.status = initial_send.transaction_status;
+            self.resources
+                .db
+                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
+                self.cancel_oversized_transaction().await?;
+                return Err(e);
+            }
+        }
+
         if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
             info!(
                 target: LOG_TARGET,
@@ -350,33 +359,11 @@ where
         if initial_send.transaction_status == TransactionStatus::Pending {
             self.resources
                 .output_manager_service
-                .confirm_pending_transaction(self.id)
+                .confirm_pending_transaction(self.id, None)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
 
-        // Add pending outbound transaction if it does not exist
-        if !self
-            .resources
-            .db
-            .transaction_exists(tx_id)
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
-        {
-            let fee = sender_protocol
-                .get_fee_amount()
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            outbound_tx.fee = fee;
-            outbound_tx.status = initial_send.transaction_status;
-            outbound_tx.direct_send_success = true;
-            self.resources
-                .db
-                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx.clone())
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            if let Err(e) = check_transaction_size(&outbound_tx, self.id) {
-                self.cancel_oversized_transaction().await?;
-                return Err(e);
-            }
-        }
         if initial_send.transaction_status == TransactionStatus::Pending {
             self.resources
                 .db
@@ -611,10 +598,28 @@ where
             .sender_protocol
             .get_transaction()
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        let change_output = outbound_tx
+            .sender_protocol
+            .get_finalized_change_output()
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         // Categorize outputs for PayRef functionality
         let sent_hashes = outbound_tx.sent_output_hashes.clone();
-        let change_hashes = outbound_tx.change_output_hashes.clone();
+        let change_hashes = match change_output {
+            Some(change) => {
+                let change_hash = change
+                    .hash(&self.resources.transaction_key_manager_service)
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                self.resources
+                    .output_manager_service
+                    .confirm_pending_transaction(self.id, Some(vec![change]))
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                vec![change_hash]
+            },
+            None => Vec::new(),
+        };
 
         let completed_transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,

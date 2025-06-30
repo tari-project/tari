@@ -214,6 +214,16 @@ impl PeerStorageSql {
             .get_n_not_banned_or_deleted_peers(PEER_MANAGER_SYNC_PEERS)?)
     }
 
+    /// Get available dial candidates that are communication nodes, not banned, not deleted,
+    /// and not in the excluded node IDs list
+    pub fn get_available_dial_candidates(
+        &self,
+        exclude_node_ids: &[NodeId],
+        limit: Option<usize>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        Ok(self.peer_db.get_available_dial_candidates(exclude_node_ids, limit)?)
+    }
+
     /// Compile a list of closest `n` active peers
     pub fn closest_n_active_peers(
         &self,

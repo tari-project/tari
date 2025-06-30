@@ -40,7 +40,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             EncryptedData,
@@ -397,6 +397,37 @@ impl WalletOutput {
     /// Is this a burned output kernel?
     pub fn is_burned(&self) -> bool {
         matches!(self.features.output_type, OutputType::Burn)
+    }
+
+    pub async fn change_encrypted_data<KM: TransactionKeyManagerInterface>(
+        &mut self,
+        encrypted_data: EncryptedData,
+        sender_offset: &TariKeyId,
+        key_manager: &KM,
+    ) -> Result<(), TransactionError> {
+        self.encrypted_data = encrypted_data;
+        // now we have to update the metadata signature as this has changed
+        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+            &self.version,
+            &self.script,
+            &self.features,
+            &self.covenant,
+            &self.encrypted_data,
+            &self.minimum_value_promise,
+        );
+
+        let metadata_sig = key_manager
+            .get_metadata_signature(
+                &self.spending_key_id,
+                &self.value.into(),
+                sender_offset,
+                &self.version,
+                &metadata_message,
+                self.features.range_proof_type,
+            )
+            .await?;
+        self.metadata_signature = metadata_sig;
+        Ok(())
     }
 }
 

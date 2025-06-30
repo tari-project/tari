@@ -13,13 +13,13 @@ use ledger_device_sdk::ui::gadgets::SingleMessage;
 
 use crate::{
     alloc::string::ToString,
-    hashing::DomainSeparatedConsensusHasher,
     crypto::{
         commitment::PedersenCommitment,
         commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
         commitment_factory::PedersenCommitmentFactory,
         keys::{RistrettoPublicKey, RistrettoSecretKey},
     },
+    hashing::DomainSeparatedConsensusHasher,
     utils::{
         alpha_hasher,
         derive_from_bip32_key,

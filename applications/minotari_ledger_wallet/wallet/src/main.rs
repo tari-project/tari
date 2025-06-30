@@ -6,8 +6,8 @@
 #![feature(alloc_error_handler)]
 
 extern crate alloc;
-mod hashing;
 mod crypto;
+mod hashing;
 pub mod utils;
 
 mod app_ui {

@@ -126,7 +126,7 @@ use tari_core::{
         tari_amount::*,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             KernelBuilder,
             OutputFeatures,
             RangeProofType,
@@ -2285,7 +2285,7 @@ async fn manage_multiple_transactions() {
         )
         .await
         .unwrap();
-    let alice_completed_tx = alice_ts.get_completed_transactions(None, None, None).await.unwrap();
+    let alice_completed_tx = alice_ts.get_completed_transactions(None, None, None, 0).await.unwrap();
     assert_eq!(alice_completed_tx.len(), 0);
     log::trace!("A to C 1 TxID: {}", tx_id_a_to_c_1);
 
@@ -2390,16 +2390,16 @@ async fn manage_multiple_transactions() {
     assert_eq!(finalized, 1);
 
     let alice_pending_outbound = alice_ts.get_pending_outbound_transactions().await.unwrap();
-    let alice_completed_tx = alice_ts.get_completed_transactions(None, None, None).await.unwrap();
+    let alice_completed_tx = alice_ts.get_completed_transactions(None, None, None, 0).await.unwrap();
     assert_eq!(alice_pending_outbound.len(), 0);
     assert_eq!(alice_completed_tx.len(), 4, "Not enough transactions for Alice");
     let bob_pending_outbound = bob_ts.get_pending_outbound_transactions().await.unwrap();
-    let bob_completed_tx = bob_ts.get_completed_transactions(None, None, None).await.unwrap();
+    let bob_completed_tx = bob_ts.get_completed_transactions(None, None, None, 0).await.unwrap();
     assert_eq!(bob_pending_outbound.len(), 0);
     assert_eq!(bob_completed_tx.len(), 3, "Not enough transactions for Bob");
 
     let carol_pending_inbound = carol_ts.get_pending_inbound_transactions().await.unwrap();
-    let carol_completed_tx = carol_ts.get_completed_transactions(None, None, None).await.unwrap();
+    let carol_completed_tx = carol_ts.get_completed_transactions(None, None, None, 0).await.unwrap();
     assert_eq!(carol_pending_inbound.len(), 0);
     assert_eq!(carol_completed_tx.len(), 1);
 
@@ -4312,7 +4312,6 @@ async fn test_restarting_transaction_protocols() {
         direct_send_success: false,
         send_count: 0,
         last_send_timestamp: None,
-        change_output_hashes: vec![],
         sent_output_hashes: vec![],
     };
     bob_backend
@@ -4703,7 +4702,6 @@ async fn test_resend_on_startup() {
         direct_send_success: false,
         send_count: 1,
         last_send_timestamp: Some(Utc::now()),
-        change_output_hashes: vec![],
         sent_output_hashes: vec![],
     };
     let connection = make_wallet_database_memory_connection();
@@ -5240,7 +5238,6 @@ async fn test_transaction_timeout_cancellation() {
         direct_send_success: false,
         send_count: 1,
         last_send_timestamp: Some(Utc::now()),
-        change_output_hashes: vec![],
         sent_output_hashes: vec![],
     };
     let bob_connection = make_wallet_database_memory_connection();
@@ -5583,7 +5580,7 @@ async fn transaction_service_tx_broadcast() {
 
     let alice_completed_txs = alice_ts_interface
         .transaction_service_handle
-        .get_completed_transactions(None, None, None)
+        .get_completed_transactions(None, None, None, 0)
         .await
         .unwrap();
     let alice_completed_tx1 = alice_completed_txs
@@ -5691,7 +5688,7 @@ async fn transaction_service_tx_broadcast() {
 
     let alice_completed_txs = alice_ts_interface
         .transaction_service_handle
-        .get_completed_transactions(None, None, None)
+        .get_completed_transactions(None, None, None, 0)
         .await
         .unwrap();
     let alice_completed_tx2 = alice_completed_txs
@@ -6365,7 +6362,7 @@ async fn test_completed_transactions_ordering() {
 
     let alice_completed_transactions = alice_ts_interface
         .transaction_service_handle
-        .get_completed_transactions(None, None, None)
+        .get_completed_transactions(None, None, None, 0)
         .await
         .unwrap();
 

@@ -104,6 +104,9 @@ pub struct Cli {
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
+    /// Skip wallet recovery
+    #[clap(long)]
+    pub skip_recovery: bool,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -177,11 +180,38 @@ pub enum CliCommands {
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListTx,
+    PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
+    SignOneSidedTransaction(SignOneSidedTransactionArgs),
+    BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct DiscoverPeerArgs {
     pub dest_public_key: UniPublicKey,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct PrepareOneSidedTransactionForSigningArgs {
+    pub amount: MicroMinotari,
+    pub destination: TariAddress,
+    #[clap(short, long, default_value = "<No message>")]
+    pub payment_id: String,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct BroadcastSignedOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
 }
 
 #[derive(Debug, Args, Clone)]

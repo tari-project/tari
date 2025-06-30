@@ -48,6 +48,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{chain_metadata, tari_address::TariAddress, types::BlockHash};
 use tari_comms::{
+    connectivity::ConnectivityStatus,
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::{
@@ -136,6 +137,9 @@ async fn setup(
     let comms_connectivity_mock_state = connectivity_mock.get_shared_state();
     comms_connectivity_mock_state
         .add_active_connection(rpc_server_connection)
+        .await;
+    comms_connectivity_mock_state
+        .set_connectivity_status(ConnectivityStatus::Online(1))
         .await;
     task::spawn(connectivity_mock.run());
 
@@ -298,7 +302,7 @@ async fn generate_block_headers_and_utxos(
 
 #[tokio::test]
 async fn test_utxo_scanner_recovery() {
-    // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
     let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(key_manager.clone(), UtxoScannerMode::Recovery, None, None, None).await;
 
@@ -864,6 +868,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {
+    // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
     let key_manager = create_memory_db_key_manager().unwrap();
     let mut test_interface = setup(
         key_manager.clone(),

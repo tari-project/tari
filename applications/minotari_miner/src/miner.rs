@@ -196,18 +196,22 @@ pub fn mining_task(
     vm_key: FixedHash,
     rx_factory: Option<RandomXFactory>,
 ) {
+    let mining_algorithm = if rx_factory.is_some() { "RandomXT" } else { "Sha3X" };
     let start = Instant::now();
     let mut hasher = match BlockHeaderSha3::new(header, vm_key, rx_factory) {
         Ok(hasher) => hasher,
         Err(err) => {
-            let err = format!("Miner {} failed to create hasher: {:?}", miner, err);
+            let err = format!(
+                "Miner {} on {} failed to create hasher: {:?}",
+                miner, mining_algorithm, err
+            );
             error!(target: LOG_TARGET, "{}", err);
             panic_any(err);
         },
     };
     hasher.random_nonce();
     // We're mining over here!
-    trace!(target: LOG_TARGET, "Mining thread {} started", miner);
+    trace!(target: LOG_TARGET, "Mining thread {} started for {}", miner, mining_algorithm);
     // Mining work
     loop {
         let hashed = if hasher.rx_factory.is_some() {
@@ -219,7 +223,10 @@ pub fn mining_task(
         let difficulty = match hashed {
             Ok(difficulty) => difficulty,
             Err(err) => {
-                let err = format!("Miner {} failed to calculate difficulty: {:?}", miner, err);
+                let err = format!(
+                    "Miner {} failed to calculate difficulty on {}: {:?}",
+                    miner, mining_algorithm, err
+                );
                 error!(target: LOG_TARGET, "{}", err);
                 panic_any(err);
             },
@@ -227,7 +234,8 @@ pub fn mining_task(
         if difficulty >= target_difficulty {
             debug!(
                 target: LOG_TARGET,
-                "Miner {} found nonce {} with matching difficulty {}", miner, hasher.header.nonce, difficulty
+                "Miner {} found nonce {} with matching difficulty {} on {}",
+                miner, hasher.header.nonce, difficulty, mining_algorithm
             );
             if let Err(err) = sender.try_send(MiningReport {
                 miner,
@@ -238,7 +246,7 @@ pub fn mining_task(
                 header: Some(hasher.create_header()),
                 target_difficulty,
             }) {
-                error!(target: LOG_TARGET, "Miner {} failed to send report: {}", miner, err);
+                error!(target: LOG_TARGET, "Miner {} on {} failed to send report: {}", miner, mining_algorithm, err);
             }
             // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
             // new job
@@ -246,7 +254,7 @@ pub fn mining_task(
                 waker.wake_by_ref();
             } else {
                 waker.wake();
-                trace!(target: LOG_TARGET, "Mining thread {} stopped", miner);
+                trace!(target: LOG_TARGET, "Mining thread {} on {} stopped", miner, mining_algorithm);
                 return;
             }
         }
@@ -266,9 +274,9 @@ pub fn mining_task(
                 target_difficulty,
             });
             waker.wake_by_ref();
-            trace!(target: LOG_TARGET, "Reporting from {} result {:?}", miner, res);
+            trace!(target: LOG_TARGET, "Reporting from {} on {} result {:?}", miner, mining_algorithm, res);
             if let Err(TrySendError::Disconnected(_)) = res {
-                info!(target: LOG_TARGET, "Mining thread {} disconnected", miner);
+                info!(target: LOG_TARGET, "Mining thread {} on {} disconnected", miner, mining_algorithm);
                 return;
             }
             if !(share_mode) {

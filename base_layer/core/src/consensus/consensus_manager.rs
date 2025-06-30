@@ -27,6 +27,7 @@ use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::{
+    blocks::pre_mine::pre_mine_spendable_at_height,
     blocks::ChainBlock,
     consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
     proof_of_work::PowAlgorithm,
@@ -34,7 +35,6 @@ use crate::{
 };
 use crate::{
     consensus::{
-        consensus_constants::MAINNET_PRE_MINE_VALUE,
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
         NetworkConsensus,
@@ -186,6 +186,27 @@ impl ConsensusManager {
             .collect::<Vec<_>>()
     }
 
+    /// Get the total spendable block rewards and pre-mine at the specified height
+    #[cfg(feature = "base_node")]
+    pub fn total_tokens_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        let spendable_rewards = self.block_rewards_spendable_at_height(height)?;
+        let spendable_pre_mine = self.pre_mine_spendable_at_height(height)?;
+        spendable_rewards
+            .checked_add(spendable_pre_mine)
+            .ok_or_else(|| "total_tokens_spendable_at_height overflowed u128".to_string())
+    }
+
+    /// Get the total spendable pre-mine at the specified height
+    #[cfg(feature = "base_node")]
+    pub fn pre_mine_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        pre_mine_spendable_at_height(height, self.network().as_network())
+    }
+
+    /// Get the total mined block rewards at the specified height (excluding pre-mine)
+    pub fn block_rewards_mined_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
+        Ok(self.get_total_emission_at(height) - self.consensus_constants(height).pre_mine_value())
+    }
+
     /// Get the total spendable block rewards circulation at the specified height (excluding pre-mine)
     pub fn block_rewards_spendable_at_height(&self, height: u64) -> Result<MicroMinotari, String> {
         // Example initial maturity schedule up to 3 weeks ( | height | (maturity) |):
@@ -215,11 +236,11 @@ impl ConsensusManager {
         {
             emission_schedule
                 .supply_at_block(height.saturating_sub(previous_effective_tranch.maturity))
-                .saturating_sub(MAINNET_PRE_MINE_VALUE)
+                .saturating_sub(self.consensus_constants(height).pre_mine_value())
         } else {
             emission_schedule
                 .supply_at_block(height.saturating_sub(last_effective_tranche.maturity))
-                .saturating_sub(MAINNET_PRE_MINE_VALUE)
+                .saturating_sub(self.consensus_constants(height).pre_mine_value())
         };
 
         Ok(matured_rewards_at_height)
@@ -336,4 +357,86 @@ impl ConsensusManagerBuilder {
 pub enum ConsensusBuilderError {
     #[error("Cannot set a genesis block with a network other than LocalNet")]
     CannotSetGenesisBlock,
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::blocks::pre_mine::BLOCKS_PER_DAY;
+
+    #[test]
+    fn test_supply_at_block() {
+        let network = Network::MainNet;
+        let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+        for (height, mined, spendable, pre_mine, total) in [
+            (
+                0,
+                MicroMinotari::from_str("        0.000000 T"), // mined
+                MicroMinotari::from_str("        0.000000 T"), // spendable
+                MicroMinotari::from_str("756000002.000000 T"), // pre_mine
+                MicroMinotari::from_str("756000002.000000 T"), // total
+            ),
+            (
+                1000,
+                MicroMinotari::from_str(" 13946753.809464 T"), // mined
+                MicroMinotari::from_str("  3906326.802521 T"), // spendable
+                MicroMinotari::from_str("756000002.000000 T"), // pre_mine
+                MicroMinotari::from_str("759906328.802521 T"), // total
+            ),
+            (
+                10000,
+                MicroMinotari::from_str("138917413.875832 T"), // mined
+                MicroMinotari::from_str("131447021.355866 T"), // spendable
+                MicroMinotari::from_str("756000002.000000 T"), // pre_mine
+                MicroMinotari::from_str("887447023.355866 T"), // total
+            ),
+            (
+                180 * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("1709098961.342784 T"), // mined
+                MicroMinotari::from_str("1706857672.130454 T"), // spendable
+                MicroMinotari::from_str(" 867125003.916666 T"), // pre_mine
+                MicroMinotari::from_str("2573982676.047120 T"), // total
+            ),
+            (
+                (180 + 20) * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("1887258043.208972 T"), // mined
+                MicroMinotari::from_str("1885044943.492867 T"), // spendable
+                MicroMinotari::from_str(" 867125003.916666 T"), // pre_mine
+                MicroMinotari::from_str("2752169947.409533 T"), // total
+            ),
+            (
+                365 * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("3274120131.965798 T"), // mined
+                MicroMinotari::from_str("3272126467.754857 T"), // spendable
+                MicroMinotari::from_str("1652875003.416662 T"), // pre_mine
+                MicroMinotari::from_str("4925001471.171519 T"), // total
+            ),
+            (
+                (365 + 20) * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("3432595650.489607 T"), // mined
+                MicroMinotari::from_str("3430627060.613596 T"), // spendable
+                MicroMinotari::from_str("1652875003.416662 T"), // pre_mine
+                MicroMinotari::from_str("5083502064.030258 T"), // total
+            ),
+            (
+                (365 + 200) * BLOCKS_PER_DAY,
+                MicroMinotari::from_str("4772127517.495734 T"), // mined
+                MicroMinotari::from_str("4770370867.355004 T"), // spendable
+                MicroMinotari::from_str("2946125002.916658 T"), // pre_mine
+                MicroMinotari::from_str("7716495870.271662 T"), // total
+            ),
+        ] {
+            let mined_rewards = consensus_manager.block_rewards_mined_at_height(height).unwrap();
+            let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height).unwrap();
+            let total_spendable = consensus_manager.total_tokens_spendable_at_height(height).unwrap();
+            let pre_mine_spendable = consensus_manager.pre_mine_spendable_at_height(height).unwrap();
+
+            assert_eq!(mined_rewards, mined.unwrap());
+            assert_eq!(spendable_rewards, spendable.unwrap());
+            assert_eq!(pre_mine_spendable, pre_mine.unwrap());
+            assert_eq!(total_spendable, total.unwrap());
+        }
+    }
 }
