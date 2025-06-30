@@ -32,7 +32,6 @@ use tokio::sync::broadcast;
 use url::Url;
 
 use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
     client::http_client_factory::DefaultHttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -83,9 +82,6 @@ where
         let recovery_message_watch = Watch::new("Output found on blockchain during Wallet Recovery".to_string());
         let one_sided_message_watch = Watch::new("Detected one-sided payment on blockchain".to_string());
 
-        let recovery_message_watch_receiver = recovery_message_watch.get_receiver();
-        let one_sided_message_watch_receiver = one_sided_message_watch.get_receiver();
-
         // Register handle before waiting for handles to be ready
         let utxo_scanner_handle =
             UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
@@ -102,7 +98,6 @@ where
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
-            let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
             let view_key = key_manager
@@ -133,9 +128,6 @@ where
                     one_sided_tari_address,
                     handles.get_shutdown_signal(),
                     event_sender,
-                    base_node_service_handle,
-                    one_sided_message_watch_receiver,
-                    recovery_message_watch_receiver,
                     birthday_offset,
                     key_manager,
                 )

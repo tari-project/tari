@@ -23,7 +23,6 @@
 use log::trace;
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_comms::peer_manager::Peer;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,

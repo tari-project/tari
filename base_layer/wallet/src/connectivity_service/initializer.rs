@@ -29,7 +29,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::mpsc;
 use url::Url;
 
 use super::handle::WalletConnectivityHandle;

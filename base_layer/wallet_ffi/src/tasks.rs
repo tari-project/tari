@@ -119,7 +119,7 @@ pub async fn recovery_event_monitoring(
                     (recovery_progress_callback)(
                         context.0,
                         RecoveryEvent::Completed as u8,
-                        num_recovered as u64,
+                        num_recovered,
                         value_recovered.as_u64(),
                     );
                 }

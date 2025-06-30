@@ -22,19 +22,12 @@
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::{
-    tari_address::TariAddress,
-    types::{BlockHash, HashOutput},
-};
+use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
-use tokio::{
-    sync::{broadcast, watch},
-    task,
-};
+use tokio::{sync::broadcast, task};
 
 use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
@@ -62,11 +55,6 @@ pub struct UtxoScannerService<
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
-    pub(crate) base_node_service: BaseNodeServiceHandle,
-    block_tip_to_scan_to: Option<BlockHash>,
-    last_block_tip_scanned: Option<BlockHash>,
-    one_sided_message_watch: watch::Receiver<String>,
-    recovery_message_watch: watch::Receiver<String>,
     pub(crate) key_manager: TKeyManagerInterface,
 }
 
@@ -83,9 +71,6 @@ where
         resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
-        base_node_service: BaseNodeServiceHandle,
-        one_sided_message_watch: watch::Receiver<String>,
-        recovery_message_watch: watch::Receiver<String>,
         key_manager: TKeyManagerInterface,
     ) -> Self {
         debug!(target: LOG_TARGET, "{:?}: New scanning service created", mode);
@@ -95,11 +80,6 @@ where
             mode,
             shutdown_signal,
             event_sender,
-            base_node_service,
-            block_tip_to_scan_to: None,
-            last_block_tip_scanned: None,
-            one_sided_message_watch,
-            recovery_message_watch,
             key_manager,
         }
     }

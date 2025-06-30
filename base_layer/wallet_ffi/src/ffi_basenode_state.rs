@@ -27,7 +27,6 @@ use std::{
 };
 
 use tari_common_types::types::BlockHash;
-use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
 
 use crate::{

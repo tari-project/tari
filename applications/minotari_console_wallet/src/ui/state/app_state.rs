@@ -31,8 +31,6 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use minotari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
-    client::http_client_factory::DefaultHttpClientFactory,
-    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionEventReceiver,
@@ -52,13 +50,7 @@ use tari_common_types::{
     types::CompressedPublicKey,
     wallet_types::WalletType,
 };
-use tari_comms::{
-    connectivity::ConnectivityEventRx,
-    multiaddr::Multiaddr,
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-};
-use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
+use tari_contacts::contacts_service::types::Contact;
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
@@ -71,10 +63,7 @@ use tari_core::transactions::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
-use tokio::{
-    sync::{broadcast, watch, RwLock},
-    task,
-};
+use tokio::sync::{watch, RwLock};
 
 use super::tasks::send_one_sided_to_stealth_address_transaction;
 use crate::{
@@ -89,7 +78,6 @@ use crate::{
         ui_contact::UiContact,
         ui_error::UiError,
     },
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
@@ -102,13 +90,11 @@ pub struct AppState {
     completed_tx_filter: TransactionFilter,
     config: AppStateConfig,
     wallet_config: WalletConfig,
-    wallet_connectivity: WalletConnectivityHandle<DefaultHttpClientFactory>,
     balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
 
 impl AppState {
     pub fn new(wallet_identity: &WalletIdentity, wallet: WalletSqlite, wallet_config: WalletConfig) -> Self {
-        let wallet_connectivity = wallet.wallet_connectivity.clone();
         let output_manager_service = wallet.output_manager_service.clone();
         let inner = AppStateInner::new(wallet_identity, wallet);
         let cached_data = inner.data.clone();
@@ -120,7 +106,6 @@ impl AppState {
             cache_update_cooldown: None,
             config: AppStateConfig::default(),
             completed_tx_filter: TransactionFilter::AbandonedCoinbases,
-            wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
                 wallet_config.balance_enquiry_cooldown_period,
@@ -516,24 +501,12 @@ impl AppState {
         }
     }
 
-    pub fn get_connected_peers(&self) -> &Vec<Peer> {
-        &self.cached_data.connected_peers
-    }
-
     pub fn get_balance(&self) -> &Balance {
         &self.cached_data.balance
     }
 
     pub fn get_base_node_state(&self) -> &BaseNodeState {
         &self.cached_data.base_node_state
-    }
-
-    pub fn get_wallet_scanned_height(&self) -> u64 {
-        self.cached_data.wallet_scanned_height
-    }
-
-    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle<DefaultHttpClientFactory> {
-        self.wallet_connectivity.clone()
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
@@ -960,23 +933,6 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
-        self.refresh_network_id().await?;
-        let connections = self.wallet.comms.connectivity().get_active_connections().await?;
-        let peer_manager = self.wallet.comms.peer_manager();
-        let node_ids = connections
-            .iter()
-            .map(|c| c.peer_node_id())
-            .cloned()
-            .collect::<Vec<_>>();
-        self.data.connected_peers = peer_manager.get_peers_by_node_ids(&node_ids).await?;
-        if self.data.connected_peers.is_empty() {
-            debug!(target: LOG_TARGET, "Failed to look up {} peers", node_ids.len());
-        }
-        self.updated = true;
-        Ok(())
-    }
-
     pub fn has_time_locked_balance(&self) -> bool {
         if let Some(time_locked_balance) = self.data.balance.time_locked_balance {
             if time_locked_balance > MicroMinotari::from(0) {
@@ -1014,20 +970,8 @@ impl AppStateInner {
         self.wallet.transaction_service.get_event_stream()
     }
 
-    pub fn get_contacts_liveness_event_stream(&self) -> broadcast::Receiver<Arc<ContactsLivenessEvent>> {
-        self.wallet.contacts_service.get_contacts_liveness_event_stream()
-    }
-
     pub fn get_output_manager_service_event_stream(&self) -> OutputManagerEventReceiver {
         self.wallet.output_manager_service.get_event_stream()
-    }
-
-    pub fn get_connectivity_event_stream(&self) -> ConnectivityEventRx {
-        self.wallet.comms.connectivity().get_event_subscription()
-    }
-
-    pub fn get_wallet_connectivity(&self) -> WalletConnectivityHandle<DefaultHttpClientFactory> {
-        self.wallet.wallet_connectivity.clone()
     }
 
     pub fn get_wallet_utxo_scanner(&self) -> UtxoScannerHandle {
@@ -1036,31 +980,6 @@ impl AppStateInner {
 
     pub fn get_base_node_event_stream(&self) -> BaseNodeEventReceiver {
         self.wallet.base_node_service.get_event_stream()
-    }
-
-    pub fn spawn_transaction_revalidation_task(&mut self) {
-        let mut txn_service = self.wallet.transaction_service.clone();
-        let mut output_manager_service = self.wallet.output_manager_service.clone();
-
-        // task::spawn(async move {
-        //     if let Err(e) = txn_service.validate_transactions().await {
-        //         error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
-        //     }
-
-        //     if let Err(e) = output_manager_service.validate_txos().await {
-        //         error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
-        //     }
-        // });
-    }
-
-    pub fn spawn_restart_transaction_protocols_task(&mut self) {
-        let mut txn_service = self.wallet.transaction_service.clone();
-
-        task::spawn(async move {
-            if let Err(e) = txn_service.restart_transaction_protocols().await {
-                error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
-            }
-        });
     }
 
     pub fn add_notification(&mut self, notification: String) {
@@ -1184,7 +1103,6 @@ struct AppStateData {
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
     burnt_proofs: Vec<UiBurntProof>,
-    connected_peers: Vec<Peer>,
     balance: Balance,
     base_node_state: BaseNodeState,
     all_events: VecDeque<EventListItem>,
@@ -1239,7 +1157,6 @@ impl AppStateData {
             my_identity: identity,
             contacts: Vec::new(),
             burnt_proofs: vec![],
-            connected_peers: Vec::new(),
             balance: Balance::zero(),
             base_node_state: BaseNodeState::default(),
             all_events: VecDeque::new(),

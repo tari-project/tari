@@ -27,7 +27,7 @@ use std::{
     fs::File,
     io,
     io::{BufRead, BufReader, LineWriter, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     time::{Duration, Instant},
 };
@@ -60,7 +60,7 @@ use minotari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -118,7 +118,7 @@ use tari_crypto::{
     ristretto::RistrettoSecretKey,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
-use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
+use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
@@ -158,7 +158,7 @@ use crate::{
     cli::{CliCommands, CliRecipientInfo, MakeItRainTransactionType},
     init::init_wallet,
     recovery::{get_seed_from_seed_words, wallet_recovery},
-    utils::db::{get_custom_base_node_peer_from_db, CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -614,7 +614,7 @@ pub async fn make_it_rain(
                         warn!(
                             target: LOG_TARGET,
                             "make-it-rain: Error sending transaction send stats to channel: {}",
-                            e.to_string()
+                            e
                         );
                     }
                 });
@@ -642,7 +642,7 @@ pub async fn make_it_rain(
                         "make-it-rain transaction {} ({}) error: {}",
                         send_stats.i,
                         transaction_type,
-                        e.to_string(),
+                        e,
                     );
                 },
             }
@@ -2587,7 +2587,7 @@ pub async fn command_runner(
                     new_config.set_base_path(temp_path.clone());
 
                     let peer_config = PeerSeedsConfig::default();
-                    let mut new_wallet = init_wallet(
+                    let new_wallet = init_wallet(
                         &new_config,
                         AutoUpdateConfig::default(),
                         peer_config,
@@ -2602,31 +2602,10 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
-                    let peer_seeds = wallet
-                        .comms
-                        .peer_manager()
-                        .get_seed_peers()
-                        .await
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    // config
-                    let base_node_peers = config
-                        .base_node_service_peers
-                        .iter()
-                        .map(|s| SeedPeer::from_str(s))
-                        .map(|r| r.map(Peer::from))
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    let selected_base_node = match config.custom_base_node {
-                        Some(ref custom) => SeedPeer::from_str(custom)
-                            .map(|node| Some(Peer::from(node)))
-                            .map_err(|e| CommandError::General(e.to_string()))?,
-                        None => get_custom_base_node_peer_from_db(&wallet),
-                    };
-
                     let http_client_url = Url::parse(&config.http_client_url.clone().ok_or(CommandError::General(
                         "Base node service HTTP client URL is not set".to_string(),
                     ))?)
-                    .map_err(|e| CommandError::General(format!("Not a valid url: {}", e.to_string())))?;
+                    .map_err(|e| CommandError::General(format!("Not a valid url: {}", e)))?;
 
                     wallet_recovery(&new_wallet, http_client_url, new_config.recovery_retry_limit)
                         .await

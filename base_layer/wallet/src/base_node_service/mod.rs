@@ -41,29 +41,15 @@ use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, service::BaseNodeService},
     client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
-    storage::database::{WalletBackend, WalletDatabase},
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service";
 
-pub struct BaseNodeServiceInitializer<T>
-where T: WalletBackend + 'static
-{
-    db: WalletDatabase<T>,
-}
-
-impl<T> BaseNodeServiceInitializer<T>
-where T: WalletBackend + 'static
-{
-    pub fn new(db: WalletDatabase<T>) -> Self {
-        Self { db }
-    }
-}
+#[derive(Default)]
+pub struct BaseNodeServiceInitializer {}
 
 #[async_trait]
-impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
-where T: WalletBackend + 'static
-{
+impl ServiceInitializer for BaseNodeServiceInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         info!(target: LOG_TARGET, "Wallet base node service initializing.");
 
@@ -76,8 +62,6 @@ where T: WalletBackend + 'static
         // Register handle before waiting for handles to be ready
         context.register_handle(basenode_service_handle);
 
-        let db = self.db.clone();
-
         context.spawn_when_ready(move |handles| async move {
             let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle<DefaultHttpClientFactory>>();
 
@@ -86,7 +70,6 @@ where T: WalletBackend + 'static
                 wallet_connectivity,
                 event_publisher,
                 handles.get_shutdown_signal(),
-                db,
             )
             .start()
             .await;

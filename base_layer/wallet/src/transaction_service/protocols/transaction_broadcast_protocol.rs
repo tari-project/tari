@@ -91,7 +91,7 @@ where
 
         // Main protocol loop
         loop {
-            let mut client = self.resources.connectivity.obtain_base_node_wallet_rpc_client().await;
+            let client = self.resources.connectivity.obtain_base_node_wallet_rpc_client().await;
 
             let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id) {
                 Ok(tx) => tx,

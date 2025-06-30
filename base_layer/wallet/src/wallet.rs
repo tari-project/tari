@@ -256,7 +256,7 @@ where
                 config.contacts_auto_ping_interval,
                 config.contacts_online_ping_window,
             ))
-            .add_initializer(BaseNodeServiceInitializer::new(wallet_database.clone()))
+            .add_initializer(BaseNodeServiceInitializer::default())
             .add_initializer(WalletConnectivityInitializer::new(
                 config
                     .http_client_url

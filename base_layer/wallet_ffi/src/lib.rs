@@ -10184,11 +10184,8 @@ pub unsafe extern "C" fn wallet_start_recovery(
             Ok(v) => match Url::parse(v) {
                 Ok(url) => url,
                 Err(e) => {
-                    *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!(
-                        "Url is not valid: {}",
-                        e.to_string()
-                    )))
-                    .code;
+                    *error_out =
+                        LibWalletError::from(InterfaceError::InvalidArgument(format!("Url is not valid: {}", e))).code;
                     return false;
                 },
             },
@@ -10490,7 +10487,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
         (*wallet)
             .wallet
             .transaction_service
-            .get_fee_per_gram_stats_per_block(count as u64),
+            .get_fee_per_gram_stats_per_block(u64::from(count)),
     ) {
         Ok(estimates) => Box::into_raw(Box::new(estimates)),
         Err(e) => {

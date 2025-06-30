@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroMinotari;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 
 use crate::util::watch::Watch;
 
@@ -89,13 +89,5 @@ impl UtxoScannerHandle {
 
     pub fn set_recovery_message(&mut self, note: String) {
         self.recovery_message_watch.send(note);
-    }
-
-    pub(crate) fn get_one_sided_payment_message_watcher(&self) -> watch::Receiver<String> {
-        self.one_sided_message_watch.get_receiver()
-    }
-
-    pub(crate) fn get_recovery_message_watcher(&self) -> watch::Receiver<String> {
-        self.recovery_message_watch.get_receiver()
     }
 }

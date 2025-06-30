@@ -25,10 +25,9 @@ use std::fmt::Debug;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 
 use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
     client::http_client_factory::HttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
     storage::{
@@ -140,9 +139,6 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             resources,
             shutdown_signal,
             event_sender,
-            wallet.base_node_service.clone(),
-            wallet.utxo_scanner_service.get_one_sided_payment_message_watcher(),
-            wallet.utxo_scanner_service.get_recovery_message_watcher(),
             wallet.key_manager_service.clone(),
         ))
     }
@@ -158,9 +154,6 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
         one_sided_tari_address: TariAddress,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
-        base_node_service: BaseNodeServiceHandle,
-        one_sided_message_watch: watch::Receiver<String>,
-        recovery_message_watch: watch::Receiver<String>,
         birthday_offset: u16,
         key_manager: TKeyManager,
     ) -> Result<UtxoScannerService<TBackend, TKeyManager, T>, anyhow::Error> {
@@ -188,9 +181,6 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             resources,
             shutdown_signal,
             event_sender,
-            base_node_service,
-            one_sided_message_watch,
-            recovery_message_watch,
             key_manager,
         ))
     }

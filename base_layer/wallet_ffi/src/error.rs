@@ -71,7 +71,7 @@ pub struct LibWalletError {
 
 impl From<InterfaceError> for LibWalletError {
     fn from(v: InterfaceError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", v));
+        error!(target: LOG_TARGET, "{}", v);
         match v {
             InterfaceError::NullError(_) => Self {
                 code: 1,
@@ -118,7 +118,7 @@ impl From<InterfaceError> for LibWalletError {
 impl From<WalletError> for LibWalletError {
     #[allow(clippy::too_many_lines)]
     fn from(w: WalletError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", w));
+        error!(target: LOG_TARGET, "{}", w);
         match w {
             // Output Manager Service Errors
             WalletError::OutputManagerError(OutputManagerError::NotEnoughFunds) => Self {
@@ -359,7 +359,7 @@ impl From<WalletError> for LibWalletError {
 /// The mapping is explicitly managed here.
 impl From<HexError> for LibWalletError {
     fn from(h: HexError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", h));
+        error!(target: LOG_TARGET, "{}",  h);
         match h {
             HexError::HexConversionError {} => Self {
                 code: 404,
@@ -381,7 +381,7 @@ impl From<HexError> for LibWalletError {
 /// The mapping is explicitly managed here.
 impl From<ByteArrayError> for LibWalletError {
     fn from(b: ByteArrayError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", b));
+        error!(target: LOG_TARGET, "{}",  b);
         match b {
             ByteArrayError::ConversionError { .. } => Self {
                 code: 404,
@@ -399,7 +399,7 @@ impl From<ByteArrayError> for LibWalletError {
 /// The mapping is explicitly managed here.
 impl From<TariAddressError> for LibWalletError {
     fn from(e: TariAddressError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", e));
+        error!(target: LOG_TARGET, "{}",  e);
         match e {
             TariAddressError::InvalidNetwork => Self {
                 code: 701,
@@ -454,7 +454,7 @@ impl From<TariAddressError> for LibWalletError {
 
 impl From<multiaddr::Error> for LibWalletError {
     fn from(err: multiaddr::Error) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        error!(target: LOG_TARGET, "{}", err);
         match err {
             multiaddr::Error::ParsingError(_) => Self {
                 code: 801,
@@ -490,7 +490,7 @@ impl From<multiaddr::Error> for LibWalletError {
 
 impl From<SchnorrSignatureError> for LibWalletError {
     fn from(err: SchnorrSignatureError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        error!(target: LOG_TARGET, "{}",  err);
         match err {
             SchnorrSignatureError::InvalidChallenge => Self {
                 code: 901,
@@ -528,7 +528,7 @@ impl From<TransactionError> for LibWalletError {
 
 impl From<MnemonicError> for LibWalletError {
     fn from(err: MnemonicError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        error!(target: LOG_TARGET, "{}", err);
         Self {
             code: 910,
             message: format!("{:?}", err),
@@ -538,7 +538,7 @@ impl From<MnemonicError> for LibWalletError {
 
 impl From<KeyManagerServiceError> for LibWalletError {
     fn from(err: KeyManagerServiceError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        error!(target: LOG_TARGET, "{}",  err);
         Self {
             code: 458,
             message: format!("{:?}", err),
@@ -548,7 +548,7 @@ impl From<KeyManagerServiceError> for LibWalletError {
 
 impl From<PeerManagerError> for LibWalletError {
     fn from(err: PeerManagerError) -> Self {
-        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        error!(target: LOG_TARGET, "Peer manager error: {}",  err);
         Self {
             code: 459,
             message: format!("{:?}", err),

@@ -30,10 +30,9 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::{BlockHash, FixedHash};
 use tari_utilities::hex::Hex;
-use tokio::sync::watch;
 
 use crate::{
-    connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
@@ -52,7 +51,6 @@ const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
     operation_id: u64,
     db: OutputManagerDatabase<TBackend>,
-    base_node_watch: watch::Receiver<Option<BaseNodePeerManager>>,
     connectivity: TWalletConnectivity,
     event_publisher: OutputManagerEventSender,
     config: OutputManagerServiceConfig,
@@ -80,7 +78,6 @@ where
         Self {
             operation_id,
             db,
-            base_node_watch: connectivity.get_current_base_node_watcher(),
             connectivity,
             event_publisher,
             config,

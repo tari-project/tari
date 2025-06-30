@@ -25,7 +25,7 @@ use tari_comms::{
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
 use crate::{
     client::http_client_factory::HttpClientFactory,

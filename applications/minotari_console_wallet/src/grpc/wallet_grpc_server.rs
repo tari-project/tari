@@ -109,7 +109,6 @@ use minotari_app_grpc::tari_rpc::{
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
-    error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
@@ -126,7 +125,7 @@ use tari_common_types::{
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
-    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
+    consensus::ConsensusBuilderError,
     transactions::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
@@ -174,14 +173,12 @@ async fn send_transaction_event(
 
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
-    rules: ConsensusManager,
     debouncer: Arc<Mutex<WalletDebouncer>>,
 }
 
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         let debouncer = WalletDebouncer::new(
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
@@ -191,7 +188,6 @@ impl WalletGrpcServer {
         );
         Ok(Self {
             wallet,
-            rules,
             debouncer: Arc::new(Mutex::new(debouncer)),
         })
     }
@@ -228,7 +224,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
-        let mut connectivity = self.wallet.wallet_connectivity.clone();
+        let connectivity = self.wallet.wallet_connectivity.clone();
         let status = connectivity.get_connectivity_status();
         Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
     }
@@ -1731,7 +1727,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn register_validator_node(
         &self,
-        request: Request<RegisterValidatorNodeRequest>,
+        _request: Request<RegisterValidatorNodeRequest>,
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
         // Deprecated for now
         return Err(Status::unimplemented(
@@ -2021,12 +2017,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .get_fee_per_gram_stats_per_block(block_count)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let mut fee_stats = Vec::new();
-        fee_stats.push(FeePerGramStat {
+        let fee_stats = vec![FeePerGramStat {
             average_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
             min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
             max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
-        });
+        }];
         Ok(Response::new(GetFeePerGramStatsResponse {
             fee_per_gram_stats: fee_stats,
         }))

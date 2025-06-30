@@ -38,7 +38,6 @@ use crate::{
     base_node_service::monitor::BaseNodeMonitor,
     client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
-    storage::database::{WalletBackend, WalletDatabase},
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service::service";
@@ -53,30 +52,24 @@ pub struct BaseNodeState {
 }
 
 /// The base node service is responsible for handling requests to be sent to the connected base node.
-pub struct BaseNodeService<T, TClientFactory>
-where
-    T: WalletBackend + 'static,
-    TClientFactory: HttpClientFactory,
+pub struct BaseNodeService<TClientFactory>
+where TClientFactory: HttpClientFactory
 {
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
     wallet_connectivity: WalletConnectivityHandle<TClientFactory>,
     event_publisher: BaseNodeEventSender,
     shutdown_signal: ShutdownSignal,
     state: Arc<RwLock<BaseNodeState>>,
-    db: WalletDatabase<T>,
 }
 
-impl<T, TClientFactory> BaseNodeService<T, TClientFactory>
-where
-    T: WalletBackend + 'static,
-    TClientFactory: HttpClientFactory,
+impl<TClientFactory> BaseNodeService<TClientFactory>
+where TClientFactory: HttpClientFactory
 {
     pub fn new(
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
         wallet_connectivity: WalletConnectivityHandle<TClientFactory>,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
-        db: WalletDatabase<T>,
     ) -> Self {
         Self {
             request_stream: Some(request_stream),
@@ -84,7 +77,6 @@ where
             event_publisher,
             shutdown_signal,
             state: Default::default(),
-            db,
         }
     }
 
