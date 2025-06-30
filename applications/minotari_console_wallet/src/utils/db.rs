@@ -85,21 +85,3 @@ pub fn get_custom_base_node_peer_from_db(wallet: &WalletSqlite) -> Option<Peer> 
         (_, _) => None,
     }
 }
-
-/// Sets the base node peer in the database
-pub fn set_custom_base_node_peer_in_db(
-    wallet: &mut WalletSqlite,
-    base_node_public_key: &CommsPublicKey,
-    base_node_address: &Multiaddr,
-) -> Result<(), WalletStorageError> {
-    wallet.db.set_client_key_value(
-        CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(),
-        base_node_public_key.to_hex(),
-    )?;
-
-    wallet
-        .db
-        .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), base_node_address.to_string())?;
-
-    Ok(())
-}

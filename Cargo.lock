@@ -4445,7 +4445,6 @@ dependencies = [
  "tari_core",
  "tari_shutdown",
  "tari_utilities",
- "thiserror 1.0.69",
  "tokio",
  "url",
 ]

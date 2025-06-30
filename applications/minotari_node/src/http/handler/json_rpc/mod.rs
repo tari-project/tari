@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{http::StatusCode, Extension, Json};
-use log::debug;
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use tari_core::{base_node::rpc::query_service, chain_storage::BlockchainBackend, mempool::service::MempoolHandle};
 
@@ -36,9 +36,9 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
                 Ok(response) => Ok(Json(JsonRpcResponse {
                     result: serde_json::to_value(response).unwrap_or_else(|e| {
-+                        warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
-+                        serde_json::Value::Null
-+                    }),
+                        warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
+                        serde_json::Value::Null
+                    }),
                     error: None,
                     id: request.id,
                 })),

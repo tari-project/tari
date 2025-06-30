@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
+use std::{fs, io, path::PathBuf, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
 use dialoguer::Input as InputPrompt;
-use digest::crypto_common::rand_core::OsRng;
 use log::*;
-use minotari_app_utilities::{consts, identity_management::setup_node_identity};
+use minotari_app_utilities::consts;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_spend_key, ledger_get_view_key};
 use minotari_wallet::{
@@ -36,59 +35,30 @@ use minotari_wallet::{
         database::{WalletBackend, WalletDatabase},
         sqlite_utilities::initialize_sqlite_database_backends,
     },
-    wallet::{derive_comms_secret_key, read_or_create_master_seed, read_or_create_wallet_type},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
 };
-use rand::prelude::SliceRandom;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_common::{
-    configuration::{
-        bootstrap::{grpc_default_port, prompt, ApplicationType},
-        MultiaddrList,
-        Network,
-    },
+    configuration::{bootstrap::prompt, MultiaddrList},
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures},
-    types::CommsPublicKey,
-    NodeIdentity,
-};
-use tari_core::{
-    consensus::ConsensusManager,
-    transactions::{
-        transaction_components::TransactionError,
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
-        CryptoFactories,
-    },
-};
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInterface},
-    mnemonic::MnemonicLanguage,
-};
-use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig, TransportType};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
+use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
-use url::Url;
 use zxcvbn::zxcvbn;
 
-use crate::{
-    cli::Cli,
-    utils::db::{get_custom_base_node_peer_from_db, set_custom_base_node_peer_in_db},
-    wallet_modes::WalletMode,
-    ApplicationConfig,
-};
+use crate::{cli::Cli, wallet_modes::WalletMode, ApplicationConfig};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
 const TARI_WALLET_PASSWORD: &str = "MINOTARI_WALLET_PASSWORD";
@@ -155,7 +125,7 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
             println!("  Enter anything else if you changed your mind and want to cancel");
 
             let mut input = "".to_string();
-            std::io::stdin().read_line(&mut input);
+            let _unused = std::io::stdin().read_line(&mut input);
 
             match input.trim().to_lowercase().as_str() {
                 // Choose a different passphrase
@@ -221,33 +191,6 @@ fn display_password_feedback(passphrase: &SafePassword) -> bool {
         // The Force is strong with this one
         false
     }
-}
-
-/// Gets the password provided by command line argument or environment variable if available.
-/// Otherwise prompts for the password to be typed in.
-pub fn get_or_prompt_password(
-    arg_password: Option<SafePassword>,
-    config_password: Option<SafePassword>,
-) -> Result<SafePassword, ExitError> {
-    if let Some(passphrase) = arg_password {
-        return Ok(passphrase);
-    }
-
-    let env = std::env::var_os(TARI_WALLET_PASSWORD);
-    if let Some(p) = env {
-        let env_password = p
-            .into_string()
-            .map_err(|_| ExitError::new(ExitCode::IOError, "Failed to convert OsString into String"))?;
-        return Ok(env_password.into());
-    }
-
-    if let Some(passphrase) = config_password {
-        return Ok(passphrase);
-    }
-
-    let password = prompt_password("Wallet password: ")?;
-
-    Ok(password)
 }
 
 fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
@@ -323,7 +266,7 @@ pub async fn init_wallet(
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
-    non_interactive_mode: bool,
+    _non_interactive_mode: bool,
     wallet_type: Option<WalletType>,
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
@@ -420,38 +363,6 @@ pub async fn init_wallet(
     };
 
     Ok(wallet)
-}
-
-async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
-    use minotari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, Empty};
-    let addr = format!(
-        "http://127.0.0.1:{}",
-        grpc_default_port(ApplicationType::BaseNode, network)
-    );
-    debug!(target: LOG_TARGET, "Checking for local base node at {}", addr);
-
-    let mut node_conn = match BaseNodeClient::connect(addr).await.ok() {
-        Some(conn) => conn,
-        None => {
-            debug!(target: LOG_TARGET, "No local base node detected");
-            return None;
-        },
-    };
-    let resp = node_conn.identify(Empty {}).await.ok()?;
-    let identity = resp.get_ref();
-    let public_key = CommsPublicKey::from_canonical_bytes(&identity.public_key).ok()?;
-    let addresses = identity
-        .public_addresses
-        .iter()
-        .filter_map(|s| Multiaddr::from_str(s).ok())
-        .collect::<Vec<_>>();
-    debug!(
-        target: LOG_TARGET,
-        "Local base node found with pk={} and addresses={}",
-        public_key.to_hex(),
-        addresses.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",")
-    );
-    Some(SeedPeer::new(public_key, addresses))
 }
 
 fn setup_identity_from_db<D: WalletBackend + 'static>(
@@ -692,6 +603,7 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn boot_with_password(
     cli: &Cli,
     wallet_config: &WalletConfig,

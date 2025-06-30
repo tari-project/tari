@@ -7,7 +7,7 @@ use log::debug;
 use serde::Deserialize;
 use tari_core::{
     base_node::rpc::{
-        models::{GetUtxosByBlockRequest, GetUtxosByBlockResponse, SyncUtxosByBlockResponse},
+        models::{GetUtxosByBlockRequest, GetUtxosByBlockResponse},
         query_service,
         BaseNodeWalletQueryService,
     },
