@@ -86,7 +86,7 @@ impl BaseNodeWalletClient for Client {
             .await?;
         self.set_last_latency(timer.elapsed());
 
-        let res = if res.status().is_client_error() || res.status().is_server_error() {
+        if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
             warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
@@ -97,8 +97,7 @@ impl BaseNodeWalletClient for Client {
             ))
         } else {
             Ok(res.json::<TipInfoResponse>().await?)
-        };
-        res
+        }
     }
 
     async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, anyhow::Error> {

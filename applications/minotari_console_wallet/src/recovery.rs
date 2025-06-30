@@ -41,6 +41,8 @@ use url::Url;
 pub const LOG_TARGET: &str = "wallet::recovery";
 
 /// Prompt the user to input their seed words in a single line.
+// Sometimes clippy thinks this function is dead code, but it is used in the CLI.
+#[allow(dead_code)]
 pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
     debug!(target: LOG_TARGET, "Prompting for seed words.");
     let mut rl = Editor::<()>::new();
