@@ -600,7 +600,7 @@ message PaymentReferenceResponse {
     bytes block_hash = 3;
     // Timestamp when the output was mined
     uint64 mined_timestamp = 4;
-    // Output commitment (32 bytes) - will be empty if output was spent as we do not track this for spent outputs
+    // Output commitment (32 bytes)
     bytes commitment = 5;
     // Whether this output has been spent
     bool is_spent = 6;
