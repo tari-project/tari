@@ -43,10 +43,8 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     tor::TorIdentity,
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsSecretKey,
     CommsNode,
     NodeIdentity,
     UnspawnedCommsNode,
@@ -105,12 +103,7 @@ use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     config::WalletConfig,
-    connectivity_service::{
-        BaseNodePeerManager,
-        WalletConnectivityHandle,
-        WalletConnectivityInitializer,
-        WalletConnectivityInterface,
-    },
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
     consts,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -404,18 +397,6 @@ where
     /// exiting.
     pub async fn wait_until_shutdown(self) {
         self.comms.to_owned().wait_until_shutdown().await;
-    }
-
-    async fn update_allow_list(&mut self, peer_list: &[Peer]) -> Result<(), WalletError> {
-        let mut connectivity = self.comms.connectivity();
-        let current_allow_list = connectivity.get_allow_list().await?;
-        for peer in &current_allow_list {
-            connectivity.remove_peer_from_allow_list(peer.clone()).await?;
-        }
-        for peer in peer_list {
-            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
-        }
-        Ok(())
     }
 
     pub async fn check_for_update(&self) -> Option<String> {

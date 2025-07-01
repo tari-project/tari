@@ -93,8 +93,6 @@ use minotari_app_grpc::tari_rpc::{
     RevalidateResponse,
     SendShaAtomicSwapRequest,
     SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
     TransactionDirection,
     TransactionEvent,
     TransactionEventRequest,
@@ -123,7 +121,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, Signature},
 };
-use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
+use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::ConsensusBuilderError,
     transactions::{
@@ -182,7 +180,6 @@ impl WalletGrpcServer {
         let debouncer = WalletDebouncer::new(
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
-            wallet.wallet_connectivity.clone(),
             wallet.utxo_scanner_service.clone(),
             wallet.comms.shutdown_signal(),
         );

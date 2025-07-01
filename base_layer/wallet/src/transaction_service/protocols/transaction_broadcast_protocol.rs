@@ -123,43 +123,39 @@ where
                 return Err(e);
             }
 
-            loop {
-                tokio::select! {
-                    result = self.query_or_submit_transaction(completed_tx.clone(), &client).fuse() => {
-                        match self.mode {
-                            TxBroadcastMode::TransactionSubmission => {
-                                if result? {
-                                    self.mode = TxBroadcastMode::TransactionQuery;
-                                }
-                            },
-                            TxBroadcastMode::TransactionQuery => {
-                                if result? {
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "Transaction broadcast, transaction validation protocol will continue from here"
-                                    );
-                                    return Ok(self.tx_id)
-                                }
-                            },
-                        }
-                        // Wait out the remainder of the delay before proceeding with next loop
-                        drop(client);
-                        let delay = *timeout_update_receiver.borrow();
-                        sleep(delay).await;
-                        break;
-                    },
-                    _ = timeout_update_receiver.changed() => {
-                         info!(
-                            target: LOG_TARGET,
-                            "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, timeout_update_receiver.borrow()
-                        );
-                        break;
-                    },
-                    _ = shutdown.wait() => {
-                        info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
-                        return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
-                    },
-                }
+            tokio::select! {
+                result = self.query_or_submit_transaction(completed_tx.clone(), &client).fuse() => {
+                    match self.mode {
+                        TxBroadcastMode::TransactionSubmission => {
+                            if result? {
+                                self.mode = TxBroadcastMode::TransactionQuery;
+                            }
+                        },
+                        TxBroadcastMode::TransactionQuery => {
+                            if result? {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Transaction broadcast, transaction validation protocol will continue from here"
+                                );
+                                return Ok(self.tx_id)
+                            }
+                        },
+                    }
+                    // Wait out the remainder of the delay before proceeding with next loop
+                    drop(client);
+                    let delay = *timeout_update_receiver.borrow();
+                    sleep(delay).await;
+                },
+                _ = timeout_update_receiver.changed() => {
+                     info!(
+                        target: LOG_TARGET,
+                        "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, timeout_update_receiver.borrow()
+                    );
+                },
+                _ = shutdown.wait() => {
+                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
+                    return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
+                },
             }
         }
     }

@@ -3972,10 +3972,6 @@ where
         }
     }
 
-    fn connectivity(&self) -> &TWalletConnectivity {
-        &self.resources.connectivity
-    }
-
     fn verify_send(
         &self,
         address: &TariAddress,

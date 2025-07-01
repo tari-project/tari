@@ -3612,29 +3612,6 @@ bool wallet_verify_message_signature(struct TariWallet *wallet,
                                      int *error_out);
 
 /**
- * Adds a base node peer to the TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `public_key` - The TariPublicKey pointer
- * `address` - The pointer to a char array
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns false if any pointer argument is null.
- *
- * ## Returns
- * `bool` - Returns if successful or not
- *
- * # Safety
- * None
- */
-bool wallet_set_base_node_peer(struct TariWallet *wallet,
-                               TariPublicKey *public_key,
-                               const char *address,
-                               int *error_out);
-
-/**
- * Gets all seed peers known by the wallet
- *
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions

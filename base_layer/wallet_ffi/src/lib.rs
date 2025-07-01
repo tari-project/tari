@@ -114,7 +114,7 @@ use minotari_wallet::{
     WalletSqlite,
 };
 use num_traits::FromPrimitive;
-use rand::{prelude::SliceRandom, rngs::OsRng};
+use rand::rngs::OsRng;
 use tari_common::{
     configuration::{DnsNameServerList, MultiaddrList, StringList},
     network_check::set_network_if_choice_valid,
@@ -7131,7 +7131,7 @@ pub unsafe extern "C" fn wallet_create(
     ));
 
     match w {
-        Ok(mut w) => {
+        Ok(w) => {
             let wallet_address = match runtime.block_on(async { w.get_wallet_interactive_address().await }) {
                 Ok(address) => address,
                 Err(e) => {

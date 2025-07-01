@@ -21,17 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    types::CommsPublicKey,
-};
 use tokio::sync::watch;
 
-use crate::{
-    client::http_client_factory::HttpClientFactory,
-    connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
-    util::watch::Watch,
-};
+use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OnlineStatus {
@@ -42,16 +34,14 @@ pub enum OnlineStatus {
 
 #[derive(Clone)]
 pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
-    base_node_watch: Watch<Option<BaseNodePeerManager>>,
     client_factory: TWalletClientFactory,
     online_status_watch: watch::Sender<OnlineStatus>,
 }
 
 impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletClientFactory> {
-    pub fn new(base_node_watch: Watch<Option<BaseNodePeerManager>>, client_factory: TWalletClientFactory) -> Self {
+    pub fn new(client_factory: TWalletClientFactory) -> Self {
         let (online_status_watch, _) = watch::channel(OnlineStatus::Connecting);
         Self {
-            base_node_watch,
             client_factory,
             online_status_watch,
         }

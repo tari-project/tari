@@ -32,7 +32,7 @@ use tari_service_framework::{async_trait, ServiceInitializationError, ServiceIni
 use url::Url;
 
 use super::handle::WalletConnectivityHandle;
-use crate::{client::http_client_factory::HttpClientFactory, util::watch::Watch};
+use crate::client::http_client_factory::HttpClientFactory;
 
 pub struct WalletConnectivityInitializer<TClientFactory: HttpClientFactory> {
     http_node_url: Url,
@@ -51,10 +51,8 @@ impl<T: HttpClientFactory> WalletConnectivityInitializer<T> {
 #[async_trait]
 impl<T: HttpClientFactory> ServiceInitializer for WalletConnectivityInitializer<T> {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let base_node_watch = Watch::new(None);
-
         let factory = T::new(self.http_node_url.clone());
-        context.register_handle(WalletConnectivityHandle::new(base_node_watch.clone(), factory));
+        context.register_handle(WalletConnectivityHandle::new(factory));
 
         Ok(())
     }

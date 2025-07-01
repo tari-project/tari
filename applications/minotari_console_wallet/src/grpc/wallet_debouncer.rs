@@ -25,8 +25,6 @@ use std::sync::Arc;
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
-    client::http_client_factory::DefaultHttpClientFactory,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::Balance,
@@ -52,7 +50,6 @@ pub struct WalletDebouncer {
     refresh_needed: Arc<Mutex<bool>>,
     output_manager_service: OutputManagerHandle,
     transaction_service: TransactionServiceHandle,
-    wallet_connectivity: WalletConnectivityHandle<DefaultHttpClientFactory>,
     utxo_scanner_handle: UtxoScannerHandle,
     shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<Mutex<bool>>,
@@ -63,7 +60,6 @@ impl WalletDebouncer {
     pub fn new(
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
-        wallet_connectivity: WalletConnectivityHandle<DefaultHttpClientFactory>,
         utxo_scanner_handle: UtxoScannerHandle,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
@@ -78,7 +74,6 @@ impl WalletDebouncer {
             scanned_height: Arc::new(Mutex::new(0)),
             output_manager_service,
             transaction_service,
-            wallet_connectivity,
             utxo_scanner_handle,
             shutdown_signal,
             event_monitor_started: Arc::new(Mutex::new(false)),

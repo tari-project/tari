@@ -82,12 +82,7 @@ use tari_common_types::{
     },
     wallet_types::WalletType,
 };
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester},
-    multiaddr::Multiaddr,
-    peer_manager::Peer,
-    types::CommsPublicKey,
-};
+use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     blocks::pre_mine::get_pre_mine_items,
@@ -158,7 +153,6 @@ use crate::{
     cli::{CliCommands, CliRecipientInfo, MakeItRainTransactionType},
     init::init_wallet,
     recovery::{get_seed_from_seed_words, wallet_recovery},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -2896,44 +2890,6 @@ async fn detect_tx_metadata(wallet: &WalletSqlite, destination: TariAddress) -> 
         }
     } else {
         TxType::PaymentToOther
-    }
-}
-
-async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
-    for peer in peer_list {
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .remove_peer_from_allow_list(peer.node_id.clone())
-            .await;
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .ban_peer_until(
-                peer.node_id.clone(),
-                Duration::from_secs(24 * 60 * 60),
-                "Busy with pre-mine spend".to_string(),
-            )
-            .await;
-    }
-}
-
-async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
-    for peer in peer_list {
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .ban_peer_until(
-                peer.node_id.clone(),
-                Duration::from_millis(1),
-                "Busy with pre-mine spend".to_string(),
-            )
-            .await;
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .add_peer_to_allow_list(peer.node_id.clone())
-            .await;
     }
 }
 

@@ -21,13 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use minotari_node_wallet_client::BaseNodeWalletClient;
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    types::CommsPublicKey,
-};
 use tokio::sync::watch;
 
-use crate::connectivity_service::{handle::OnlineStatus, BaseNodePeerManager};
+use crate::connectivity_service::handle::OnlineStatus;
 
 #[async_trait::async_trait]
 pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
