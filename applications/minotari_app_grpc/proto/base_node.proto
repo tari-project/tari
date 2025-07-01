@@ -594,7 +594,7 @@ message SearchPaymentReferencesRequest {
 message PaymentReferenceResponse {
     // The payment reference that was found
     string payment_reference_hex = 1;
-    // Block height where the output was mined - will be 0 for spent outputs as it is not applicable
+    // Block height where the output was mined
     uint64 block_height = 2;
     // Block hash where the output was mined - will be empty for spent outputs as it is not applicable
     bytes block_hash = 3;
