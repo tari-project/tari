@@ -1851,10 +1851,6 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     db.write(txn)?;
     // Delete blocks
     let mut steps_back = last_block_height.saturating_sub(target_height);
-    println!(
-        "step back: {}, last block height: {}, target height: {}",
-        steps_back, last_block_height, target_height
-    );
     // No blocks to remove, no need to update the best block
     if steps_back == 0 {
         return Ok(vec![]);

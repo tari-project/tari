@@ -115,11 +115,7 @@ impl Default for DatabaseStats {
 impl DatabaseStats {
     /// Create new DatabaseStats with initial values
     pub fn new(current_height: u64, total_height: u64) -> Self {
-        let progress_percentage = if total_height > 0 {
-            (current_height as f64 / total_height as f64) * 100.0
-        } else {
-            0.0
-        };
+        let progress_percentage = 0.0; // It should be updated shortly after receiving calculated height
 
         Self {
             migration_stats: MigrationStats {

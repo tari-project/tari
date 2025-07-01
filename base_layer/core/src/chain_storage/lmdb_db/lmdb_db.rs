@@ -3099,7 +3099,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         Some(MetadataValue::MigrationVersion(n)) => n,
         Some(_) | None => 0,
     };
-    db.stats_collector().set_current_db_version(last_migrated_version);
     info!(
         target: LOG_TARGET,
         "Blockchain database is at v{} (required version: {})", last_migrated_version, MIGRATION_VERSION
@@ -3107,6 +3106,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     drop(txn);
 
     for migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
+        db.stats_collector().set_current_db_version(migrate_from_version);
         // Add migrations here
         if migrate_from_version == 0 {
             let txn = db.read_transaction()?;
@@ -3150,6 +3150,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
 
             let txn = db.write_transaction()?;
 
+            db.set_stats_total_height(chain_height);
             for height in 0..=chain_height {
                 let block_accum_data: V0BLockHeaderAccumulatedData =
                     lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
@@ -3282,8 +3283,12 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 info!(target: LOG_TARGET, "Cleared PayRef index");
             }
 
+            db.set_stats_total_height(chain_height);
             for height in 0..=chain_height {
                 process_payref_for_height(db, height)?;
+                if height % 50 == 0 {
+                    db.update_stats_progress(height);
+                }
             }
             info!(target: LOG_TARGET, "PayRef index rebuild completed");
         }
@@ -3301,7 +3306,6 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             txn.commit()?;
         }
     }
-
     Ok(())
 }
 
