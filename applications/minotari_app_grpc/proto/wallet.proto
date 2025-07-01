@@ -992,42 +992,7 @@ service Wallet {
 
   // Creates a transaction with a template registration output
   rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
-
-  // The SetBaseNode call configures the base node peer for the wallet.
-  //
-  // This RPC sets the public key and network address of the base node peer that the wallet should communicate with.
-  //
-  // ### Request Fields:
-  // - `public_key_hex` (string): The public key of the base node, provided as a hex string.
-  // - `net_address` (string): The multiaddress of the base node (e.g., `/ip4/127.0.0.1/tcp/18141`).
-  //
-  // ### Example JavaScript gRPC client usage:
-  //
-  // ```javascript
-  // const request = {
-  //   public_key_hex: "0281bdfc...",
-  //   net_address: "/ip4/127.0.0.1/tcp/18141"
-  // };
-  // client.setBaseNode(request, (err, response) => {
-  //   if (err) console.error(err);
-  //   else console.log("Base node set successfully");
-  // });
-  // ```
-  //
-  // ### Sample JSON Request:
-  // ```json
-  // {
-  //   "public_key_hex": "0281bdfc...",
-  //   "net_address": "/ip4/127.0.0.1/tcp/18141"
-  // }
-  // ```
-  //
-  // ### Sample JSON Response:
-  // ```json
-  // {}
-  // ```
-  rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
-
+  
   // Streams real-time wallet transaction events to the client.
   //
   // The `StreamTransactionEvents` RPC provides a continuous stream of transaction events as they occur within the wallet.

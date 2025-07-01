@@ -86,7 +86,6 @@ where
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
         let mut shutdown = self.resources.shutdown_signal.clone();
-        let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
         let mut timeout_update_receiver = self.timeout_update_receiver.clone();
 
         // Main protocol loop
@@ -126,18 +125,6 @@ where
 
             loop {
                 tokio::select! {
-                    _ = current_base_node_watcher.changed() => {
-                            if let Some(selected_peer) = &*current_base_node_watcher.borrow() {
-                                info!(
-                                    target: LOG_TARGET,
-                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {} (NodeID: {})",
-                                    self.tx_id, selected_peer.get_current_peer().public_key,
-                                    selected_peer.get_current_peer().node_id,
-                                );
-                            }
-                            self.last_rejection = None;
-                            continue;
-                    },
                     result = self.query_or_submit_transaction(completed_tx.clone(), &client).fuse() => {
                         match self.mode {
                             TxBroadcastMode::TransactionSubmission => {

@@ -3645,10 +3645,6 @@ where
         &mut self,
         broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
-        if !self.connectivity().is_base_node_set() {
-            return Err(TransactionServiceError::NoBaseNodeKeysProvided);
-        }
-
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
         self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
             .map_err(|resp| {
@@ -3677,10 +3673,6 @@ where
             completed_tx.transaction.body.kernels().is_empty()
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
-        }
-
-        if !self.resources.connectivity.is_base_node_set() {
-            return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
 
         // Check if the protocol has already been started

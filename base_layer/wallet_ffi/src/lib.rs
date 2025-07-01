@@ -7140,35 +7140,6 @@ pub unsafe extern "C" fn wallet_create(
                 },
             };
 
-            // Lets set the base node peers
-            let peer_manager = w.comms.peer_manager();
-            let peers = match runtime.block_on(async { peer_manager.get_seed_peers().await }) {
-                Ok(peers) => peers,
-                Err(e) => {
-                    *error_out = LibWalletError::from(e).code;
-                    return ptr::null_mut();
-                },
-            };
-
-            if !peers.is_empty() {
-                let selected_base_node = peers.choose(&mut OsRng).expect("base_nodes is not empty").clone();
-                let net_address = selected_base_node.addresses.best().expect("No addresses for base node");
-                match runtime.block_on(async {
-                    w.set_base_node_peer(
-                        selected_base_node.public_key.clone(),
-                        Some(net_address.address().clone()),
-                        Some(peers.to_vec()),
-                    )
-                    .await
-                }) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        *error_out = LibWalletError::from(e).code;
-                        return ptr::null_mut();
-                    },
-                }
-            }
-
             let mut utxo_scanner = w.utxo_scanner_service.clone();
             let context = Context(context);
             // Start Callback Handler
@@ -7964,73 +7935,7 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
     result
 }
 
-/// Adds a base node peer to the TariWallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `public_key` - The TariPublicKey pointer
-/// `address` - The pointer to a char array
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if any pointer argument is null.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_set_base_node_peer(
-    wallet: *mut TariWallet,
-    public_key: *mut TariPublicKey,
-    address: *const c_char,
-    error_out: *mut c_int,
-) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-
-    if public_key.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("public_key".to_string())).code;
-        return false;
-    }
-
-    let parsed_addr = if address.is_null() {
-        None
-    } else {
-        match CStr::from_ptr(address).to_str() {
-            Ok(v) => match Multiaddr::from_str(v) {
-                Ok(v) => Some(v),
-                Err(_) => {
-                    *error_out =
-                        LibWalletError::from(InterfaceError::InvalidArgument("address is invalid".to_string())).code;
-                    return false;
-                },
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("address".to_string())).code;
-                return false;
-            },
-        }
-    };
-
-    if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.set_base_node_peer(
-        (*public_key).clone(),
-        parsed_addr,
-        None,
-    )) {
-        *error_out = LibWalletError::from(e).code;
-        return false;
-    }
-    true
-}
-/// Gets all seed peers known by the wallet
-///
+// Gets all seed peers known by the wallet
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions

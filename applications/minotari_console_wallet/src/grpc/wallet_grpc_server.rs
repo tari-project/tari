@@ -330,29 +330,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-    async fn set_base_node(
-        &self,
-        request: Request<SetBaseNodeRequest>,
-    ) -> Result<Response<SetBaseNodeResponse>, Status> {
-        let message = request.into_inner();
-        let public_key = CompressedPublicKey::from_hex(&message.public_key_hex)
-            .map_err(|e| Status::invalid_argument(format!("Base node public key was not a valid pub key: {}", e)))?;
-        let net_address = message
-            .net_address
-            .parse::<Multiaddr>()
-            .map_err(|e| Status::invalid_argument(format!("Base node net address was not valid: {}", e)))?;
-
-        println!("Setting base node peer...");
-        println!("{}::{}", public_key, net_address);
-        let mut wallet = self.wallet.clone();
-        wallet
-            .set_base_node_peer(public_key.clone(), Some(net_address.clone()), None)
-            .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
-
-        Ok(Response::new(SetBaseNodeResponse {}))
-    }
-
     async fn get_balance(&self, request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
         let message = request.into_inner();
         let start = std::time::Instant::now();

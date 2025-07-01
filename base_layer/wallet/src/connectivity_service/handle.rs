@@ -64,25 +64,6 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
 {
     type BaseNodeClient = TWalletClientFactory::Client;
 
-    fn set_base_node(&mut self, base_node_peer_manager: BaseNodePeerManager) {
-        if let Some(selected_peer) = self.base_node_watch.borrow().as_ref() {
-            if selected_peer.get_current_peer().public_key == base_node_peer_manager.get_current_peer().public_key {
-                return;
-            }
-        }
-        self.base_node_watch.send(Some(base_node_peer_manager));
-    }
-
-    fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<BaseNodePeerManager>> {
-        self.base_node_watch.get_receiver()
-    }
-
-    fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)> {
-        self.base_node_watch.borrow().as_ref().map(|p| p.get_state().clone())
-    }
-
-    /// Obtain a BaseNodeWalletRpcClient.
-    ///
     /// This can be relied on to obtain a pooled BaseNodeWalletRpcClient rpc session from a currently selected base
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
@@ -101,30 +82,5 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
         self.online_status_watch.subscribe()
-    }
-
-    fn get_current_base_node_peer(&self) -> Option<Peer> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().clone())
-    }
-
-    fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().public_key.clone())
-    }
-
-    fn get_current_base_node_peer_node_id(&self) -> Option<NodeId> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().node_id.clone())
-    }
-
-    fn is_base_node_set(&self) -> bool {
-        self.base_node_watch.borrow().is_some()
     }
 }

@@ -445,19 +445,6 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
     }
 }
 
-async fn set_base_node_peer(
-    mut wallet: WalletSqlite,
-    public_key: CompressedPublicKey,
-    address: Multiaddr,
-) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
-    println!("Setting base node peer...");
-    println!("{}::{}", public_key, address);
-    wallet
-        .set_base_node_peer(public_key.clone(), Some(address.clone()), None)
-        .await?;
-    Ok((public_key, address))
-}
-
 pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
     dest_public_key: CompressedPublicKey,
@@ -780,12 +767,6 @@ pub async fn command_runner(
     println!("Command Runner");
     println!("==============");
 
-    let (_current_index, mut peer_list) =
-        if let Some((index, list)) = wallet.wallet_connectivity.get_base_node_peer_manager_state() {
-            (index, list)
-        } else {
-            (0, vec![])
-        };
     let mut unban_peer_manager_peers = false;
 
     #[allow(clippy::enum_glob_use)]
@@ -1287,7 +1268,6 @@ pub async fn command_runner(
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        lift_temp_ban_peers(&wallet, &mut peer_list).await;
                         return Ok(true);
                     },
                 };
@@ -1691,7 +1671,6 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendTx(args) => {
-                temp_ban_peers(&wallet, &mut peer_list).await;
                 unban_peer_manager_peers = true;
 
                 // Read session info
@@ -2249,48 +2228,6 @@ pub async fn command_runner(
                     }
                 },
                 Err(e) => eprintln!("CountUtxos error! {}", e),
-            },
-            SetBaseNode(args) => {
-                if let Err(e) = set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
-                    eprintln!("SetBaseNode error! {}", e);
-                }
-            },
-            SetCustomBaseNode(args) => {
-                match set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
-                    Ok((public_key, net_address)) => {
-                        if let Err(e) = wallet
-                            .db
-                            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
-                        {
-                            eprintln!("SetCustomBaseNode error! {}", e);
-                        } else if let Err(e) = wallet
-                            .db
-                            .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
-                        {
-                            eprintln!("SetCustomBaseNode error! {}", e);
-                        } else {
-                            println!("Custom base node peer saved in wallet database.");
-                        }
-                    },
-                    Err(e) => eprintln!("SetCustomBaseNode error! {}", e),
-                }
-            },
-            ClearCustomBaseNode => {
-                match wallet
-                    .db
-                    .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
-                {
-                    Ok(_) => match wallet.db.clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string()) {
-                        Ok(true) => {
-                            println!("Custom base node peer cleared from wallet database.")
-                        },
-                        Ok(false) => {
-                            println!("Warning - custom base node peer not cleared from wallet database.")
-                        },
-                        Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
-                    },
-                    Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
-                }
             },
             InitShaAtomicSwap(args) => {
                 match init_sha_atomic_swap(
@@ -2904,10 +2841,6 @@ pub async fn command_runner(
                 }
             },
         }
-    }
-    if unban_peer_manager_peers {
-        lift_temp_ban_peers(&wallet, &mut peer_list).await;
-        return Ok(true);
     }
 
     // listen to event stream

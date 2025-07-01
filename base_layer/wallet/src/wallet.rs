@@ -406,90 +406,6 @@ where
         self.comms.to_owned().wait_until_shutdown().await;
     }
 
-    /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
-    /// monitor the base node state.
-    pub async fn set_base_node_peer(
-        &mut self,
-        public_key: CommsPublicKey,
-        address: Option<Multiaddr>,
-        backup_peers: Option<Vec<Peer>>,
-    ) -> Result<(), WalletError> {
-        info!(
-            "Wallet setting base node peer, public key: {}, net address: {:?}.",
-            public_key, address
-        );
-
-        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
-            self.comms
-                .connectivity()
-                .remove_peer_from_allow_list(current_node)
-                .await?;
-        }
-
-        let peer_manager = self.comms.peer_manager();
-        let mut connectivity = self.comms.connectivity();
-        let mut backup_peers = backup_peers.unwrap_or_default();
-        if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
-            // Only invalidate the identity signature if addresses are different
-            if address.is_some() {
-                let add = address.unwrap();
-                if !current_peer.addresses.contains(&add) {
-                    info!(
-                        target: LOG_TARGET,
-                        "Address for base node differs from storage. Was {}, setting to {}",
-                        current_peer.addresses,
-                        add
-                    );
-
-                    current_peer.addresses.add_address(&add, &PeerAddressSource::Config);
-                    peer_manager.add_or_update_peer(current_peer.clone()).await?;
-                }
-            }
-            let mut peer_list = vec![current_peer];
-            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
-                backup_peers.remove(pos);
-            }
-            peer_list.append(&mut backup_peers);
-            self.update_allow_list(&peer_list).await?;
-            self.wallet_connectivity
-                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
-        } else {
-            let node_id = NodeId::from_key(&public_key);
-            if address.is_none() {
-                debug!(
-                    target: LOG_TARGET,
-                    "Trying to add new peer without an address",
-                );
-                return Err(WalletError::ArgumentError {
-                    argument: "set_base_node_peer, address".to_string(),
-                    value: "{Missing}".to_string(),
-                    message: "New peers need the address filled in".to_string(),
-                });
-            }
-            let peer = Peer::new(
-                public_key.clone(),
-                node_id,
-                MultiaddressesWithStats::from_addresses_with_source(vec![address.unwrap()], &PeerAddressSource::Config),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                Default::default(),
-                String::new(),
-            );
-            peer_manager.add_or_update_peer(peer.clone()).await?;
-            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
-            let mut peer_list = vec![peer];
-            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
-                backup_peers.remove(pos);
-            }
-            peer_list.append(&mut backup_peers);
-            self.update_allow_list(&peer_list).await?;
-            self.wallet_connectivity
-                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
-        }
-
-        Ok(())
-    }
-
     async fn update_allow_list(&mut self, peer_list: &[Peer]) -> Result<(), WalletError> {
         let mut connectivity = self.comms.connectivity();
         let current_allow_list = connectivity.get_allow_list().await?;
@@ -500,10 +416,6 @@ where
             connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
         }
         Ok(())
-    }
-
-    pub async fn get_base_node_peer(&mut self) -> Option<Peer> {
-        self.wallet_connectivity.get_current_base_node_peer()
     }
 
     pub async fn check_for_update(&self) -> Option<String> {

@@ -161,7 +161,6 @@ impl WalletDebouncer {
     async fn monitor_events(&self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
         let mut transaction_service_events = self.transaction_service.get_event_stream();
-        let mut base_node_changed = self.wallet_connectivity.clone().get_current_base_node_watcher();
         let mut output_manager_service_events = self.output_manager_service.get_event_stream();
         let mut utxo_scanner_events = self.utxo_scanner_handle.clone().get_event_receiver();
 
@@ -194,10 +193,7 @@ impl WalletDebouncer {
                         },
                     }
                 },
-                _ = base_node_changed.changed() => {
-                    self.set_refresh_needed(true).await;
-                },
-                result = output_manager_service_events.recv() => {
+               result = output_manager_service_events.recv() => {
                     match result {
                         Ok(msg) => {
                             if let OutputManagerEvent::TxoValidationSuccess(_) = &*msg {

@@ -33,10 +33,6 @@ use crate::connectivity_service::{handle::OnlineStatus, BaseNodePeerManager};
 pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     type BaseNodeClient: BaseNodeWalletClient;
 
-    fn set_base_node(&mut self, base_node_peer: BaseNodePeerManager);
-
-    fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<BaseNodePeerManager>>;
-
     /// Obtain a BaseNodeWalletRpcClient.
     ///
     /// This can be relied on to obtain a pooled BaseNodeWalletRpcClient rpc session from a currently selected base
@@ -48,14 +44,4 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     fn get_connectivity_status(&self) -> OnlineStatus;
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus>;
-
-    fn get_current_base_node_peer(&self) -> Option<Peer>;
-
-    fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey>;
-
-    fn get_current_base_node_peer_node_id(&self) -> Option<NodeId>;
-
-    fn is_base_node_set(&self) -> bool;
-
-    fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)>;
 }
