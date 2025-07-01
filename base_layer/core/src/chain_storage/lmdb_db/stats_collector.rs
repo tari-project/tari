@@ -340,7 +340,7 @@ mod tests {
         let stats = DatabaseStats::new(50, 100).migration_stats;
         assert_eq!(stats.current_height, 50);
         assert_eq!(stats.total_height, 100);
-        assert_eq!(stats.progress_percentage, 50.0);
+        assert_eq!(stats.progress_percentage, 0.0); // Initially 0.0, gets calculated on first update
     }
 
     #[test]
@@ -397,7 +397,10 @@ mod tests {
         assert_eq!(stats.progress_percentage, 25.0);
 
         collector.update_migration_progress(100);
-        assert_eq!(stats.total_height, 100);
+        let final_stats = collector.current_stats().migration_stats;
+        assert_eq!(final_stats.current_height, 100);
+        assert_eq!(final_stats.total_height, 100);
+        assert_eq!(final_stats.progress_percentage, 100.0);
     }
 
     #[test]
