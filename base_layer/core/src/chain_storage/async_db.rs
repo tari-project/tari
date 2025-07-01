@@ -30,7 +30,7 @@ use tari_common_types::{
 };
 use tari_utilities::epoch_time::EpochTime;
 
-use super::TemplateRegistrationEntry;
+use super::{MinedInfo, TemplateRegistrationEntry};
 use crate::{
     blocks::{
         Block,
@@ -276,7 +276,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
 
-    make_async_fn!(fetch_output_by_payref(payref: FixedHash) -> Option<OutputMinedInfo>, "fetch_output_by_payref");
+    make_async_fn!(fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo, "fetch_mined_info_by_payref");
+
+    make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> MinedInfo, "fetch_mined_info_by_output_hash");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

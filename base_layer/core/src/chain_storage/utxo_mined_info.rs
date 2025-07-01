@@ -40,3 +40,9 @@ pub struct InputMinedInfo {
     pub header_hash: BlockHash,
     pub spent_timestamp: u64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinedInfo {
+    pub input: Option<InputMinedInfo>,
+    pub output: Option<OutputMinedInfo>,
+}

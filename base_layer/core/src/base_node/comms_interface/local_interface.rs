@@ -38,7 +38,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{InputMinedInfo, OutputMinedInfo, TemplateRegistrationEntry},
+    chain_storage::{InputMinedInfo, MinedInfo, OutputMinedInfo, TemplateRegistrationEntry},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
@@ -357,14 +357,41 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Fetch output by PayRef (Payment Reference)
-    pub async fn fetch_output_by_payref(
+    /// Fetch mined info by PayRef (Payment Reference)
+    pub async fn fetch_mined_info_by_payref(&mut self, payref: &FixedHash) -> Result<MinedInfo, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchMinedInfoByPayRef(*payref))
+            .await??
+        {
+            NodeCommsResponse::MinedInfo(mined_info) => Ok(mined_info),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetch mined info by output hash
+    pub async fn fetch_mined_info_by_output_hash(
         &mut self,
-        payref: &FixedHash,
+        output_hash: &HashOutput,
+    ) -> Result<MinedInfo, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchMinedInfoByOutputHash(*output_hash))
+            .await??
+        {
+            NodeCommsResponse::MinedInfo(mined_info) => Ok(mined_info),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetch output mined info by output hash
+    pub async fn fetch_output_mined_info(
+        &mut self,
+        output_hash: &HashOutput,
     ) -> Result<Option<OutputMinedInfo>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchOutputByPayRef(*payref))
+            .call(NodeCommsRequest::FetchOutputMinedInfo(*output_hash))
             .await??
         {
             NodeCommsResponse::OutputMinedInfo(output_info) => Ok(output_info),

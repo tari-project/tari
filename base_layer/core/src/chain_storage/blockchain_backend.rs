@@ -6,7 +6,7 @@ use tari_common_types::{
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 
-use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, TemplateRegistrationEntry};
+use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, MinedInfo, TemplateRegistrationEntry};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
@@ -96,10 +96,10 @@ pub trait BlockchainBackend: Send + Sync {
         spend_status_at_header: Option<&HashOutput>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
-    /// Fetch a specific output. Returns the output
+    /// Returns optional output mined info for the given output hash
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
 
-    /// Fetch a specific input. Returns the input
+    /// Returns optional input mined info for the given output hash
     fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
@@ -109,9 +109,11 @@ pub trait BlockchainBackend: Send + Sync {
         commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
 
-    /// Fetch output by PayRef (Payment Reference)
-    /// Returns the OutputMinedInfo if found, None if PayRef doesn't exist
-    fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
+    /// Fetch mined info by PayRef (Payment Reference)
+    fn fetch_mined_info_by_payref(&self, payref: &FixedHash) -> Result<MinedInfo, ChainStorageError>;
+
+    /// Fetch mined info by output hash
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError>;
 
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
