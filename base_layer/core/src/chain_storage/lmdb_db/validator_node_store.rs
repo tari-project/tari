@@ -341,6 +341,14 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             return Ok(activation_epoch);
         }
 
+        if validators_per_epoch == 0 {
+            return Err(ChainStorageError::InvalidQuery(
+                "get_next_activation_epoch: validators_per_epoch is zero, an active epoch cannot be assigned to the \
+                 validator"
+                    .to_string(),
+            ));
+        }
+
         let mut cursor = self.activation_queue_read_cursor()?;
         loop {
             let key = create_activation_key(sidechain_id, activation_epoch);
@@ -708,6 +716,12 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         epoch: VnEpoch,
         max_exits: usize,
     ) -> Result<VnEpoch, ChainStorageError> {
+        if max_exits == 0 {
+            return Err(ChainStorageError::InvalidQuery(
+                "get_next_exit_epoch: max_exits is zero, an exit epoch cannot be assigned to the validator".to_string(),
+            ));
+        }
+
         let mut cursor = self.exit_queue_read_cursor()?;
         let prefix = create_exit_queue_prefix_key(sidechain_pk, epoch);
         if !cursor.seek_range(&prefix)? {

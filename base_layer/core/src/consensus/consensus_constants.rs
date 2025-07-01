@@ -556,9 +556,9 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
-            vn_registration_max_exits_per_epoch: 5,
+            vn_registration_max_vns_initial_epoch: 0,
+            vn_registration_max_vns_per_epoch: 0,
+            vn_registration_max_exits_per_epoch: 0,
         };
         let consensus_constants = vec![consensus_constants1];
         consensus_constants
@@ -615,9 +615,9 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
-            vn_registration_max_exits_per_epoch: 5,
+            vn_registration_max_vns_initial_epoch: 0,
+            vn_registration_max_vns_per_epoch: 0,
+            vn_registration_max_exits_per_epoch: 0,
         }];
         consensus_constants
     }
@@ -667,9 +667,9 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
-            vn_registration_max_exits_per_epoch: 5,
+            vn_registration_max_vns_initial_epoch: 0,
+            vn_registration_max_vns_per_epoch: 0,
+            vn_registration_max_exits_per_epoch: 0,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
@@ -746,9 +746,9 @@ impl ConsensusConstants {
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 256,
-            vn_registration_max_vns_initial_epoch: 50,
-            vn_registration_max_vns_per_epoch: 10,
-            vn_registration_max_exits_per_epoch: 5,
+            vn_registration_max_vns_initial_epoch: 0,
+            vn_registration_max_vns_per_epoch: 0,
+            vn_registration_max_exits_per_epoch: 0,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 540; // 18 hours
