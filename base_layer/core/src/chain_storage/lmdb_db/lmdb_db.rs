@@ -96,7 +96,7 @@ use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
-use primitive_types::{U256, U512};
+use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -109,7 +109,6 @@ use tari_common_types::{
         CompressedPublicKey,
         FixedHash,
         HashOutput,
-        PrivateKey,
         Signature,
         UncompressedCommitment,
     },
@@ -139,14 +138,12 @@ use crate::{
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
-        blockchain_database::rewind_to_height,
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
             composite_key::{CompositeKey, InputKey, OutputKey},
             lmdb::{
                 fetch_db_entry_sizes,
-                lmdb_all,
                 lmdb_clear,
                 lmdb_delete,
                 lmdb_delete_each_where,
@@ -163,6 +160,15 @@ use crate::{
                 lmdb_last,
                 lmdb_len,
                 lmdb_replace,
+            },
+            migrations::{
+                Migration00,
+                Migration01,
+                Migration02,
+                Migration03,
+                Migration04,
+                MigrationContext,
+                MigrationManager,
             },
             validator_node_store::ValidatorNodeStore,
             TransactionInputRowData,
@@ -186,7 +192,7 @@ use crate::{
         ValidatorNodeEntry,
     },
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{
@@ -315,9 +321,9 @@ pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
 }
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
-    env: Arc<Environment>,
-    env_config: LMDBConfig,
-    metadata_db: DatabaseRef,
+    pub(crate) env: Arc<Environment>,
+    pub(crate) env_config: LMDBConfig,
+    pub(crate) metadata_db: DatabaseRef,
     /// Maps height -> BlockHeader
     headers_db: DatabaseRef,
     /// Maps height -> BlockHeaderAccumulatedData
@@ -381,6 +387,8 @@ pub struct LMDBDatabase {
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
     stats_collector: LMDBStatsCollector,
+    /// Migration context for running migrations
+    migration_context: MigrationContext,
 }
 
 impl LMDBDatabase {
@@ -391,6 +399,7 @@ impl LMDBDatabase {
         stats_sender: Option<watch::Sender<DatabaseStats>>,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
+        let stats_collector = LMDBStatsCollector::new();
         let mut db = Self {
             metadata_db: get_database(store, LMDB_DB_METADATA)?,
             headers_db: get_database(store, LMDB_DB_HEADERS)?,
@@ -424,11 +433,16 @@ impl LMDBDatabase {
             jmt_value_data: get_database(store, LMDB_DB_JMT_VALUE_DATA)?,
             jmt_node_data: get_database(store, LMDB_DB_JMT_NODE_DATA)?,
             jmt_unique_key_data: get_database(store, LMDB_DB_JMT_UNIQUE_KEY_DATA)?,
-            env,
+            env: env.clone(),
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
             consensus_manager,
-            stats_collector: LMDBStatsCollector::new(),
+            stats_collector,
+            migration_context: MigrationContext {
+                env: env.clone(),
+                env_config: store.env_config(),
+                metadata_db: get_database(store, LMDB_DB_METADATA)?,
+            },
         };
 
         // If a stats sender was provided, add it to the collector
@@ -436,7 +450,27 @@ impl LMDBDatabase {
             db.stats_collector.add_sender(sender);
         }
 
-        run_migrations(&mut db)?;
+        let mut migration_manager = MigrationManager::new(db.migration_context.clone());
+        migration_manager.add_migration(Box::new(Migration00::new(
+            db.migration_context.clone(),
+            db.header_accumulated_data_db.clone(),
+            db.orphan_header_accumulated_data_db.clone(),
+            db.block_accumulated_data_db.clone(),
+            db.orphan_chain_tips_db.clone(),
+        )))?;
+        migration_manager.add_migration(Box::new(Migration01::new(
+            db.migration_context.clone(),
+            db.header_accumulated_data_db.clone(),
+        )))?;
+        migration_manager.add_migration(Box::new(Migration02::new()))?;
+        migration_manager.add_migration(Box::new(Migration03::new()))?;
+        migration_manager.add_migration(Box::new(Migration04::new(
+            db.migration_context.clone(),
+            db.headers_db.clone(),
+            db.utxos_db.clone(),
+            db.payref_to_output_index.clone(),
+        )))?;
+        migration_manager.run_migrations(Some(&mut db))?;
 
         Ok(db)
     }
@@ -448,13 +482,13 @@ impl LMDBDatabase {
 
     /// Try to establish a read lock on the LMDB database. If an exclusive write lock has been previously acquired, this
     /// method will block until that lock is released.
-    fn read_transaction(&self) -> Result<ReadTransaction<'_>, ChainStorageError> {
+    pub(crate) fn read_transaction(&self) -> Result<ReadTransaction<'_>, ChainStorageError> {
         ReadTransaction::new(&*self.env).map_err(Into::into)
     }
 
     /// Try to establish an exclusive write lock on the LMDB database. This method will block until an exclusive lock is
     /// obtained or an LMDB error is encountered (http://www.lmdb.tech/doc/group__mdb.html#gad7ea55da06b77513609efebd44b26920).
-    fn write_transaction(&self) -> Result<WriteTransaction<'_>, ChainStorageError> {
+    pub(crate) fn write_transaction(&self) -> Result<WriteTransaction<'_>, ChainStorageError> {
         WriteTransaction::new(&*self.env).map_err(Into::into)
     }
 
@@ -735,7 +769,10 @@ impl LMDBDatabase {
 
     /// Generate payment reference (PayRef) for an output using shared utility
     /// PayRef = Blake2b_256(block_hash || output_hash) using domain separation
-    fn generate_payment_reference_for_output(header_hash: &HashOutput, output_hash: &HashOutput) -> FixedHash {
+    pub(crate) fn generate_payment_reference_for_output(
+        header_hash: &HashOutput,
+        output_hash: &HashOutput,
+    ) -> FixedHash {
         generate_payment_reference(header_hash, output_hash)
     }
 
@@ -1955,11 +1992,24 @@ impl LMDBDatabase {
         // Look up output hash by PayRef
         if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref.as_slice())? {
             self.fetch_mined_info_by_output_hash_in_txn(txn, &output_hash)
-        } else {
+        } else if self.migration_context.is_migration_completed(4)? {
             Ok(MinedInfo {
                 input: None,
                 output: None,
             })
+        } else {
+            match self.migration_context.does_migration_have_error(4)? {
+                Some(e) => {
+                    error!(target: LOG_TARGET, "Payref migration has error: {}", e);
+                    Err(ChainStorageError::GeneralMigrationError(e))
+                },
+                None => {
+                    trace!(target: LOG_TARGET, "Payref migration is not completed yet");
+                    Err(ChainStorageError::GeneralMigrationError(
+                        "Payref migration is not completed yet".to_string(),
+                    ))
+                },
+            }
         }
     }
 
@@ -2898,7 +2948,7 @@ fn fetch_metadata(txn: &ConstTransaction<'_>, db: &Database) -> Result<ChainMeta
 }
 
 // Fetches the chain height from the provided metadata db.
-fn fetch_chain_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, ChainStorageError> {
+pub(crate) fn fetch_chain_height(txn: &ConstTransaction<'_>, db: &Database) -> Result<u64, ChainStorageError> {
     let k = MetadataKey::ChainHeight;
     let val: Option<MetadataValue> = lmdb_get(txn, db, &k.as_u32())?;
     match val {
@@ -3008,6 +3058,9 @@ pub enum MetadataKey {
     HorizonData,
     BestBlockTimestamp,
     MigrationVersion,
+    InProgressMigrations,
+    CompletedMigrations,
+    MigrationsWithErrors,
 }
 
 impl MetadataKey {
@@ -3028,6 +3081,9 @@ impl fmt::Display for MetadataKey {
             MetadataKey::HorizonData => write!(f, "Database info"),
             MetadataKey::BestBlockTimestamp => write!(f, "Chain tip block timestamp"),
             MetadataKey::MigrationVersion => write!(f, "Migration version"),
+            MetadataKey::InProgressMigrations => write!(f, "In-progress migrations"),
+            MetadataKey::CompletedMigrations => write!(f, "Completed migrations"),
+            MetadataKey::MigrationsWithErrors => write!(f, "Migrations with errors"),
         }
     }
 }
@@ -3043,6 +3099,9 @@ pub enum MetadataValue {
     HorizonData(HorizonData),
     BestBlockTimestamp(u64),
     MigrationVersion(u64),
+    InProgressMigrations(Vec<u64>),
+    CompletedMigrations(Vec<u64>),
+    MigrationsWithErrors(Vec<(u64, String)>),
 }
 
 impl fmt::Display for MetadataValue {
@@ -3056,402 +3115,9 @@ impl fmt::Display for MetadataValue {
             MetadataValue::HorizonData(_) => write!(f, "Horizon data"),
             MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {}", timestamp),
             MetadataValue::MigrationVersion(n) => write!(f, "Migration version {}", n),
+            MetadataValue::InProgressMigrations(migrations) => write!(f, "In progress migrations: {:?}", migrations),
+            MetadataValue::CompletedMigrations(migrations) => write!(f, "Completed migrations: {:?}", migrations),
+            MetadataValue::MigrationsWithErrors(migrations) => write!(f, "Migrations with errors: {:?}", migrations),
         }
     }
-}
-
-#[allow(clippy::too_many_lines)]
-fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 5;
-    db.stats_collector().set_target_db_version(MIGRATION_VERSION);
-    let txn = db.read_transaction()?;
-    let k = MetadataKey::MigrationVersion;
-    let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
-    let last_migrated_version = match val {
-        Some(MetadataValue::MigrationVersion(n)) => n,
-        Some(_) | None => 0,
-    };
-    info!(
-        target: LOG_TARGET,
-        "[MIGRATIONS] Blockchain database is at v{} (required version: {})",
-        last_migrated_version, MIGRATION_VERSION
-    );
-    drop(txn);
-
-    let mut payref_index_done = false;
-
-    for migrate_from_version in last_migrated_version..MIGRATION_VERSION {
-        db.stats_collector().set_current_db_version(migrate_from_version);
-        unsafe {
-            LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
-        }
-
-        // MIGRATION: Accumulated difficulty migration after the 3rd mining algorithm was introduced
-        if migrate_from_version == 0 {
-            let txn = db.read_transaction()?;
-
-            let chain_height = match fetch_chain_height(&txn, &db.metadata_db) {
-                Ok(v) => v,
-                Err(_) => {
-                    // if the chain height does not exist, then we know we dont have a db
-                    continue;
-                },
-            };
-
-            let k = MetadataKey::AccumulatedWork;
-
-            let val: Option<OldMetadataValue> = lmdb_get(&txn, &db.metadata_db, &k.as_u32())?;
-            if val.is_some() {
-                let accum_data = match val {
-                    Some(OldMetadataValue::AccumulatedWork(accumulated_difficulty)) => {
-                        Ok(U512::from(accumulated_difficulty))
-                    },
-                    _ => Err(ChainStorageError::ValueNotFound {
-                        entity: "ChainMetadata",
-                        field: "AccumulatedWork",
-                        value: "".to_string(),
-                    }),
-                }?;
-                let txn = db.write_transaction()?;
-                lmdb_replace(
-                    &txn,
-                    &db.metadata_db,
-                    &k.as_u32(),
-                    &MetadataValue::AccumulatedWork(accum_data),
-                    None,
-                )?;
-                txn.commit()?;
-                info!(
-                    target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: Replaced tip accumulated data ",
-                    migrate_from_version
-                );
-            }
-
-            let txn = db.write_transaction()?;
-
-            db.set_stats_total_height(chain_height);
-            for height in 0..=chain_height {
-                let block_accum_data: V0BLockHeaderAccumulatedData =
-                    lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
-                        ChainStorageError::ValueNotFound {
-                            entity: "BlockAccumulatedData",
-                            field: "height",
-                            value: height.to_string(),
-                        }
-                    })?;
-                let new_block_accum_data = BlockHeaderAccumulatedData {
-                    hash: block_accum_data.hash,
-                    total_kernel_offset: block_accum_data.total_kernel_offset,
-                    achieved_difficulty: block_accum_data.achieved_difficulty,
-                    total_accumulated_difficulty: U512::from(block_accum_data.total_accumulated_difficulty),
-                    accumulated_monero_randomx_difficulty: block_accum_data.accumulated_randomx_difficulty,
-                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-                    accumulated_sha3x_difficulty: block_accum_data.accumulated_sha3x_difficulty,
-                    target_difficulty: block_accum_data.target_difficulty,
-                };
-
-                lmdb_replace(
-                    &txn,
-                    &db.header_accumulated_data_db,
-                    &height,
-                    &new_block_accum_data,
-                    None,
-                )?;
-
-                // Update stats progress
-                if height % 50 == 0 {
-                    db.update_stats_progress(height);
-                }
-            }
-            txn.commit()?;
-            let txn = db.write_transaction()?;
-            info!(
-                target: LOG_TARGET,
-                "[MIGRATIONS] v{}: Replaced accumulated data for blocks",
-                migrate_from_version
-            );
-            let orphan_headers_accum_data: Vec<(Vec<u8>, V0BLockHeaderAccumulatedData)> =
-                lmdb_all(&txn, &db.orphan_header_accumulated_data_db)?;
-            for (hash, orphan_header_accum_data) in orphan_headers_accum_data {
-                let new_orphan_block_accum_data = BlockHeaderAccumulatedData {
-                    hash: orphan_header_accum_data.hash,
-                    total_kernel_offset: orphan_header_accum_data.total_kernel_offset,
-                    achieved_difficulty: orphan_header_accum_data.achieved_difficulty,
-                    total_accumulated_difficulty: U512::from(orphan_header_accum_data.total_accumulated_difficulty),
-                    accumulated_monero_randomx_difficulty: orphan_header_accum_data.accumulated_randomx_difficulty,
-                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-                    accumulated_sha3x_difficulty: orphan_header_accum_data.accumulated_sha3x_difficulty,
-                    target_difficulty: orphan_header_accum_data.target_difficulty,
-                };
-                lmdb_replace(
-                    &txn,
-                    &db.block_accumulated_data_db,
-                    &hash,
-                    &new_orphan_block_accum_data,
-                    None,
-                )?;
-            }
-            txn.commit()?;
-            let txn = db.write_transaction()?;
-            info!(
-                target: LOG_TARGET,
-                "[MIGRATIONS] v{}: Replaced accumulated data for orphan blocks",
-                migrate_from_version
-            );
-            let orphan_chain_tips: Vec<(Vec<u8>, OldChainTipData)> = lmdb_all(&txn, &db.orphan_chain_tips_db)?;
-
-            for (parent_hash, val) in orphan_chain_tips {
-                let val = ChainTipData {
-                    hash: val.hash,
-                    total_accumulated_difficulty: U512::from(val.total_accumulated_difficulty),
-                };
-                lmdb_replace(&txn, &db.orphan_chain_tips_db, &parent_hash, &val, None)?;
-            }
-            txn.commit()?;
-        }
-
-        // MIGRATION: Total accumulated difficulty migration - blockchain rewind to last known good accumulated
-        // difficulty
-        if migrate_from_version == 1 {
-            let known_good_difficulties = get_correct_accumulated_difficulty();
-            if known_good_difficulties.is_empty() {
-                info!(
-                    target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: No migration to perform for version network",
-                    migrate_from_version
-                );
-                continue;
-            }
-            let mut last_correct_height = 0;
-            for (height, correct_difficulty) in known_good_difficulties {
-                let txn = db.read_transaction()?;
-                let accum_data: Option<BlockHeaderAccumulatedData> =
-                    lmdb_get(&txn, &db.header_accumulated_data_db, &height)?;
-                if let Some(accum_data) = accum_data {
-                    if accum_data.total_accumulated_difficulty == correct_difficulty {
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v{}: Block height {} already has correct accumulated difficulty",
-                            migrate_from_version, height
-                        );
-                        last_correct_height = height;
-                    }
-                } else {
-                    info!(
-                        target: LOG_TARGET,
-                        "[MIGRATIONS] v{}: No accumulated difficulty found for block height {}",
-                        migrate_from_version, height
-                    );
-                    break;
-                }
-            }
-            if last_correct_height == 0 {
-                // this will happen only happen if the db is below the fork height of the RxT fork
-                info!(
-                    target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: No migration to perform for version network",
-                    migrate_from_version
-                );
-                continue;
-            }
-            // lets rewind to last known good accumulated difficulty so the db can be correctly calculated again
-            rewind_to_height(db, last_correct_height)?;
-        }
-
-        // MIGRATION: Add payref index, rebuild payref index to recover deleted payrefs
-        // Note: For previously running base nodes `last_migrated_version` was incremented beyond `MIGRATION_VERSION` up
-        //       to `migrate_from_version == 4`. This migration also fix the error introduced with the original payref
-        //       migration where it was only added for outputs in the unspent set, resulting in missing payrefs.
-        if (migrate_from_version == 2 || migrate_from_version == 3 || migrate_from_version == 4) && !payref_index_done {
-            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: Starting PayRef migration", migrate_from_version);
-
-            // Verify database consistency before starting migration
-            let read_txn = db.read_transaction()?;
-            let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
-                Ok(v) => v,
-                Err(_) => {
-                    // No chain data, skip PayRef rebuild
-                    drop(read_txn);
-                    continue;
-                },
-            };
-            drop(read_txn);
-
-            db.set_stats_total_height(chain_height);
-            for height in 0..=chain_height {
-                // The average size added to the db per block for payrefs for the first 16,500 blocks was approximately
-                // 4,209 bytes as measured on a mainnet node and for the next 17,500 blocks approximately 7,550 bytes.
-                // The highest measured value is much less than the theoretical maximum of
-                // `(1000 coinbases + 900 outputs) * 2 * 32 bytes per output = 242,200 bytes per block`. The
-                // default db maspize increase is 128MB when we have less than 64MB free space left, so we should be
-                // checking how long it will take to fill up 64MB. Taking the biggest measured value we end up with
-                // approximately 8888 blocks to consume 64MB wirth of payref data. Theoretically, we can fill up 64MB
-                // with 277 block's worth of payrefs. To test if the db needs resizing every 1000 blocks is deemed
-                // practical and safe.
-                if height % 1000 == 0 {
-                    unsafe {
-                        LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
-                    }
-                }
-                process_payref_for_height(db, height)?;
-                if height % 50 == 0 {
-                    db.update_stats_progress(height);
-                }
-            }
-
-            payref_index_done = true;
-            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: PayRef index rebuild completed", migrate_from_version);
-        }
-
-        // Lets update the migration version
-        {
-            let migrated_to_version = migrate_from_version + 1;
-            let txn = db.write_transaction()?;
-            info!(
-                target: LOG_TARGET, "[MIGRATIONS] Migrated database from version {} to version {}",
-                migrate_from_version, migrated_to_version
-            );
-            lmdb_replace(
-                &txn,
-                &db.metadata_db,
-                &k.as_u32(),
-                &MetadataValue::MigrationVersion(migrated_to_version),
-                None,
-            )?;
-            txn.commit()?;
-        }
-    }
-    Ok(())
-}
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
-pub struct V0BLockHeaderAccumulatedData {
-    /// The block hash.
-    pub hash: HashOutput,
-    /// The total accumulated offset for all kernels in the block.
-    pub total_kernel_offset: PrivateKey,
-    /// The achieved difficulty for solving the current block using the specified proof of work algorithm.
-    pub achieved_difficulty: Difficulty,
-    /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
-    /// separately.
-    pub total_accumulated_difficulty: U256,
-    /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
-    /// but not including this block, tracked separately.
-    pub accumulated_randomx_difficulty: AccumulatedDifficulty,
-    /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
-    /// but not including this block, tracked separately.
-    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
-    /// The target difficulty for solving the current block using the specified proof of work algorithm.
-    pub target_difficulty: Difficulty,
-}
-
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-enum OldMetadataValue {
-    ChainHeight(u64),
-    BestBlock(BlockHash),
-    AccumulatedWork(U256),
-    PruningHorizon(u64),
-    PrunedHeight(u64),
-    HorizonData(HorizonData),
-    BestBlockTimestamp(u64),
-    MigrationVersion(u64),
-}
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
-pub struct OldChainTipData {
-    pub hash: HashOutput,
-    pub total_accumulated_difficulty: U256,
-}
-
-fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
-    #[cfg(tari_target_network_mainnet)]
-    {
-        vec![
-            (
-                14999,
-                U512::from_dec_str("230963847231029670329787338266632060").expect("should not fail"),
-            ),
-            (
-                16000,
-                U512::from_dec_str("37870972808147006178902366165325544920691850526080").expect("should not fail"),
-            ),
-            (
-                17000,
-                U512::from_dec_str("123219722351554302645774736761840507999792186766920").expect("should not fail"),
-            ),
-            (
-                18000,
-                U512::from_dec_str("245169616636012105701848119083014332169855273375890").expect("should not fail"),
-            ),
-            (
-                19000,
-                U512::from_dec_str("428081108397470519627923902616128115025981546384670").expect("should not fail"),
-            ),
-            (
-                20000,
-                U512::from_dec_str("678404434598953994059276298108149917133080906779800").expect("should not fail"),
-            ),
-        ]
-    }
-    #[cfg(tari_target_network_nextnet)]
-    {
-        vec![
-            (
-                1499,
-                U512::from_dec_str("17340317256602964156796").expect("should not fail"),
-            ),
-            (
-                2000,
-                U512::from_dec_str("267045542397987769905169797604842").expect("should not fail"),
-            ),
-            (
-                3000,
-                U512::from_dec_str("2261524423095838119669981829692352").expect("should not fail"),
-            ),
-        ]
-    }
-    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-    vec![]
-}
-
-/// Process a batch of blocks for PayRef migration
-fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), ChainStorageError> {
-    debug!(target: LOG_TARGET, "Processing PayRef migration for {}", height);
-
-    // Get all outputs for this block
-    let read_txn = db.read_transaction()?;
-    let read_header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
-    let header = read_header.ok_or_else(|| ChainStorageError::ValueNotFound {
-        entity: "BlockHeader",
-        field: "height",
-        value: height.to_string(),
-    })?;
-    let block_hash = header.hash();
-    let query_results: Vec<(Vec<u8>, TransactionOutputRowData)> =
-        lmdb_fetch_matching_after(&read_txn, &db.utxos_db, block_hash.as_slice())?;
-    drop(read_txn);
-
-    // Add payrefs, replacing any existing ones
-    let write_txn = db.write_transaction()?;
-    for (_, output_data) in query_results {
-        let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.hash);
-        trace!(target: LOG_TARGET,
-            "Processing payref {} and output hash {} for height {}",
-            payref, output_data.hash, height
-        );
-        lmdb_replace(
-            &write_txn,
-            &db.payref_to_output_index,
-            payref.as_slice(),
-            &output_data.hash,
-            None,
-        )?;
-    }
-
-    // Commit the batch
-    write_txn.commit()?;
-
-    Ok(())
 }

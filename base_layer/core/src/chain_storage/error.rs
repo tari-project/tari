@@ -101,6 +101,14 @@ pub enum ChainStorageError {
     BlockingTaskSpawnError(String),
     #[error("A request was out of range")]
     OutOfRange,
+    #[error("General migration error: {0}")]
+    GeneralMigrationError(String),
+    #[error("There are no migrations to run")]
+    NoMigrationsToRun,
+    #[error("The current migration version {current} is larger than the target migration version {target}")]
+    InvalidMigrationVersion { current: u64, target: u64 },
+    #[error("The migration version {version} already exists")]
+    DuplicateMigrationVersion { version: u64 },
     #[error("LMDB error: {source}")]
     LmdbError {
         #[from]
@@ -204,7 +212,11 @@ impl ChainStorageError {
             _err @ ChainStorageError::InvalidChainMetaData(_) |
             _err @ ChainStorageError::OutOfRange |
             _err @ ChainStorageError::MrHashError(_) |
-            _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
+            _err @ ChainStorageError::JellyfishMerkleTreeError(_) |
+            _err @ ChainStorageError::GeneralMigrationError(_) |
+            _err @ ChainStorageError::NoMigrationsToRun |
+            _err @ ChainStorageError::InvalidMigrationVersion { .. } |
+            _err @ ChainStorageError::DuplicateMigrationVersion { .. } => None,
         }
     }
 }

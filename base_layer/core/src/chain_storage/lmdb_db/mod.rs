@@ -41,6 +41,7 @@ mod lmdb;
 mod lmdb_db;
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
+pub(crate) mod migrations;
 mod stats_collector;
 mod validator_node_store;
 
