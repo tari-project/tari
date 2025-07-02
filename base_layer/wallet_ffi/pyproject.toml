@@ -32,3 +32,4 @@ requires-python = ">=3.8"
 features = ["python-bindings"]
 module-name = "tari_wallet"
 bindings = "pyo3"
+python-source = "python"
