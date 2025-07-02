@@ -60,9 +60,6 @@ build_network() {
         ls -la target/wheels/ 2>/dev/null || echo "target/wheels directory doesn't exist"
         exit 1
     fi
-    
-    # Clean between builds to ensure fresh compilation
-    cargo clean
 }
 
 # Build for each network
