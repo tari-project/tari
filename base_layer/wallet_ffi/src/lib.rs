@@ -10840,13 +10840,13 @@ pub unsafe extern "C" fn payment_records_get_at(
         return ptr::null_mut();
     }
 
-    let length = (*records).0.len();
-    if index as usize >= length {
+    let vec = &(*records).0;
+    if index >= vec.len() as c_uint {
         *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new((&(*records).0)[index as usize].clone()))
+    Box::into_raw(Box::new(vec[index as usize].clone()))
 }
 
 /// Destroy TariPaymentRecord
