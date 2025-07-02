@@ -31,10 +31,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, Error, OsRng},
-    KeyInit,
-    Tag,
-    XChaCha20Poly1305,
-    XNonce,
+    KeyInit, Tag, XChaCha20Poly1305, XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use primitive_types::U256;
@@ -46,8 +43,7 @@ use tari_max_size::MaxSizeBytes;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
-    ByteArray,
-    ByteArrayError,
+    ByteArray, ByteArrayError,
 };
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
@@ -110,6 +106,8 @@ impl EncryptedData {
         data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
         data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
             .clone_from_slice(bytes.as_slice());
+        println!("static encrypted data size total: {}", STATIC_ENCRYPTED_DATA_SIZE_TOTAL);
+        println!("bytes size: {}", bytes.len());
         Ok(Self {
             data: MaxSizeBytes::try_from(data)
                 .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))?,

@@ -185,6 +185,44 @@ impl PaymentId {
     const SIZE_META_DATA: usize = 5;
     const SIZE_VALUE_AND_META_DATA: usize = SIZE_VALUE + PaymentId::SIZE_META_DATA;
 
+    pub fn new_address_and_data(
+        sender_address: Address,
+        fee: u64,
+        sender_one_sided: bool,
+        tx_type: Option<TxType>,
+        user_data: Vec<u8>,
+    ) -> Result<Self, String> {
+        self.validate_user_data_size(sender_address, fee, sender_one_sided, tx_type, user_data)?;
+        Some(PaymentId::AddressAndData {
+            sender_address,
+            fee,
+            sender_one_sided,
+            tx_type,
+            user_data,
+        })
+    }
+
+    pub fn new_transaction_info(
+        recipient_address: Address,
+        amount: MicroTari,
+        fee: MicroTari,
+        sender_one_sided: bool,
+        tx_type: Option<TxType>,
+        sent_output_hashes: Vec<FixedHash>,
+        user_data: Vec<u8>,
+    ) -> Result<Self, String> {
+        self.validate_user_data_size(sender_address, fee, sender_one_sided, tx_type, user_data)?;
+        Some(PaymentId::TransactionInfo {
+            recipient_address,
+            amount,
+            fee,
+            sender_one_sided,
+            tx_type,
+            sent_output_hashes,
+            user_data,
+        })
+    }
+
     fn to_tag(&self) -> Vec<u8> {
         match self {
             PaymentId::Empty => vec![],
@@ -194,6 +232,77 @@ impl PaymentId {
             PaymentId::TransactionInfo { .. } => vec![PTag::TransactionInfo as u8],
             PaymentId::Raw(_) => vec![PTag::Raw as u8],
         }
+    }
+
+    fn get_reserved_size(&self) -> usize {
+        match self {
+            PaymentId::Empty => 0,       // No reserved space, no user data possible
+            PaymentId::U256(_) => 1,     // 1 byte tag, rest (31 bytes) is user data
+            PaymentId::Open { .. } => 2, // 1 byte tag + 1 byte tx_type
+            PaymentId::AddressAndData { sender_address, .. } => {
+                // Calculate reserved space for system data
+                let base_size = 1 // tag
+                    + 5 // packed metadata (fee + tx_type + sender_one_sided)
+                    + 1 // address length byte
+                    + sender_address.get_size() // actual address size
+                    + 1; // user data length byte
+
+                // Account for padding - if base_size + user_data would be < 130,
+                // then we need to reserve space for padding
+                let min_total_with_padding = PADDING_SIZE;
+                if base_size < min_total_with_padding {
+                    min_total_with_padding
+                } else {
+                    base_size
+                }
+            },
+            PaymentId::TransactionInfo {
+                recipient_address,
+                sent_output_hashes,
+                ..
+            } => {
+                // Calculate reserved space for system data
+                let base_size = 1 // tag
+                    + 8 // amount (u64)
+                    + 5 // packed metadata (fee + tx_type + sender_one_sided)
+                    + 1 // address length byte
+                    + recipient_address.get_size() // actual address size
+                    + 1 // user data length byte
+                    + 1 // sent output hashes count
+                    + (sent_output_hashes.len() * FixedHash::byte_size()); // actual hashes
+
+                // Account for padding - if base_size + user_data would be < 130,
+                // then we need to reserve space for padding
+                let min_total_with_padding = PADDING_SIZE;
+                if base_size < min_total_with_padding {
+                    min_total_with_padding
+                } else {
+                    base_size
+                }
+            },
+            PaymentId::Raw(_) => 1, // 1 byte tag, rest is user data
+        }
+    }
+
+    pub fn validate_user_data_size(&self, user_data: &[u8]) -> Result<(), String> {
+        let reserved_size = self.get_reserved_size();
+        let total_size = reserved_size + user_data.len();
+
+        if total_size > SIZE_U256 {
+            return Err(format!(
+                "PaymentId would exceed 256-bit limit: {} bytes (reserved: {}, user data: {})",
+                total_size,
+                reserved_size,
+                user_data.len()
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn max_user_data_size(&self) -> usize {
+        let reserved = self.get_reserved_size();
+        SIZE_U256.saturating_sub(reserved)
     }
 
     pub fn get_size(&self) -> usize {
@@ -219,14 +328,14 @@ impl PaymentId {
                 sent_output_hashes,
                 ..
             } => {
-                let len = 1 +
-                    1 +
-                    recipient_address.get_size() +
-                    PaymentId::SIZE_VALUE_AND_META_DATA +
-                    1 +
-                    (sent_output_hashes.len() * FixedHash::byte_size()) +
-                    1 +
-                    user_data.len();
+                let len = 1
+                    + 1
+                    + recipient_address.get_size()
+                    + PaymentId::SIZE_VALUE_AND_META_DATA
+                    + 1
+                    + (sent_output_hashes.len() * FixedHash::byte_size())
+                    + 1
+                    + user_data.len();
                 if len < PADDING_SIZE {
                     PADDING_SIZE
                 } else {
@@ -263,9 +372,9 @@ impl PaymentId {
 
     pub fn get_type(&self) -> TxType {
         match self {
-            PaymentId::Open { tx_type, .. } |
-            PaymentId::AddressAndData { tx_type, .. } |
-            PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
+            PaymentId::Open { tx_type, .. }
+            | PaymentId::AddressAndData { tx_type, .. }
+            | PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
@@ -297,12 +406,18 @@ impl PaymentId {
         tx_type: Option<TxType>,
     ) -> PaymentId {
         match self {
-            PaymentId::Open { user_data, tx_type } => PaymentId::AddressAndData {
-                sender_address,
-                sender_one_sided,
-                fee,
-                tx_type,
-                user_data,
+            PaymentId::Open { user_data, tx_type } => {
+                let new_payment_id = PaymentId::AddressAndData {
+                    sender_address,
+                    sender_one_sided,
+                    fee,
+                    tx_type,
+                    user_data: user_data.clone(),
+                };
+                if let Err(e) = new_payment_id.validate_user_data_size(&user_data) {
+                    panic!("Invalid user data size: {}", e);
+                }
+                new_payment_id
             },
             PaymentId::Empty => PaymentId::AddressAndData {
                 sender_address,
@@ -323,8 +438,8 @@ impl PaymentId {
                 sender_one_sided,
                 tx_type,
                 ..
-            } |
-            PaymentId::AddressAndData {
+            }
+            | PaymentId::AddressAndData {
                 fee,
                 sender_one_sided,
                 tx_type,
@@ -769,9 +884,10 @@ mod test {
             "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
         )
         .unwrap();
-        pay_id_address = pay_id_address
-            .with_payment_id_user_data(vec![0, 1, 2, 3, 4, 5])
-            .unwrap();
+        pay_id_address = pay_id_address.with_payment_id_user_data(vec![11u8; 130]).unwrap();
+        // pay_id_address = pay_id_address
+        //     .with_payment_id_user_data(vec![0, 1, 2, 3, 4, 5])
+        //     .unwrap();
         let sent_output_hashes = vec![create_random_fixed_hash()];
         vec![
             PaymentId::Empty,
@@ -796,7 +912,7 @@ mod test {
                 tx_type: TxType::default(),
             },
             // AddressAndData - dual, no data
-            PaymentId::AddressAndData {
+            PaymentId::new_address_and_data(
                 sender_address: TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
@@ -805,7 +921,7 @@ mod test {
                 fee: MicroMinotari::from(123),
                 tx_type: TxType::PaymentToSelf,
                 user_data: vec![],
-            },
+            ).unwrap(),
             // // AddressAndData - dual, some data
             PaymentId::AddressAndData {
                 sender_address: TariAddress::from_base58(
