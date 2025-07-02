@@ -1159,12 +1159,24 @@ impl LMDBDatabase {
                 utxo.hash.as_slice(),
                 "txos_hash_to_index_db",
             )?;
-            lmdb_delete(
+            match lmdb_delete(
                 txn,
                 &self.payref_to_output_index,
                 payref.as_slice(),
                 "payref_to_output_index",
-            )?;
+            ) {
+                Ok(()) => {
+                    debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex())
+                },
+                Err(ChainStorageError::ValueNotFound { .. }) => {
+                    // some outputs may not have a PayRef yet if this happens during a migration, which is possible. So
+                    // we can ignore this error
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e);
+                    return Err(e);
+                },
+            }
 
             // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
             // does not exist here
