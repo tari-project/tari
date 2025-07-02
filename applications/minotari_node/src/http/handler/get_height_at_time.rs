@@ -28,7 +28,7 @@ pub struct GetHeightAtTimeQueryParams {
     path = "/get_height_at_time",
     responses(
         (status = 200, description = "Height at specific time returned successfully", body = u64),
-        (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at height: 10"})),
+        (status = NOT_FOUND, description = "Header not found", body = ErrorResponse, example = json!({"error": "Header not found at time: 10"})),
         (status = INTERNAL_SERVER_ERROR, description = "Failed to get chain metadata", body = ErrorResponse, example = json!({"error": "Failed to get chain metadata: chain storage error"})),
     ),
 )]

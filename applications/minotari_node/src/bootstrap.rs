@@ -264,7 +264,6 @@ where B: BlockchainBackend + 'static
             .add_service(mempool::create_mempool_rpc_service(
                 handles.expect_handle::<MempoolHandle>(),
             ))
-            // TODO: This RPC will be removed in a future release, replaced by http
             .add_service(base_node::rpc::create_base_node_wallet_rpc_service(
                 db.clone(),
                 handles.expect_handle::<MempoolHandle>(),
