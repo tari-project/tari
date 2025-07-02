@@ -168,7 +168,6 @@ pub enum CliCommands {
     InitShaAtomicSwap(SendMinotariArgs),
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
-    // RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
     Sync(SyncArgs),

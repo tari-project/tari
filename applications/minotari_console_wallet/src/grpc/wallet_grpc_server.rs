@@ -432,18 +432,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
-        // let start = std::time::Instant::now();
-        // let mut output_service = self.get_output_manager_service();
-        // output_service
-        //     .revalidate_all_outputs()
-        //     .await
-        //     .map_err(|e| Status::unknown(e.to_string()))?;
-        // let mut tx_service = self.get_transaction_service();
-        // tx_service
-        //     .revalidate_all_transactions()
-        //     .await
-        //     .map_err(|e| Status::unknown(e.to_string()))?;
-        // trace!(target: LOG_TARGET, "'revalidate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(RevalidateResponse {}))
     }
 
@@ -451,18 +439,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<ValidateRequest>,
     ) -> Result<Response<ValidateResponse>, Status> {
-        // let start = std::time::Instant::now();
-        // let mut output_service = self.get_output_manager_service();
-        // output_service
-        //     .validate_txos()
-        //     .await
-        //     .map_err(|e| Status::unknown(e.to_string()))?;
-        // let mut tx_service = self.get_transaction_service();
-        // tx_service
-        //     .validate_transactions()
-        //     .await
-        //     .map_err(|e| Status::unknown(e.to_string()))?;
-        // trace!(target: LOG_TARGET, "'validate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(ValidateResponse {}))
     }
 

@@ -606,7 +606,6 @@ fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot, ExitError
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn boot_with_password(
     cli: &Cli,
     wallet_config: &WalletConfig,

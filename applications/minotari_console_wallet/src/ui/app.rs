@@ -106,7 +106,6 @@ impl<B: Backend> App<B> {
             .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
             .add("Templates".into(), Box::new(RegisterTemplateTab::new(&app_state)))
             .add("Contacts".into(), Box::new(ContactsTab::new()))
-            // .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));
