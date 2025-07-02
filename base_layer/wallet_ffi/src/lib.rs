@@ -10846,7 +10846,7 @@ pub unsafe extern "C" fn payment_records_get_at(
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new((*records).0[index as usize].clone()))
+    Box::into_raw(Box::new((&(*records).0)[index as usize].clone()))
 }
 
 /// Destroy TariPaymentRecord
@@ -14407,3 +14407,955 @@ mod test {
         }
     }
 }
+
+//=================================================================================================
+// Python callback system
+//=================================================================================================
+
+#[cfg(feature = "python-bindings")]
+use std::sync::Mutex;
+
+#[cfg(feature = "python-bindings")]
+struct PythonCallbacks {
+    received_transaction: Option<PyObject>,
+    received_transaction_reply: Option<PyObject>,
+    received_finalized_transaction: Option<PyObject>,
+    transaction_broadcast: Option<PyObject>,
+    transaction_mined: Option<PyObject>,
+    transaction_mined_unconfirmed: Option<PyObject>,
+    faux_transaction_confirmed: Option<PyObject>,
+    faux_transaction_unconfirmed: Option<PyObject>,
+    transaction_send_result: Option<PyObject>,
+    transaction_cancellation: Option<PyObject>,
+    txo_validation_complete: Option<PyObject>,
+    contacts_liveness_data_updated: Option<PyObject>,
+    balance_updated: Option<PyObject>,
+    transaction_validation_complete: Option<PyObject>,
+    saf_messages_received: Option<PyObject>,
+    connectivity_status: Option<PyObject>,
+    wallet_scanned_height: Option<PyObject>,
+    base_node_state: Option<PyObject>,
+}
+
+#[cfg(feature = "python-bindings")]
+impl PythonCallbacks {
+    fn new() -> Self {
+        Self {
+            received_transaction: None,
+            received_transaction_reply: None,
+            received_finalized_transaction: None,
+            transaction_broadcast: None,
+            transaction_mined: None,
+            transaction_mined_unconfirmed: None,
+            faux_transaction_confirmed: None,
+            faux_transaction_unconfirmed: None,
+            transaction_send_result: None,
+            transaction_cancellation: None,
+            txo_validation_complete: None,
+            contacts_liveness_data_updated: None,
+            balance_updated: None,
+            transaction_validation_complete: None,
+            saf_messages_received: None,
+            connectivity_status: None,
+            wallet_scanned_height: None,
+            base_node_state: None,
+        }
+    }
+}
+
+// Helper functions to safely call Python callbacks
+#[cfg(feature = "python-bindings")]
+fn call_python_callback_1(callback: &Option<PyObject>, arg1: u64) {
+    if let Some(cb) = callback {
+        let _ = Python::with_gil(|py| {
+            cb.call1(py, (arg1,))
+        });
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+fn call_python_callback_2(callback: &Option<PyObject>, arg1: u64, arg2: u64) {
+    if let Some(cb) = callback {
+        let _ = Python::with_gil(|py| {
+            cb.call1(py, (arg1, arg2))
+        });
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+fn call_python_callback_0(callback: &Option<PyObject>) {
+    if let Some(cb) = callback {
+        let _ = Python::with_gil(|py| {
+            cb.call0(py)
+        });
+    }
+}
+
+// Trampoline callback functions that bridge C callbacks to Python
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_received_transaction(context: *mut c_void, tx: *mut TariPendingInboundTransaction) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.received_transaction, tx as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_received_transaction_reply(context: *mut c_void, tx: *mut TariCompletedTransaction) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.received_transaction_reply, tx as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_received_finalized_transaction(context: *mut c_void, tx: *mut TariCompletedTransaction) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.received_finalized_transaction, tx as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_transaction_broadcast(context: *mut c_void, tx: *mut TariCompletedTransaction) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.transaction_broadcast, tx as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_transaction_mined(context: *mut c_void, tx: *mut TariCompletedTransaction) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.transaction_mined, tx as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_transaction_mined_unconfirmed(context: *mut c_void, tx: *mut TariCompletedTransaction, confirmations: u64) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_2(&cb.transaction_mined_unconfirmed, tx as u64, confirmations);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_faux_transaction_confirmed(context: *mut c_void, tx: *mut TariCompletedTransaction) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.faux_transaction_confirmed, tx as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_faux_transaction_unconfirmed(context: *mut c_void, tx: *mut TariCompletedTransaction, confirmations: u64) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_2(&cb.faux_transaction_unconfirmed, tx as u64, confirmations);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_transaction_send_result(context: *mut c_void, tx_id: c_ulonglong, status: *mut TariTransactionSendStatus) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_2(&cb.transaction_send_result, tx_id, status as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_transaction_cancellation(context: *mut c_void, tx: *mut TariCompletedTransaction, reason: u64) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_2(&cb.transaction_cancellation, tx as u64, reason);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_txo_validation_complete(context: *mut c_void, request_key: u64, validation_results: u64) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_2(&cb.txo_validation_complete, request_key, validation_results);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_contacts_liveness_data_updated(context: *mut c_void, data: *mut TariContactsLivenessData) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.contacts_liveness_data_updated, data as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_balance_updated(context: *mut c_void, balance: *mut TariBalance) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.balance_updated, balance as u64);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_transaction_validation_complete(context: *mut c_void, request_key: u64, validation_results: u64) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_2(&cb.transaction_validation_complete, request_key, validation_results);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_saf_messages_received(context: *mut c_void) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_0(&cb.saf_messages_received);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_connectivity_status(context: *mut c_void, status: u64) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.connectivity_status, status);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_wallet_scanned_height(context: *mut c_void, height: u64) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.wallet_scanned_height, height);
+        }
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+unsafe extern "C" fn python_callback_base_node_state(context: *mut c_void, state: *mut TariBaseNodeState) {
+    if !context.is_null() {
+        let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
+        if let Ok(cb) = callbacks.lock() {
+            call_python_callback_1(&cb.base_node_state, state as u64);
+        }
+    }
+}
+
+//=================================================================================================
+// Python Bindings (PyO3)
+//=================================================================================================
+
+#[cfg(feature = "python-bindings")]
+use pyo3::prelude::*;
+
+#[cfg(feature = "python-bindings")]
+mod python_bindings {
+    use super::*;
+    use pyo3::{create_exception, exceptions::PyRuntimeError, types::PyType};
+    use std::ffi::CString;
+
+    // Python exception types
+    create_exception!(tari_wallet, TariWalletError, PyRuntimeError);
+
+    // Helper function to check FFI error codes
+    fn check_error(error_code: c_int) -> PyResult<()> {
+        if error_code != 0 {
+            Err(TariWalletError::new_err(format!(
+                "Wallet operation failed with error code: {}",
+                error_code
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
+    // Helper function to convert C string to String
+    unsafe fn c_string_to_string(ptr: *mut c_char) -> PyResult<String> {
+        if ptr.is_null() {
+            return Err(TariWalletError::new_err("Null pointer received"));
+        }
+        let c_str = CStr::from_ptr(ptr);
+        let result = c_str.to_string_lossy().into_owned();
+        string_destroy(ptr); // Clean up the C string
+        Ok(result)
+    }
+
+    // Python wrapper for TariWallet
+    #[pyclass(unsendable)]
+    struct PyTariWallet {
+        ptr: *mut TariWallet,
+        #[allow(dead_code)] // Kept alive to ensure callback validity
+        callbacks: Arc<Mutex<PythonCallbacks>>,
+    }
+
+    impl Drop for PyTariWallet {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe {
+                    wallet_destroy(self.ptr);
+                }
+            }
+        }
+    }
+
+    #[pymethods]
+    impl PyTariWallet {
+        #[new]
+        #[pyo3(signature = (config, log_path, log_verbosity, num_rolling_log_files, size_per_log_file_bytes, network_str, passphrase=None, seed_passphrase=None, callbacks=None))]
+        fn new(
+            config: &PyTariCommsConfig,
+            log_path: &str,
+            log_verbosity: i32,
+            num_rolling_log_files: u32,
+            size_per_log_file_bytes: u32,
+            network_str: &str,
+            passphrase: Option<&str>,
+            seed_passphrase: Option<&str>,
+            callbacks: Option<PyObject>,
+        ) -> PyResult<Self> {
+            let log_path_cstr = CString::new(log_path)
+                .map_err(|_| TariWalletError::new_err("Invalid log path"))?;
+            let passphrase_cstr = passphrase
+                .map(|p| CString::new(p))
+                .transpose()
+                .map_err(|_| TariWalletError::new_err("Invalid passphrase"))?;
+            let seed_passphrase_cstr = seed_passphrase
+                .map(|s| CString::new(s))
+                .transpose()
+                .map_err(|_| TariWalletError::new_err("Invalid seed passphrase"))?;
+            let network_cstr = CString::new(network_str)
+                .map_err(|_| TariWalletError::new_err("Invalid network string"))?;
+
+            let mut error_out = 0;
+            let mut recovery_in_progress = false;
+
+            // Create callback storage
+            let callback_storage = Arc::new(Mutex::new(PythonCallbacks::new()));
+            
+            // If callbacks are provided, extract them
+            if let Some(cb_dict) = callbacks {
+                if let Ok(mut cb_storage) = callback_storage.lock() {
+                    Python::with_gil(|py| -> PyResult<()> {
+                        let dict = cb_dict.downcast_bound::<pyo3::types::PyDict>(py)?;
+                        
+                        if let Ok(cb) = dict.get_item("received_transaction") {
+                            if let Some(callback) = cb { 
+                                cb_storage.received_transaction = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("received_transaction_reply") {
+                            if let Some(callback) = cb { 
+                                cb_storage.received_transaction_reply = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("received_finalized_transaction") {
+                            if let Some(callback) = cb { 
+                                cb_storage.received_finalized_transaction = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("transaction_broadcast") {
+                            if let Some(callback) = cb { 
+                                cb_storage.transaction_broadcast = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("transaction_mined") {
+                            if let Some(callback) = cb { 
+                                cb_storage.transaction_mined = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("transaction_mined_unconfirmed") {
+                            if let Some(callback) = cb { 
+                                cb_storage.transaction_mined_unconfirmed = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("faux_transaction_confirmed") {
+                            if let Some(callback) = cb { 
+                                cb_storage.faux_transaction_confirmed = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("faux_transaction_unconfirmed") {
+                            if let Some(callback) = cb { 
+                                cb_storage.faux_transaction_unconfirmed = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("transaction_send_result") {
+                            if let Some(callback) = cb { 
+                                cb_storage.transaction_send_result = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("transaction_cancellation") {
+                            if let Some(callback) = cb { 
+                                cb_storage.transaction_cancellation = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("txo_validation_complete") {
+                            if let Some(callback) = cb { 
+                                cb_storage.txo_validation_complete = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("contacts_liveness_data_updated") {
+                            if let Some(callback) = cb { 
+                                cb_storage.contacts_liveness_data_updated = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("balance_updated") {
+                            if let Some(callback) = cb { 
+                                cb_storage.balance_updated = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("transaction_validation_complete") {
+                            if let Some(callback) = cb { 
+                                cb_storage.transaction_validation_complete = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("saf_messages_received") {
+                            if let Some(callback) = cb { 
+                                cb_storage.saf_messages_received = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("connectivity_status") {
+                            if let Some(callback) = cb { 
+                                cb_storage.connectivity_status = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("wallet_scanned_height") {
+                            if let Some(callback) = cb { 
+                                cb_storage.wallet_scanned_height = Some(callback.unbind());
+                            }
+                        }
+                        if let Ok(cb) = dict.get_item("base_node_state") {
+                            if let Some(callback) = cb { 
+                                cb_storage.base_node_state = Some(callback.unbind());
+                            }
+                        }
+                        Ok(())
+                    })?;
+                }
+            }
+
+            let wallet_ptr = unsafe {
+                wallet_create(
+                    Arc::as_ptr(&callback_storage) as *mut c_void, // context
+                    config.ptr,
+                    log_path_cstr.as_ptr(),
+                    log_verbosity,
+                    num_rolling_log_files,
+                    size_per_log_file_bytes,
+                    passphrase_cstr.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+                    seed_passphrase_cstr.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+                    std::ptr::null(), // seed_words (TariSeedWords)
+                    network_cstr.as_ptr(),
+                    std::ptr::null(), // dns_seeds_str
+                    std::ptr::null(), // dns_seed_name_servers_str
+                    false, // use_dns_sec
+
+                    // Python callback functions
+                    python_callback_received_transaction,
+                    python_callback_received_transaction_reply,
+                    python_callback_received_finalized_transaction,
+                    python_callback_transaction_broadcast,
+                    python_callback_transaction_mined,
+                    python_callback_transaction_mined_unconfirmed,
+                    python_callback_faux_transaction_confirmed,
+                    python_callback_faux_transaction_unconfirmed,
+                    python_callback_transaction_send_result,
+                    python_callback_transaction_cancellation,
+                    python_callback_txo_validation_complete,
+                    python_callback_contacts_liveness_data_updated,
+                    python_callback_balance_updated,
+                    python_callback_transaction_validation_complete,
+                    python_callback_saf_messages_received,
+                    python_callback_connectivity_status,
+                    python_callback_wallet_scanned_height,
+                    python_callback_base_node_state,
+                    &mut recovery_in_progress,
+                    &mut error_out,
+                )
+            };
+
+            check_error(error_out)?;
+
+            if wallet_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to create wallet"));
+            }
+
+            Ok(Self { 
+                ptr: wallet_ptr,
+                callbacks: callback_storage,
+            })
+        }
+
+        fn get_balance(&self) -> PyResult<PyTariBalance> {
+            let mut error_out = 0;
+            let balance_ptr = unsafe { wallet_get_balance(self.ptr, &mut error_out) };
+            check_error(error_out)?;
+
+            if balance_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to get balance"));
+            }
+
+            Ok(PyTariBalance { ptr: balance_ptr })
+        }
+
+        fn sign_message(&self, message: &str) -> PyResult<String> {
+            let message_cstr = CString::new(message)
+                .map_err(|_| TariWalletError::new_err("Invalid message"))?;
+            let mut error_out = 0;
+
+            let signature_ptr = unsafe {
+                wallet_sign_message(self.ptr, message_cstr.as_ptr(), &mut error_out)
+            };
+            check_error(error_out)?;
+
+            unsafe { c_string_to_string(signature_ptr) }
+        }
+
+        fn verify_message_signature(&self, public_key_hex: &str, signature: &str, message: &str) -> PyResult<bool> {
+            let public_key_cstr = CString::new(public_key_hex)
+                .map_err(|_| TariWalletError::new_err("Invalid public key hex"))?;
+            let signature_cstr = CString::new(signature)
+                .map_err(|_| TariWalletError::new_err("Invalid signature"))?;
+            let message_cstr = CString::new(message)
+                .map_err(|_| TariWalletError::new_err("Invalid message"))?;
+
+            let mut error_out = 0;
+            
+            // Create public key from hex
+            let public_key_ptr = unsafe {
+                public_key_from_hex(public_key_cstr.as_ptr(), &mut error_out)
+            };
+            check_error(error_out)?;
+
+            if public_key_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to create public key from hex"));
+            }
+
+            // Verify the signature
+            let result = unsafe {
+                wallet_verify_message_signature(
+                    self.ptr,
+                    public_key_ptr,
+                    signature_cstr.as_ptr(),
+                    message_cstr.as_ptr(),
+                    &mut error_out,
+                )
+            };
+
+            // Clean up the public key
+            unsafe {
+                public_key_destroy(public_key_ptr);
+            }
+
+            check_error(error_out)?;
+            Ok(result)
+        }
+
+        fn send_transaction(&self, dest_address: &str, amount: u64, fee_per_gram: u64, message: &str, one_sided: bool) -> PyResult<u64> {
+            let dest_address_cstr = CString::new(dest_address)
+                .map_err(|_| TariWalletError::new_err("Invalid destination address"))?;
+            let message_cstr = CString::new(message)
+                .map_err(|_| TariWalletError::new_err("Invalid message"))?;
+
+            let mut error_out = 0;
+            
+            // Create wallet address from base58
+            let address_ptr = unsafe {
+                tari_address_from_base58(dest_address_cstr.as_ptr(), &mut error_out)
+            };
+            check_error(error_out)?;
+
+            if address_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to create wallet address"));
+            }
+
+            // Send transaction
+            let tx_id = unsafe {
+                wallet_send_transaction(
+                    self.ptr,
+                    address_ptr,
+                    amount,
+                    std::ptr::null_mut(), // commitments (null for default selection)
+                    fee_per_gram,
+                    one_sided,
+                    message_cstr.as_ptr(),
+                    &mut error_out,
+                )
+            };
+
+            // Clean up the address
+            unsafe {
+                tari_address_destroy(address_ptr);
+            }
+
+            check_error(error_out)?;
+            Ok(tx_id)
+        }
+
+        #[pyo3(signature = (limit=None))]
+        fn get_completed_transactions(&self, limit: Option<u64>) -> PyResult<Vec<u64>> {
+            let mut error_out = 0;
+            let search_limit = limit.unwrap_or(100);
+
+            let transactions_ptr = unsafe {
+                wallet_get_completed_transactions(self.ptr, search_limit, &mut error_out)
+            };
+            check_error(error_out)?;
+
+            if transactions_ptr.is_null() {
+                return Ok(Vec::new());
+            }
+
+            let mut transaction_ids = Vec::new();
+            let length = unsafe { completed_transactions_get_length(transactions_ptr, &mut error_out) };
+            check_error(error_out)?;
+
+            for i in 0..length {
+                let tx_ptr = unsafe { completed_transactions_get_at(transactions_ptr, i, &mut error_out) };
+                check_error(error_out)?;
+
+                if !tx_ptr.is_null() {
+                    let tx_id = unsafe { completed_transaction_get_transaction_id(tx_ptr, &mut error_out) };
+                    check_error(error_out)?;
+                    transaction_ids.push(tx_id);
+                }
+            }
+
+            unsafe {
+                completed_transactions_destroy(transactions_ptr);
+            }
+
+            Ok(transaction_ids)
+        }
+
+        fn get_contacts(&self) -> PyResult<Vec<(String, String)>> {
+            let mut error_out = 0;
+
+            let contacts_ptr = unsafe {
+                wallet_get_contacts(self.ptr, &mut error_out)
+            };
+            check_error(error_out)?;
+
+            if contacts_ptr.is_null() {
+                return Ok(Vec::new());
+            }
+
+            let mut contacts = Vec::new();
+            let length = unsafe { contacts_get_length(contacts_ptr, &mut error_out) };
+            check_error(error_out)?;
+
+            for i in 0..length {
+                let contact_ptr = unsafe { contacts_get_at(contacts_ptr, i, &mut error_out) };
+                check_error(error_out)?;
+
+                if !contact_ptr.is_null() {
+                    let alias_ptr = unsafe { contact_get_alias(contact_ptr, &mut error_out) };
+                    check_error(error_out)?;
+
+                    let address_ptr = unsafe { contact_get_tari_address(contact_ptr, &mut error_out) };
+                    check_error(error_out)?;
+
+                    if !alias_ptr.is_null() && !address_ptr.is_null() {
+                        let alias = unsafe { c_string_to_string(alias_ptr) }?;
+                        
+                        // Convert address to base58 string
+                        let address_bytes_ptr = unsafe { tari_address_get_bytes(address_ptr, &mut error_out) };
+                        check_error(error_out)?;
+
+                        if !address_bytes_ptr.is_null() {
+                            // Convert to hex string for simplicity
+                            let mut address_hex = String::new();
+                            let bytes_length = unsafe { byte_vector_get_length(address_bytes_ptr, &mut error_out) };
+                            check_error(error_out)?;
+
+                            for j in 0..bytes_length {
+                                let byte_val = unsafe { byte_vector_get_at(address_bytes_ptr, j, &mut error_out) };
+                                check_error(error_out)?;
+                                address_hex.push_str(&format!("{:02x}", byte_val));
+                            }
+
+                            unsafe {
+                                byte_vector_destroy(address_bytes_ptr);
+                            }
+
+                            contacts.push((alias, address_hex));
+                        }
+                    }
+                }
+            }
+
+            unsafe {
+                contacts_destroy(contacts_ptr);
+            }
+
+            Ok(contacts)
+        }
+
+        fn get_seed_peers(&self) -> PyResult<Vec<String>> {
+            let mut error_out = 0;
+            
+            let seed_peers_ptr = unsafe {
+                wallet_get_seed_peers(self.ptr, &mut error_out)
+            };
+            check_error(error_out)?;
+
+            if seed_peers_ptr.is_null() {
+                return Ok(Vec::new());
+            }
+
+            let mut peer_keys = Vec::new();
+            let length = unsafe { public_keys_get_length(seed_peers_ptr, &mut error_out) };
+            check_error(error_out)?;
+
+            for i in 0..length {
+                let public_key_ptr = unsafe { public_keys_get_at(seed_peers_ptr, i, &mut error_out) };
+                check_error(error_out)?;
+
+                if !public_key_ptr.is_null() {
+                    // Convert public key to hex string
+                    let bytes_ptr = unsafe { public_key_get_bytes(public_key_ptr, &mut error_out) };
+                    check_error(error_out)?;
+
+                    if !bytes_ptr.is_null() {
+                        let mut hex_result = String::new();
+                        let bytes_length = unsafe { byte_vector_get_length(bytes_ptr, &mut error_out) };
+                        check_error(error_out)?;
+
+                        for j in 0..bytes_length {
+                            let byte_val = unsafe { byte_vector_get_at(bytes_ptr, j, &mut error_out) };
+                            check_error(error_out)?;
+                            hex_result.push_str(&format!("{:02x}", byte_val));
+                        }
+
+                        unsafe { byte_vector_destroy(bytes_ptr); }
+                        peer_keys.push(hex_result);
+                    }
+                }
+            }
+
+            unsafe { public_keys_destroy(seed_peers_ptr); }
+            Ok(peer_keys)
+        }
+    }
+
+    // Python wrapper for TariCommsConfig
+    #[pyclass(unsendable)]
+    struct PyTariCommsConfig {
+        ptr: *mut TariCommsConfig,
+    }
+
+    impl Drop for PyTariCommsConfig {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe {
+                    comms_config_destroy(self.ptr);
+                }
+            }
+        }
+    }
+
+    #[pymethods]
+    impl PyTariCommsConfig {
+        #[new]
+        fn new(
+            public_address: &str,
+            database_name: &str,
+            datastore_path: &str,
+            discovery_timeout: u64,
+            exclude_dial_test_addresses: bool,
+        ) -> PyResult<Self> {
+            let public_address_cstr = CString::new(public_address)
+                .map_err(|_| TariWalletError::new_err("Invalid public address"))?;
+            let database_name_cstr = CString::new(database_name)
+                .map_err(|_| TariWalletError::new_err("Invalid database name"))?;
+            let datastore_path_cstr = CString::new(datastore_path)
+                .map_err(|_| TariWalletError::new_err("Invalid datastore path"))?;
+
+            let mut error_out = 0;
+            let config_ptr = unsafe {
+                comms_config_create(
+                    public_address_cstr.as_ptr(),
+                    std::ptr::null(), // transport (using null for default)
+                    database_name_cstr.as_ptr(),
+                    datastore_path_cstr.as_ptr(),
+                    discovery_timeout,
+                    exclude_dial_test_addresses,
+                    &mut error_out,
+                )
+            };
+
+            check_error(error_out)?;
+
+            if config_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to create comms config"));
+            }
+
+            Ok(Self { ptr: config_ptr })
+        }
+    }
+
+    // Python wrapper for TariBalance
+    #[pyclass(unsendable)]
+    struct PyTariBalance {
+        ptr: *mut TariBalance,
+    }
+
+    impl Drop for PyTariBalance {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe {
+                    balance_destroy(self.ptr);
+                }
+            }
+        }
+    }
+
+    #[pymethods]
+    impl PyTariBalance {
+        #[getter]
+        fn available(&self) -> PyResult<u64> {
+            let mut error_out = 0;
+            let available = unsafe { balance_get_available(self.ptr, &mut error_out) };
+            check_error(error_out)?;
+            Ok(available)
+        }
+
+        #[getter]
+        fn time_locked(&self) -> PyResult<u64> {
+            let mut error_out = 0;
+            let time_locked = unsafe { balance_get_time_locked(self.ptr, &mut error_out) };
+            check_error(error_out)?;
+            Ok(time_locked)
+        }
+
+        #[getter]
+        fn pending_incoming(&self) -> PyResult<u64> {
+            let mut error_out = 0;
+            let pending_incoming = unsafe { balance_get_pending_incoming(self.ptr, &mut error_out) };
+            check_error(error_out)?;
+            Ok(pending_incoming)
+        }
+
+        #[getter]
+        fn pending_outgoing(&self) -> PyResult<u64> {
+            let mut error_out = 0;
+            let pending_outgoing = unsafe { balance_get_pending_outgoing(self.ptr, &mut error_out) };
+            check_error(error_out)?;
+            Ok(pending_outgoing)
+        }
+    }
+
+    // Python wrapper for TariPublicKey
+    #[pyclass(unsendable)]
+    struct PyTariPublicKey {
+        ptr: *mut TariPublicKey,
+    }
+
+    impl Drop for PyTariPublicKey {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe {
+                    public_key_destroy(self.ptr);
+                }
+            }
+        }
+    }
+
+    #[pymethods]
+    impl PyTariPublicKey {
+        #[classmethod]
+        fn from_hex(_cls: &Bound<'_, PyType>, hex_str: &str) -> PyResult<Self> {
+            let hex_cstr = CString::new(hex_str)
+                .map_err(|_| TariWalletError::new_err("Invalid hex string"))?;
+            let mut error_out = 0;
+
+            let public_key_ptr = unsafe {
+                public_key_from_hex(hex_cstr.as_ptr(), &mut error_out)
+            };
+            check_error(error_out)?;
+
+            if public_key_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to create public key from hex"));
+            }
+
+            Ok(Self { ptr: public_key_ptr })
+        }
+
+        fn to_hex(&self) -> PyResult<String> {
+            let mut error_out = 0;
+            let bytes_ptr = unsafe { public_key_get_bytes(self.ptr, &mut error_out) };
+            check_error(error_out)?;
+
+            if bytes_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to get public key bytes"));
+            }
+
+            let mut hex_result = String::new();
+            let length = unsafe { byte_vector_get_length(bytes_ptr, &mut error_out) };
+            check_error(error_out)?;
+
+            for i in 0..length {
+                let byte_val = unsafe { byte_vector_get_at(bytes_ptr, i, &mut error_out) };
+                check_error(error_out)?;
+                hex_result.push_str(&format!("{:02x}", byte_val));
+            }
+
+            unsafe {
+                byte_vector_destroy(bytes_ptr);
+            }
+
+            Ok(hex_result)
+        }
+
+        fn to_emoji_encoding(&self) -> PyResult<String> {
+            let mut error_out = 0;
+            let emoji_ptr = unsafe { public_key_get_emoji_encoding(self.ptr, &mut error_out) };
+            check_error(error_out)?;
+
+            unsafe { c_string_to_string(emoji_ptr) }
+        }
+    }
+
+    // Module registration
+    #[pymodule]
+    fn tari_wallet(m: &Bound<'_, PyModule>) -> PyResult<()> {
+        m.add_class::<PyTariWallet>()?;
+        m.add_class::<PyTariCommsConfig>()?;
+        m.add_class::<PyTariBalance>()?;
+        m.add_class::<PyTariPublicKey>()?;
+        m.add("TariWalletError", m.py().get_type::<TariWalletError>())?;
+        Ok(())
+    }
+}
+
+// PyO3 module is automatically registered

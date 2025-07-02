@@ -74,3 +74,6 @@ integration_tests/log/
 # Ignore MinoTari Ledger Wallet
 app_nanosplus.json
 app_nanos.json
+
+# Ignore pycache for python bindings
+__pycache__/

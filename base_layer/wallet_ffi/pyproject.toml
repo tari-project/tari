@@ -1,0 +1,34 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "tari-wallet"
+description = "Python bindings for Tari cryptocurrency wallet"
+version = "0.1.0"
+authors = [
+    { name = "The Tari Development Community", email = "dev@tari.com" }
+]
+readme = "README.md"
+license = "BSD-3-Clause"
+homepage = "https://tari.com"
+repository = "https://github.com/tari-project/tari"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Security :: Cryptography",
+]
+requires-python = ">=3.8"
+
+[tool.maturin]
+features = ["python-bindings"]
+module-name = "tari_wallet"
+bindings = "pyo3"
