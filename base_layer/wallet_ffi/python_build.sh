@@ -10,9 +10,8 @@ WHEEL_DIR="../../target/wheels"
 
 echo "Building Tari Wallet Python bindings for all networks..."
 
-# Clean previous builds
-echo "Cleaning previous builds..."
-cargo clean
+# Clean previous wheels
+echo "Cleaning previous wheels..."
 rm -rf "$WHEEL_DIR"
 mkdir -p "$WHEEL_DIR"
 
@@ -29,35 +28,48 @@ build_network() {
     # Set network environment variable
     export TARI_TARGET_NETWORK=$network
     
+    # Backup original pyproject.toml
+    cp pyproject.toml pyproject.toml.backup
+    
+    # Modify pyproject.toml to change package name (but keep module name as tari_wallet)
+    sed -i.bak "s/name = \"tari-wallet\"/name = \"tari-wallet-${package_suffix}\"/" pyproject.toml
+    
     # Build the wheel
     maturin build --features python-bindings --release
     
+    # Restore original pyproject.toml
+    mv pyproject.toml.backup pyproject.toml
+    rm -f pyproject.toml.bak
+    
     # Find the generated wheel (maturin creates it in workspace target/wheels)
-    local wheel_file=$(find ../../target/wheels -name "tari_wallet-*.whl" -type f 2>/dev/null | head -n 1)
+    local wheel_file=$(find ../../target/wheels -name "tari_wallet_${package_suffix}-*.whl" -type f 2>/dev/null | head -n 1)
     if [ -z "$wheel_file" ]; then
-        # Try current directory target/wheels
-        wheel_file=$(find target/wheels -name "tari_wallet-*.whl" -type f 2>/dev/null | head -n 1)
+        # The wheel will have the package name tari-wallet-${package_suffix} but filename uses underscores
+        wheel_file=$(find ../../target/wheels -name "tari-wallet-${package_suffix}-*.whl" -type f 2>/dev/null | head -n 1)
+    fi
+    if [ -z "$wheel_file" ]; then
+        # Try current directory target/wheels  
+        wheel_file=$(find target/wheels -name "*${package_suffix}*.whl" -type f 2>/dev/null | head -n 1)
     fi
     if [ -z "$wheel_file" ]; then
         # Try searching recursively
-        wheel_file=$(find ../.. -name "tari_wallet-*.whl" -type f 2>/dev/null | head -n 1)
+        wheel_file=$(find ../.. -name "*${package_suffix}*.whl" -type f 2>/dev/null | head -n 1)
     fi
     
     if [ -n "$wheel_file" ]; then
-        local wheel_basename=$(basename "$wheel_file")
-        local new_name="${wheel_basename/tari_wallet/tari_wallet_${package_suffix}}"
-        local new_path="$WHEEL_DIR/$new_name"
-        
         # Create wheel directory if it doesn't exist
         mkdir -p "$WHEEL_DIR"
         
-        # Move and rename the wheel
-        mv "$wheel_file" "$new_path"
-        echo "✅ Built: $new_name"
+        # Move wheel to final location (no renaming needed since pyproject.toml was modified)
+        local wheel_basename=$(basename "$wheel_file")
+        local final_path="$WHEEL_DIR/$wheel_basename"
+        
+        mv "$wheel_file" "$final_path"
+        echo "✅ Built: $wheel_basename"
     else
         echo "❌ Failed to find wheel file for $network"
-        echo "Searched in: target/wheels and current directory"
-        ls -la target/wheels/ 2>/dev/null || echo "target/wheels directory doesn't exist"
+        echo "Searched in: ../../target/wheels, target/wheels and current directory"
+        find ../.. -name "*${package_suffix}*.whl" -type f 2>/dev/null || echo "No ${package_suffix} wheels found anywhere"
         exit 1
     fi
 }

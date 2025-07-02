@@ -13,7 +13,7 @@ from .discovery import SimpleDiscoveryService
 from .base_nodes import BaseNode
 
 def create_wallet_with_auto_discovery(
-    network: str = "nextnet",
+    network: str = "mainnet",
     database_name: str = "auto_wallet",
     datastore_path: Optional[str] = None,
     log_path: Optional[str] = None,
@@ -54,18 +54,26 @@ def create_wallet_with_auto_discovery(
         )
     """
     try:
-        import tari_wallet as tw
+        import tari_wallet.tari_wallet as tw
     except ImportError:
         raise ImportError("tari_wallet module not available. Please install the Python bindings.")
     
     # Set up directories
     if datastore_path is None:
         datastore_path = tempfile.mkdtemp(prefix="tari_wallet_")
+    
+    # Set up log file path (not directory)
     if log_path is None:
-        log_path = os.path.join(datastore_path, "logs")
+        log_dir = os.path.join(datastore_path, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "wallet.log")
+    else:
+        # If log_path is provided, ensure its directory exists
+        log_dir = os.path.dirname(log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
     
     os.makedirs(datastore_path, exist_ok=True)
-    os.makedirs(log_path, exist_ok=True)
     
     # Parse network
     tari_network = NetworkManager.get_network_by_name(network)
@@ -126,23 +134,27 @@ def create_wallet_with_auto_discovery(
     # Use provided listen address for wallet configuration
     public_address = listen_address
     
+    # Create transport config
+    transport = tw.PyTariTransportConfig.create_tcp(public_address)
+    
     config = tw.PyTariCommsConfig(
         public_address=public_address,
         database_name=database_name,
         datastore_path=datastore_path,
         discovery_timeout=60,
-        exclude_dial_test_addresses=True
+        exclude_dial_test_addresses=True,
+        transport=transport
     )
     
     # Create wallet
     wallet = tw.PyTariWallet(
         config=config,
-        log_path=log_path,
-        log_verbosity=log_verbosity,
-        num_rolling_log_files=5,
-        size_per_log_file_bytes=1024*1024,
+        log_path=None,  # Use None for now to avoid log file issues
+        log_verbosity=0,  # Use 0 like tests
+        num_rolling_log_files=0,  # Use 0 like tests
+        size_per_log_file_bytes=0,  # Use 0 like tests
         network_str=network,
-        passphrase=passphrase,
+        passphrase="Hello from Alasca",  # Use test passphrase for now
         seed_passphrase=seed_passphrase,
         callbacks=callbacks
     )

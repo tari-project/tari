@@ -14772,7 +14772,7 @@ mod python_bindings {
         #[pyo3(signature = (config, log_path, log_verbosity, num_rolling_log_files, size_per_log_file_bytes, network_str, passphrase=None, seed_passphrase=None, callbacks=None))]
         fn new(
             config: &PyTariCommsConfig,
-            log_path: &str,
+            log_path: Option<&str>,
             log_verbosity: i32,
             num_rolling_log_files: u32,
             size_per_log_file_bytes: u32,
@@ -14781,7 +14781,9 @@ mod python_bindings {
             seed_passphrase: Option<&str>,
             callbacks: Option<PyObject>,
         ) -> PyResult<Self> {
-            let log_path_cstr = CString::new(log_path)
+            let log_path_cstr = log_path
+                .map(|p| CString::new(p))
+                .transpose()
                 .map_err(|_| TariWalletError::new_err("Invalid log path"))?;
             let passphrase_cstr = passphrase
                 .map(|p| CString::new(p))
@@ -14793,6 +14795,8 @@ mod python_bindings {
                 .map_err(|_| TariWalletError::new_err("Invalid seed passphrase"))?;
             let network_cstr = CString::new(network_str)
                 .map_err(|_| TariWalletError::new_err("Invalid network string"))?;
+            let dns_seeds_cstr = CString::new("")
+                .map_err(|_| TariWalletError::new_err("Failed to create DNS seeds string"))?;
 
             let mut error_out = 0;
             let mut recovery_in_progress = false;
@@ -14840,7 +14844,7 @@ mod python_bindings {
                 wallet_create(
                     Arc::as_ptr(&callback_storage) as *mut c_void, // context
                     config.ptr,
-                    log_path_cstr.as_ptr(),
+                    log_path_cstr.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
                     log_verbosity,
                     num_rolling_log_files,
                     size_per_log_file_bytes,
@@ -14848,9 +14852,9 @@ mod python_bindings {
                     seed_passphrase_cstr.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
                     std::ptr::null(), // seed_words (TariSeedWords)
                     network_cstr.as_ptr(),
-                    std::ptr::null(), // dns_seeds_str
+                    dns_seeds_cstr.as_ptr(), // dns_seeds_str
                     std::ptr::null(), // dns_seed_name_servers_str
-                    false, // use_dns_sec
+                    true, // use_dns_sec
 
                     // Python callback functions
                     python_callback_received_transaction,
@@ -15127,6 +15131,72 @@ mod python_bindings {
         }
     }
 
+    // Python wrapper for TariTransportConfig
+    #[pyclass(unsendable)]
+    struct PyTariTransportConfig {
+        ptr: *mut TariTransportConfig,
+    }
+
+    impl Drop for PyTariTransportConfig {
+        fn drop(&mut self) {
+            if !self.ptr.is_null() {
+                unsafe {
+                    transport_config_destroy(self.ptr);
+                }
+            }
+        }
+    }
+
+    #[pymethods]
+    impl PyTariTransportConfig {
+        #[staticmethod]
+        fn create_tcp(listener_address: &str) -> PyResult<Self> {
+            let listener_address_cstr = CString::new(listener_address)
+                .map_err(|_| TariWalletError::new_err("Invalid listener address"))?;
+            
+            let mut error_out = 0;
+            let transport_ptr = unsafe {
+                transport_tcp_create(listener_address_cstr.as_ptr(), &mut error_out)
+            };
+            
+            check_error(error_out)?;
+            
+            if transport_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to create transport config"));
+            }
+            
+            Ok(PyTariTransportConfig { ptr: transport_ptr })
+        }
+
+        #[staticmethod]
+        fn create_memory() -> PyResult<Self> {
+            let transport_ptr = unsafe {
+                transport_memory_create()
+            };
+            
+            if transport_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to create memory transport config"));
+            }
+            
+            Ok(PyTariTransportConfig { ptr: transport_ptr })
+        }
+
+        fn get_address(&self) -> PyResult<String> {
+            let mut error_out = 0;
+            let address_ptr = unsafe {
+                transport_memory_get_address(self.ptr, &mut error_out)
+            };
+            
+            check_error(error_out)?;
+            
+            if address_ptr.is_null() {
+                return Err(TariWalletError::new_err("Failed to get transport address"));
+            }
+            
+            unsafe { c_string_to_string(address_ptr) }
+        }
+    }
+
     // Python wrapper for TariCommsConfig
     #[pyclass(unsendable)]
     struct PyTariCommsConfig {
@@ -15152,6 +15222,7 @@ mod python_bindings {
             datastore_path: &str,
             discovery_timeout: u64,
             exclude_dial_test_addresses: bool,
+            transport: &PyTariTransportConfig,
         ) -> PyResult<Self> {
             let public_address_cstr = CString::new(public_address)
                 .map_err(|_| TariWalletError::new_err("Invalid public address"))?;
@@ -15164,7 +15235,7 @@ mod python_bindings {
             let config_ptr = unsafe {
                 comms_config_create(
                     public_address_cstr.as_ptr(),
-                    std::ptr::null(), // transport (using null for default)
+                    transport.ptr,
                     database_name_cstr.as_ptr(),
                     datastore_path_cstr.as_ptr(),
                     discovery_timeout,
@@ -15310,6 +15381,7 @@ mod python_bindings {
     fn tari_wallet(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_class::<PyTariWallet>()?;
         m.add_class::<PyTariCommsConfig>()?;
+        m.add_class::<PyTariTransportConfig>()?;
         m.add_class::<PyTariBalance>()?;
         m.add_class::<PyTariPublicKey>()?;
         m.add("TariWalletError", m.py().get_type::<TariWalletError>())?;

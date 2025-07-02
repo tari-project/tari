@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tari-wallet"
+description = "Tari cryptocurrency wallet Python bindings (defaults to mainnet)"
+version = "0.1.0"
+authors = [
+    { name = "The Tari Development Community", email = "dev@tari.com" }
+]
+readme = "README.md"
+license = {text = "BSD-3-Clause"}
+homepage = "https://tari.com"
+repository = "https://github.com/tari-project/tari"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "tari-wallet-mainnet==0.1.0"
+]
+
+[project.optional-dependencies]
+testnet = ["tari-wallet-testnet==0.1.0"]
+nextnet = ["tari-wallet-nextnet==0.1.0"]
+
+[project.urls]
+Homepage = "https://tari.com"
+Repository = "https://github.com/tari-project/tari"
