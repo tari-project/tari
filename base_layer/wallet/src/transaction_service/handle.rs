@@ -228,7 +228,6 @@ pub enum TransactionServiceRequest {
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
     GetPaymentByReference {
         payref: FixedHash,
-        current_height: u64,
     },
     /// Get all transactions with their PayRefs (for listing/filtering)
     GetTransactionByPaymentReference(FixedHash),
@@ -436,8 +435,8 @@ impl fmt::Display for TransactionServiceRequest {
             TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
             },
-            Self::GetPaymentByReference { payref, current_height } => {
-                write!(f, "GetPaymentByReference({}, {})", payref, current_height)
+            Self::GetPaymentByReference { payref } => {
+                write!(f, "GetPaymentByReference({})", payref)
             },
             Self::GetTransactionByPaymentReference(payref) => {
                 write!(f, "GetTransactionByPaymentReference({})", payref)
@@ -1375,11 +1374,10 @@ impl TransactionServiceHandle {
     pub async fn get_payment_by_reference(
         &mut self,
         payref: FixedHash,
-        current_height: u64,
     ) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetPaymentByReference { payref, current_height })
+            .call(TransactionServiceRequest::GetPaymentByReference { payref })
             .await??
         {
             TransactionServiceResponse::PaymentDetails(details) => Ok(details),

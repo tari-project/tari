@@ -38,9 +38,7 @@ use digest::Digest;
 use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
-use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
@@ -2286,23 +2284,6 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
-
-            // RevalidateWalletDb => {
-            //     if let Err(e) = output_service
-            //         .revalidate_all_outputs()
-            //         .await
-            //         .map_err(CommandError::OutputManagerError)
-            //     {
-            //         eprintln!("RevalidateWalletDb error! {}", e);
-            //     }
-            //     if let Err(e) = transaction_service
-            //         .revalidate_all_transactions()
-            //         .await
-            //         .map_err(CommandError::TransactionServiceError)
-            //     {
-            //         eprintln!("RevalidateWalletDb error! {}", e);
-            //     }
-            // },
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
                     args.amount,
@@ -2665,37 +2646,30 @@ pub async fn command_runner(
                     Err(e) => eprintln!("ShowPayRef error! {}", e),
                 }
             },
-            FindPayRef(args) => {
-                // TODO: Get last scanned height. Perhaps just delete this command.
-                let tip_height = get_tip_height(&mut wallet.wallet_connectivity.clone())
-                    .await
-                    .unwrap_or(0);
-
-                match FixedHash::from_hex(&args.payment_reference_hex) {
-                    Ok(payref) => match transaction_service.get_payment_by_reference(payref, tip_height).await {
-                        Ok(Some(payment_details)) => {
-                            println!("Found PayRef: {}", args.payment_reference_hex);
-                            println!("Transaction ID: {}", payment_details.tx_id);
-                            println!("Amount: {}", payment_details.amount);
-                            println!("Direction: {:?}", payment_details.direction);
-                            println!("Block height: {}", payment_details.block_height);
-                            println!("Confirmations: {}", payment_details.confirmations);
-                            if let Some(timestamp) = payment_details.timestamp {
-                                println!("Timestamp: {}", timestamp);
-                            }
-                            if let Some(payment_id) = &payment_details.payment_id {
-                                println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
-                            }
-                        },
-                        Ok(None) => {
-                            println!("No payment found for PayRef: {}", args.payment_reference_hex);
-                        },
-                        Err(e) => eprintln!("FindPayRef error! {}", e),
+            FindPayRef(args) => match FixedHash::from_hex(&args.payment_reference_hex) {
+                Ok(payref) => match transaction_service.get_payment_by_reference(payref).await {
+                    Ok(Some(payment_details)) => {
+                        println!("Found PayRef: {}", args.payment_reference_hex);
+                        println!("Transaction ID: {}", payment_details.tx_id);
+                        println!("Amount: {}", payment_details.amount);
+                        println!("Direction: {:?}", payment_details.direction);
+                        println!("Block height: {}", payment_details.block_height);
+                        println!("Confirmations: {}", payment_details.confirmations);
+                        if let Some(timestamp) = payment_details.timestamp {
+                            println!("Timestamp: {}", timestamp);
+                        }
+                        if let Some(payment_id) = &payment_details.payment_id {
+                            println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
+                        }
                     },
-                    Err(e) => {
-                        eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
+                    Ok(None) => {
+                        println!("No payment found for PayRef: {}", args.payment_reference_hex);
                     },
-                }
+                    Err(e) => eprintln!("FindPayRef error! {}", e),
+                },
+                Err(e) => {
+                    eprintln!("FindPayRef error! Invalid PayRef format: {}", e);
+                },
             },
             ListTx => {
                 debug!(target: LOG_TARGET, "payref_debug: List all transactions command starting execution");
@@ -3118,15 +3092,4 @@ fn load_tx_from_csv_file(file_path: PathBuf) -> Result<Vec<WalletTransaction>, C
         }
     }
     Ok(results)
-}
-
-async fn get_tip_height<T: WalletConnectivityInterface>(wallet_connectivity: &mut T) -> Option<u64> {
-    let client = wallet_connectivity.obtain_base_node_wallet_rpc_client().await;
-
-    client
-        .get_tip_info()
-        .await
-        .ok()
-        .and_then(|t| t.metadata)
-        .map(|m| m.best_block_height())
 }

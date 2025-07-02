@@ -1047,8 +1047,8 @@ where
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
             },
-            TransactionServiceRequest::GetPaymentByReference { payref, current_height } => self
-                .get_payment_by_reference(payref, current_height)
+            TransactionServiceRequest::GetPaymentByReference { payref } => self
+                .get_payment_by_reference(payref)
                 .map(TransactionServiceResponse::PaymentDetails),
             TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
                 match self.get_transaction_with_payref(payref)? {
@@ -3997,11 +3997,8 @@ where
     }
 
     /// Get payment details by PayRef
-    fn get_payment_by_reference(
-        &self,
-        payref: FixedHash,
-        current_height: u64,
-    ) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+    fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+        let current_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let txn = match self.db.get_transaction_with_payref(&payref)? {
             Some(txn) => txn,
             None => return Ok(None), // No transaction found with the given PayRef
