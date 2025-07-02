@@ -6,7 +6,170 @@ Complete API documentation for the Tari Python wallet bindings.
 
 The main module providing Python access to Tari wallet functionality.
 
-### Classes
+## 🆕 Base Node Discovery Framework
+
+### High-Level Functions
+
+#### create_wallet_with_auto_discovery()
+
+Creates a wallet with automatic base node discovery.
+
+```python
+create_wallet_with_auto_discovery(
+    network: str = "nextnet",
+    database_name: str = "auto_wallet", 
+    datastore_path: Optional[str] = None,
+    log_path: Optional[str] = None,
+    log_verbosity: int = 1,
+    passphrase: Optional[str] = None,
+    seed_passphrase: Optional[str] = None,
+    callbacks: Optional[Dict[str, Callable]] = None,
+    custom_base_node: Optional[str] = None,
+    dns_timeout: float = 5.0
+) -> Tuple[PyTariWallet, Dict[str, Any]]
+```
+
+**Returns:** Tuple of (wallet_instance, base_node_info)
+
+#### create_nextnet_wallet(), create_mainnet_wallet(), create_localnet_wallet()
+
+Network-specific convenience functions for wallet creation.
+
+```python
+create_nextnet_wallet(database_name: str, **kwargs) -> Tuple[PyTariWallet, Dict[str, Any]]
+create_mainnet_wallet(database_name: str, **kwargs) -> Tuple[PyTariWallet, Dict[str, Any]]  
+create_localnet_wallet(database_name: str, **kwargs) -> Tuple[PyTariWallet, Dict[str, Any]]
+```
+
+### Discovery Classes
+
+#### TariNetwork
+
+Enumeration of supported Tari networks.
+
+```python
+class TariNetwork(Enum):
+    LOCALNET = "localnet"
+    NEXTNET = "nextnet"
+    STAGENET = "stagenet" 
+    MAINNET = "mainnet"
+    ESMERALDA = "esmeralda"
+    IGOR = "igor"
+```
+
+#### BaseNode
+
+Represents a base node that can be connected to.
+
+```python
+@dataclass
+class BaseNode:
+    name: str
+    public_key: str
+    address: str
+    is_custom: bool = False
+    priority: int = 0
+    last_connection_attempt: Optional[float] = None
+    last_successful_connection: Optional[float] = None
+    consecutive_failures: int = 0
+    is_available: bool = True
+```
+
+**Methods:**
+- `mark_connection_success()`: Mark successful connection
+- `mark_connection_failure()`: Mark failed connection  
+- `get_health_score() -> float`: Calculate health score (0.0 to 1.0)
+
+#### BaseNodeManager
+
+Manages base node selection, rotation, and health tracking.
+
+```python
+class BaseNodeManager:
+    def __init__(self, strategy: BaseNodeSelectionStrategy = BaseNodeSelectionStrategy.ROUND_ROBIN)
+    
+    def add_node(self, node: BaseNode)
+    def get_available_nodes(self) -> List[BaseNode]
+    def select_next_node(self) -> Optional[BaseNode]
+    def switch_to_next_node(self) -> Optional[BaseNode]
+    def mark_current_node_success(self)
+    def mark_current_node_failure(self)
+    def get_node_statistics(self) -> Dict[str, Any]
+```
+
+#### NetworkManager
+
+Manages network configurations and DNS seed resolution.
+
+```python
+class NetworkManager:
+    def __init__(self, network: TariNetwork = TariNetwork.NEXTNET)
+    
+    def get_hardcoded_base_nodes(self) -> List[BaseNode]
+    def resolve_dns_seeds(self, timeout: float = 5.0) -> List[str]
+    def get_all_discovered_nodes(self, include_dns: bool = True) -> List[BaseNode]
+    def get_network_info(self) -> Dict[str, Any]
+    
+    @classmethod
+    def get_available_networks(cls) -> List[str]
+    @classmethod
+    def get_all_network_info(cls) -> Dict[str, Dict]
+```
+
+#### TariConfigReader
+
+Reads actual Tari configuration files.
+
+```python
+class TariConfigReader:
+    def __init__(self, config_path: Optional[str] = None)
+    
+    def load_config(self) -> bool
+    def get_network_config(self, network: str) -> Dict[str, List[str]]
+    def create_base_nodes_from_config(self, network: str) -> List[BaseNode]
+    def get_dns_seeds(self, network: str) -> List[str]
+    def get_available_networks(self) -> List[str]
+    def get_network_info(self, network: str) -> Dict[str, Any]
+```
+
+#### SimpleDiscoveryService
+
+Immediate synchronous discovery service.
+
+```python
+class SimpleDiscoveryService:
+    def __init__(self, network: TariNetwork = TariNetwork.NEXTNET, 
+                 wallet_get_seed_peers_fn: Optional[Callable] = None)
+    
+    def discover_and_select_node(self, dns_timeout: float = 5.0) -> Optional[BaseNode]
+    def get_available_nodes(self) -> List[BaseNode]
+```
+
+#### DiscoveryService
+
+Advanced asynchronous discovery service with background monitoring.
+
+```python
+class DiscoveryService:
+    def __init__(self, network: TariNetwork, config: DiscoveryConfig, 
+                 wallet_get_seed_peers_fn: Optional[Callable] = None)
+    
+    async def start(self)
+    async def stop(self)
+    async def discover_nodes(self) -> List[BaseNode]
+    def get_best_node(self) -> Optional[BaseNode]
+    def switch_to_next_node(self) -> Optional[BaseNode]
+    def get_discovery_status(self) -> Dict[str, Any]
+    
+    # Event callbacks (optional)
+    on_nodes_discovered: Optional[Callable[[List[BaseNode]], None]]
+    on_node_health_changed: Optional[Callable[[BaseNode, bool], None]]
+    on_discovery_error: Optional[Callable[[Exception], None]]
+```
+
+---
+
+## Core Wallet Classes
 
 #### PyTariCommsConfig
 
@@ -225,6 +388,33 @@ except tari_wallet.TariWalletError as e:
     # Contacts retrieval might fail in test environment
     pytest.skip(f"Contacts retrieval failed (expected in test env): {e}")
 ```
+
+##### get_seed_peers() -> List[str]
+
+**🆕 New Method** - Retrieves seed peers from the wallet's internal peer manager for base node discovery.
+
+**Returns:** List of seed peer public keys as hex strings
+
+**Raises:** TariWalletError on retrieval failure
+
+**Example:**
+```python
+try:
+    seed_peers = wallet.get_seed_peers()
+    assert isinstance(seed_peers, list)
+    
+    print(f"Found {len(seed_peers)} seed peers:")
+    for i, peer_key in enumerate(seed_peers[:5]):  # Show first 5
+        assert isinstance(peer_key, str)
+        assert len(peer_key) == 64  # Expected hex key length
+        print(f"  {i+1}. {peer_key}")
+        
+except tari_wallet.TariWalletError as e:
+    # Seed peer retrieval might fail in test environment
+    print(f"Seed peer retrieval failed: {e}")
+```
+
+**Note:** This method provides the same seed peer data that mobile wallets use for base node discovery. The returned public keys can be used with the discovery framework to establish connections to the Tari network.
 
 ---
 

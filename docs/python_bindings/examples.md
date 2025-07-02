@@ -2,7 +2,203 @@
 
 This document provides practical examples demonstrating real-world usage of the Tari Python wallet bindings.
 
-## Complete Examples
+## 🆕 Base Node Discovery Examples
+
+### Simple Auto-Discovery Wallet Creation
+
+The easiest way to get started with automatic base node discovery:
+
+```python
+import tari_wallet
+from tari_wallet import create_wallet_with_auto_discovery, format_base_node_info
+
+# Create wallet with automatic base node discovery
+wallet, base_node_info = create_wallet_with_auto_discovery(
+    network="nextnet",
+    database_name="my_nextnet_wallet"
+)
+
+print(f"✅ Wallet created successfully!")
+print(f"📡 {format_base_node_info(base_node_info)}")
+
+# Get seed peers discovered by the wallet
+seed_peers = wallet.get_seed_peers()
+print(f"🌐 Found {len(seed_peers)} seed peers from network")
+
+# Use wallet normally
+balance = wallet.get_balance()
+print(f"💰 Available: {balance.available} microTari")
+```
+
+### Network Exploration
+
+Explore available networks and their configurations:
+
+```python
+from tari_wallet import NetworkManager, TariNetwork
+
+# Get all available networks
+networks = NetworkManager.get_available_networks()
+print(f"Available networks: {networks}")
+
+# Get detailed info for each network
+for network_name in networks:
+    try:
+        network = NetworkManager.get_network_by_name(network_name)
+        manager = NetworkManager(network)
+        info = manager.get_network_info()
+        
+        print(f"\n🌐 {network_name.upper()}")
+        print(f"  DNS seeds: {info['dns_seeds_count']}")
+        print(f"  Peer seeds: {info['peer_seeds_count']}")
+        print(f"  Explorer: {info.get('explorer_url', 'N/A')}")
+        
+        # Show transport breakdown
+        transports = info['supported_transports']
+        print(f"  Transports: IPv4={transports.get('ip4', 0)}, IPv6={transports.get('ip6', 0)}, Onion={transports.get('onion3', 0)}")
+        
+    except Exception as e:
+        print(f"❌ Error with {network_name}: {e}")
+```
+
+### Manual Discovery Process
+
+For more control over the discovery process:
+
+```python
+from tari_wallet import SimpleDiscoveryService, TariNetwork
+
+# Create discovery service
+discovery = SimpleDiscoveryService(TariNetwork.NEXTNET)
+
+print("🔍 Running base node discovery...")
+selected_node = discovery.discover_and_select_node(dns_timeout=5.0)
+
+if selected_node:
+    print(f"✅ Selected node: {selected_node.name}")
+    print(f"   Public key: {selected_node.public_key}")
+    print(f"   Address: {selected_node.address}")
+    print(f"   Health score: {selected_node.get_health_score():.2f}")
+    
+    # Check if this is a real configured node
+    if selected_node.public_key.startswith("dns_placeholder"):
+        print("   ℹ️  This is a DNS-resolved placeholder")
+    else:
+        print("   ✅ This is a real configured peer from b_peer_seeds.toml")
+else:
+    print("❌ No nodes discovered")
+
+# Show all available nodes
+available_nodes = discovery.get_available_nodes()
+print(f"\n📊 Discovery Results:")
+print(f"   Total nodes: {len(available_nodes)}")
+
+for i, node in enumerate(available_nodes[:3]):  # Show first 3
+    print(f"   {i+1}. {node.name} (priority {node.priority})")
+```
+
+### Advanced Discovery with Background Monitoring
+
+For applications that need continuous monitoring:
+
+```python
+import asyncio
+from tari_wallet import DiscoveryService, DiscoveryConfig, TariNetwork
+
+async def advanced_discovery_example():
+    # Create wallet first
+    wallet, _ = create_wallet_with_auto_discovery("nextnet", "monitoring_wallet")
+    
+    # Create discovery service with wallet integration
+    config = DiscoveryConfig(
+        discovery_interval=300.0,  # 5 minutes
+        health_check_interval=60.0,  # 1 minute
+        enable_dns_discovery=True,
+        enable_ffi_discovery=True
+    )
+    
+    discovery = DiscoveryService(
+        network=TariNetwork.NEXTNET,
+        config=config,
+        wallet_get_seed_peers_fn=lambda: wallet.get_seed_peers()
+    )
+    
+    # Set up event callbacks
+    discovery.on_nodes_discovered = lambda nodes: print(f"🔍 Discovered {len(nodes)} nodes")
+    discovery.on_node_health_changed = lambda node, healthy: print(f"💓 {node.name} is {'healthy' if healthy else 'unhealthy'}")
+    discovery.on_discovery_error = lambda error: print(f"❌ Discovery error: {error}")
+    
+    print("🚀 Starting background discovery...")
+    await discovery.start()
+    
+    # Let it run for a while
+    for i in range(6):  # 30 seconds total
+        await asyncio.sleep(5)
+        status = discovery.get_discovery_status()
+        print(f"📊 Status check {i+1}: {status['node_statistics']['total_nodes']} nodes managed")
+    
+    print("🛑 Stopping discovery...")
+    await discovery.stop()
+    print("✅ Discovery stopped")
+
+# Run the advanced example
+asyncio.run(advanced_discovery_example())
+```
+
+### Custom Base Node Configuration
+
+Override automatic discovery with specific nodes:
+
+```python
+# Use a specific base node instead of auto-discovery
+custom_node = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef::/ip4/192.168.1.100/tcp/18189"
+
+wallet, node_info = create_wallet_with_auto_discovery(
+    network="nextnet",
+    database_name="custom_node_wallet",
+    custom_base_node=custom_node
+)
+
+print(f"🔧 Using custom base node:")
+print(f"   {format_base_node_info(node_info)}")
+```
+
+### Configuration File Reading
+
+See how the discovery system reads from actual Tari configuration files:
+
+```python
+from tari_wallet import get_config_reader
+
+# Get the global config reader
+config_reader = get_config_reader()
+
+if config_reader.load_config():
+    print(f"✅ Loaded config from: {config_reader.config_path}")
+    
+    # Show available networks from config file
+    networks = config_reader.get_available_networks()
+    print(f"🌐 Networks in config: {networks}")
+    
+    # Get detailed info for nextnet
+    nextnet_info = config_reader.get_network_info("nextnet")
+    print(f"\n📋 Nextnet Configuration:")
+    print(f"   Total nodes: {nextnet_info['total_configured_nodes']}")
+    print(f"   DNS seeds: {nextnet_info['dns_seeds_count']}")
+    print(f"   Transport breakdown: {nextnet_info['supported_transports']}")
+    
+    # Show some real peer examples
+    nodes = config_reader.create_base_nodes_from_config("nextnet")
+    print(f"\n🔑 Example peers:")
+    for i, node in enumerate(nodes[:3]):
+        print(f"   {i+1}. {node.name}")
+        print(f"      Key: {node.public_key}")
+        print(f"      Address: {node.address}")
+else:
+    print("❌ Could not load configuration file")
+```
+
+## Complete Traditional Examples
 
 ### Complete Working Example
 
