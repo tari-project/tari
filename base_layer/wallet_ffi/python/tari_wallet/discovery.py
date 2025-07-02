@@ -121,15 +121,17 @@ class DiscoveryService:
                 try:
                     seed_peer_keys = self.wallet_get_seed_peers_fn()
                     # Create base nodes from seed peer keys
-                    # Note: We use a placeholder address template here
-                    # In a real implementation, this would come from peer discovery
+                    # Note: We use a placeholder localhost address here because the FFI
+                    # currently only provides public keys, not network addresses.
+                    # A proper peer exchange protocol is needed to obtain valid addresses.
                     for i, public_key in enumerate(seed_peer_keys):
                         node = BaseNode(
                             name=f"FFI-Seed-{i+1}",
                             public_key=public_key,
-                            address=f"/ip4/127.0.0.1/tcp/{self.network_manager.config.default_port}",  # Placeholder
+                            address=f"/ip4/127.0.0.1/tcp/{self.network_manager.config.default_port}",  # Placeholder - needs peer discovery
                             is_custom=False,
-                            priority=50 + i  # Medium priority between hardcoded and DNS
+                            priority=50 + i,  # Medium priority between hardcoded and DNS
+                            is_placeholder_key=False  # These are real public keys, just with placeholder addresses
                         )
                         discovered_nodes.append(node)
                         

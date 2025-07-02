@@ -8,7 +8,7 @@ This module provides network configuration classes supporting different Tari net
 import socket
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Any
 from .base_nodes import BaseNode
 
 class TariNetwork(Enum):
@@ -196,13 +196,15 @@ class NetworkManager:
         Create base nodes from DNS seed resolution
         
         Note: This creates placeholder nodes since we don't get public keys from DNS.
-        In a real implementation, these would be discovered through the Tari protocol.
+        DNS resolution only provides IP addresses, not the public keys required for 
+        secure connections. A proper peer discovery protocol would be needed to obtain
+        the actual public keys after initial DNS resolution.
         
         Args:
             timeout: DNS resolution timeout in seconds
             
         Returns:
-            List of BaseNode objects with placeholder public keys
+            List of BaseNode objects with placeholder public keys (is_placeholder_key=True)
         """
         resolved_ips = self.resolve_dns_seeds(timeout)
         nodes = []
@@ -214,7 +216,8 @@ class NetworkManager:
                 public_key=f"dns_placeholder_{i:032x}",  # Placeholder - would be discovered
                 address=f"/ip4/{ip}/tcp/{self.config.default_port}",
                 is_custom=False,
-                priority=100 + i  # Lower priority than hardcoded peers
+                priority=100 + i,  # Lower priority than hardcoded peers
+                is_placeholder_key=True
             )
             nodes.append(node)
             
@@ -243,7 +246,7 @@ class NetworkManager:
             
         return nodes
         
-    def get_network_info(self) -> Dict[str, any]:
+    def get_network_info(self) -> Dict[str, Any]:
         """Get information about the current network"""
         return {
             "name": self.config.name,

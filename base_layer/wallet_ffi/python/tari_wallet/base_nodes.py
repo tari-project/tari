@@ -29,6 +29,7 @@ class BaseNode:
     last_successful_connection: Optional[float] = None
     consecutive_failures: int = 0
     is_available: bool = True
+    is_placeholder_key: bool = False
 
     def __post_init__(self):
         """Validate the base node configuration"""

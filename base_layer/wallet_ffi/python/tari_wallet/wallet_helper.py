@@ -22,7 +22,8 @@ def create_wallet_with_auto_discovery(
     seed_passphrase: Optional[str] = None,
     callbacks: Optional[Dict[str, Callable]] = None,
     custom_base_node: Optional[str] = None,
-    dns_timeout: float = 5.0
+    dns_timeout: float = 5.0,
+    listen_address: str = "/ip4/127.0.0.1/tcp/18188"
 ):
     """
     Create a wallet with automatic base node discovery
@@ -41,6 +42,7 @@ def create_wallet_with_auto_discovery(
         callbacks: Optional event callbacks
         custom_base_node: Optional custom base node (format: "pubkey::/ip4/addr/tcp/port")
         dns_timeout: DNS resolution timeout
+        listen_address: Wallet listen address (default: localhost)
         
     Returns:
         Tuple of (wallet, base_node_info)
@@ -121,8 +123,8 @@ def create_wallet_with_auto_discovery(
             }
     
     # Create wallet configuration
-    # Use discovered base node address if available, otherwise use default
-    public_address = "/ip4/127.0.0.1/tcp/18188"  # Default wallet address
+    # Use provided listen address for wallet configuration
+    public_address = listen_address
     
     config = tw.PyTariCommsConfig(
         public_address=public_address,

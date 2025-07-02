@@ -14463,36 +14463,73 @@ impl PythonCallbacks {
     }
 }
 
+// Helper function to convert ByteVector to hex string
+#[cfg(feature = "python-bindings")]
+fn byte_vector_to_hex(byte_vector_ptr: *mut ByteVector) -> Result<String, String> {
+    if byte_vector_ptr.is_null() {
+        return Err("ByteVector pointer is null".to_string());
+    }
+    
+    let mut error_out = 0;
+    let bytes_length = unsafe { byte_vector_get_length(byte_vector_ptr, &mut error_out) };
+    if error_out != 0 {
+        return Err("Failed to get ByteVector length".to_string());
+    }
+    
+    let mut hex_result = String::with_capacity(bytes_length as usize * 2);
+    for j in 0..bytes_length {
+        let byte_val = unsafe { byte_vector_get_at(byte_vector_ptr, j, &mut error_out) };
+        if error_out != 0 {
+            return Err(format!("Failed to get byte at index {}", j));
+        }
+        hex_result.push_str(&format!("{:02x}", byte_val));
+    }
+    
+    Ok(hex_result)
+}
+
 // Helper functions to safely call Python callbacks
 #[cfg(feature = "python-bindings")]
 fn call_python_callback_1(callback: &Option<PyObject>, arg1: u64) {
     if let Some(cb) = callback {
-        let _ = Python::with_gil(|py| {
+        if let Err(e) = Python::with_gil(|py| {
             cb.call1(py, (arg1,))
-        });
+        }) {
+            log::error!("Python callback (1 arg) failed: {}", e);
+        }
     }
 }
 
 #[cfg(feature = "python-bindings")]
 fn call_python_callback_2(callback: &Option<PyObject>, arg1: u64, arg2: u64) {
     if let Some(cb) = callback {
-        let _ = Python::with_gil(|py| {
+        if let Err(e) = Python::with_gil(|py| {
             cb.call1(py, (arg1, arg2))
-        });
+        }) {
+            log::error!("Python callback (2 args) failed: {}", e);
+        }
     }
 }
 
 #[cfg(feature = "python-bindings")]
 fn call_python_callback_0(callback: &Option<PyObject>) {
     if let Some(cb) = callback {
-        let _ = Python::with_gil(|py| {
+        if let Err(e) = Python::with_gil(|py| {
             cb.call0(py)
-        });
+        }) {
+            log::error!("Python callback (0 args) failed: {}", e);
+        }
     }
 }
 
 // Trampoline callback functions that bridge C callbacks to Python
 #[cfg(feature = "python-bindings")]
+/// # Safety
+/// This function assumes:
+/// - `context` is a valid pointer to Arc<Mutex<PythonCallbacks>> or null
+/// - `tx` is a valid pointer to TariPendingInboundTransaction or null
+/// - The callback is thread-safe and can be called from any thread
+/// - The caller maintains ownership of the pointers during the callback execution
 unsafe extern "C" fn python_callback_received_transaction(context: *mut c_void, tx: *mut TariPendingInboundTransaction) {
     if !context.is_null() {
         let callbacks = &*(context as *const Arc<Mutex<PythonCallbacks>>);
@@ -14769,96 +14806,31 @@ mod python_bindings {
                     Python::with_gil(|py| -> PyResult<()> {
                         let dict = cb_dict.downcast_bound::<pyo3::types::PyDict>(py)?;
                         
-                        if let Ok(cb) = dict.get_item("received_transaction") {
-                            if let Some(callback) = cb { 
-                                cb_storage.received_transaction = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("received_transaction_reply") {
-                            if let Some(callback) = cb { 
-                                cb_storage.received_transaction_reply = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("received_finalized_transaction") {
-                            if let Some(callback) = cb { 
-                                cb_storage.received_finalized_transaction = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("transaction_broadcast") {
-                            if let Some(callback) = cb { 
-                                cb_storage.transaction_broadcast = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("transaction_mined") {
-                            if let Some(callback) = cb { 
-                                cb_storage.transaction_mined = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("transaction_mined_unconfirmed") {
-                            if let Some(callback) = cb { 
-                                cb_storage.transaction_mined_unconfirmed = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("faux_transaction_confirmed") {
-                            if let Some(callback) = cb { 
-                                cb_storage.faux_transaction_confirmed = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("faux_transaction_unconfirmed") {
-                            if let Some(callback) = cb { 
-                                cb_storage.faux_transaction_unconfirmed = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("transaction_send_result") {
-                            if let Some(callback) = cb { 
-                                cb_storage.transaction_send_result = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("transaction_cancellation") {
-                            if let Some(callback) = cb { 
-                                cb_storage.transaction_cancellation = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("txo_validation_complete") {
-                            if let Some(callback) = cb { 
-                                cb_storage.txo_validation_complete = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("contacts_liveness_data_updated") {
-                            if let Some(callback) = cb { 
-                                cb_storage.contacts_liveness_data_updated = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("balance_updated") {
-                            if let Some(callback) = cb { 
-                                cb_storage.balance_updated = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("transaction_validation_complete") {
-                            if let Some(callback) = cb { 
-                                cb_storage.transaction_validation_complete = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("saf_messages_received") {
-                            if let Some(callback) = cb { 
-                                cb_storage.saf_messages_received = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("connectivity_status") {
-                            if let Some(callback) = cb { 
-                                cb_storage.connectivity_status = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("wallet_scanned_height") {
-                            if let Some(callback) = cb { 
-                                cb_storage.wallet_scanned_height = Some(callback.unbind());
-                            }
-                        }
-                        if let Ok(cb) = dict.get_item("base_node_state") {
-                            if let Some(callback) = cb { 
-                                cb_storage.base_node_state = Some(callback.unbind());
-                            }
-                        }
+                        // Helper function to extract callback from dictionary
+                        let extract_callback = |key: &str| -> Option<PyObject> {
+                            dict.get_item(key).ok()
+                                .and_then(|cb| cb)
+                                .map(|callback| callback.unbind())
+                        };
+                        
+                        cb_storage.received_transaction = extract_callback("received_transaction");
+                        cb_storage.received_transaction_reply = extract_callback("received_transaction_reply");
+                        cb_storage.received_finalized_transaction = extract_callback("received_finalized_transaction");
+                        cb_storage.transaction_broadcast = extract_callback("transaction_broadcast");
+                        cb_storage.transaction_mined = extract_callback("transaction_mined");
+                        cb_storage.transaction_mined_unconfirmed = extract_callback("transaction_mined_unconfirmed");
+                        cb_storage.faux_transaction_confirmed = extract_callback("faux_transaction_confirmed");
+                        cb_storage.faux_transaction_unconfirmed = extract_callback("faux_transaction_unconfirmed");
+                        cb_storage.transaction_send_result = extract_callback("transaction_send_result");
+                        cb_storage.transaction_cancellation = extract_callback("transaction_cancellation");
+                        cb_storage.txo_validation_complete = extract_callback("txo_validation_complete");
+                        cb_storage.contacts_liveness_data_updated = extract_callback("contacts_liveness_data_updated");
+                        cb_storage.balance_updated = extract_callback("balance_updated");
+                        cb_storage.transaction_validation_complete = extract_callback("transaction_validation_complete");
+                        cb_storage.saf_messages_received = extract_callback("saf_messages_received");
+                        cb_storage.connectivity_status = extract_callback("connectivity_status");
+                        cb_storage.wallet_scanned_height = extract_callback("wallet_scanned_height");
+                        cb_storage.base_node_state = extract_callback("base_node_state");
                         Ok(())
                     })?;
                 }
@@ -15088,21 +15060,14 @@ mod python_bindings {
                     if !alias_ptr.is_null() && !address_ptr.is_null() {
                         let alias = unsafe { c_string_to_string(alias_ptr) }?;
                         
-                        // Convert address to base58 string
+                        // Convert address to hex string
                         let address_bytes_ptr = unsafe { tari_address_get_bytes(address_ptr, &mut error_out) };
                         check_error(error_out)?;
 
                         if !address_bytes_ptr.is_null() {
-                            // Convert to hex string for simplicity
-                            let mut address_hex = String::new();
-                            let bytes_length = unsafe { byte_vector_get_length(address_bytes_ptr, &mut error_out) };
-                            check_error(error_out)?;
-
-                            for j in 0..bytes_length {
-                                let byte_val = unsafe { byte_vector_get_at(address_bytes_ptr, j, &mut error_out) };
-                                check_error(error_out)?;
-                                address_hex.push_str(&format!("{:02x}", byte_val));
-                            }
+                            // Convert to hex string using helper function
+                            let address_hex = byte_vector_to_hex(address_bytes_ptr)
+                                .map_err(|e| TariWalletError::new_err(format!("Failed to convert address to hex: {}", e)))?;
 
                             unsafe {
                                 byte_vector_destroy(address_bytes_ptr);
@@ -15147,15 +15112,9 @@ mod python_bindings {
                     check_error(error_out)?;
 
                     if !bytes_ptr.is_null() {
-                        let mut hex_result = String::new();
-                        let bytes_length = unsafe { byte_vector_get_length(bytes_ptr, &mut error_out) };
-                        check_error(error_out)?;
-
-                        for j in 0..bytes_length {
-                            let byte_val = unsafe { byte_vector_get_at(bytes_ptr, j, &mut error_out) };
-                            check_error(error_out)?;
-                            hex_result.push_str(&format!("{:02x}", byte_val));
-                        }
+                        // Convert to hex string using helper function
+                        let hex_result = byte_vector_to_hex(bytes_ptr)
+                            .map_err(|e| TariWalletError::new_err(format!("Failed to convert public key to hex: {}", e)))?;
 
                         unsafe { byte_vector_destroy(bytes_ptr); }
                         peer_keys.push(hex_result);

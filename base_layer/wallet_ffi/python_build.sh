@@ -3,7 +3,7 @@
 # Tari Wallet Python Bindings Build Script
 # Builds Python wheels for mainnet, testnet, and nextnet
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WHEEL_DIR="../../target/wheels"

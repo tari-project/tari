@@ -111,7 +111,6 @@ try:
     assert isinstance(signature, str)
     assert len(signature) > 0
     # Note: Signatures might not be deterministic due to randomness
-    assert isinstance(signature2, str)
 except tari_wallet.TariWalletError as e:
     # Signing might fail in test environment
     pytest.skip(f"Message signing failed (expected in test env): {e}")
