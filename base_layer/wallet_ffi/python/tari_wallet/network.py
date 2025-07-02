@@ -1,22 +1,25 @@
 """
 Network Configuration for Tari Wallet
 
-This module provides network configuration classes supporting different Tari networks
-(mainnet, nextnet, stagenet, etc.) with appropriate seed configurations.
+This module provides network configuration classes reading from the actual 
+Tari configuration files instead of hardcoded values.
 """
 
 import socket
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Dict, Optional, Set, Any
+from typing import List, Dict, Optional, Set
 from .base_nodes import BaseNode
+from .config_reader import TariConfigReader, get_config_reader
 
 class TariNetwork(Enum):
-    """Supported Tari networks"""
+    """Supported Tari networks (dynamically loaded from config)"""
     LOCALNET = "localnet"
     NEXTNET = "nextnet" 
     STAGENET = "stagenet"
     MAINNET = "mainnet"
+    ESMERALDA = "esmeralda"
+    IGOR = "igor"
 
 @dataclass
 class NetworkConfig:
@@ -24,129 +27,91 @@ class NetworkConfig:
     name: str
     network_type: TariNetwork
     dns_seeds: List[str]
-    hardcoded_peers: List[Dict[str, str]]  # List of {"name": str, "public_key": str, "address": str}
+    peer_seeds: List[BaseNode]
     default_port: int
     explorer_url: Optional[str] = None
     
     def get_all_base_nodes(self) -> List[BaseNode]:
         """Get all configured base nodes for this network"""
-        nodes = []
-        
-        # Add hardcoded peers
-        for i, peer in enumerate(self.hardcoded_peers):
-            node = BaseNode(
-                name=peer.get("name", f"Hardcoded-{i+1}"),
-                public_key=peer["public_key"],
-                address=peer["address"],
-                is_custom=False,
-                priority=i
-            )
-            nodes.append(node)
-            
-        return nodes
+        return self.peer_seeds.copy()
 
 class NetworkManager:
     """
     Manages network configurations and DNS seed resolution
     
-    Provides functionality to resolve DNS seeds, manage different network
-    configurations, and create base nodes from network-specific sources.
+    Reads configurations from the actual Tari config files and provides
+    functionality to resolve DNS seeds and create base nodes.
     """
     
-    # Network configurations based on Tari core configuration
-    NETWORK_CONFIGS = {
-        TariNetwork.LOCALNET: NetworkConfig(
-            name="Localnet",
-            network_type=TariNetwork.LOCALNET,
-            dns_seeds=[],  # No DNS seeds for local development
-            hardcoded_peers=[
-                {
-                    "name": "Local-Node-1",
-                    "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
-                    "address": "/ip4/127.0.0.1/tcp/18189"
-                }
-            ],
-            default_port=18189
-        ),
-        
-        TariNetwork.NEXTNET: NetworkConfig(
-            name="Nextnet",
-            network_type=TariNetwork.NEXTNET,
-            dns_seeds=[
-                "nextnet-seeds.tari.com",
-                "seeds.nextnet.tari.com"
-            ],
-            hardcoded_peers=[
-                {
-                    "name": "Nextnet-Seed-1",
-                    "public_key": "b473b7f6d22d37c23e52bb513cac6b8f57ec4c30d0b8b6b8b5d5b9c7c8e8f9a0",
-                    "address": "/ip4/seeds.nextnet.tari.com/tcp/18189"
-                },
-                {
-                    "name": "Nextnet-Seed-2", 
-                    "public_key": "a383a6f5d11c26b12d41aa412bab5a7e46db3b2fcfa7b7a7a4c4a8b6b7d8e8f0",
-                    "address": "/ip4/seed2.nextnet.tari.com/tcp/18189"
-                }
-            ],
-            default_port=18189,
-            explorer_url="https://explore.nextnet.tari.com"
-        ),
-        
-        TariNetwork.STAGENET: NetworkConfig(
-            name="Stagenet",
-            network_type=TariNetwork.STAGENET,
-            dns_seeds=[
-                "stagenet-seeds.tari.com"
-            ],
-            hardcoded_peers=[
-                {
-                    "name": "Stagenet-Seed-1",
-                    "public_key": "c484c8f7e33e48d34e63cc524ddc7c9f68fe4d41e1c9c9c9c6e6e0d8d9eaf0b1",
-                    "address": "/ip4/seeds.stagenet.tari.com/tcp/18189"
-                }
-            ],
-            default_port=18189,
-            explorer_url="https://explore.stagenet.tari.com"
-        ),
-        
-        TariNetwork.MAINNET: NetworkConfig(
-            name="Mainnet",
-            network_type=TariNetwork.MAINNET,
-            dns_seeds=[
-                "seeds.tari.com",
-                "mainnet-seeds.tari.com"
-            ],
-            hardcoded_peers=[
-                {
-                    "name": "Mainnet-Seed-1",
-                    "public_key": "d595d9f8e44f59e45f74dd535eed8d0f79ff5e52f2d0d0d0d7f7f1e9eafaf1c2",
-                    "address": "/ip4/seeds.tari.com/tcp/18189"
-                },
-                {
-                    "name": "Mainnet-Seed-2",
-                    "public_key": "e6a6eaf9f55f6af56f85ee646ffe9e1f8a0a0a0a0a8a8a2fafafaf1d3d4d5d6",
-                    "address": "/ip4/seed2.tari.com/tcp/18189" 
-                }
-            ],
-            default_port=18189,
-            explorer_url="https://explore.tari.com"
-        )
+    # Default port for Tari networks
+    DEFAULT_PORT = 18189
+    
+    # Explorer URLs for known networks
+    EXPLORER_URLS = {
+        "nextnet": "https://explore.nextnet.tari.com",
+        "stagenet": "https://explore.stagenet.tari.com", 
+        "mainnet": "https://explore.tari.com",
+        "esmeralda": "https://explore.esmeralda.tari.com",
     }
     
     def __init__(self, network: TariNetwork = TariNetwork.NEXTNET):
         self.network = network
-        self.config = self.NETWORK_CONFIGS[network]
+        self.config_reader = get_config_reader()
+        self._network_config = None
+        
+    def _get_network_config(self) -> NetworkConfig:
+        """Get the configuration for the current network"""
+        if self._network_config is not None:
+            return self._network_config
+            
+        network_name = self.network.value
+        
+        # Handle localnet specially since it's not in the config file
+        if network_name == "localnet":
+            self._network_config = NetworkConfig(
+                name="Localnet",
+                network_type=TariNetwork.LOCALNET,
+                dns_seeds=[],
+                peer_seeds=[
+                    BaseNode(
+                        name="Local-Node-1",
+                        public_key="0000000000000000000000000000000000000000000000000000000000000000",
+                        address="/ip4/127.0.0.1/tcp/18189",
+                        is_custom=False,
+                        priority=0
+                    )
+                ],
+                default_port=self.DEFAULT_PORT
+            )
+        else:
+            # Load from actual config file
+            config_data = self.config_reader.get_network_config(network_name)
+            peer_nodes = self.config_reader.create_base_nodes_from_config(network_name)
+            
+            self._network_config = NetworkConfig(
+                name=network_name.title(),
+                network_type=self.network,
+                dns_seeds=config_data.get("dns_seeds", []),
+                peer_seeds=peer_nodes,
+                default_port=self.DEFAULT_PORT,
+                explorer_url=self.EXPLORER_URLS.get(network_name)
+            )
+            
+        return self._network_config
+        
+    @property
+    def config(self) -> NetworkConfig:
+        """Get the current network configuration"""
+        return self._get_network_config()
         
     @classmethod
     def get_network_by_name(cls, network_name: str) -> TariNetwork:
         """Get network enum from string name"""
-        name_map = {
-            "localnet": TariNetwork.LOCALNET,
-            "nextnet": TariNetwork.NEXTNET,
-            "stagenet": TariNetwork.STAGENET,
-            "mainnet": TariNetwork.MAINNET
-        }
-        return name_map.get(network_name.lower(), TariNetwork.NEXTNET)
+        try:
+            return TariNetwork(network_name.lower())
+        except ValueError:
+            # Return nextnet as default for unknown networks
+            return TariNetwork.NEXTNET
         
     def get_hardcoded_base_nodes(self) -> List[BaseNode]:
         """Get hardcoded base nodes for the current network"""
@@ -196,15 +161,13 @@ class NetworkManager:
         Create base nodes from DNS seed resolution
         
         Note: This creates placeholder nodes since we don't get public keys from DNS.
-        DNS resolution only provides IP addresses, not the public keys required for 
-        secure connections. A proper peer discovery protocol would be needed to obtain
-        the actual public keys after initial DNS resolution.
+        In a real implementation, these would be discovered through the Tari protocol.
         
         Args:
             timeout: DNS resolution timeout in seconds
             
         Returns:
-            List of BaseNode objects with placeholder public keys (is_placeholder_key=True)
+            List of BaseNode objects with placeholder public keys
         """
         resolved_ips = self.resolve_dns_seeds(timeout)
         nodes = []
@@ -216,8 +179,7 @@ class NetworkManager:
                 public_key=f"dns_placeholder_{i:032x}",  # Placeholder - would be discovered
                 address=f"/ip4/{ip}/tcp/{self.config.default_port}",
                 is_custom=False,
-                priority=100 + i,  # Lower priority than hardcoded peers
-                is_placeholder_key=True
+                priority=100 + i  # Lower priority than hardcoded peers
             )
             nodes.append(node)
             
@@ -236,7 +198,7 @@ class NetworkManager:
         """
         nodes = []
         
-        # Start with hardcoded peers (highest priority)
+        # Start with configured peers (highest priority)
         nodes.extend(self.get_hardcoded_base_nodes())
         
         # Add DNS-resolved peers if requested
@@ -246,18 +208,52 @@ class NetworkManager:
             
         return nodes
         
-    def get_network_info(self) -> Dict[str, Any]:
+    def get_network_info(self) -> Dict[str, any]:
         """Get information about the current network"""
+        config = self.config
+        
+        # Get transport analysis from config reader
+        config_reader_info = self.config_reader.get_network_info(self.network.value)
+        
         return {
-            "name": self.config.name,
+            "name": config.name,
             "type": self.network.value,
-            "dns_seeds": self.config.dns_seeds,
-            "hardcoded_peers_count": len(self.config.hardcoded_peers),
-            "default_port": self.config.default_port,
-            "explorer_url": self.config.explorer_url
+            "dns_seeds": config.dns_seeds,
+            "dns_seeds_count": len(config.dns_seeds),
+            "peer_seeds_count": len(config.peer_seeds),
+            "default_port": config.default_port,
+            "explorer_url": config.explorer_url,
+            "config_file_loaded": self.config_reader.config_data is not None,
+            "config_file_path": self.config_reader.config_path,
+            "supported_transports": config_reader_info.get("supported_transports", {})
         }
         
     @classmethod
     def get_available_networks(cls) -> List[str]:
         """Get list of available network names"""
-        return [network.value for network in TariNetwork]
+        # Get networks from config file plus localnet
+        config_reader = get_config_reader()
+        config_networks = config_reader.get_available_networks()
+        
+        # Always include localnet
+        all_networks = ["localnet"] + config_networks
+        return sorted(list(set(all_networks)))
+        
+    @classmethod 
+    def get_all_network_info(cls) -> Dict[str, Dict]:
+        """Get information about all available networks"""
+        networks_info = {}
+        
+        for network_name in cls.get_available_networks():
+            try:
+                network = cls.get_network_by_name(network_name)
+                manager = cls(network)
+                networks_info[network_name] = manager.get_network_info()
+            except Exception as e:
+                networks_info[network_name] = {
+                    "error": str(e),
+                    "name": network_name,
+                    "available": False
+                }
+                
+        return networks_info

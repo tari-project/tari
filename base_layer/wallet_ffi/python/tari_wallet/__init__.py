@@ -8,6 +8,7 @@ including base node discovery and management.
 from .base_nodes import BaseNode, BaseNodeManager, BaseNodeSelectionStrategy
 from .network import TariNetwork, NetworkManager, NetworkConfig
 from .discovery import DiscoveryService, SimpleDiscoveryService, DiscoveryConfig
+from .config_reader import TariConfigReader, get_config_reader, read_network_config, create_nodes_from_config
 from .wallet_helper import (
     create_wallet_with_auto_discovery,
     create_discovery_enabled_wallet,
@@ -28,6 +29,12 @@ __all__ = [
     'TariNetwork',
     'NetworkManager',
     'NetworkConfig',
+    
+    # Config Reader
+    'TariConfigReader',
+    'get_config_reader',
+    'read_network_config', 
+    'create_nodes_from_config',
     
     # Discovery Services
     'DiscoveryService',
