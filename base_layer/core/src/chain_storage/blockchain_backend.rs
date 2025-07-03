@@ -146,7 +146,13 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// Returns the stored payref rebuild status.
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
     /// Updates the payref rebuild status.
-    fn update_payref_metadata_key(&self, status: PayrefRebuildStatus) -> Result<(), ChainStorageError>;
+    fn build_payref_indexes_for_height(
+        &self,
+        height: u64,
+        metadata_at_start: ChainMetadata,
+        initialize_stats: Option<u64>,
+        finalize: bool,
+    ) -> Result<PayrefRebuildStatus, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count

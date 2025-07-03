@@ -364,8 +364,17 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_payref_rebuild_status()
     }
 
-    fn update_payref_metadata_key(&self, status: PayrefRebuildStatus) -> Result<(), ChainStorageError> {
-        self.db.as_ref().unwrap().update_payref_metadata_key(status)
+    fn build_payref_indexes_for_height(
+        &self,
+        height: u64,
+        metadata_at_start: ChainMetadata,
+        initialize_stats: Option<u64>,
+        finalize: bool,
+    ) -> Result<PayrefRebuildStatus, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .build_payref_indexes_for_height(height, metadata_at_start, initialize_stats, finalize)
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {
