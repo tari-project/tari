@@ -232,13 +232,6 @@ where
 
             let mut unmined_and_invalid = Vec::with_capacity(batch.len());
             let mut unspent = Vec::with_capacity(batch.len());
-            // let response_best_block_height = response.best_block_height;
-            // let response_best_block_hash = FixedHash::try_from(response.best_block_hash.clone()).map_err(|_| {
-            //     OutputManagerProtocolError::new(
-            //         self.operation_id,
-            //         OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
-            //     )
-            // })?;
             for (output, data) in batch.iter().zip(response.utxos.iter()) {
                 debug!(
                     target: LOG_TARGET,
@@ -266,7 +259,10 @@ where
                             })?,
                         });
                     } else {
-                        unspent.push((output.hash, true));
+                        // only update to unspent if the output is currently marked as spent in our db
+                        if output.marked_deleted_at_height.is_some() {
+                            unspent.push((output.hash, true));
+                        }
                     }
                 } else {
                     unmined_and_invalid.push(output.hash);
