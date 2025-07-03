@@ -60,7 +60,10 @@ use crate::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     storage::database::WalletBackend,
-    transaction_service::error::{TransactionServiceError, TransactionStorageError},
+    transaction_service::{
+        error::{TransactionServiceError, TransactionStorageError},
+        tasks::check_faux_transaction_status::SAFETY_HEIGHT_MARGIN,
+    },
     utxo_scanner_service::{
         error::UtxoScannerError,
         handle::UtxoScannerEvent,
@@ -106,7 +109,16 @@ where
             }
             match self.get_next_peer() {
                 Some(peer) => match self.attempt_sync(peer.clone()).await {
-                    Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
+                    Ok((num_outputs_recovered, scanned_blocks, final_height, final_amount, elapsed)) => {
+                        if scanned_blocks >= SAFETY_HEIGHT_MARGIN {
+                            // if the TMS validates the transactions before the OMS does, it can invalidate some
+                            // transactions, so we need to reset them to ensure we can revalidate them
+                            let _result = self
+                                .resources
+                                .transaction_service
+                                .revalidate_rejected_transactions()
+                                .await;
+                        }
                         debug!(target: LOG_TARGET, "{:?}: Scanned to height #{}", self.mode, final_height);
                         self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
                             .await?;
@@ -210,7 +222,10 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
+    async fn attempt_sync(
+        &mut self,
+        peer: NodeId,
+    ) -> Result<(u64, u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
 
@@ -232,6 +247,8 @@ where
         ));
 
         let timer = Instant::now();
+        let mut scanned_blocks = 0;
+
         loop {
             let tip_header = self.get_chain_tip_header(&mut client).await?;
             let tip_header_hash = tip_header.hash();
@@ -249,6 +266,7 @@ where
                     );
                     return Ok((
                         last_scanned_block.num_outputs.unwrap_or(0),
+                        scanned_blocks,
                         last_scanned_block.height,
                         last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
                         timer.elapsed(),
@@ -299,6 +317,7 @@ where
                 }
                 return Ok((
                     next_block_to_scan.num_outputs.unwrap_or(0),
+                    scanned_blocks,
                     next_block_to_scan.height,
                     next_block_to_scan.amount.unwrap_or_else(|| MicroMinotari::from(0)),
                     timer.elapsed(),
@@ -322,6 +341,7 @@ where
                     tip_header.height,
                 )
                 .await?;
+            scanned_blocks += 1;
             if num_scanned == 0 {
                 return Err(UtxoScannerError::UtxoScanningError(
                     "Peer returned 0 UTXOs to scan".to_string(),

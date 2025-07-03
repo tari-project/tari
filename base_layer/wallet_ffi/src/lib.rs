@@ -10846,7 +10846,7 @@ pub unsafe extern "C" fn payment_records_get_at(
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new((*records).0[index as usize].clone()))
+    Box::into_raw(Box::new((&(*records).0)[index as usize].clone()))
 }
 
 /// Destroy TariPaymentRecord

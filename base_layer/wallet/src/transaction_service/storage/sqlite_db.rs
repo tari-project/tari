@@ -986,6 +986,17 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             ))
             .execute(&mut conn)?;
         trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        // we want to double check unmined coinbases again, so lets set those
+        let result = diesel::update(completed_transactions::table)
+            .filter(completed_transactions::status.eq(TransactionStatus::CoinbaseNotInBlockChain as i32))
+            .set((
+                completed_transactions::cancelled.eq::<Option<i32>>(None),
+                completed_transactions::mined_height.eq::<Option<i64>>(None),
+                completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+                completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32),
+            ))
+            .execute(&mut conn)?;
+        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
