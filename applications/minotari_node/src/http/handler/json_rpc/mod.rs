@@ -40,11 +40,6 @@ pub async fn handle<B: BlockchainBackend + 'static>(
 ) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
     debug!(target: LOG_TARGET, "Received JSON-RPC request: {request:?}");
 
-    // let response = query_service
-    //     .get_utxos_deleted_info(request)
-    //     .await
-    //     .map_err(error_handler_with_message)?;
-
     match request.method.as_str() {
         "submit_transaction" => {
             let tx = request.params.get("transaction").ok_or_else(|| {

@@ -42,7 +42,7 @@ use crate::{
     client::http_client_factory::DefaultHttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
 };
-
+const BASENODE_SERVICE_HANDLE_CHANNEL_SIZE: usize = 1_000;
 const LOG_TARGET: &str = "wallet::base_node_service";
 
 #[derive(Default)]
@@ -55,7 +55,7 @@ impl ServiceInitializer for BaseNodeServiceInitializer {
 
         let (sender, request_stream) = reply_channel::unbounded();
 
-        let (event_publisher, _) = broadcast::channel(1000);
+        let (event_publisher, _) = broadcast::channel(BASENODE_SERVICE_HANDLE_CHANNEL_SIZE);
 
         let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher.clone());
 

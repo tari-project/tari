@@ -398,7 +398,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     ) -> Result<models::GetUtxosMinedInfoResponse, Self::Error> {
         request.validate()?;
 
-        // let hashes = request.hashes.clone().try_into()?;
         let mut utxos = vec![];
 
         let tip_header = self.db().fetch_tip_header().await?;
@@ -406,12 +405,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
             let hash = hash.try_into()?;
             let output = self.db().fetch_output(hash).await?;
             if let Some(output) = output {
-                // let header = self
-                //     .db()
-                //     .fetch_header_by_block_hash(output.block_hash())
-                //     .await?
-                //     .ok_or_else(|| Error::HeaderHashNotFound)?;
-
                 utxos.push(models::MinedUtxoInfo {
                     utxo_hash: hash.to_vec(),
                     mined_in_hash: output.header_hash.to_vec(),
@@ -434,7 +427,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     ) -> Result<models::GetUtxosDeletedInfoResponse, Self::Error> {
         request.validate()?;
 
-        // let hashes = request.hashes.clone().try_into()?;
         let mut utxos = vec![];
 
         let must_include_header = request.must_include_header.clone().try_into()?;
