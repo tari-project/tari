@@ -124,7 +124,8 @@ where TWalletConnectivity: WalletConnectivityInterface
                         latency.as_millis()
                     );
 
-                    // self.db.set_chain_metadata(chain_metadata.clone())?;
+                    // todo check if this needs to be in or out
+                    self.db.set_chain_metadata(chain_metadata.clone())?;
 
                     let is_synced = tip_info.is_synced;
                     let best_block_height = chain_metadata.best_block_height();
