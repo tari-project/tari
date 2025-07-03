@@ -269,6 +269,7 @@ where
                         .ok_or_else(|| WalletError::InvalidHttpNodeUrl("Not set".to_string()))?,
                 )
                 .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
+                config.scanning_interval,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.

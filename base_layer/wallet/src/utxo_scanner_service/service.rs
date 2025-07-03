@@ -56,6 +56,7 @@ pub struct UtxoScannerService<
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) key_manager: TKeyManagerInterface,
+    scanning_interval: u64,
 }
 
 impl<TBackend, TKeyManagerInterface: Clone, TWalletClientFactory>
@@ -70,6 +71,7 @@ where
         mode: UtxoScannerMode,
         resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
         shutdown_signal: ShutdownSignal,
+        scanning_interval: u64,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         key_manager: TKeyManagerInterface,
     ) -> Self {
@@ -80,7 +82,7 @@ where
             mode,
             shutdown_signal,
             event_sender,
-            key_manager,
+            key_manager,scanning_interval
         }
     }
 
@@ -124,7 +126,7 @@ where
         }
 
         let mut main_shutdown = self.shutdown_signal.clone();
-        let mut scanning_interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut scanning_interval = tokio::time::interval(std::time::Duration::from_secs(self.scanning_interval));
         scanning_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {

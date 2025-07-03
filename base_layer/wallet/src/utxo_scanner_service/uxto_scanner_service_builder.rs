@@ -66,6 +66,7 @@ pub struct UtxoScannerServiceBuilder<TWalletClientFactory> {
     one_sided_message: String,
     recovery_message: String,
     client_factory: Option<TWalletClientFactory>,
+    scanning_interval: u64,
 }
 
 impl<T> Default for UtxoScannerServiceBuilder<T> {
@@ -76,6 +77,7 @@ impl<T> Default for UtxoScannerServiceBuilder<T> {
             one_sided_message: "Detected one-sided payment on blockchain".to_string(),
             recovery_message: "Output found on blockchain during Wallet Recovery".to_string(),
             client_factory: None,
+            scanning_interval: 60, // Default scanning interval in seconds
         }
     }
 }
@@ -105,6 +107,11 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
 
     pub fn with_client_factory(&mut self, factory: T) -> &mut Self {
         self.client_factory = Some(factory);
+        self
+    }
+
+    pub fn with_scanning_interval(&mut self, interval: u64) -> &mut Self {
+        self.scanning_interval = interval;
         self
     }
 
@@ -138,6 +145,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             self.mode.clone().unwrap_or_default(),
             resources,
             shutdown_signal,
+            wallet.config.scanning_interval,
             event_sender,
             wallet.key_manager_service.clone(),
         ))
@@ -180,6 +188,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
             self.mode.clone().unwrap_or_default(),
             resources,
             shutdown_signal,
+            self.scanning_interval,
             event_sender,
             key_manager,
         ))

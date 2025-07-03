@@ -51,19 +51,21 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
     network: Network,
     birthday_offset: u16,
     http_node_url: Url,
+    scanning_interval: u64,
     phantom: PhantomData<TKeyManagerInterface>,
 }
 
 impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, network: Network, birthday_offset: u16, http_node_url: Url) -> Self {
+    pub fn new(backend: WalletDatabase<T>, network: Network, birthday_offset: u16, http_node_url: Url, scanning_interval: u64) -> Self {
         Self {
             backend: Some(backend),
             network,
             phantom: PhantomData,
             birthday_offset,
             http_node_url,
+            scanning_interval
         }
     }
 }
@@ -94,6 +96,7 @@ where
         let network = self.network;
         let birthday_offset = self.birthday_offset;
         let node_url = self.http_node_url.clone();
+        let scanning_interval = self.scanning_interval;
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
@@ -121,6 +124,7 @@ where
                 .with_client_factory(DefaultHttpClientFactory::new(node_url))
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
+                .with_scanning_interval(scanning_interval)
                 .build_with_resources::<T, TKeyManagerInterface>(
                     backend,
                     output_manager_service,

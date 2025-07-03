@@ -100,7 +100,8 @@
 #balance_enquiry_cooldown_period = 5
 #The defaul offset for scanning from the birthday, it will start at the birthday - the offset
 #birthday_offset = 2
-
+#The scanning interval in secs to poll the base node for new blocks
+#scanning_interval = 60
 
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)

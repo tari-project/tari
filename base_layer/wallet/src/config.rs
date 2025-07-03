@@ -125,6 +125,8 @@ pub struct WalletConfig {
     pub birthday_offset: u16,
     /// The URL of the HTTP client to use for base node requests
     pub http_client_url: Option<String>,
+    /// the scanning interval for the utxo scanner service
+    pub scanning_interval: u64,
 }
 
 impl Default for WalletConfig {
@@ -166,6 +168,7 @@ impl Default for WalletConfig {
             balance_enquiry_cooldown_period: Duration::from_secs(5),
             birthday_offset: 2,
             http_client_url: None,
+            scanning_interval: 60,
         }
     }
 }
