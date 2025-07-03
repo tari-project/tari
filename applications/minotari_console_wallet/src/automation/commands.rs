@@ -74,7 +74,6 @@ use tari_common_types::{
         HashOutput,
         PrivateKey,
         Signature,
-        UncompressedCommitment,
         UncompressedPublicKey,
         UncompressedSignature,
     },
@@ -102,14 +101,9 @@ use tari_core::{
             WalletOutput,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        CryptoFactories,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    dhke::DiffieHellmanSharedSecret,
-    ristretto::RistrettoSecretKey,
-};
+use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
@@ -1763,10 +1757,6 @@ pub async fn command_runner(
                 }
 
                 // Create finalized spend transactions
-                let mut inputs = Vec::new();
-                let mut outputs = Vec::new();
-                let mut kernels = Vec::new();
-                let mut kernel_offset = PrivateKey::default();
                 for (i, (indexed_info, leader_self)) in party_info_per_index
                     .iter()
                     .zip(leader_info.outputs_for_self.iter())
@@ -1805,125 +1795,7 @@ pub async fn command_runner(
                 if error {
                     break;
                 }
-
-                let file_name = get_pre_mine_addition_file_name();
-                let out_dir_path = out_dir(&args.session_id)?;
-                let out_file = out_dir_path.join(&file_name);
-                if session_info.use_pre_mine_input_file {
-                    // Ensure that the balance equation holds:
-                    //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + kernel_offset
-                    let mut utxo_sum = UncompressedCommitment::default();
-                    for output in &outputs {
-                        utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
-                    }
-                    for input in &inputs {
-                        match input.commitment() {
-                            Ok(commitment) => utxo_sum = &utxo_sum - &commitment.to_commitment()?,
-                            Err(e) => {
-                                eprintln!("\nError: Input commitment ({})!\n", e);
-                                break;
-                            },
-                        }
-                    }
-                    let mut kernel_sum = UncompressedCommitment::default();
-                    for kernel in &kernels {
-                        kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
-                    }
-                    let offset = CryptoFactories::default().commitment.commit_value(&kernel_offset, 0);
-                    if utxo_sum != &kernel_sum + &offset {
-                        eprintln!(
-                            "\nError: Transactions balance: UTXO sum {} vs. kernel sum + offset {}!\n",
-                            utxo_sum.to_hex(),
-                            (&kernel_sum + &offset).to_hex()
-                        );
-                    }
-
-                    let mut file_stream = match File::create(&out_file) {
-                        Ok(file) => file,
-                        Err(e) => {
-                            eprintln!("\nError: Could not create the pre-mine file ({})\n", e);
-                            break;
-                        },
-                    };
-
-                    let mut error = false;
-                    inputs.sort();
-                    for input in &inputs {
-                        let input_s = match serde_json::to_string(&input) {
-                            Ok(val) => val,
-                            Err(e) => {
-                                eprintln!("\nError: Could not serialize UTXO ({})\n", e);
-                                error = true;
-                                break;
-                            },
-                        };
-                        if let Err(e) = file_stream.write_all(format!("{}\n", input_s).as_bytes()) {
-                            eprintln!("\nError: Could not write UTXO to file ({})\n", e);
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
-                        break;
-                    }
-                    outputs.sort();
-                    for output in &outputs {
-                        let utxo_s = match serde_json::to_string(&output) {
-                            Ok(val) => val,
-                            Err(e) => {
-                                eprintln!("\nError: Could not serialize UTXO ({})\n", e);
-                                error = true;
-                                break;
-                            },
-                        };
-                        if let Err(e) = file_stream.write_all(format!("{}\n", utxo_s).as_bytes()) {
-                            eprintln!("\nError: Could not write UTXO to file ({})\n", e);
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
-                        break;
-                    }
-                    kernels.sort();
-                    for kernel in &kernels {
-                        let kernel_s = match serde_json::to_string(&kernel) {
-                            Ok(val) => val,
-                            Err(e) => {
-                                eprintln!("\nError: Could not serialize kernel ({})\n", e);
-                                break;
-                            },
-                        };
-                        if let Err(e) = file_stream.write_all(format!("{}\n", kernel_s).as_bytes()) {
-                            eprintln!("\nError: Could not write the genesis file ({})\n", e);
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
-                        break;
-                    }
-                    let kernel_offset_s = match serde_json::to_string(&kernel_offset) {
-                        Ok(val) => val,
-                        Err(e) => {
-                            eprintln!("\nError: Could not serialize kernel offset ({})\n", e);
-                            break;
-                        },
-                    };
-                    if let Err(e) = file_stream.write_all(format!("{}\n", kernel_offset_s).as_bytes()) {
-                        eprintln!("\nError: Could not write the genesis file ({})\n", e);
-                        break;
-                    }
-                }
-
                 println!();
-                if session_info.use_pre_mine_input_file {
-                    println!(
-                        "Genesis block immediate pre-mine spend information: '{}' in '{}'",
-                        file_name,
-                        out_dir_path.display()
-                    );
-                }
                 println!("Concluded step 5 'pre-mine-spend-aggregate-transaction'");
                 println!();
             },
@@ -2837,17 +2709,6 @@ fn get_pre_mine_file_name() -> String {
         Network::LocalNet => "esmeralda_pre_mine.json".to_string(),
         Network::Igor => "igor_pre_mine.json".to_string(),
         Network::Esmeralda => "esmeralda_pre_mine.json".to_string(),
-    }
-}
-
-fn get_pre_mine_addition_file_name() -> String {
-    match Network::get_current_or_user_setting_or_default() {
-        Network::MainNet => "mainnet_pre_mine_addition.json".to_string(),
-        Network::StageNet => "stagenet_pre_mine_addition.json".to_string(),
-        Network::NextNet => "nextnet_pre_mine_addition.json".to_string(),
-        Network::LocalNet => "esmeralda_pre_mine_addition.json".to_string(),
-        Network::Igor => "igor_pre_mine_addition.json".to_string(),
-        Network::Esmeralda => "esmeralda_pre_mine_addition.json".to_string(),
     }
 }
 
