@@ -16,7 +16,10 @@ from .wallet_helper import (
     create_mainnet_wallet,
     create_localnet_wallet,
     format_base_node_info,
-    get_wallet_seed_peers
+    get_wallet_seed_peers,
+    refresh_base_node_list,
+    set_next_base_node,
+    sync_base_node
 )
 
 __all__ = [
@@ -49,4 +52,9 @@ __all__ = [
     'create_localnet_wallet',
     'format_base_node_info',
     'get_wallet_seed_peers',
+    
+    # Explicit Discovery Workflow
+    'refresh_base_node_list',
+    'set_next_base_node',
+    'sync_base_node',
 ]
