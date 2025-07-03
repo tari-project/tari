@@ -59,7 +59,7 @@ use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{smt_hasher::SmtHasher, MinedInfo, TemplateRegistrationEntry};
+use super::{smt_hasher::SmtHasher, MinedInfo, PayrefRebuildStatus, TemplateRegistrationEntry};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
@@ -350,6 +350,65 @@ where B: BlockchainBackend
 
         if !config.track_reorgs {
             self.clear_all_reorgs()?;
+        }
+
+        self.rebuild_payref_indexes_task()?;
+
+        Ok(())
+    }
+
+    fn rebuild_payref_indexes_task(&self) -> Result<(), ChainStorageError> {
+        let initial_status = {
+            let db = self.db_read_access()?;
+            db.fetch_payref_rebuild_status()?
+        };
+        if !initial_status.is_rebuilt {
+            let chain_metadata = {
+                let db = self.db_read_access()?;
+                db.fetch_chain_metadata()?
+            };
+            let db_rw_lock = self.db.clone();
+
+            tokio::spawn(async move {
+                let start_height = initial_status.last_rebuild_height.unwrap_or_default();
+                let mut last_status = initial_status.clone();
+                debug!(
+                    target: LOG_TARGET,
+                    "[PayRef] Starting index rebuilding for heights {} to {}",
+                    start_height, chain_metadata.best_block_height()
+                );
+                if let Ok(write_txn) = db_rw_lock
+                    .write()
+                    .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))
+                {
+                    write_txn.set_stats_total_height(chain_metadata.best_block_height());
+                }
+                for height in start_height..=chain_metadata.best_block_height() {
+                    match process_payref_for_height(
+                        db_rw_lock.clone(),
+                        height,
+                        chain_metadata.clone(),
+                        height == chain_metadata.best_block_height(),
+                    ) {
+                        Ok(current_status) => {
+                            last_status = current_status;
+                            if let Ok(write_txn) = db_rw_lock.write().map_err(|_e| {
+                                ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
+                            }) {
+                                write_txn.update_stats_progress(height);
+                            }
+                        },
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
+                                initial_status, last_status, e
+                            );
+                            break;
+                        },
+                    }
+                }
+            });
         }
 
         Ok(())
@@ -2649,6 +2708,57 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
     };
 
     (start, end)
+}
+
+/// Process a batch of blocks for PayRef migration
+fn process_payref_for_height<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    height: u64,
+    metadata_at_start: ChainMetadata,
+    finalize: bool,
+) -> Result<PayrefRebuildStatus, ChainStorageError> {
+    debug!(target: LOG_TARGET, "[PayRef] Processing index rebuilding for height {}", height);
+
+    // Get all outputs for this block
+    let read_txn = db
+        .read()
+        .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
+
+    let binding = read_txn.fetch_chain_header_by_height(height)?;
+    let header = binding.header();
+    let block_hash = header.hash();
+    let outputs = read_txn.fetch_outputs_in_block(&block_hash)?;
+    drop(read_txn);
+
+    let mut write_txn = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+
+    let mut txn = DbTransaction::new();
+    for output in &outputs {
+        let output_hash = output.hash();
+        txn.update_payref(block_hash, output_hash);
+    }
+    write_txn.write(txn)?;
+
+    // Update the status in the metadata database
+    let status = PayrefRebuildStatus {
+        is_rebuilt: finalize,
+        last_rebuild_height: Some(height),
+        last_rebuild_block_hash: Some(block_hash),
+        metadata_at_start: Some(metadata_at_start.clone()),
+    };
+    write_txn.update_payref_metadata_key(status.clone())?;
+
+    if finalize {
+        debug!(
+            target: LOG_TARGET,
+            "[PayRef] Finalized index rebuilding for heights {} to {}",
+            metadata_at_start.best_block_height(), height
+        );
+    }
+
+    Ok(status)
 }
 
 #[cfg(test)]

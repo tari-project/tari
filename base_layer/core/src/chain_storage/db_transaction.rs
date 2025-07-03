@@ -125,6 +125,15 @@ impl DbTransaction {
         self
     }
 
+    /// Inserts a payment reference into the current transaction.
+    pub fn update_payref(&mut self, header_hash: HashOutput, output_hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::UpdatePayRef {
+            header_hash,
+            output_hash,
+        });
+        self
+    }
+
     pub fn prune_outputs_spent_at_hash(&mut self, block_hash: BlockHash) -> &mut Self {
         self.operations
             .push(WriteOperation::PruneOutputsSpentAtHash { block_hash });
@@ -302,6 +311,10 @@ pub enum WriteOperation {
         timestamp: u64,
         output: Box<TransactionOutput>,
     },
+    UpdatePayRef {
+        header_hash: HashOutput,
+        output_hash: HashOutput,
+    },
     InsertBadBlock {
         hash: HashOutput,
         height: u64,
@@ -395,6 +408,11 @@ impl fmt::Display for WriteOperation {
                 header_height,
                 header_hash,
             ),
+            UpdatePayRef {
+                header_hash,
+                output_hash,
+                ..
+            } => write!(f, "Update payref for output {} in block({})", output_hash, header_hash,),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash),
             InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                 write!(f, "InsertOrphanChainTip({}, {})", hash, total_accumulated_difficulty)

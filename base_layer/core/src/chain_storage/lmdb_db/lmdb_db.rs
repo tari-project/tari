@@ -490,6 +490,12 @@ impl LMDBDatabase {
                 } => {
                     self.insert_output(&write_txn, header_hash, *header_height, *timestamp, output)?;
                 },
+                UpdatePayRef {
+                    header_hash,
+                    output_hash,
+                } => {
+                    self.update_payref(&write_txn, header_hash, output_hash)?;
+                },
                 DeleteHeader(height) => {
                     self.delete_header(&write_txn, *height)?;
                 },
@@ -733,9 +739,25 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    fn update_payref(
+        &self,
+        txn: &WriteTransaction<'_>,
+        header_hash: &HashOutput,
+        output_hash: &HashOutput,
+    ) -> Result<(), ChainStorageError> {
+        // Generate PayRef and add to index
+        let payref = Self::generate_payment_reference_for_output(header_hash, output_hash);
+        lmdb_replace(txn, &self.payref_to_output_index, payref.as_slice(), output_hash, None)?;
+
+        Ok(())
+    }
+
     /// Generate payment reference (PayRef) for an output using shared utility
     /// PayRef = Blake2b_256(block_hash || output_hash) using domain separation
-    fn generate_payment_reference_for_output(header_hash: &HashOutput, output_hash: &HashOutput) -> FixedHash {
+    pub(crate) fn generate_payment_reference_for_output(
+        header_hash: &HashOutput,
+        output_hash: &HashOutput,
+    ) -> FixedHash {
         generate_payment_reference(header_hash, output_hash)
     }
 
@@ -1968,6 +1990,28 @@ impl LMDBDatabase {
         if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref.as_slice())? {
             self.fetch_mined_info_by_output_hash_in_txn(txn, &output_hash)
         } else {
+            if let MetadataValue::PayrefRebuildStatus(status) =
+                lmdb_get::<_, MetadataValue>(txn, &self.metadata_db, &MetadataKey::PayrefRebuildStatus.as_u32())?
+                    .unwrap_or(MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()))
+            {
+                return if status.is_rebuilt {
+                    Ok(MinedInfo {
+                        input: None,
+                        output: None,
+                    })
+                } else {
+                    trace!(target: LOG_TARGET, "Payref index is not completed yet, current status: {:?}", status);
+                    Err(ChainStorageError::PayRefIndexNotAvailable {
+                        current_height: status.last_rebuild_height.unwrap_or_default(),
+                        start_height: if let Some(metadata) = status.metadata_at_start {
+                            metadata.best_block_height()
+                        } else {
+                            0
+                        },
+                        target_height: self.fetch_chain_metadata()?.best_block_height(),
+                    })
+                };
+            }
             Ok(MinedInfo {
                 input: None,
                 output: None,
@@ -2546,11 +2590,34 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(chain_header)
     }
 
-    /// Returns the metadata of the chain.
+    // Returns the metadata of the chain.
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         let txn = self.read_transaction()?;
         let metadata = fetch_metadata(&txn, &self.metadata_db)?;
         Ok(metadata)
+    }
+
+    // Returns the metadata of the chain.
+    fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError> {
+        let txn = self.read_transaction()?;
+
+        let val: Option<MetadataValue> = lmdb_get(&txn, &self.metadata_db, &MetadataKey::PayrefRebuildStatus.as_u32())?;
+        match val {
+            Some(MetadataValue::PayrefRebuildStatus(status)) => Ok(status),
+            _ => Ok(PayrefRebuildStatus::default()),
+        }
+    }
+
+    // Returns the metadata of the chain.
+    fn update_payref_metadata_key(&self, status: PayrefRebuildStatus) -> Result<(), ChainStorageError> {
+        let txn = self.write_transaction()?;
+        lmdb_replace(
+            &txn,
+            &self.metadata_db,
+            &MetadataKey::PayrefRebuildStatus.as_u32(),
+            &MetadataValue::PayrefRebuildStatus(status),
+            None,
+        )
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {
@@ -3020,6 +3087,7 @@ pub enum MetadataKey {
     HorizonData,
     BestBlockTimestamp,
     MigrationVersion,
+    PayrefRebuildStatus,
 }
 
 impl MetadataKey {
@@ -3040,8 +3108,23 @@ impl fmt::Display for MetadataKey {
             MetadataKey::HorizonData => write!(f, "Database info"),
             MetadataKey::BestBlockTimestamp => write!(f, "Chain tip block timestamp"),
             MetadataKey::MigrationVersion => write!(f, "Migration version"),
+            MetadataKey::PayrefRebuildStatus => write!(f, "Payref bebuild status"),
         }
     }
+}
+
+/// Payref rebuild status - for new base nodes or once rebuilt, this will be set to true
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+pub struct PayrefRebuildStatus {
+    /// Whether the payref index has been rebuilt fully - the indexes only need to be rebuilt once
+    /// and up to the current chain height. This will automatically be added to new blocks.
+    pub is_rebuilt: bool,
+    /// The height of the block at which the last rebuild was done
+    pub last_rebuild_height: Option<u64>,
+    /// The hash of the block at which the last rebuild was done
+    pub last_rebuild_block_hash: Option<BlockHash>,
+    /// The chain metadata at the start of the rebuild process
+    pub metadata_at_start: Option<ChainMetadata>,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -3055,6 +3138,7 @@ pub enum MetadataValue {
     HorizonData(HorizonData),
     BestBlockTimestamp(u64),
     MigrationVersion(u64),
+    PayrefRebuildStatus(PayrefRebuildStatus),
 }
 
 impl fmt::Display for MetadataValue {
@@ -3068,6 +3152,9 @@ impl fmt::Display for MetadataValue {
             MetadataValue::HorizonData(_) => write!(f, "Horizon data"),
             MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {}", timestamp),
             MetadataValue::MigrationVersion(n) => write!(f, "Migration version {}", n),
+            MetadataValue::PayrefRebuildStatus(status) => {
+                write!(f, "Payref indexes has been rebuilt - {}", status.is_rebuilt)
+            },
         }
     }
 }
@@ -3276,44 +3363,60 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         //       to `migrate_from_version == 4`. This migration also fix the error introduced with the original payref
         //       migration where it was only added for outputs in the unspent set, resulting in missing payrefs.
         if (migrate_from_version == 2 || migrate_from_version == 3 || migrate_from_version == 4) && !payref_index_done {
-            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: Starting PayRef migration", migrate_from_version);
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: Starting PayRef migration management", migrate_from_version);
 
-            // Verify database consistency before starting migration
-            let read_txn = db.read_transaction()?;
-            let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
-                Ok(v) => v,
+            // Set the payref rebuild status to done for new databases or to default for existing databases
+            let write_txn = db.write_transaction()?;
+            match fetch_chain_height(&write_txn, &db.metadata_db) {
+                Ok(_) => {
+                    let status_key = lmdb_get::<_, MetadataValue>(
+                        &write_txn,
+                        &db.metadata_db,
+                        &MetadataKey::PayrefRebuildStatus.as_u32(),
+                    )?
+                    .unwrap_or(MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()));
+                    if let MetadataValue::PayrefRebuildStatus(status) = status_key {
+                        if status.is_rebuilt {
+                            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: PayRef index already rebuilt in the background", migrate_from_version);
+                            payref_index_done = true;
+                            continue;
+                        }
+                    }
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{}: Resetting PayRef index rebuild status to enable the background task to run",
+                        migrate_from_version
+                    );
+                    lmdb_replace(
+                        &write_txn,
+                        &db.metadata_db,
+                        &k.as_u32(),
+                        &MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus::default()),
+                        None,
+                    )?;
+                },
                 Err(_) => {
-                    // No chain data, skip PayRef rebuild
-                    drop(read_txn);
-                    continue;
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{}: Setting PayRef index rebuild status as rebuilt for new blockchains",
+                        migrate_from_version
+                    );
+                    lmdb_replace(
+                        &write_txn,
+                        &db.metadata_db,
+                        &k.as_u32(),
+                        &MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus {
+                            is_rebuilt: true,
+                            ..Default::default()
+                        }),
+                        None,
+                    )?;
                 },
             };
-            drop(read_txn);
-
-            db.set_stats_total_height(chain_height);
-            for height in 0..=chain_height {
-                // The average size added to the db per block for payrefs for the first 16,500 blocks was approximately
-                // 4,209 bytes as measured on a mainnet node and for the next 17,500 blocks approximately 7,550 bytes.
-                // The highest measured value is much less than the theoretical maximum of
-                // `(1000 coinbases + 900 outputs) * 2 * 32 bytes per output = 242,200 bytes per block`. The
-                // default db maspize increase is 128MB when we have less than 64MB free space left, so we should be
-                // checking how long it will take to fill up 64MB. Taking the biggest measured value we end up with
-                // approximately 8888 blocks to consume 64MB wirth of payref data. Theoretically, we can fill up 64MB
-                // with 277 block's worth of payrefs. To test if the db needs resizing every 1000 blocks is deemed
-                // practical and safe.
-                if height % 1000 == 0 {
-                    unsafe {
-                        LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
-                    }
-                }
-                process_payref_for_height(db, height)?;
-                if height % 50 == 0 {
-                    db.update_stats_progress(height);
-                }
-            }
+            write_txn.commit()?;
 
             payref_index_done = true;
-            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: PayRef index rebuild completed", migrate_from_version);
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: PayRef migration management completed", migrate_from_version);
         }
 
         // Lets update the migration version
@@ -3426,44 +3529,4 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
     }
     #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     vec![]
-}
-
-/// Process a batch of blocks for PayRef migration
-fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), ChainStorageError> {
-    debug!(target: LOG_TARGET, "Processing PayRef migration for {}", height);
-
-    // Get all outputs for this block
-    let read_txn = db.read_transaction()?;
-    let read_header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
-    let header = read_header.ok_or_else(|| ChainStorageError::ValueNotFound {
-        entity: "BlockHeader",
-        field: "height",
-        value: height.to_string(),
-    })?;
-    let block_hash = header.hash();
-    let query_results: Vec<(Vec<u8>, TransactionOutputRowData)> =
-        lmdb_fetch_matching_after(&read_txn, &db.utxos_db, block_hash.as_slice())?;
-    drop(read_txn);
-
-    // Add payrefs, replacing any existing ones
-    let write_txn = db.write_transaction()?;
-    for (_, output_data) in query_results {
-        let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.hash);
-        trace!(target: LOG_TARGET,
-            "Processing payref {} and output hash {} for height {}",
-            payref, output_data.hash, height
-        );
-        lmdb_replace(
-            &write_txn,
-            &db.payref_to_output_index,
-            payref.as_slice(),
-            &output_data.hash,
-            None,
-        )?;
-    }
-
-    // Commit the batch
-    write_txn.commit()?;
-
-    Ok(())
 }

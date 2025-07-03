@@ -65,6 +65,7 @@ use crate::{
         MmrTree,
         OutputMinedInfo,
         OwnedLmdbTreeReader,
+        PayrefRebuildStatus,
         Reorg,
         SmtHasher,
         TemplateRegistrationEntry,
@@ -357,6 +358,14 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_chain_metadata()
+    }
+
+    fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_payref_rebuild_status()
+    }
+
+    fn update_payref_metadata_key(&self, status: PayrefRebuildStatus) -> Result<(), ChainStorageError> {
+        self.db.as_ref().unwrap().update_payref_metadata_key(status)
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {
