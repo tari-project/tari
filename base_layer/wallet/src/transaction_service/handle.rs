@@ -219,7 +219,6 @@ pub enum TransactionServiceRequest {
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
-    // ReValidateTransactions,
     ReValidateRejectedTransactions,
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
@@ -427,7 +426,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
-            // Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
@@ -1239,17 +1237,6 @@ impl TransactionServiceHandle {
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
-
-    // pub async fn revalidate_all_transactions(&mut self) -> Result<(), TransactionServiceError> {
-    //     match self
-    //         .handle
-    //         .call(TransactionServiceRequest::ReValidateTransactions)
-    //         .await??
-    //     {
-    //         TransactionServiceResponse::ValidationStarted(_) => Ok(()),
-    //         _ => Err(TransactionServiceError::UnexpectedApiResponse),
-    //     }
-    // }
 
     pub async fn revalidate_rejected_transactions(&mut self) -> Result<(), TransactionServiceError> {
         match self

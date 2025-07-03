@@ -107,7 +107,7 @@ use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
-        handle::OutputManagerHandle,
+        handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
         storage::models::SpendingPriority,
         UtxoSelectionCriteria,
@@ -125,6 +125,7 @@ use crate::{
         },
         offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
+            check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
@@ -393,10 +394,17 @@ where
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
         let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
+        let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
             tokio::select! {
+                event = output_manager_event_stream.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_output_manager_service_event(msg).await,
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                    };
+                }
                // Base Node Monitoring Service event
                 event = base_node_service_event_stream.recv() => {
                     match event {
@@ -1034,10 +1042,6 @@ where
                 .start_transaction_validation_protocol(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
-            // TransactionServiceRequest::ReValidateTransactions => self
-            //     .start_transaction_revalidation(transaction_validation_join_handles)
-            //     .await
-            // .map(TransactionServiceResponse::ValidationStarted),
             TransactionServiceRequest::ReValidateRejectedTransactions => self
                 .start_rejected_transaction_revalidation(transaction_validation_join_handles)
                 .await
@@ -1102,6 +1106,25 @@ where
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
                 trace!(target: LOG_TARGET, "Received BaseNodeStateChanged event, but igoring",);
             },
+        }
+    }
+
+    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
+        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
+            let db = self.db.clone();
+            let output_manager_handle = self.resources.output_manager_service.clone();
+            let tip_height = self
+                .wallet_db
+                .get_last_scanned_height()
+                .unwrap_or_default()
+                .unwrap_or_default();
+            let event_publisher = self.event_publisher.clone();
+            tokio::spawn(check_detected_transactions(
+                output_manager_handle,
+                db,
+                event_publisher,
+                tip_height,
+            ));
         }
     }
 
@@ -3582,14 +3605,6 @@ where
                                 continue 'outer;
                             }
                         }
-                        // _ = base_node_watch.changed() => {
-                        //      if let Some(selected_peer) = base_node_watch.borrow().as_ref() {
-                        //         if selected_peer.get_current_peer().node_id != current_base_node {
-                        //             debug!(target: LOG_TARGET, "Base node changed, restarting transaction validation protocol");
-                        //           continue 'outer;
-                        //         }
-                        //     }
-                        // }
                     }
                 }
             }
