@@ -6,21 +6,44 @@ Tari wallet packages. It provides the base implementation that can be configured
 for different networks (mainnet, testnet, nextnet).
 """
 
-from ..tari_wallet.base_nodes import BaseNode, BaseNodeManager, BaseNodeSelectionStrategy
-from ..tari_wallet.network import TariNetwork, NetworkManager, NetworkConfig
-from ..tari_wallet.discovery import DiscoveryService, SimpleDiscoveryService, DiscoveryConfig
-from ..tari_wallet.config_reader import TariConfigReader, get_config_reader, read_network_config, create_nodes_from_config
-from ..tari_wallet.wallet_helper import (
-    create_wallet_with_auto_discovery,
-    create_discovery_enabled_wallet,
-    format_base_node_info,
-    get_wallet_seed_peers,
-    refresh_base_node_list,
-    set_next_base_node,
-    sync_base_node
-)
-from ..tari_wallet.node_selection import PersistentNodeSelector, create_node_selector_for_wallet
-from ..tari_wallet.sync_manager import WalletSyncManager, create_sync_manager_for_wallet
+# Import from tari_wallet package (assumes it's available in Python path)
+try:
+    from tari_wallet.base_nodes import BaseNode, BaseNodeManager, BaseNodeSelectionStrategy
+    from tari_wallet.network import TariNetwork, NetworkManager, NetworkConfig
+    from tari_wallet.discovery import DiscoveryService, SimpleDiscoveryService, DiscoveryConfig
+    from tari_wallet.config_reader import TariConfigReader, get_config_reader, read_network_config, create_nodes_from_config
+    from tari_wallet.wallet_helper import (
+        create_wallet_with_auto_discovery,
+        create_discovery_enabled_wallet,
+        format_base_node_info,
+        get_wallet_seed_peers,
+        refresh_base_node_list,
+        set_next_base_node,
+        sync_base_node
+    )
+    from tari_wallet.node_selection import PersistentNodeSelector, create_node_selector_for_wallet
+    from tari_wallet.sync_manager import WalletSyncManager, create_sync_manager_for_wallet
+except ImportError:
+    # Fallback for development - relative imports
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    
+    from tari_wallet.base_nodes import BaseNode, BaseNodeManager, BaseNodeSelectionStrategy
+    from tari_wallet.network import TariNetwork, NetworkManager, NetworkConfig
+    from tari_wallet.discovery import DiscoveryService, SimpleDiscoveryService, DiscoveryConfig
+    from tari_wallet.config_reader import TariConfigReader, get_config_reader, read_network_config, create_nodes_from_config
+    from tari_wallet.wallet_helper import (
+        create_wallet_with_auto_discovery,
+        create_discovery_enabled_wallet,
+        format_base_node_info,
+        get_wallet_seed_peers,
+        refresh_base_node_list,
+        set_next_base_node,
+        sync_base_node
+    )
+    from tari_wallet.node_selection import PersistentNodeSelector, create_node_selector_for_wallet
+    from tari_wallet.sync_manager import WalletSyncManager, create_sync_manager_for_wallet
 
 
 def create_network_wallet(

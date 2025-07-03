@@ -159,10 +159,21 @@ def create_wallet_with_auto_discovery(
             database_name="my_wallet"
         )
     """
-    try:
-        import tari_wallet.tari_wallet as tw
-    except ImportError:
-        raise ImportError("tari_wallet module not available. Please install the Python bindings.")
+    # Check if PyO3 FFI classes are available in the current module context
+    # This happens when the native extension is properly built and loaded
+    import sys
+    current_module = sys.modules.get(__name__.split('.')[0])
+    
+    if current_module and hasattr(current_module, 'PyTariWallet'):
+        # FFI classes are available in the parent tari_wallet module
+        tw = current_module
+    else:
+        # FFI not available - provide helpful error message
+        raise ImportError(
+            "PyO3 FFI bindings not available. This function requires the native "
+            "Tari wallet extension to be built and installed. Please run:\n"
+            "maturin develop --features python-bindings"
+        )
     
     # Set up directories
     if datastore_path is None:

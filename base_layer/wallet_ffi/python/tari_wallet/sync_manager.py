@@ -107,7 +107,7 @@ class WalletSyncManager:
                 'peers': cache_data,
                 'last_refresh_time': self.last_refresh_time,
                 'cache_version': '1.0',
-                'network': self.network.network_name,
+                'network': getattr(self.network, 'network_name', str(self.network)),
                 'last_updated': time.time()
             }
             
@@ -141,7 +141,7 @@ class WalletSyncManager:
             "average_connection_time": sum(avg_connection_times) / len(avg_connection_times) if avg_connection_times else 0.0,
             "last_refresh_age_seconds": time.time() - self.last_refresh_time if self.last_refresh_time else None,
             "cache_ttl_hours": self.cache_ttl_hours,
-            "network": self.network.network_name
+            "network": getattr(self.network, 'network_name', str(self.network))
         }
 
 
