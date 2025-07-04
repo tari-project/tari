@@ -490,12 +490,6 @@ impl LMDBDatabase {
                 } => {
                     self.insert_output(&write_txn, header_hash, *header_height, *timestamp, output)?;
                 },
-                UpdatePayRef {
-                    header_hash,
-                    output_hash,
-                } => {
-                    self.update_payref(&write_txn, header_hash, output_hash)?;
-                },
                 DeleteHeader(height) => {
                     self.delete_header(&write_txn, *height)?;
                 },
@@ -2599,7 +2593,7 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(metadata)
     }
 
-    // Returns the metadata of the chain.
+    // Returns the payref rebuild status.
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError> {
         let txn = self.read_transaction()?;
 
@@ -2610,7 +2604,7 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    // Builds the payref indexes for a given block height.
+    // Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
         height: u64,

@@ -356,11 +356,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn update_payref(&mut self, header_hash: HashOutput, output_hash: HashOutput) -> &mut Self {
-        self.transaction.update_payref(header_hash, output_hash);
-        self
-    }
-
     pub fn prune_output_from_all_dbs(
         &mut self,
         output_hash: HashOutput,

@@ -387,17 +387,48 @@ where B: BlockchainBackend
                 start_height, metadata_at_start.best_block_height()
             );
 
+            let mut initialize_stats = Some(metadata_at_start.best_block_height());
             for height in start_height..=metadata_at_start.best_block_height() {
+                // This is a safety check when we get close to the end to ensure we don't process block heights that
+                // are not in the database.
+                let finalize = if metadata_at_start.best_block_height() - height < 100 {
+                    match db_rw_lock
+                        .clone()
+                        .read()
+                        .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))
+                    {
+                        Ok(read_txn) => match read_txn.fetch_chain_metadata() {
+                            Ok(current_metadata) => {
+                                height == metadata_at_start.best_block_height() ||
+                                    height == current_metadata.best_block_height()
+                            },
+                            Err(e) => {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "[PayRef] Failed to read chain metadata for height {}: {:?}", height, e
+                                );
+                                break;
+                            },
+                        },
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "[PayRef] Failed to acquire read lock on the database for height {}: {:?}", height, e
+                            );
+                            break;
+                        },
+                    }
+                } else {
+                    false
+                };
+
+                // We can safely proceed with the rebuild if the height is less than or equal to the best block height
                 match process_payref_for_height(
                     db_rw_lock.clone(),
                     height,
                     metadata_at_start.clone(),
-                    if height == start_height {
-                        Some(metadata_at_start.best_block_height())
-                    } else {
-                        None
-                    },
-                    height == metadata_at_start.best_block_height(),
+                    initialize_stats,
+                    finalize,
                 ) {
                     Ok(current_status) => {
                         last_status = current_status;
@@ -410,6 +441,17 @@ where B: BlockchainBackend
                         );
                         break;
                     },
+                }
+                if initialize_stats.is_some() {
+                    initialize_stats = None;
+                }
+                if finalize {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[PayRef] Starting index rebuilding completed, Final status: {:?}",
+                        last_status
+                    );
+                    break;
                 }
             }
         });

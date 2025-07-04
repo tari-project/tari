@@ -145,7 +145,7 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
     /// Returns the stored payref rebuild status.
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
-    /// Updates the payref rebuild status.
+    /// Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
         height: u64,
