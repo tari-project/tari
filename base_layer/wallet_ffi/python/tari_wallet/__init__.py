@@ -21,6 +21,30 @@ from .wallet_helper import (
     set_next_base_node,
     sync_base_node
 )
+from .nextnet_debug import (
+    NextnetErrorType,
+    NextnetErrorInfo,
+    NextnetErrorHandler,
+    diagnose_nextnet_issue,
+    format_nextnet_error,
+    nextnet_error_wrapper,
+    check_nextnet_environment,
+    print_nextnet_environment_status
+)
+
+# Import FFI classes if available (after maturin build)
+try:
+    from .tari_wallet import (
+        PyTariWallet,
+        PyTariCommsConfig,
+        PyTariTransportConfig,
+        PyTariBalance,
+        PyTariPublicKey,
+        TariWalletError
+    )
+    _FFI_AVAILABLE = True
+except ImportError:
+    _FFI_AVAILABLE = False
 
 __all__ = [
     # Base Node Management
@@ -57,4 +81,25 @@ __all__ = [
     'refresh_base_node_list',
     'set_next_base_node',
     'sync_base_node',
+    
+    # Nextnet Debugging and Error Handling
+    'NextnetErrorType',
+    'NextnetErrorInfo', 
+    'NextnetErrorHandler',
+    'diagnose_nextnet_issue',
+    'format_nextnet_error',
+    'nextnet_error_wrapper',
+    'check_nextnet_environment',
+    'print_nextnet_environment_status',
 ]
+
+# Add FFI classes to __all__ if available
+if _FFI_AVAILABLE:
+    __all__.extend([
+        'PyTariWallet',
+        'PyTariCommsConfig',
+        'PyTariTransportConfig',
+        'PyTariBalance',
+        'PyTariPublicKey',
+        'TariWalletError'
+    ])

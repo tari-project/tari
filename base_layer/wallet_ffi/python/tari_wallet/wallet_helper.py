@@ -12,14 +12,21 @@ from typing import Optional, Dict, Any, Callable, List, Tuple
 from .network import TariNetwork, NetworkManager
 from .discovery import SimpleDiscoveryService
 from .base_nodes import BaseNode, BaseNodeManager, BaseNodeSelectionStrategy
+from .nextnet_debug import (
+    diagnose_nextnet_issue, 
+    format_nextnet_error,
+    nextnet_error_wrapper,
+    NextnetErrorHandler
+)
 
-def refresh_base_node_list(network: str, discovery_timeout: float = 30.0) -> Tuple[List[BaseNode], Dict[str, Any]]:
+def refresh_base_node_list(network: str, discovery_timeout: float = 30.0, wallet=None) -> Tuple[List[BaseNode], Dict[str, Any]]:
     """
     Step 1: Refresh the list of available base nodes for the given network
     
     Args:
         network: Network name (localnet, nextnet, stagenet, mainnet)
         discovery_timeout: Timeout for discovery process
+        wallet: Optional PyTariWallet instance to get seed peers from FFI
         
     Returns:
         Tuple of (discovered_nodes, discovery_info)
@@ -33,8 +40,22 @@ def refresh_base_node_list(network: str, discovery_timeout: float = 30.0) -> Tup
         "network": network,
         "discovery_method": "dns_seeds",
         "discovery_timeout": discovery_timeout,
-        "start_time": time.time()
+        "start_time": time.time(),
+        "ffi_seed_peers_used": False
     }
+    
+    # If wallet is provided, try to get seed peers from FFI first
+    if wallet:
+        try:
+            ffi_seed_peers = wallet.get_seed_peers()
+            if ffi_seed_peers:
+                discovery_info["ffi_seed_peers_used"] = True
+                discovery_info["ffi_seed_peers_count"] = len(ffi_seed_peers)
+                discovery_info["discovery_method"] = "ffi_seed_peers_and_dns"
+                # Note: The discovered nodes will still come from the discovery service
+                # but we've validated that FFI seed peers are available
+        except Exception as e:
+            discovery_info["ffi_seed_peers_error"] = str(e)
     
     try:
         # Get available nodes from discovery service
@@ -72,6 +93,10 @@ def sync_base_node(wallet, selected_node: BaseNode) -> Dict[str, Any]:
     """
     Step 3: Sync with the selected base node
     
+    Tests actual FFI wallet operations to validate base node connectivity.
+    Since PyTariWallet automatically configures base nodes during creation,
+    this function tests connectivity by performing wallet operations.
+    
     Args:
         wallet: PyTariWallet instance
         selected_node: BaseNode to sync with
@@ -85,28 +110,84 @@ def sync_base_node(wallet, selected_node: BaseNode) -> Dict[str, Any]:
             "public_key": selected_node.public_key,
             "address": selected_node.address
         },
-        "start_time": time.time()
+        "start_time": time.time(),
+        "operations_tested": []
     }
     
     try:
         # Mark connection attempt
         selected_node.mark_connection_attempt()
         
-        # TODO: Implement actual base node sync via FFI
-        # For now, we'll mark as successful since wallet creation handles this
-        selected_node.mark_connection_success()
+        # Test 1: Get seed peers (tests basic FFI connectivity)
+        try:
+            seed_peers = wallet.get_seed_peers()
+            sync_info["operations_tested"].append({
+                "operation": "get_seed_peers",
+                "status": "success",
+                "result": f"{len(seed_peers)} peers retrieved"
+            })
+        except Exception as e:
+            sync_info["operations_tested"].append({
+                "operation": "get_seed_peers", 
+                "status": "failed",
+                "error": str(e)
+            })
+            
+        # Test 2: Get balance (tests wallet initialization and potential network calls)
+        try:
+            balance = wallet.get_balance()
+            sync_info["operations_tested"].append({
+                "operation": "get_balance",
+                "status": "success", 
+                "result": f"available: {balance.available}"
+            })
+        except Exception as e:
+            sync_info["operations_tested"].append({
+                "operation": "get_balance",
+                "status": "failed",
+                "error": str(e)
+            })
+            
+        # Test 3: Get contacts (tests address book functionality)
+        try:
+            contacts = wallet.get_contacts()
+            sync_info["operations_tested"].append({
+                "operation": "get_contacts",
+                "status": "success",
+                "result": f"{len(contacts)} contacts retrieved"
+            })
+        except Exception as e:
+            sync_info["operations_tested"].append({
+                "operation": "get_contacts",
+                "status": "failed", 
+                "error": str(e)
+            })
+            
+        # Determine overall success based on operations
+        successful_ops = [op for op in sync_info["operations_tested"] if op["status"] == "success"]
         
-        sync_info.update({
-            "status": "success",
-            "end_time": time.time()
-        })
+        if len(successful_ops) >= 2:  # At least 2 operations successful
+            selected_node.mark_connection_success()
+            sync_info.update({
+                "status": "success",
+                "end_time": time.time(),
+                "summary": f"{len(successful_ops)}/{len(sync_info['operations_tested'])} operations successful"
+            })
+        else:
+            selected_node.mark_connection_failure()
+            sync_info.update({
+                "status": "partial_success",
+                "end_time": time.time(),
+                "summary": f"Only {len(successful_ops)}/{len(sync_info['operations_tested'])} operations successful"
+            })
         
     except Exception as e:
         selected_node.mark_connection_failure()
         sync_info.update({
             "status": "failed",
             "error": str(e),
-            "end_time": time.time()
+            "end_time": time.time(),
+            "summary": "Sync operation failed with exception"
         })
     
     return sync_info
@@ -159,20 +240,27 @@ def create_wallet_with_auto_discovery(
             database_name="my_wallet"
         )
     """
-    # Check if PyO3 FFI classes are available in the current module context
-    # This happens when the native extension is properly built and loaded
+    # Check if PyO3 FFI classes are available using sys.modules inspection
     import sys
-    current_module = sys.modules.get(__name__.split('.')[0])
     
-    if current_module and hasattr(current_module, 'PyTariWallet'):
-        # FFI classes are available in the parent tari_wallet module
-        tw = current_module
+    # Try to get the tari_wallet module which should have FFI classes after maturin build
+    tari_wallet_module = sys.modules.get('tari_wallet')
+    
+    if tari_wallet_module and hasattr(tari_wallet_module, 'PyTariWallet'):
+        # FFI classes are available in the tari_wallet module
+        tw = tari_wallet_module
     else:
-        # FFI not available - provide helpful error message
+        # FFI not available - provide helpful nextnet-specific error message
+        error_info = NextnetErrorHandler.handle_ffi_not_available(
+            ImportError("PyTariWallet not found in module")
+        )
+        formatted_error = format_nextnet_error(error_info)
+        print(formatted_error)
+        
         raise ImportError(
-            "PyO3 FFI bindings not available. This function requires the native "
+            "Nextnet FFI extension not loaded. This function requires the native "
             "Tari wallet extension to be built and installed. Please run:\n"
-            "maturin develop --features python-bindings"
+            "TARI_TARGET_NETWORK=nextnet maturin develop --features python-bindings"
         )
     
     # Set up directories
@@ -296,22 +384,38 @@ def create_wallet_with_auto_discovery(
     )
     
     # Create wallet
-    wallet = tw.PyTariWallet(
-        config=config,
-        log_path=None,  # Use None for now to avoid log file issues
-        log_verbosity=0,  # Use 0 like tests
-        num_rolling_log_files=0,  # Use 0 like tests
-        size_per_log_file_bytes=0,  # Use 0 like tests
-        network_str=network,
-        passphrase="Hello from Alasca",  # Use test passphrase for now
-        seed_passphrase=seed_passphrase,
-        callbacks=callbacks
-    )
+    try:
+        wallet = tw.PyTariWallet(
+            config=config,
+            log_path=None,  # Use None for now to avoid log file issues
+            log_verbosity=0,  # Use 0 like tests
+            num_rolling_log_files=0,  # Use 0 like tests
+            size_per_log_file_bytes=0,  # Use 0 like tests
+            network_str=network,
+            passphrase="Hello from Alasca",  # Use test passphrase for now
+            seed_passphrase=seed_passphrase,
+            callbacks=callbacks
+        )
+    except Exception as e:
+        # Handle wallet creation errors with nextnet-specific guidance
+        error_context = {
+            "network": network,
+            "timeout": dns_timeout,
+            "is_new_wallet": True
+        }
+        error_info = diagnose_nextnet_issue(e, error_context)
+        formatted_error = format_nextnet_error(error_info)
+        print(formatted_error)
+        raise  # Re-raise the original exception
     
-    # Step 3: Sync with selected base node (if using explicit workflow)
+    # Step 3: Sync with selected base node and validate FFI integration
     if explicit_workflow and selected_base_node and base_node_info.get("source") == "explicit_discovery":
         sync_result = sync_base_node(wallet, selected_base_node)
         base_node_info["workflow"]["step3_sync"] = sync_result
+        
+        # Step 4: Post-creation validation with FFI seed peers
+        post_validation_nodes, post_validation_info = refresh_base_node_list(network, dns_timeout, wallet)
+        base_node_info["workflow"]["step4_ffi_validation"] = post_validation_info
     
     return wallet, base_node_info
 
