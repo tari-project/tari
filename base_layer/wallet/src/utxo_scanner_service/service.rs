@@ -82,7 +82,8 @@ where
             mode,
             shutdown_signal,
             event_sender,
-            key_manager,scanning_interval
+            key_manager,
+            scanning_interval,
         }
     }
 

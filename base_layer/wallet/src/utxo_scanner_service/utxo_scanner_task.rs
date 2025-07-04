@@ -37,19 +37,19 @@ use tari_common_types::{
 };
 use tari_core::{
     base_node::rpc::models::MinimalUtxoSyncInfo,
+    one_sided::shared_secret_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{payment_id::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
         transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
-use tari_crypto::{compressed_commitment::CompressedCommitment};
-use tari_crypto::compressed_key::CompressedKey;
+use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
-use tari_core::one_sided::shared_secret_to_output_encryption_key;
+
 use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
@@ -138,9 +138,10 @@ where
         final_height: u64,
         elapsed: Duration,
     ) -> Result<(), anyhow::Error> {
-            // this is a best effort, if this fails, its very likely that it's already busy with a validation. We have updated the scanned, so we need to update txns
-            let _result = self.resources.output_manager_service.validate_txos().await;
-            let _result = self.resources.transaction_service.validate_transactions().await;
+        // this is a best effort, if this fails, its very likely that it's already busy with a validation. We have
+        // updated the scanned, so we need to update txns
+        let _result = self.resources.output_manager_service.validate_txos().await;
+        let _result = self.resources.transaction_service.validate_transactions().await;
 
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,
@@ -524,7 +525,10 @@ where
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
 
             // Change outputs just use the view key.
-            if self.key_manager.try_output_key_recovery(&commitment, &encrypted, None).await
+            if self
+                .key_manager
+                .try_output_key_recovery(&commitment, &encrypted, None)
+                .await
                 .ok()
                 .is_some()
             {
@@ -539,7 +543,8 @@ where
                 .key_manager
                 .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)
                 .await?;
-            let recovery_key = shared_secret_to_output_encryption_key(&shared_secret).map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
+            let recovery_key = shared_secret_to_output_encryption_key(&shared_secret)
+                .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
                 .ok()
                 .is_some()

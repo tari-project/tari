@@ -121,6 +121,17 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
     }
 }
 
+pub fn wallet_http_service_default_port(network: Network) -> u16 {
+    match network {
+        Network::MainNet => 9000,
+        Network::StageNet => 9001,
+        Network::NextNet => 9002,
+        Network::LocalNet => 9003,
+        Network::Igor => 9004,
+        Network::Esmeralda => 9005,
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

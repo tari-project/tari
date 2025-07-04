@@ -6878,13 +6878,13 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let http_base_node = if http_base_node.is_null() {
-        None
+        *error_out = LibWalletError::from(InterfaceError::InvalidArgument("base node url".to_string())).code;
+        return ptr::null_mut();
     } else {
-        let base_node = CStr::from_ptr(http_base_node)
+        CStr::from_ptr(http_base_node)
             .to_str()
             .expect("A non-null base node should be able to be converted to string")
-            .to_owned();
-        Some(base_node)
+            .to_owned()
     };
 
     let runtime = match Runtime::new() {

@@ -253,8 +253,6 @@ where
             .add_initializer(WalletConnectivityInitializer::<DefaultHttpClientFactory>::new(
                 config
                     .http_client_url
-                    .as_ref()
-                    .ok_or_else(|| WalletError::InvalidHttpNodeUrl("Not set".to_string()))?
                     .parse()
                     .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
             ))
@@ -262,13 +260,8 @@ where
                 wallet_database.clone(),
                 config.network,
                 config.birthday_offset,
-                Url::parse(
-                    config
-                        .http_client_url
-                        .as_ref()
-                        .ok_or_else(|| WalletError::InvalidHttpNodeUrl("Not set".to_string()))?,
-                )
-                .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
+                Url::parse(&config.http_client_url)
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
                 config.scanning_interval,
             ));
 

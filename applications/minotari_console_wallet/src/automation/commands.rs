@@ -2308,10 +2308,8 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
-                    let http_client_url = Url::parse(&config.http_client_url.clone().ok_or(CommandError::General(
-                        "Base node service HTTP client URL is not set".to_string(),
-                    ))?)
-                    .map_err(|e| CommandError::General(format!("Not a valid url: {}", e)))?;
+                    let http_client_url = Url::parse(&config.http_client_url.clone())
+                        .map_err(|e| CommandError::General(format!("Not a valid url: {}", e)))?;
 
                     wallet_recovery(&new_wallet, http_client_url, new_config.recovery_retry_limit)
                         .await

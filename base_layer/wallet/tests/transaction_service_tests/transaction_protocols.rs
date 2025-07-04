@@ -110,7 +110,6 @@ pub async fn setup() -> (
     let mut mock_rpc_server = MockRpcServer::new(server, server_node_identity.clone());
     mock_rpc_server.serve();
 
-
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -358,7 +357,6 @@ async fn tx_broadcast_protocol_submit_rejection() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-
 
     // let protocol =
     //     TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());

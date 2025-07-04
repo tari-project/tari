@@ -58,14 +58,20 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
 impl<T, TKeyManagerInterface> UtxoScannerServiceInitializer<T, TKeyManagerInterface>
 where T: WalletBackend + 'static
 {
-    pub fn new(backend: WalletDatabase<T>, network: Network, birthday_offset: u16, http_node_url: Url, scanning_interval: u64) -> Self {
+    pub fn new(
+        backend: WalletDatabase<T>,
+        network: Network,
+        birthday_offset: u16,
+        http_node_url: Url,
+        scanning_interval: u64,
+    ) -> Self {
         Self {
             backend: Some(backend),
             network,
             phantom: PhantomData,
             birthday_offset,
             http_node_url,
-            scanning_interval
+            scanning_interval,
         }
     }
 }

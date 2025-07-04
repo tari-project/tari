@@ -410,10 +410,7 @@ impl AppState {
     }
 
     pub fn get_http_node_url(&self) -> String {
-        self.wallet_config
-            .http_client_url
-            .clone()
-            .unwrap_or_else(|| "None".to_string())
+        self.wallet_config.http_client_url.clone()
     }
 
     pub fn get_identity(&self) -> &MyIdentity {

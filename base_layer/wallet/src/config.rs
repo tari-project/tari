@@ -29,13 +29,14 @@ use std::{
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tari_common::{
-    configuration::{serializers, Network, StringList},
+    configuration::{bootstrap::wallet_http_service_default_port, serializers, Network, StringList},
     SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
+use url::Url;
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -124,7 +125,7 @@ pub struct WalletConfig {
     /// How many days do we need to start scanning before our actual birthday
     pub birthday_offset: u16,
     /// The URL of the HTTP client to use for base node requests
-    pub http_client_url: Option<String>,
+    pub http_client_url: String,
     /// the scanning interval for the utxo scanner service
     pub scanning_interval: u64,
 }
@@ -136,6 +137,10 @@ impl Default for WalletConfig {
             listener_self_liveness_check_interval: None,
             ..Default::default()
         };
+        let port = wallet_http_service_default_port(Network::get_current());
+        let http_client_url = Url::parse(format!("http://127.0.0.1:{port}").as_str())
+            .expect("This should be a valid URL")
+            .to_string();
         Self {
             override_from: None,
             p2p,
@@ -167,7 +172,7 @@ impl Default for WalletConfig {
             identity_file: None,
             balance_enquiry_cooldown_period: Duration::from_secs(5),
             birthday_offset: 2,
-            http_client_url: None,
+            http_client_url,
             scanning_interval: 60,
         }
     }
