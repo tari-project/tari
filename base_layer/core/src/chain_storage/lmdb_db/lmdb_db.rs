@@ -2603,10 +2603,6 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    fn resize_lmdb_if_required(&self) -> Result<(), ChainStorageError> {
-        unsafe { Ok(LMDBStore::resize_if_required(&self.env, &self.env_config, None)?) }
-    }
-
     // Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
@@ -2616,6 +2612,9 @@ impl BlockchainBackend for LMDBDatabase {
         finalize: bool,
     ) -> Result<PayrefRebuildStatus, ChainStorageError> {
         let write_txn = self.write_transaction()?;
+        unsafe {
+            LMDBStore::resize_if_required(&self.env, &self.env_config, None)?;
+        }
         let best_block_height = self.fetch_chain_metadata()?.best_block_height();
         if height > best_block_height {
             return Err(ChainStorageError::InvalidOperation(format!(

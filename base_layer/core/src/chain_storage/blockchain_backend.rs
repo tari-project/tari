@@ -220,6 +220,4 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn set_stats_total_height(&self, total: u64);
     /// Update the current progress step
     fn update_stats_progress(&self, current: u64);
-    /// Provide an interface for clients to resize the lmbd environment size based on some higher level logic
-    fn resize_lmdb_if_required(&self) -> Result<(), ChainStorageError>;
 }

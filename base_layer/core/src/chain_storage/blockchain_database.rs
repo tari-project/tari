@@ -2747,19 +2747,6 @@ fn process_payref_for_height<B: BlockchainBackend>(
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
 
-    // The average size added to the db per block for payrefs for the first 16,500 blocks was approximately
-    // 4,209 bytes as measured on a mainnet node and for the next 17,500 blocks approximately 7,550 bytes.
-    // The highest measured value is much less than the theoretical maximum of
-    // `(1000 coinbases + 900 outputs) * 2 * 32 bytes per output = 242,200 bytes per block`. The
-    // default db maspize increase is 128MB when we have less than 64MB free space left, so we should be
-    // checking how long it will take to fill up 64MB. Taking the biggest measured value we end up with
-    // approximately 8888 blocks to consume 64MB wirth of payref data. Theoretically, we can fill up 64MB
-    // with 277 block's worth of payrefs. To test if the db needs resizing every 1000 blocks is deemed
-    // practical and safe.
-    if height % 1000 == 0 {
-        write_txn.resize_lmdb_if_required()?;
-    }
-
     let status =
         write_txn.build_payref_indexes_for_height(height, metadata_at_start.clone(), initialize_stats, finalize)?;
 
