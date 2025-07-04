@@ -41,12 +41,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
-            BuildInfo,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
+            payment_id::PaymentId, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
             TransactionOutput,
         },
     },
@@ -64,11 +59,7 @@ use crate::{
         error::TransactionServiceError,
         offline_signing::models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
         storage::models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
         },
     },
     OperationId,
@@ -221,6 +212,11 @@ pub enum TransactionServiceRequest {
     ValidateTransactions,
     ReValidateTransactions,
     ReValidateRejectedTransactions,
+    ReplaceByFee {
+        tx_id: TxId,
+        new_fee_per_gram: MicroMinotari,
+        additional_outputs: Vec<TransactionOutput>,
+    },
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
         count: usize,
@@ -427,6 +423,17 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
+            Self::ReplaceByFee {
+                tx_id,
+                new_fee_per_gram,
+                additional_outputs,
+            } => write!(
+                f,
+                "ReplaceByFee(tx_id: {}, fee_per_gram: {}, additional_outputs: {})",
+                tx_id,
+                new_fee_per_gram,
+                additional_outputs.len()
+            ),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
@@ -490,6 +497,7 @@ pub enum TransactionServiceResponse {
     PaymentDetails(Option<PaymentDetails>),
     OneSidedTransactionPreparedForSigning(Box<PrepareOneSidedTransactionForSigningResult>),
     SignedOneSidedTransaction(Box<SignedOneSidedTransactionResult>),
+    TransactionReplaced(TxId),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -1394,6 +1402,35 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CompletedTransaction(tx) => Ok(*tx),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Replace a pending outbound transaction with a new one with higher fee
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
+    /// * `fee_per_gram` - New fee per gram (should be higher than original)
+    /// * `additional_outputs` - Additional outputs to include (Note: values cannot be extracted from commitments)
+    ///
+    /// # Returns
+    /// The new transaction ID or an error
+    pub async fn replace_by_fee(
+        &mut self,
+        tx_id: TxId,
+        new_fee_per_gram: MicroMinotari,
+        additional_outputs: Vec<TransactionOutput>,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ReplaceByFee {
+                tx_id,
+                new_fee_per_gram,
+                additional_outputs,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionReplaced(new_tx_id) => Ok(new_tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

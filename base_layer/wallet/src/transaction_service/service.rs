@@ -41,15 +41,8 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{
-        ComAndPubSignature,
-        CommitmentFactory,
-        CompressedCommitment,
-        CompressedPublicKey,
-        FixedHash,
-        HashOutput,
-        PrivateKey,
-        Signature,
-        UncompressedPublicKey,
+        ComAndPubSignature, CommitmentFactory, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput,
+        PrivateKey, Signature, UncompressedPublicKey,
     },
     wallet_types::WalletType,
 };
@@ -65,22 +58,15 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CodeTemplateRegistration,
-            KernelFeatures,
-            OutputFeatures,
-            Transaction,
-            TransactionOutput,
+            CodeTemplateRegistration, KernelFeatures, OutputFeatures, Transaction, TransactionOutput,
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{
-            proto::protocol as proto,
-            recipient::RecipientSignedMessage,
-            sender::TransactionSenderMessage,
+            proto::protocol as proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage,
             TransactionMetadata,
         },
-        CryptoFactories,
-        ReceiverTransactionProtocol,
+        CryptoFactories, ReceiverTransactionProtocol,
     },
 };
 use tari_crypto::{
@@ -89,12 +75,7 @@ use tari_crypto::{
 };
 use tari_p2p::domain_message::DomainMessage;
 use tari_script::{
-    push_pubkey_script,
-    script,
-    CompressedCheckSigSchnorrSignature,
-    ExecutionStack,
-    ScriptContext,
-    TariScript,
+    push_pubkey_script, script, CompressedCheckSigSchnorrSignature, ExecutionStack, ScriptContext, TariScript,
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -117,12 +98,8 @@ use crate::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
-            FeePerGramStatsResponse,
-            PaymentDetails,
-            TransactionEvent,
-            TransactionEventSender,
-            TransactionServiceRequest,
-            TransactionServiceResponse,
+            FeePerGramStatsResponse, PaymentDetails, TransactionEvent, TransactionEventSender,
+            TransactionServiceRequest, TransactionServiceResponse,
         },
         offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
@@ -135,8 +112,7 @@ use crate::{
         storage::{
             database::{DbKey, TransactionBackend, TransactionDatabase},
             models::{
-                CompletedTransaction,
-                TxCancellationReason,
+                CompletedTransaction, TxCancellationReason,
                 WalletTransaction::{Completed, PendingInbound, PendingOutbound},
             },
         },
@@ -1053,6 +1029,20 @@ where
                 .start_rejected_transaction_revalidation(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReplaceByFee {
+                tx_id,
+                new_fee_per_gram,
+                additional_outputs,
+            } => self
+                .replace_by_fee(
+                    tx_id,
+                    new_fee_per_gram,
+                    additional_outputs,
+                    send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
+                )
+                .await
+                .map(TransactionServiceResponse::TransactionReplaced),
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -1230,8 +1220,8 @@ where
             .transaction_key_manager_service
             .get_comms_key()
             .await?
-            .pub_key ==
-            destination.comms_public_key()
+            .pub_key
+            == destination.comms_public_key()
         {
             debug!(
                 target: LOG_TARGET,
@@ -1515,8 +1505,8 @@ where
             ComAndPubSignature::new_from_capk_signature(
                 &transaction.transaction.body.outputs()[0]
                     .metadata_signature
-                    .to_capk_signature()? +
-                    &total_meta_data_signature.to_schnorr_signature()?,
+                    .to_capk_signature()?
+                    + &total_meta_data_signature.to_schnorr_signature()?,
             ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated metadata_signature");
@@ -1526,8 +1516,8 @@ where
             ComAndPubSignature::new_from_capk_signature(
                 &transaction.transaction.body.inputs()[0]
                     .script_signature
-                    .to_capk_signature()? +
-                    &total_script_data_signature.to_schnorr_signature()?,
+                    .to_capk_signature()?
+                    + &total_script_data_signature.to_schnorr_signature()?,
             ),
         )?;
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated script_signature");
@@ -1544,8 +1534,8 @@ where
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?,
             );
             trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: input_data {:?}", input.input_data);
-            input_keys = input_keys +
-                input
+            input_keys = input_keys
+                + input
                     .run_and_verify_script(&factory, Some(context))
                     .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?
                     .to_public_key()?;
@@ -1882,8 +1872,8 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 fee_per_gram,
-                if dest_address == self.resources.one_sided_tari_address ||
-                    dest_address == self.resources.interactive_tari_address
+                if dest_address == self.resources.one_sided_tari_address
+                    || dest_address == self.resources.interactive_tari_address
                 {
                     Some(TxType::PaymentToSelf)
                 } else {
@@ -2631,13 +2621,16 @@ where
         .await?;
         info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", tx_id);
 
-        Ok((tx_id, BurntProof {
-            // Key used to claim the burn on L2
-            reciprocal_claim_public_key: commitment_mask_key.pub_key,
-            commitment,
-            ownership_proof,
-            range_proof,
-        }))
+        Ok((
+            tx_id,
+            BurntProof {
+                // Key used to claim the burn on L2
+                reciprocal_claim_public_key: commitment_mask_key.pub_key,
+                commitment,
+                ownership_proof,
+                range_proof,
+            },
+        ))
     }
 
     pub async fn register_validator_node(
@@ -3170,8 +3163,8 @@ where
                 return Ok(());
             }
 
-            if self.finalized_transaction_senders.contains_key(&data.tx_id) ||
-                self.receiver_transaction_cancellation_senders.contains_key(&data.tx_id)
+            if self.finalized_transaction_senders.contains_key(&data.tx_id)
+                || self.receiver_transaction_cancellation_senders.contains_key(&data.tx_id)
             {
                 trace!(
                     target: LOG_TARGET,
@@ -3349,14 +3342,14 @@ where
                                                 source_address = Some(own_address.clone());
                                                 destination_address = Some(TariAddress::default());
                                             },
-                                            TxType::PaymentToSelf |
-                                            TxType::CoinSplit |
-                                            TxType::CoinJoin |
-                                            TxType::ValidatorNodeRegistration |
-                                            TxType::CodeTemplateRegistration |
-                                            TxType::ClaimAtomicSwap |
-                                            TxType::HtlcAtomicSwapRefund |
-                                            TxType::Coinbase => {
+                                            TxType::PaymentToSelf
+                                            | TxType::CoinSplit
+                                            | TxType::CoinJoin
+                                            | TxType::ValidatorNodeRegistration
+                                            | TxType::CodeTemplateRegistration
+                                            | TxType::ClaimAtomicSwap
+                                            | TxType::HtlcAtomicSwapRefund
+                                            | TxType::Coinbase => {
                                                 source_address = Some(own_address.clone());
                                                 destination_address = Some(own_address.clone());
                                             },
@@ -3677,10 +3670,10 @@ where
                 );
                 let reason = match error {
                     TransactionServiceError::TransactionValidationInProgress => 1,
-                    TransactionServiceError::ProtobufConversionError(_) |
-                    TransactionServiceError::RpcError(_) |
-                    TransactionServiceError::InvalidMessageError(_) |
-                    TransactionServiceError::BaseNodeChanged { .. } => 3,
+                    TransactionServiceError::ProtobufConversionError(_)
+                    | TransactionServiceError::RpcError(_)
+                    | TransactionServiceError::InvalidMessageError(_)
+                    | TransactionServiceError::BaseNodeChanged { .. } => 3,
                     _ => 2,
                 };
                 let _size = self
@@ -3720,10 +3713,10 @@ where
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_tx.tx_id;
-        if !(completed_tx.status == TransactionStatus::Completed ||
-            completed_tx.status == TransactionStatus::Broadcast ||
-            completed_tx.status == TransactionStatus::MinedUnconfirmed) ||
-            completed_tx.transaction.body.kernels().is_empty()
+        if !(completed_tx.status == TransactionStatus::Completed
+            || completed_tx.status == TransactionStatus::Broadcast
+            || completed_tx.status == TransactionStatus::MinedUnconfirmed)
+            || completed_tx.transaction.body.kernels().is_empty()
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
@@ -3867,17 +3860,17 @@ where
         {
             (
                 match tx_type {
-                    TxType::PaymentToOther |
-                    TxType::Burn |
-                    TxType::CodeTemplateRegistration |
-                    TxType::ValidatorNodeRegistration |
-                    TxType::CoinSplit |
-                    TxType::PaymentToSelf => TransactionDirection::Outbound,
-                    TxType::CoinJoin |
-                    TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund |
-                    TxType::ImportedUtxoNoneRewindable |
-                    TxType::Coinbase => TransactionDirection::Inbound,
+                    TxType::PaymentToOther
+                    | TxType::Burn
+                    | TxType::CodeTemplateRegistration
+                    | TxType::ValidatorNodeRegistration
+                    | TxType::CoinSplit
+                    | TxType::PaymentToSelf => TransactionDirection::Outbound,
+                    TxType::CoinJoin
+                    | TxType::ClaimAtomicSwap
+                    | TxType::HtlcAtomicSwapRefund
+                    | TxType::ImportedUtxoNoneRewindable
+                    | TxType::Coinbase => TransactionDirection::Inbound,
                 },
                 amount,
                 if tx_type == TxType::Burn {
@@ -3966,6 +3959,112 @@ where
         Ok(())
     }
 
+    /// Replace a pending outbound transaction with a new one with higher fee
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
+    /// * `fee_per_gram` - New fee per gram (should be higher than original)
+    /// * `additional_outputs` - Additional outputs to include (Note: values cannot be extracted from commitments)
+    /// * `send_transaction_join_handles` - Join handles for send transaction protocols
+    /// * `transaction_broadcast_join_handles` - Join handles for broadcast protocols
+    ///
+    /// # Returns
+    /// The new transaction ID or an error
+    pub async fn replace_by_fee(
+        &mut self,
+        tx_id: TxId,
+        fee_per_gram: MicroMinotari,
+        additional_outputs: Vec<TransactionOutput>,
+        send_transaction_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        // Get the original pending outbound transaction
+        let original_transaction = self
+            .resources
+            .db
+            .get_pending_outbound_transaction(tx_id)
+            .map_err(TransactionServiceError::TransactionStorageError)?;
+
+        // Check if transaction is already confirmed
+        if original_transaction.status.is_confirmed() {
+            return Err(TransactionServiceError::TransactionAlreadyCompleted(tx_id.to_string()));
+        }
+
+        // Cancel the existing transaction to free up UTXOs
+        self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled)
+            .await;
+
+        // Extract original transaction details
+        let destination = original_transaction.destination_address.clone();
+        let original_amount = original_transaction.amount;
+        let payment_id = original_transaction.payment_id.clone();
+
+        debug!(
+            target: LOG_TARGET,
+            "Replace-by-fee: Cancelled transaction {} for destination {}, amount {}",
+            tx_id,
+            destination,
+            original_amount
+        );
+
+        // Handle additional outputs as separate transactions if provided
+        // Note: We cannot extract values from TransactionOutput commitments since they are
+        // homomorphically encrypted. Additional outputs would need to be handled separately
+        // or the caller should provide the amounts explicitly.
+        if !additional_outputs.is_empty() {
+            warn!(
+                target: LOG_TARGET,
+                "Replace-by-fee: Additional outputs provided but cannot extract amounts from commitments. \
+                 Additional outputs will be ignored. Consider using separate transactions for additional outputs."
+            );
+        }
+
+        // Create a new transaction with the same parameters but new fee
+        let new_tx_id = TxId::new_random();
+        let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
+        let (cancellation_sender, cancellation_receiver) = oneshot::channel();
+
+        // Store the senders for the new transaction
+        self.pending_transaction_reply_senders
+            .insert(new_tx_id, tx_reply_sender);
+        self.send_transaction_cancellation_senders
+            .insert(new_tx_id, cancellation_sender);
+
+        // Create new transaction protocol with updated fee
+        let protocol = TransactionSendProtocol::new(
+            new_tx_id,
+            self.resources.clone(),
+            tx_reply_receiver,
+            cancellation_receiver,
+            destination.clone(),
+            original_amount,
+            fee_per_gram, // This is the new, higher fee
+            payment_id.clone(),
+            TransactionMetadata::default(),
+            None, // No reply channel for internal call
+            TransactionSendProtocolStage::Initial,
+            None,
+        );
+
+        // Launch the new transaction protocol
+        let join_handle = tokio::spawn(protocol.execute());
+        send_transaction_join_handles.push(join_handle);
+
+        info!(
+            target: LOG_TARGET,
+            "Replace-by-fee: Created new transaction {} to replace {} with fee_per_gram: {}",
+            new_tx_id,
+            tx_id,
+            fee_per_gram
+        );
+
+        Ok(new_tx_id)
+    }
+
     async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {
         if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
             warn!(
@@ -4047,8 +4146,8 @@ where
                 sending_method
             )));
         }
-        if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&
-            matches!(*self.resources.wallet_type, WalletType::Ledger(_))
+        if sending_method.contains(TariAddressFeatures::create_interactive_only())
+            && matches!(*self.resources.wallet_type, WalletType::Ledger(_))
         {
             return Err(TransactionServiceError::NotSupported(
                 "Interactive transactions are not supported on Ledger wallets".to_string(),

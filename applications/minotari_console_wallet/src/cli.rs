@@ -156,6 +156,8 @@ pub enum CliCommands {
     PreMineSpendTx(PreMineSpendAggregateTransactionArgs),
     PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
+    ReplaceByFee(ReplaceByFeeArgs),
+    UserPayForFee(UserPayForFeeArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
     DiscoverPeer(DiscoverPeerArgs),
@@ -220,6 +222,23 @@ pub struct SendMinotariArgs {
     pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
     pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ReplaceByFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: String,
+    #[clap(short, long)]
+    pub new_fee_per_gram: MicroMinotari,
+    pub additional_outputs: Vec<MicroMinotari>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UserPayForFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: String,
+    pub new_outputs: Vec<MicroMinotari>,
+    pub new_inputs: Vec<MicroMinotari>,
 }
 
 #[derive(Debug, Args, Clone)]
