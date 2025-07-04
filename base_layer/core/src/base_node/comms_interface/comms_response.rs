@@ -33,7 +33,13 @@ use tari_common_types::{
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{InputMinedInfo, MinedInfo, OutputMinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
+    chain_storage::{
+        InputMinedInfo,
+        MinedInfo,
+        OutputMinedInfo,
+        TemplateRegistrationEntry,
+        ValidatorNodeRegistrationInfo,
+    },
     proof_of_work::Difficulty,
     transactions::{
         tari_amount::MicroMinotari,

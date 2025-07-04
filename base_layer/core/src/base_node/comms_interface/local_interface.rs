@@ -40,7 +40,13 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{InputMinedInfo, MinedInfo, OutputMinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
+    chain_storage::{
+        InputMinedInfo,
+        MinedInfo,
+        OutputMinedInfo,
+        TemplateRegistrationEntry,
+        ValidatorNodeRegistrationInfo,
+    },
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };

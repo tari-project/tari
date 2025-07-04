@@ -8,7 +8,12 @@ use tari_common_types::{
 };
 use tari_sidechain::ShardGroup;
 
-use super::{lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader, MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
+use super::{
+    lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
+    MinedInfo,
+    TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo,
+};
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
