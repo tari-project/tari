@@ -352,18 +352,19 @@ where B: BlockchainBackend
             self.clear_all_reorgs()?;
         }
 
-        self.rebuild_payref_indexes_task()?;
+        self.rebuild_payref_indexes_background_task()?;
 
         Ok(())
     }
 
-    // This function will rebuild the payref indexes in the background if they are not already rebuilt.
-    fn rebuild_payref_indexes_task(&self) -> Result<(), ChainStorageError> {
+    /// This function will rebuild the payref indexes in the background if they are not already rebuilt.
+    pub fn rebuild_payref_indexes_background_task(&self) -> Result<(), ChainStorageError> {
         let initial_status = {
             let db = self.db_read_access()?;
             db.fetch_payref_rebuild_status()?
         };
         if initial_status.is_rebuilt {
+            debug!(target: LOG_TARGET, "[PayRef] Payref indexes has already been rebuilt.");
             return Ok(());
         }
 
@@ -389,49 +390,26 @@ where B: BlockchainBackend
 
             let mut initialize_stats = Some(metadata_at_start.best_block_height());
             for height in start_height..=metadata_at_start.best_block_height() {
-                // This is a safety check when we get close to the end to ensure we don't process block heights that
-                // are not in the database.
-                let finalize = if metadata_at_start.best_block_height() - height < 100 {
-                    match db_rw_lock
-                        .clone()
-                        .read()
-                        .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))
-                    {
-                        Ok(read_txn) => match read_txn.fetch_chain_metadata() {
-                            Ok(current_metadata) => {
-                                height == metadata_at_start.best_block_height() ||
-                                    height == current_metadata.best_block_height()
-                            },
-                            Err(e) => {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "[PayRef] Failed to read chain metadata for height {}: {:?}", height, e
-                                );
-                                break;
-                            },
-                        },
-                        Err(e) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "[PayRef] Failed to acquire read lock on the database for height {}: {:?}", height, e
-                            );
-                            break;
-                        },
-                    }
-                } else {
-                    false
-                };
-
-                // We can safely proceed with the rebuild if the height is less than or equal to the best block height
-                match process_payref_for_height(
-                    db_rw_lock.clone(),
-                    height,
-                    metadata_at_start.clone(),
-                    initialize_stats,
-                    finalize,
-                ) {
-                    Ok(current_status) => {
+                let finalize = height == metadata_at_start.best_block_height();
+                let metadata = metadata_at_start.clone();
+                let db = db_rw_lock.clone();
+                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
+                // shut down when base node shutdown is triggered
+                let res = tokio::task::spawn_blocking(move || {
+                    process_payref_for_height(db, height, metadata, initialize_stats, finalize)
+                })
+                .await;
+                match res {
+                    Ok(Ok(current_status)) => {
                         last_status = current_status;
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
+                            initial_status, last_status, e
+                        );
+                        break;
                     },
                     Err(e) => {
                         error!(
@@ -445,7 +423,7 @@ where B: BlockchainBackend
                 if initialize_stats.is_some() {
                     initialize_stats = None;
                 }
-                if finalize {
+                if finalize || last_status.is_rebuilt {
                     debug!(
                         target: LOG_TARGET,
                         "[PayRef] Starting index rebuilding completed, Final status: {:?}",
@@ -2768,10 +2746,24 @@ fn process_payref_for_height<B: BlockchainBackend>(
     let write_txn = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+
+    // The average size added to the db per block for payrefs for the first 16,500 blocks was approximately
+    // 4,209 bytes as measured on a mainnet node and for the next 17,500 blocks approximately 7,550 bytes.
+    // The highest measured value is much less than the theoretical maximum of
+    // `(1000 coinbases + 900 outputs) * 2 * 32 bytes per output = 242,200 bytes per block`. The
+    // default db maspize increase is 128MB when we have less than 64MB free space left, so we should be
+    // checking how long it will take to fill up 64MB. Taking the biggest measured value we end up with
+    // approximately 8888 blocks to consume 64MB wirth of payref data. Theoretically, we can fill up 64MB
+    // with 277 block's worth of payrefs. To test if the db needs resizing every 1000 blocks is deemed
+    // practical and safe.
+    if height % 1000 == 0 {
+        write_txn.resize_lmdb_if_required()?;
+    }
+
     let status =
         write_txn.build_payref_indexes_for_height(height, metadata_at_start.clone(), initialize_stats, finalize)?;
 
-    if finalize {
+    if finalize || status.is_rebuilt {
         debug!(
             target: LOG_TARGET,
             "[PayRef] Finalized index rebuilding for heights {} to {}",

@@ -469,6 +469,10 @@ impl BlockchainBackend for TempDatabase {
     fn set_stats_total_height(&self, _total: u64) {}
 
     fn update_stats_progress(&self, _current: u64) {}
+
+    fn resize_lmdb_if_required(&self) -> Result<(), ChainStorageError> {
+        self.db.as_ref().unwrap().resize_lmdb_if_required()
+    }
 }
 
 pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(
