@@ -65,8 +65,6 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
-    FetchOutputByPayRef(FixedHash),
-    CheckOutputSpentStatus(HashOutput),
     FetchTemplateRegistrations {
         start_height: u64,
         end_height: u64,

@@ -74,6 +74,8 @@ allow = [
 ]
 
 warn = [
-    # TODO: remove - to avoid conflicts in the feature branch, we'll ignore this for now
+    # TODO: resolve these
     "clippy::large_enum_variant",
+    # This lint is quite pedantic
+    #    "clippy::uninlined_format_args"
 ]

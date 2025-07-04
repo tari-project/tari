@@ -42,12 +42,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
-            BuildInfo,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
+            payment_id::PaymentId, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
             TransactionOutput,
         },
     },
@@ -66,11 +61,7 @@ use crate::{
         error::TransactionServiceError,
         offline_signing::models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
         storage::models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
         },
     },
     OperationId,
@@ -172,6 +163,14 @@ pub enum TransactionServiceRequest {
         binary_sha: FixedHash,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+        sidechain_deployment_key: Option<PrivateKey>,
+    },
+    SubmitValidatorEvictionProof {
+        amount: MicroMinotari,
+        proof: EvictionProof,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+        sidechain_deployment_key: Option<PrivateKey>,
     },
     PrepareOneSidedTransactionForSigning {
         destination: TariAddress,
@@ -186,14 +185,6 @@ pub enum TransactionServiceRequest {
     },
     BroadcastSignedOneSidedTransaction {
         request: SignedOneSidedTransactionResult,
-        sidechain_deployment_key: Option<PrivateKey>,
-    },
-    SubmitValidatorEvictionProof {
-        amount: MicroMinotari,
-        proof: EvictionProof,
-        fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
-        sidechain_deployment_key: Option<PrivateKey>,
     },
     SendOneSidedTransaction {
         destination: TariAddress,

@@ -72,7 +72,7 @@ pub enum GrpcMethod {
 
 impl GrpcMethod {
     /// All the GRPC methods as a fixed array
-    pub const ALL_VARIANTS: [GrpcMethod; 38] = [
+    pub const ALL_VARIANTS: [GrpcMethod; 39] = [
         GrpcMethod::ListHeaders,
         GrpcMethod::GetHeaderByHash,
         GrpcMethod::GetBlocks,
@@ -116,7 +116,7 @@ impl GrpcMethod {
 }
 
 impl IntoIterator for GrpcMethod {
-    type IntoIter = std::array::IntoIter<GrpcMethod, 38>;
+    type IntoIter = std::array::IntoIter<GrpcMethod, 39>;
     type Item = GrpcMethod;
 
     fn into_iter(self) -> Self::IntoIter {
