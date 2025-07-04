@@ -145,7 +145,11 @@ impl Display for NodeCommsRequest {
                 sidechain_id,
                 public_key,
             } => {
-                write!(f, "GetShardKey ({:?}), public key ({:?})", sidechain_id, public_key)
+                write!(
+                    f,
+                    "GetValidatorNode ({:?}), public key ({:?})",
+                    sidechain_id, public_key
+                )
             },
             FetchTemplateRegistrations {
                 start_height: start,

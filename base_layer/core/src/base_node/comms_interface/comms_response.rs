@@ -111,7 +111,7 @@ impl Display for NodeCommsResponse {
                 resp.not_found.len()
             ),
             FetchValidatorNodesKeysResponse(_) => write!(f, "FetchValidatorNodesKeysResponse"),
-            GetValidatorNode(_) => write!(f, "GetShardKeyResponse"),
+            GetValidatorNode(_) => write!(f, "GetValidatorNode"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
             OutputMinedInfo(_) => write!(f, "OutputMinedInfo"),
             MinedInfo(_) => write!(f, "MinedInfo"),
