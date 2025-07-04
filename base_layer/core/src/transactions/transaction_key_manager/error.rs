@@ -86,6 +86,10 @@ pub enum KeyManagerServiceError {
     ImportedPrivateKeyInaccessible(String),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Failed to encrypt: `{0}`")]
+    EncryptionFailed(String),
+    #[error("Failed to decrypt: `{0}`")]
+    DecryptionFailed(String),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {

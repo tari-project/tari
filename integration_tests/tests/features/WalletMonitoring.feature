@@ -15,7 +15,7 @@ Feature: Wallet Monitoring
     #     # Add multiple base nodes to ensure more robust comms
     When I have a base node NODE_A1 connected to seed SEED_A
     When I have wallet WALLET_A1 connected to seed node SEED_A
-    When I have mining node MINING_A connected to base node SEED_A and wallet WALLET_A1
+    When I have SHA3X mining node MINING_A connected to base node SEED_A and wallet WALLET_A1
     When mining node MINING_A mines 10 blocks
     Then all nodes are at height 10
     # And I list all COINBASE transactions for wallet WALLET_A1
@@ -30,7 +30,7 @@ Feature: Wallet Monitoring
     #     # Add multiple base nodes to ensure more robust comms
     When I have a base node NODE_B1 connected to seed SEED_B
     When I have wallet WALLET_B1 connected to seed node SEED_B
-    When I have mining node MINING_B connected to base node SEED_B and wallet WALLET_B1
+    When I have SHA3X mining node MINING_B connected to base node SEED_B and wallet WALLET_B1
     When mining node MINING_B mines 10 blocks
     Then all nodes are at height 10
     # And I list all COINBASE transactions for wallet WALLET_B1
@@ -62,7 +62,7 @@ Feature: Wallet Monitoring
     When I have a base node NODE_A1 connected to seed SEED_A
     When I have wallet WALLET_A1 connected to seed node SEED_A
     When I have wallet WALLET_A2 connected to seed node SEED_A
-    When I have mining node MINING_A connected to base node SEED_A and wallet WALLET_A1
+    When I have SHA3X mining node MINING_A connected to base node SEED_A and wallet WALLET_A1
     # When mining node MINING_A mines 10 blocks with min difficulty 20 and max difficulty 9999999999
     # Then node SEED_A is at height 10
     # Then node NODE_A1 is at height 10
@@ -84,7 +84,7 @@ Feature: Wallet Monitoring
     When I have a base node NODE_B1 connected to seed SEED_B
     When I have wallet WALLET_B1 connected to seed node SEED_B
     When I have wallet WALLET_B2 connected to seed node SEED_B
-    When I have mining node MINING_B connected to base node SEED_B and wallet WALLET_B1
+    When I have SHA3X mining node MINING_B connected to base node SEED_B and wallet WALLET_B1
     # When mining node MINING_B mines 10 blocks with min difficulty 1 and max difficulty 2
     # Then node SEED_B is at height 10
     # Then node NODE_B1 is at height 10
@@ -127,7 +127,7 @@ Feature: Wallet Monitoring
 
     When I have a base node NODE2 connected to seed SEED_A
     When I have wallet WALLET2 connected to base node NODE2
-    When I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
+    When I have SHA3X mining node MINER2 connected to base node NODE2 and wallet WALLET2
 
     # When I co-mine <numBlocks> blocks via merge mining proxy PROXY1 and mining node MINER2
     # Then all nodes are on the same chain tip

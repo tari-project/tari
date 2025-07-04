@@ -20,58 +20,94 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::Utc;
 use futures::channel::mpsc;
-use minotari_app_grpc::tari_rpc;
+use minotari_app_grpc::tari_rpc::{
+    self,
+    readiness_status::{State, Status as ReadinessStatusEnum},
+    MigrationProgress,
+    ReadinessStatus,
+};
+use tari_core::chain_storage::DatabaseStats;
 use tokio::sync::watch;
 use tonic::{Request, Response, Status};
-
 pub struct ReadinessGrpcServer {
     readiness_service: ReadinessService,
 }
 
+fn default_readiness_status() -> ReadinessStatus {
+    ReadinessStatus {
+        status: Some(ReadinessStatusEnum::State(State::NotReady.into())),
+        timestamp: Utc::now().timestamp_millis() as u64,
+    }
+}
+
 pub struct ReadinessService {
     readiness_rx: watch::Receiver<ReadinessStatus>,
+    lmdb_db_status_rx: watch::Receiver<DatabaseStats>,
 }
 
-#[derive(Clone)]
-pub enum ReadinessStatus {
-    Ready,
-    Recovering,
-    BuildingContext,
-    Migrating,
-    NotReady,
-    StartingUp,
+pub struct ReadinessStatusHandler {
+    pub readiness_tx: watch::Sender<ReadinessStatus>,
+    pub lmdb_migration_status_tx: watch::Sender<DatabaseStats>,
 }
 
-impl From<ReadinessStatus> for i32 {
-    fn from(status: ReadinessStatus) -> i32 {
-        match status {
-            ReadinessStatus::NotReady => 0,
-            ReadinessStatus::StartingUp => 1,
-            ReadinessStatus::Migrating => 2,
-            ReadinessStatus::Recovering => 3,
-            ReadinessStatus::BuildingContext => 4,
-            ReadinessStatus::Ready => 5,
-        }
+impl ReadinessStatusHandler {
+    pub fn send_readiness_status(&self, status_state: State) {
+        let status = ReadinessStatus {
+            status: Some(ReadinessStatusEnum::State(status_state.into())),
+            timestamp: Utc::now().timestamp_millis() as u64,
+        };
+        self.readiness_tx.send(status).unwrap();
     }
 }
 
 impl ReadinessService {
-    pub fn new() -> (Self, watch::Sender<ReadinessStatus>) {
-        let (readiness_tx, readiness_rx) = watch::channel(ReadinessStatus::NotReady);
-        let sender = readiness_tx.clone();
-        (Self { readiness_rx }, sender)
+    pub fn new() -> (Self, ReadinessStatusHandler) {
+        let (readiness_tx, readiness_rx) = watch::channel(default_readiness_status());
+        let (lmdb_db_status_tx, lmdb_db_status_rx) = watch::channel(DatabaseStats::default());
+        let handler = ReadinessStatusHandler {
+            readiness_tx: readiness_tx.clone(),
+            lmdb_migration_status_tx: lmdb_db_status_tx.clone(),
+        };
+        (
+            Self {
+                readiness_rx,
+                lmdb_db_status_rx,
+            },
+            handler,
+        )
     }
 
     pub fn get_status(&self) -> ReadinessStatus {
-        self.readiness_rx.borrow().clone()
+        let readiness_status = *self.readiness_rx.borrow();
+        let db_status = self.lmdb_db_status_rx.borrow();
+
+        // Choose the status with the latest timestamp
+        if db_status.timestamp > readiness_status.timestamp {
+            // Cast latest DB status to ReadinessStatus
+            let latest_db_status = ReadinessStatusEnum::Migration(MigrationProgress {
+                current_block: db_status.migration_stats.current_height,
+                total_blocks: db_status.migration_stats.total_height,
+                progress_percentage: db_status.migration_stats.progress_percentage,
+                current_db_version: db_status.migration_stats.current_db_version,
+                target_db_version: db_status.migration_stats.target_db_version,
+            });
+            ReadinessStatus {
+                status: Some(latest_db_status),
+                timestamp: db_status.timestamp,
+            }
+        } else {
+            // For non-migration states, use the readiness status as-is
+            readiness_status
+        }
     }
 }
 
 impl ReadinessGrpcServer {
-    pub fn new() -> (Self, watch::Sender<ReadinessStatus>) {
-        let (readiness_service, readiness_tx) = ReadinessService::new();
-        (Self { readiness_service }, readiness_tx)
+    pub fn new() -> (Self, ReadinessStatusHandler) {
+        let (readiness_service, handler) = ReadinessService::new();
+        (Self { readiness_service }, handler)
     }
 
     fn get_not_available_status(&self) -> Status {
@@ -93,6 +129,8 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchPaymentReferencesStream = mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
+    type SearchPaymentReferencesViaOutputHashStream =
+        mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     async fn get_network_state(
@@ -377,5 +415,12 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
         _request: Request<tari_rpc::GetValidatorNodeChangesRequest>,
     ) -> Result<Response<tari_rpc::GetValidatorNodeChangesResponse>, Status> {
         Err(self.get_not_available_status())
+    }
+
+    async fn search_payment_references_via_output_hash(
+        &self,
+        _request: Request<tari_rpc::FetchMatchingUtxosRequest>,
+    ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
+        return Err(self.get_not_available_status());
     }
 }

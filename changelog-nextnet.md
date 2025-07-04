@@ -9,6 +9,19 @@ All notable changes to this project will be documented in this file. See [standa
 
 * remove long timeout in interactive_tx till tx is persisted into db ([#7252](https://github.com/tari-project/tari/issues/7252)) ([3a78aba](https://github.com/tari-project/tari/commit/3a78aba2a5ed8c764525687ede683cc726ac880a))
 
+### [4.7.0-rc.0](https://github.com/tari-project/tari/compare/v4.6.2-rc.0...v4.7.0-rc.0) (2025-06-26)
+
+
+### Features
+
+* offline signing ([#7122](https://github.com/tari-project/tari/issues/7122)) ([86539c8](https://github.com/tari-project/tari/commit/86539c858cd452a3194267f97c34f2a2324d9659))
+
+
+### Bug Fixes
+
+* get_all_completed_transactions limit issues ([#7267](https://github.com/tari-project/tari/issues/7267)) ([da3f82d](https://github.com/tari-project/tari/commit/da3f82db3108357adb34bcacaf240be9bf9a8bbd))
+* ledger builds ([#7260](https://github.com/tari-project/tari/issues/7260)) ([d3676ef](https://github.com/tari-project/tari/commit/d3676ef8a921c50968bc57bbfded8c77e072c565))
+* 
 ### [4.6.1-rc.0](https://github.com/tari-project/tari/compare/v4.6.0-rc.0...v4.6.1-rc.0) (2025-06-23)
 
 

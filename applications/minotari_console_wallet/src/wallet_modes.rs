@@ -421,32 +421,35 @@ pub fn recovery_mode(
     wallet_config: &WalletConfig,
     wallet_mode: WalletMode,
     wallet: WalletSqlite,
+    skip_recovery: bool,
 ) -> Result<(), ExitError> {
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER_A);
+    if !skip_recovery {
+        // Do not remove this println!
+        const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
+        println!("{}", CUCUMBER_TEST_MARKER_A);
 
-    println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(
-        &wallet,
-        base_node_config,
-        wallet_config.recovery_retry_limit,
-    )) {
-        Ok(_) => println!("Wallet recovered!"),
-        Err(e) => {
-            error!(target: LOG_TARGET, "Recovery failed: {}", e);
-            println!(
-                "Recovery failed. Restarting the console wallet will restart the recovery process from where you left \
-                 off. If you want to start with a fresh wallet then delete the wallet data file"
-            );
+        println!("Starting recovery...");
+        match handle.block_on(wallet_recovery(
+            &wallet,
+            base_node_config,
+            wallet_config.recovery_retry_limit,
+        )) {
+            Ok(_) => println!("Wallet recovered!"),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Recovery failed: {}", e);
+                println!(
+                    "Recovery failed. Restarting the console wallet will restart the recovery process from where you \
+                     left off. If you want to start with a fresh wallet then delete the wallet data file"
+                );
 
-            return Err(e);
-        },
+                return Err(e);
+            },
+        }
+
+        // Do not remove this println!
+        const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Recovery mode completed)";
+        println!("{}", CUCUMBER_TEST_MARKER_B);
     }
-
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Recovery mode completed)";
-    println!("{}", CUCUMBER_TEST_MARKER_B);
 
     println!("Starting TUI.");
 
@@ -630,6 +633,9 @@ mod test {
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
                 CliCommands::ImportPaperWallet(_) => {},
+                CliCommands::PrepareOneSidedTransactionForSigning(_) => {},
+                CliCommands::SignOneSidedTransaction(_) => {},
+                CliCommands::BroadcastSignedOneSidedTransaction(_) => {},
                 CliCommands::ExportTx(args) => {
                     if args.tx_id == 123456789 && args.output_file == Some("pie.txt".into()) {
                         export_tx = true

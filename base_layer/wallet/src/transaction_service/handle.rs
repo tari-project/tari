@@ -64,6 +64,7 @@ use crate::{
     output_manager_service::{service::UseOutput, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
+        offline_signing::models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
         storage::models::{
             CompletedTransaction,
             InboundTransaction,
@@ -171,6 +172,20 @@ pub enum TransactionServiceRequest {
         binary_sha: FixedHash,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+    },
+    PrepareOneSidedTransactionForSigning {
+        destination: TariAddress,
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: Box<OutputFeatures>,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    },
+    SignOneSidedTransaction {
+        request: PrepareOneSidedTransactionForSigningResult,
+    },
+    BroadcastSignedOneSidedTransaction {
+        request: SignedOneSidedTransactionResult,
         sidechain_deployment_key: Option<PrivateKey>,
     },
     SubmitValidatorEvictionProof {
@@ -385,6 +400,20 @@ impl fmt::Display for TransactionServiceRequest {
                 "Submit VN Exit ({}, {}, {})",
                 validator_node_public_key, payment_id, max_epoch
             ),
+            Self::PrepareOneSidedTransactionForSigning {
+                destination,
+                amount,
+                payment_id,
+                ..
+            } => write!(
+                f,
+                "PrepareOneSidedTransactionForSigning (to {}, {}, {})",
+                destination, amount, payment_id
+            ),
+            Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {:?})", request,),
+            Self::BroadcastSignedOneSidedTransaction { request } => {
+                write!(f, "BroadcastSignedOneSidedTransaction (request {:?})", request,)
+            },
             Self::SendOneSidedTransaction {
                 destination,
                 amount,
@@ -512,6 +541,8 @@ pub enum TransactionServiceResponse {
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
     PaymentDetails(Option<PaymentDetails>),
+    OneSidedTransactionPreparedForSigning(Box<PrepareOneSidedTransactionForSigningResult>),
+    SignedOneSidedTransaction(Box<SignedOneSidedTransactionResult>),
     CodeRegistrationTransactionSent {
         tx_id: TxId,
         template_address: FixedHash,
@@ -856,6 +887,60 @@ impl TransactionServiceHandle {
                 payment_id,
                 sidechain_deployment_key,
             })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn prepare_one_sided_transaction_for_signing(
+        &mut self,
+        destination: TariAddress,
+        amount: MicroMinotari,
+        selection_criteria: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::PrepareOneSidedTransactionForSigning {
+                destination,
+                amount,
+                selection_criteria,
+                output_features: Box::new(output_features),
+                fee_per_gram,
+                payment_id,
+            })
+            .await??
+        {
+            TransactionServiceResponse::OneSidedTransactionPreparedForSigning(result) => Ok(*result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn sign_one_sided_transaction(
+        &mut self,
+        request: PrepareOneSidedTransactionForSigningResult,
+    ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SignOneSidedTransaction { request })
+            .await??
+        {
+            TransactionServiceResponse::SignedOneSidedTransaction(result) => Ok(*result),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn broadcast_signed_one_sided_transaction(
+        &mut self,
+        request: SignedOneSidedTransactionResult,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::BroadcastSignedOneSidedTransaction { request })
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),

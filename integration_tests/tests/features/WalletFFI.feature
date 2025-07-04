@@ -14,7 +14,7 @@ Feature: Wallet FFI
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
         When I have wallet SPECTATOR connected to base node BASE
-        When I have mining node MINER connected to base node BASE and wallet SPECTATOR
+        When I have SHA3X mining node MINER connected to base node BASE and wallet SPECTATOR
         When mining node MINER mines 10 blocks
         Then I wait for wallet SPECTATOR to have at least 1000000 uT
         Then I recover wallet SPECTATOR into ffi wallet FFI_WALLET from seed words on node BASE
@@ -27,10 +27,10 @@ Feature: Wallet FFI
         When I have a base node BASE connected to all seed nodes
 
         When I have wallet OTHER_WALLET connected to base node BASE
-        When I have mining node OTHER_MINER connected to base node BASE and wallet OTHER_WALLET
+        When I have SHA3X mining node OTHER_MINER connected to base node BASE and wallet OTHER_WALLET
 
         When I have wallet MY_WALLET connected to base node BASE
-        When I have mining node MY_MINER connected to base node BASE and wallet MY_WALLET
+        When I have SHA3X mining node MY_MINER connected to base node BASE and wallet MY_WALLET
 
         Then I export wallet MY_WALLET view and spend keys as VIEW_SPEND_KEYS
 
@@ -87,7 +87,7 @@ Feature: Wallet FFI
         Given I have a base node BASE
         When I have wallet SENDER connected to base node BASE
         And I have a ffi wallet FFI_WALLET connected to base node BASE
-        When I have mining node MINER connected to base node BASE and wallet SENDER
+        When I have SHA3X mining node MINER connected to base node BASE and wallet SENDER
         When mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
         And I send 2000000 uT one-sided without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
@@ -123,8 +123,8 @@ Feature: Wallet FFI
         When I add contact with alias ALIAS1 and address of WALLET1 to ffi wallet FFI_WALLET
         And I add contact with alias ALIAS2 and address of WALLET2 to ffi wallet FFI_WALLET
         # Do some mining and send transactions to force P2P discovery
-        And I have mining node MINER1 connected to base node SEED and wallet WALLET1
-        And I have mining node MINER2 connected to base node SEED and wallet WALLET2
+        And I have SHA3X mining node MINER1 connected to base node SEED and wallet WALLET1
+        And I have SHA3X mining node MINER2 connected to base node SEED and wallet WALLET2
         And mining node MINER1 mines 1 blocks
         And mining node MINER2 mines 5 blocks
         Then I wait for wallet WALLET1 to have at least 100000000 uT
@@ -144,7 +144,7 @@ Feature: Wallet FFI
         # Force some P2P discovery with contact liveness
         When I add contact with alias ALIAS1 and address of SENDER to ffi wallet FFI_WALLET
         When I have wallet RECEIVER connected to base node BASE1
-        When I have mining node MINER connected to base node BASE1 and wallet SENDER
+        When I have SHA3X mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
         Then I wait for wallet SENDER to have at least 2000000 uT
@@ -178,7 +178,7 @@ Feature: Wallet FFI
         When I have wallet SENDER connected to base node SEED
         And I have a ffi wallet FFI_WALLET connected to base node SEED
         And I stop ffi wallet FFI_WALLET
-        When I have mining node MINER connected to base node SEED and wallet SENDER
+        When I have SHA3X mining node MINER connected to base node SEED and wallet SENDER
         When mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 129239250000 uT
         And I send a one-sided stealth transaction of 1000000 uT from wallet SENDER to wallet FFI_WALLET at fee 5
@@ -204,7 +204,7 @@ Feature: Wallet FFI
         When I add contact with alias ALIAS2 and address of RECEIVER to ffi wallet FFI_WALLET
 
         # Fund the FFI wallet
-        When I have mining node MINER connected to base node BASE1 and wallet SENDER
+        When I have SHA3X mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
         Then I wait for wallet SENDER to have at least 129239250000 uT
@@ -235,7 +235,7 @@ Feature: Wallet FFI
         When I have a base node BASE2 connected to all seed nodes
         When I have wallet SENDER connected to base node BASE1
         And I have a ffi wallet FFI_RECEIVER connected to base node BASE2
-        When I have mining node MINER connected to base node BASE1 and wallet SENDER
+        When I have SHA3X mining node MINER connected to base node BASE1 and wallet SENDER
         When mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 5000000 uT
         Then I send a one-sided transaction of 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
@@ -253,7 +253,7 @@ Feature: Wallet FFI
         Given I have a base node BASE
         When I have wallet WALLET_A connected to base node BASE
         When I have wallet WALLET_B connected to base node BASE
-        When I have mining node MINER connected to base node BASE and wallet WALLET_A
+        When I have SHA3X mining node MINER connected to base node BASE and wallet WALLET_A
         When mining node MINER mines 7 blocks
         Then I wait for wallet WALLET_A to have at least 10000000 uT
         And I have a ffi wallet FFI_WALLET connected to base node BASE

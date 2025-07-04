@@ -1906,7 +1906,14 @@ async fn wallet_with_tari_connected_to_base_node(
     }
 
     cucumber_steps_log("Creating miner...");
-    create_miner(world, "temp_miner".to_string(), base_node.clone(), wallet.clone()).await;
+    create_miner(
+        world,
+        "SHA3X".to_string(),
+        "temp_miner".to_string(),
+        base_node.clone(),
+        wallet.clone(),
+    )
+    .await;
 
     cucumber_steps_log(format!("Mining {} blocks", num_blocks + CONFIRMATION_PERIOD));
     let miner = world.miners.get(&"temp_miner".to_string()).unwrap();

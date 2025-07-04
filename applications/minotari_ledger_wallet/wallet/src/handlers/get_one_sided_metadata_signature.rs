@@ -20,18 +20,17 @@ use ledger_device_sdk::ui::{
     gadgets::{Field, MultiFieldReview, SingleMessage},
 };
 use minotari_ledger_wallet_common::{
-    get_public_spend_key_bytes_from_tari_dual_address,
     get_payment_id_bytes_from_tari_dual_address,
+    get_public_spend_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
-    TARI_DUAL_ADDRESS_MIN_SIZE,
     TARI_DUAL_ADDRESS_MAX_SIZE,
+    TARI_DUAL_ADDRESS_MIN_SIZE,
 };
 use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
 
 use crate::{
     alloc::string::ToString,
-    hashing::DomainSeparatedConsensusHasher,
     crypto::{
         commitment::PedersenCommitment,
         commitment_and_public_key_signature::CommitmentAndPublicKeySignature,
@@ -39,6 +38,7 @@ use crate::{
         hashing::DomainSeparatedHasher,
         keys::{RistrettoPublicKey, RistrettoSecretKey},
     },
+    hashing::DomainSeparatedConsensusHasher,
     utils::{
         derive_from_bip32_key,
         get_key_from_canonical_bytes,
@@ -56,7 +56,8 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
 
     // Validate minimum required data size early
-    // Minimum: account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) + address_size(2) + min_address(67) + message(32) = 171
+    // Minimum: account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) +
+    // address_size(2) + min_address(67) + message(32) = 171
     if data.len() < 171 {
         return Err(AppSW::WrongApduLength);
     }
@@ -88,7 +89,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     if data.len() < 74 {
         return Err(AppSW::WrongApduLength);
     }
-    let address_size_bytes = &data[72..74]; 
+    let address_size_bytes = &data[72..74];
     let address_size = u16::from_le_bytes([address_size_bytes[0], address_size_bytes[1]]) as usize;
 
     if address_size < TARI_DUAL_ADDRESS_MIN_SIZE || address_size > TARI_DUAL_ADDRESS_MAX_SIZE {
@@ -126,20 +127,23 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
         return Err(AppSW::WrongApduLength);
     }
     let mut metadata_signature_message_common = [0u8; 32];
-    metadata_signature_message_common.clone_from_slice(&data[metadata_signature_message_common_start..metadata_signature_message_common_end]);
+    metadata_signature_message_common
+        .clone_from_slice(&data[metadata_signature_message_common_start..metadata_signature_message_common_end]);
 
     // Extract payment ID if present
     let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(receiver_address_bytes)
         .map_err(|_| AppSW::MetadataSignatureFail)?;
 
     let mut fields = Vec::new();
+    let field_value = format!("{}", value.to_string());
     fields.push(Field {
         name: "Amount",
-        value: &format!("{}", value.to_string()),
+        value: &field_value,
     });
+    let field_value = format!("{}", receiver_address);
     fields.push(Field {
         name: "Receiver",
-        value: &format!("{}", receiver_address),
+        value: &field_value,
     });
 
     // Add payment ID field if present

@@ -28,12 +28,12 @@ use std::{
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{CompressedPublicKey, HashOutput, PrivateKey},
+    types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
-    chain_storage::{InputMinedInfo, OutputMinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
+    chain_storage::{InputMinedInfo, MinedInfo, OutputMinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo},
     proof_of_work::Difficulty,
     transactions::{
         tari_amount::MicroMinotari,
@@ -67,7 +67,9 @@ pub enum NodeCommsResponse {
     GetValidatorNode(Option<ValidatorNodeRegistrationInfo>),
     FetchTemplateRegistrationsResponse(Vec<TemplateRegistrationEntry>),
     OutputMinedInfo(Option<OutputMinedInfo>),
+    MinedInfo(MinedInfo),
     InputMinedInfo(Option<InputMinedInfo>),
+    PayRef(Option<FixedHash>),
 }
 
 impl Display for NodeCommsResponse {
@@ -106,7 +108,9 @@ impl Display for NodeCommsResponse {
             GetValidatorNode(_) => write!(f, "GetShardKeyResponse"),
             FetchTemplateRegistrationsResponse(_) => write!(f, "FetchTemplateRegistrationsResponse"),
             OutputMinedInfo(_) => write!(f, "OutputMinedInfo"),
+            MinedInfo(_) => write!(f, "MinedInfo"),
             InputMinedInfo(_) => write!(f, "InputMinedInfo"),
+            PayRef(_) => write!(f, "PayRef"),
             FetchValidatorNodeChangesResponse(_) => write!(f, "FetchValidatorNodeChangesResponse"),
         }
     }

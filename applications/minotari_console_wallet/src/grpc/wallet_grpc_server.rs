@@ -37,6 +37,8 @@ use minotari_app_grpc::tari_rpc::{
     self,
     payment_recipient::PaymentType,
     wallet_server,
+    BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse,
     CheckConnectivityResponse,
     ClaimHtlcRefundRequest,
     ClaimHtlcRefundResponse,
@@ -83,6 +85,8 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest,
+    PrepareOneSidedTransactionForSigningResponse,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     RevalidateRequest,
@@ -113,6 +117,7 @@ use minotari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
+        offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
     },
     WalletSqlite,
@@ -740,6 +745,111 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    async fn prepare_one_sided_transaction_for_signing(
+        &self,
+        request: Request<PrepareOneSidedTransactionForSigningRequest>,
+    ) -> Result<Response<PrepareOneSidedTransactionForSigningResponse>, Status> {
+        let message = request.into_inner();
+
+        let recipient = message.recipient.ok_or(Status::invalid_argument("Missing recipient"))?;
+        let address = TariAddress::from_str(&recipient.address)
+            .map_err(|_| Status::invalid_argument("Destination address is malformed"))?;
+
+        let payment_id = if !recipient.raw_payment_id.is_empty() {
+            PaymentId::from_bytes(&recipient.raw_payment_id)
+        } else if let Some(user_pay_id) = recipient.user_payment_id {
+            let bytes = match (
+                user_pay_id.u256.is_empty(),
+                user_pay_id.utf8_string.is_empty(),
+                user_pay_id.user_bytes.is_empty(),
+            ) {
+                (false, true, true) => user_pay_id.u256,
+                (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                (true, true, false) => user_pay_id.user_bytes,
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                    ));
+                },
+            };
+            PaymentId::Open {
+                user_data: bytes,
+                tx_type: TxType::PaymentToOther,
+            }
+        } else {
+            PaymentId::Empty
+        };
+
+        let mut transaction_service = self.get_transaction_service();
+        let response = match transaction_service
+            .prepare_one_sided_transaction_for_signing(
+                address.clone(),
+                recipient.amount.into(),
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                recipient.fee_per_gram.into(),
+                payment_id,
+            )
+            .await
+        {
+            Ok(data) => {
+                let json_data = data.to_json().map_err(|e| Status::internal(e.to_string()))?;
+                PrepareOneSidedTransactionForSigningResponse {
+                    is_success: true,
+                    result: json_data,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to lock transaction for address `{}`: {}", address, err
+                );
+                PrepareOneSidedTransactionForSigningResponse {
+                    is_success: false,
+                    result: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn broadcast_signed_one_sided_transaction(
+        &self,
+        request: Request<BroadcastSignedOneSidedTransactionRequest>,
+    ) -> Result<Response<BroadcastSignedOneSidedTransactionResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut transaction_service = self.get_transaction_service();
+        let request = SignedOneSidedTransactionResult::from_json(&message.request)
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let response = match transaction_service
+            .broadcast_signed_one_sided_transaction(request)
+            .await
+        {
+            Ok(result) => BroadcastSignedOneSidedTransactionResponse {
+                is_success: true,
+                transaction_id: result.as_u64(),
+                failure_message: Default::default(),
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to broadcast a signed transaction: {}", err
+                );
+                BroadcastSignedOneSidedTransactionResponse {
+                    is_success: false,
+                    transaction_id: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
@@ -1222,7 +1332,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
 
         let mut completed_transactions = transaction_service
-            .get_completed_transactions(None, None, None, req.limit)
+            .get_completed_transactions(None, None, None, 0)
             .await
             .map_err(|err| {
                 Status::not_found(format!(
@@ -1232,7 +1342,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })?;
         completed_transactions.extend(
             transaction_service
-                .get_cancelled_completed_transactions(req.limit)
+                .get_cancelled_completed_transactions(0)
                 .await
                 .map_err(|err| {
                     Status::not_found(format!(

@@ -142,6 +142,7 @@ where
 {
     let val_buf = serialize(val, size_hint)?;
     let start = Instant::now();
+    // put::Flags::empty(): This will replace the value if it exists, or insert a new value if it does not.
     let res = txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {

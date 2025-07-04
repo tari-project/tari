@@ -20,6 +20,68 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # LMDB Database with Integrated Stats Collection
+//!
+//! This module provides an LMDB-based blockchain database with built-in statistics collection
+//! for monitoring database operations and migrations.
+//!
+//! ## Stats Collection
+//!
+//! Every `LMDBDatabase` instance automatically includes a `StatsCollector` that tracks:
+//! - Migration progress during database creation
+//! - Operation statistics (operations per second, progress percentage)
+//! - Real-time updates via tokio watch channels
+//!
+//! ## Usage Example
+//!
+//! ```no_run
+//! # use std::path::Path;
+//! # use tokio::sync::watch;
+//! # use tari_storage::lmdb_store::LMDBConfig;
+//! # use crate::consensus::ConsensusManager;
+//! # use crate::chain_storage::lmdb_db::stats_collector::DatabaseStats;
+//! // Create database with automatic stats collection
+//! let db = create_lmdb_database(
+//!     Path::new("./test_db"),
+//!     LMDBConfig::default(),
+//!     ConsensusManager::default(),
+//! )?;
+//!
+//! // Access the stats collector
+//! let stats_collector = db.stats_collector();
+//!
+//! // Subscribe to progress updates
+//! let progress_receiver = stats_collector.subscribe();
+//!
+//! // Subscribe additional receivers for different consumers
+//! let ui_receiver = stats_collector.subscribe_sender();
+//! let logging_receiver = stats_collector.subscribe_sender();
+//!
+//! // Check current progress
+//! let current_progress = stats_collector.progress_percentage();
+//! let ops_per_second = stats_collector.operations_per_second();
+//! println!(
+//!     "Progress: {:.1}%, Ops/sec: {:.2}",
+//!     current_progress, ops_per_second
+//! );
+//!
+//! // Alternative: Create database with external stats channel
+//! let (stats_sender, mut stats_receiver) = watch::channel(DatabaseStats::default());
+//! let db_with_channel = create_lmdb_database_with_stats_channel(
+//!     Path::new("./test_db_with_channel"),
+//!     LMDBConfig::default(),
+//!     ConsensusManager::default(),
+//!     Some(stats_sender),
+//! )?;
+//!
+//! // The stats_receiver will automatically receive updates from the database
+//! // as operations are performed
+//! ```
+//!
+//! The stats collector is automatically updated during:
+//! - Database migrations
+//! - Metadata updates
+
 // CompressedPublicKey used in BTreeSet triggers this warning, which is not applicable here
 #![allow(clippy::mutable_key_type)]
 
@@ -62,12 +124,14 @@ use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
 };
+use tokio::sync::watch;
 
 use super::{
     cursors::KeyPrefixCursor,
     lmdb::lmdb_get_prefix_cursor,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     lmdb_tree_writer::LmdbTreeWriter,
+    stats_collector::{DatabaseStats, LMDBStatsCollector},
 };
 use crate::{
     blocks::{
@@ -120,6 +184,7 @@ use crate::{
         DbSize,
         HorizonData,
         InputMinedInfo,
+        MinedInfo,
         MmrTree,
         Reorg,
         TemplateRegistrationEntry,
@@ -187,12 +252,8 @@ const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
 type CodeTemplateRegistrationKey = CompositeKey<40>;
-
-pub fn create_lmdb_database<P: AsRef<Path>>(
-    path: P,
-    config: LMDBConfig,
-    consensus_manager: ConsensusManager,
-) -> Result<LMDBDatabase, ChainStorageError> {
+/// Core database creation logic shared between public functions
+fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDBStore, File), ChainStorageError> {
     let flags = db::CREATE;
     debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
     fs::create_dir_all(&path)?;
@@ -241,9 +302,28 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
-    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager)
+
+    Ok((lmdb_store, file_lock))
 }
 
+pub fn create_lmdb_database<P: AsRef<Path>>(
+    path: P,
+    config: LMDBConfig,
+    consensus_manager: ConsensusManager,
+) -> Result<LMDBDatabase, ChainStorageError> {
+    let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
+    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, None)
+}
+
+pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
+    path: P,
+    config: LMDBConfig,
+    consensus_manager: ConsensusManager,
+    stats_sender: Option<watch::Sender<DatabaseStats>>,
+) -> Result<LMDBDatabase, ChainStorageError> {
+    let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
+    LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, stats_sender)
+}
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
     env: Arc<Environment>,
@@ -313,6 +393,7 @@ pub struct LMDBDatabase {
     jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
     consensus_manager: ConsensusManager,
+    stats_collector: LMDBStatsCollector,
 }
 
 impl LMDBDatabase {
@@ -320,6 +401,7 @@ impl LMDBDatabase {
         store: &LMDBStore,
         file_lock: File,
         consensus_manager: ConsensusManager,
+        stats_sender: Option<watch::Sender<DatabaseStats>>,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();
         let mut db = Self {
@@ -360,11 +442,22 @@ impl LMDBDatabase {
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
             consensus_manager,
+            stats_collector: LMDBStatsCollector::new(),
         };
+
+        // If a stats sender was provided, add it to the collector
+        if let Some(sender) = stats_sender {
+            db.stats_collector.add_sender(sender);
+        }
 
         run_migrations(&mut db)?;
 
         Ok(db)
+    }
+
+    /// Get a reference to the stats collector
+    pub fn stats_collector(&self) -> &LMDBStatsCollector {
+        &self.stats_collector
     }
 
     /// Try to establish a read lock on the LMDB database. If an exclusive write lock has been previously acquired, this
@@ -791,34 +884,6 @@ impl LMDBDatabase {
             "inputs_db",
         )?;
 
-        // Remove PayRef index when output is spent
-        // We need to find where this output was mined to calculate its PayRef
-        if let Ok(Some(output_info)) = self.fetch_output_in_txn(txn, output_hash.as_slice()) {
-            // Generate the PayRef using the same method as in generate_payment_reference
-            let payref_bytes = Self::generate_payment_reference_for_output(&output_info.header_hash, &output_hash);
-
-            // Delete the PayRef index entry
-            match lmdb_delete(
-                txn,
-                &self.payref_to_output_index,
-                payref_bytes.as_slice(),
-                "payref_to_output_index",
-            ) {
-                Ok(()) => {
-                    debug!(target: LOG_TARGET, "Successfully deleted PayRef for output {}", output_hash.to_hex());
-                },
-                Err(ChainStorageError::ValueNotFound { .. }) => {
-                    // PayRef not found - this is acceptable as it might not have been created in older versions
-                    debug!(target: LOG_TARGET, "PayRef not found for output {} - likely from older version", output_hash.to_hex());
-                },
-                Err(e) => {
-                    // Actual database error - must fail the transaction
-                    error!(target: LOG_TARGET, "Failed to delete PayRef for output {}: {}", output_hash.to_hex(), e);
-                    return Err(e);
-                },
-            }
-        }
-
         Ok(())
     }
 
@@ -829,6 +894,7 @@ impl LMDBDatabase {
         v: &MetadataValue,
     ) -> Result<(), ChainStorageError> {
         lmdb_replace(txn, &self.metadata_db, &k.as_u32(), v, None)?;
+        self.stats_collector.update_metadata(k, v);
         Ok(())
     }
 
@@ -1105,46 +1171,38 @@ impl LMDBDatabase {
         let constants = self.get_consensus_constants(height);
 
         for (_, utxo) in &output_rows {
-            trace!(target: LOG_TARGET, "Deleting UTXO `{}`", to_hex(utxo.hash.as_slice()));
+            let output_hash = utxo.hash;
+            let payref = Self::generate_payment_reference_for_output(block_hash, &output_hash);
+            trace!(target: LOG_TARGET, "Deleting UTXO `{}` with payref `{}`", output_hash, payref);
             lmdb_delete(
                 txn,
                 &self.txos_hash_to_index_db,
                 utxo.hash.as_slice(),
                 "txos_hash_to_index_db",
             )?;
-
-            let output_hash = utxo.output.hash();
-
-            // Clean up PayRef index for this output during reorg
-            // Only clean PayRef if output was actually created (not spent in same block, not burned)
-            let should_cleanup_payref =
-                !inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) && !utxo.output.is_burned();
-
-            if should_cleanup_payref {
-                let payref_bytes = Self::generate_payment_reference_for_output(block_hash, &output_hash);
-                // Delete the PayRef index entry with proper error handling
-                match lmdb_delete(
-                    txn,
-                    &self.payref_to_output_index,
-                    payref_bytes.as_slice(),
-                    "payref_to_output_index",
-                ) {
-                    Ok(()) => {
-                        debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex())
-                    },
-                    Err(ChainStorageError::ValueNotFound { .. }) => {
-                        // Expected case for outputs that didn't have PayRefs
-                    },
-                    Err(e) => {
-                        error!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e);
-                        return Err(e);
-                    },
-                }
+            match lmdb_delete(
+                txn,
+                &self.payref_to_output_index,
+                payref.as_slice(),
+                "payref_to_output_index",
+            ) {
+                Ok(()) => {
+                    debug!(target: LOG_TARGET, "Deleted PayRef during reorg for output {}", output_hash.to_hex())
+                },
+                Err(ChainStorageError::ValueNotFound { .. }) => {
+                    // some outputs may not have a PayRef yet if this happens during a migration, which is possible. So
+                    // we can ignore this error
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Failed to delete PayRef during reorg for output {}: {}", output_hash.to_hex(), e);
+                    return Err(e);
+                },
             }
 
-            // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
+            // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
             // does not exist here
             if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
+                trace!(target: LOG_TARGET, "Not deleting UTXO `{}` - immediate spend", output_hash);
                 continue;
             }
 
@@ -1184,10 +1242,13 @@ impl LMDBDatabase {
                 }
             }
 
-            // if an output was burned, it was never created as an unspent utxo
+            // If an output was burned, it was never created as an unspent utxo
             if utxo.output.is_burned() {
+                trace!(target: LOG_TARGET, "Not deleting UTXO `{}` - burned", output_hash);
                 continue;
             }
+
+            // Delete the output from the UTXO commitment index
             lmdb_delete(
                 txn,
                 &self.utxo_commitment_index,
@@ -1223,25 +1284,14 @@ impl LMDBDatabase {
 
             input.add_output_data(utxo_mined_info.output);
 
-            // Generate PayRef and add to index.
-            let payref =
-                Self::generate_payment_reference_for_output(&utxo_mined_info.header_hash, &input.output_hash());
-            lmdb_insert(
-                txn,
-                &self.payref_to_output_index,
-                payref.as_slice(),
-                &output_hash,
-                "payref_to_output_index",
-            )?;
-
-            trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
                 txn,
                 &self.utxo_commitment_index,
                 input.commitment()?.as_bytes(),
-                &input.output_hash(),
+                &output_hash,
                 "utxo_commitment_index",
             )?;
+            trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
         }
         Ok(())
     }
@@ -2023,20 +2073,41 @@ impl LMDBDatabase {
         }
     }
 
-    /// Fetch output by PayRef (Payment Reference)
-    /// Returns the OutputMinedInfo if found, None if not found
-    fn fetch_output_by_payref_in_txn(
+    // Fetch mined info by PayRef (Payment Reference)
+    fn fetch_mined_info_by_payref_in_txn(
         &self,
         txn: &ConstTransaction<'_>,
         payref: &FixedHash,
-    ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    ) -> Result<MinedInfo, ChainStorageError> {
         // Look up output hash by PayRef
         if let Some(output_hash) = lmdb_get::<_, HashOutput>(txn, &self.payref_to_output_index, payref.as_slice())? {
-            // Use existing fetch_output_in_txn method to get the full output info
-            self.fetch_output_in_txn(txn, output_hash.as_slice())
+            self.fetch_mined_info_by_output_hash_in_txn(txn, &output_hash)
         } else {
-            Ok(None)
+            Ok(MinedInfo {
+                input: None,
+                output: None,
+            })
         }
+    }
+
+    // Fetch mined info by PayRef (Payment Reference)
+    fn fetch_mined_info_by_output_hash_in_txn(
+        &self,
+        txn: &ConstTransaction<'_>,
+        output_hash: &HashOutput,
+    ) -> Result<MinedInfo, ChainStorageError> {
+        let mut mined_info = MinedInfo {
+            input: None,
+            output: None,
+        };
+        if let Ok(Some(output_mined_info)) = self.fetch_output_in_txn(txn, output_hash.as_slice()) {
+            mined_info.output = Some(output_mined_info);
+        }
+        if let Ok(Some(input_mined_info)) = self.fetch_input_in_txn(txn, output_hash.as_slice()) {
+            mined_info.input = Some(input_mined_info);
+        }
+
+        Ok(mined_info)
     }
 
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
@@ -2506,9 +2577,14 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_get::<_, HashOutput>(&txn, &self.utxo_commitment_index, commitment.as_bytes())
     }
 
-    fn fetch_output_by_payref(&self, payref: &FixedHash) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    fn fetch_mined_info_by_payref(&self, payref: &FixedHash) -> Result<MinedInfo, ChainStorageError> {
         let txn = self.read_transaction()?;
-        self.fetch_output_by_payref_in_txn(&txn, payref)
+        self.fetch_mined_info_by_payref_in_txn(&txn, payref)
+    }
+
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        self.fetch_mined_info_by_output_hash_in_txn(&txn, output_hash)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
@@ -3152,6 +3228,14 @@ impl BlockchainBackend for LMDBDatabase {
         }
         Ok(result)
     }
+
+    fn set_stats_total_height(&self, total: u64) {
+        self.stats_collector.set_total_height(total);
+    }
+
+    fn update_stats_progress(&self, current: u64) {
+        self.stats_collector.update_migration_progress(current);
+    }
 }
 
 // Fetch the chain metadata
@@ -3267,8 +3351,8 @@ fn get_database(store: &LMDBStore, name: &str) -> Result<DatabaseRef, ChainStora
     Ok(handle.db())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-enum MetadataKey {
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
+pub enum MetadataKey {
     ChainHeight,
     BestBlock,
     AccumulatedWork,
@@ -3302,8 +3386,8 @@ impl fmt::Display for MetadataKey {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Deserialize, Serialize)]
-enum MetadataValue {
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
     AccumulatedWork(U512),
@@ -3331,7 +3415,8 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 3;
+    const MIGRATION_VERSION: u64 = 5;
+    db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
     let val = lmdb_get::<_, MetadataValue>(&txn, &db.metadata_db, &k.as_u32())?;
@@ -3341,12 +3426,20 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     };
     info!(
         target: LOG_TARGET,
-        "Blockchain database is at v{} (required version: {})", last_migrated_version, MIGRATION_VERSION
+        "[MIGRATIONS] Blockchain database is at v{} (required version: {})",
+        last_migrated_version, MIGRATION_VERSION
     );
     drop(txn);
 
-    for migrate_from_version in last_migrated_version..=MIGRATION_VERSION {
-        // Add migrations here
+    let mut payref_index_done = false;
+
+    for migrate_from_version in last_migrated_version..MIGRATION_VERSION {
+        db.stats_collector().set_current_db_version(migrate_from_version);
+        unsafe {
+            LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
+        }
+
+        // MIGRATION: Accumulated difficulty migration after the 3rd mining algorithm was introduced
         if migrate_from_version == 0 {
             let txn = db.read_transaction()?;
 
@@ -3383,10 +3476,14 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 txn.commit()?;
                 info!(
                     target: LOG_TARGET,
-                    "Replaced tip accumulated data ",
+                    "[MIGRATIONS] v{}: Replaced tip accumulated data ",
+                    migrate_from_version
                 );
             }
+
             let txn = db.write_transaction()?;
+
+            db.set_stats_total_height(chain_height);
             for height in 0..=chain_height {
                 let block_accum_data: V0BLockHeaderAccumulatedData =
                     lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
@@ -3414,12 +3511,18 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     &new_block_accum_data,
                     None,
                 )?;
+
+                // Update stats progress
+                if height % 50 == 0 {
+                    db.update_stats_progress(height);
+                }
             }
             txn.commit()?;
             let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET,
-                "Replaced accumulated data for blocks",
+                "[MIGRATIONS] v{}: Replaced accumulated data for blocks",
+                migrate_from_version
             );
             let orphan_headers_accum_data: Vec<(Vec<u8>, V0BLockHeaderAccumulatedData)> =
                 lmdb_all(&txn, &db.orphan_header_accumulated_data_db)?;
@@ -3446,7 +3549,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET,
-                "Replaced accumulated data for orphan blocks",
+                "[MIGRATIONS] v{}: Replaced accumulated data for orphan blocks",
+                migrate_from_version
             );
             let orphan_chain_tips: Vec<(Vec<u8>, OldChainTipData)> = lmdb_all(&txn, &db.orphan_chain_tips_db)?;
 
@@ -3459,10 +3563,17 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             }
             txn.commit()?;
         }
+
+        // MIGRATION: Total accumulated difficulty migration - blockchain rewind to last known good accumulated
+        // difficulty
         if migrate_from_version == 1 {
             let known_good_difficulties = get_correct_accumulated_difficulty();
             if known_good_difficulties.is_empty() {
-                info!(target: LOG_TARGET, "No migration to perform for version network");
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{}: No migration to perform for version network",
+                    migrate_from_version
+                );
                 continue;
             }
             let mut last_correct_height = 0;
@@ -3474,28 +3585,41 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     if accum_data.total_accumulated_difficulty == correct_difficulty {
                         info!(
                             target: LOG_TARGET,
-                            "Block height {} already has correct accumulated difficulty",
-                            height
+                            "[MIGRATIONS] v{}: Block height {} already has correct accumulated difficulty",
+                            migrate_from_version, height
                         );
                         last_correct_height = height;
                     }
                 } else {
-                    info!(target: LOG_TARGET, "No accumulated difficulty found for block height {}", height);
+                    info!(
+                        target: LOG_TARGET,
+                        "[MIGRATIONS] v{}: No accumulated difficulty found for block height {}",
+                        migrate_from_version, height
+                    );
                     break;
                 }
             }
             if last_correct_height == 0 {
                 // this will happen only happen if the db is below the fork height of the RxT fork
-                info!(target: LOG_TARGET, "No migration to perform for version network");
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{}: No migration to perform for version network",
+                    migrate_from_version
+                );
                 continue;
             }
             // lets rewind to last known good accumulated difficulty so the db can be correctly calculated again
             rewind_to_height(db, last_correct_height)?;
         }
-        if migrate_from_version == 2 {
-            // Verify database consistency before starting migration
-            info!(target: LOG_TARGET, "Starting PayRef migration");
 
+        // MIGRATION: Add payref index, rebuild payref index to recover deleted payrefs
+        // Note: For previously running base nodes `last_migrated_version` was incremented beyond `MIGRATION_VERSION` up
+        //       to `migrate_from_version == 4`. This migration also fix the error introduced with the original payref
+        //       migration where it was only added for outputs in the unspent set, resulting in missing payrefs.
+        if (migrate_from_version == 2 || migrate_from_version == 3 || migrate_from_version == 4) && !payref_index_done {
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: Starting PayRef migration", migrate_from_version);
+
+            // Verify database consistency before starting migration
             let read_txn = db.read_transaction()?;
             let chain_height = match fetch_chain_height(&read_txn, &db.metadata_db) {
                 Ok(v) => v,
@@ -3506,33 +3630,51 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 },
             };
             drop(read_txn);
-            // we need to clear the payref index first as they might now bw wrong
-            {
-                let txn = db.write_transaction()?;
-                lmdb_clear(&txn, &db.payref_to_output_index)?;
-                txn.commit()?;
-                info!(target: LOG_TARGET, "Cleared PayRef index");
-            }
+
+            db.set_stats_total_height(chain_height);
             for height in 0..=chain_height {
+                // The average size added to the db per block for payrefs for the first 16,500 blocks was approximately
+                // 4,209 bytes as measured on a mainnet node and for the next 17,500 blocks approximately 7,550 bytes.
+                // The highest measured value is much less than the theoretical maximum of
+                // `(1000 coinbases + 900 outputs) * 2 * 32 bytes per output = 242,200 bytes per block`. The
+                // default db maspize increase is 128MB when we have less than 64MB free space left, so we should be
+                // checking how long it will take to fill up 64MB. Taking the biggest measured value we end up with
+                // approximately 8888 blocks to consume 64MB wirth of payref data. Theoretically, we can fill up 64MB
+                // with 277 block's worth of payrefs. To test if the db needs resizing every 1000 blocks is deemed
+                // practical and safe.
+                if height % 1000 == 0 {
+                    unsafe {
+                        LMDBStore::resize_if_required(&db.env, &db.env_config, None)?;
+                    }
+                }
                 process_payref_for_height(db, height)?;
+                if height % 50 == 0 {
+                    db.update_stats_progress(height);
+                }
             }
-            info!(target: LOG_TARGET, "PayRef index rebuild completed");
+
+            payref_index_done = true;
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: PayRef index rebuild completed", migrate_from_version);
         }
-        // lets update the migration version
+
+        // Lets update the migration version
         {
+            let migrated_to_version = migrate_from_version + 1;
             let txn = db.write_transaction()?;
-            info!(target: LOG_TARGET, "Migrated database to version {}", MIGRATION_VERSION);
+            info!(
+                target: LOG_TARGET, "[MIGRATIONS] Migrated database from version {} to version {}",
+                migrate_from_version, migrated_to_version
+            );
             lmdb_replace(
                 &txn,
                 &db.metadata_db,
                 &k.as_u32(),
-                &MetadataValue::MigrationVersion(migrate_from_version + 1),
+                &MetadataValue::MigrationVersion(migrated_to_version),
                 None,
             )?;
             txn.commit()?;
         }
     }
-
     Ok(())
 }
 
@@ -3627,9 +3769,11 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
     vec![]
 }
 
-/// Process a batch of blocks for PayRef migration with error handling
+/// Process a batch of blocks for PayRef migration
 fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), ChainStorageError> {
-    info!(target: LOG_TARGET, "Processing PayRef migration for  {}", height);
+    debug!(target: LOG_TARGET, "Processing PayRef migration for {}", height);
+
+    // Get all outputs for this block
     let read_txn = db.read_transaction()?;
     let read_header: Option<BlockHeader> = lmdb_get(&read_txn, &db.headers_db, &height)?;
     let header = read_header.ok_or_else(|| ChainStorageError::ValueNotFound {
@@ -3638,34 +3782,29 @@ fn process_payref_for_height(db: &LMDBDatabase, height: u64) -> Result<(), Chain
         value: height.to_string(),
     })?;
     let block_hash = header.hash();
-    // Get all outputs for this block
-    let outputs: Vec<(Vec<u8>, TransactionOutputRowData)> =
+    let query_results: Vec<(Vec<u8>, TransactionOutputRowData)> =
         lmdb_fetch_matching_after(&read_txn, &db.utxos_db, block_hash.as_slice())?;
-    let mut payrefs = Vec::new();
-    for (_, output_data) in outputs {
-        let exist = lmdb_exists(
-            &read_txn,
-            &db.utxo_commitment_index,
-            output_data.output.commitment().as_bytes(),
-        )?;
-        if exist {
-            let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.hash);
-            payrefs.push((payref, output_data.hash));
-        }
-    }
     drop(read_txn);
+
+    // Add payrefs, replacing any existing ones
     let write_txn = db.write_transaction()?;
-    for (payref, output_hash) in payrefs {
+    for (_, output_data) in query_results {
+        let payref = LMDBDatabase::generate_payment_reference_for_output(&block_hash, &output_data.hash);
+        trace!(target: LOG_TARGET,
+            "Processing payref {} and output hash {} for height {}",
+            payref, output_data.hash, height
+        );
         lmdb_replace(
             &write_txn,
             &db.payref_to_output_index,
             payref.as_slice(),
-            &output_hash,
+            &output_data.hash,
             None,
         )?;
     }
-    write_txn.commit()?;
+
     // Commit the batch
+    write_txn.commit()?;
 
     Ok(())
 }

@@ -103,6 +103,9 @@ service BaseNode {
     rpc GetNetworkState(GetNetworkStateRequest) returns (GetNetworkStateResponse);
     // PayRef (Payment Reference) lookup for block explorers and external services
     rpc SearchPaymentReferences(SearchPaymentReferencesRequest) returns (stream PaymentReferenceResponse);
+    // PayRef (Payment Reference) lookup for block explorers and external services via output hash
+    rpc SearchPaymentReferencesViaOutputHash(FetchMatchingUtxosRequest) returns (stream PaymentReferenceResponse);
+
 }
 
 message GetAssetMetadataRequest {
@@ -177,13 +180,40 @@ enum BaseNodeState{
     SYNC_FAILED = 6;
 }
 
-enum ReadinessStatus{
-   NOT_READY = 0;
-   STARTING_UP = 1;
-   MIGRATING = 2;
-   RECOVERING = 3;
-   BUILDING_CONTEXT = 4;
-   READY = 5;
+message ReadinessStatus {
+   enum State {
+      NOT_READY = 0;
+      STARTING_UP = 1;
+
+      // Database phase (10-19)
+      DATABASE_INITIALIZING = 10;
+
+      // Recovery phase (20-29)
+      RECOVERING_PREPARING = 20;
+      RECOVERING_REBUILDING = 21;
+      RECOVERING_REBUILDING_DATABASE = 22;
+
+      // Context building phase (30-39)
+      BUILDING_CONTEXT_BLOCKCHAIN = 32;
+      BUILDING_CONTEXT_BOOTSTRAP = 34;
+
+      READY = 100;
+   }
+
+   oneof status {
+       State state = 1;
+       MigrationProgress migration = 2;
+   }
+   uint64 timestamp = 6;
+
+}
+
+message MigrationProgress {
+   uint64 current_block = 1;
+   uint64 total_blocks = 2;
+   double progress_percentage = 3;
+   uint64 current_db_version = 4;
+   uint64 target_db_version = 5;
 }
 
 /// return type of GetNewBlockTemplate
@@ -238,13 +268,24 @@ message NetworkDifficultyResponse {
 
 // A generic single value response for a specific height
 message ValueAtHeightResponse {
-    // uint64 circulating_supply = 1;    // No longer used
+    // This is the total circulating token supply up to date ('mined_rewards + spendable_pre_mine').
+    uint64 circulating_supply = 1;
     // uint64 spendable_supply = 2;      // No longer used
+    // This is the block height the values are valid for.
     uint64 height = 3;
+    // This is the total mined rewards up to date, including time locked coinbase rewards that is not spendable.
     uint64 mined_rewards = 4;
+    // This is the total spendable minded rewards up to date, which excludes all coinbase rewards that is
+    // still time locked.
     uint64 spendable_rewards = 5;
+    // This is the total spendable pre-mine tokens released up to date, i.e. not time-locked anymore.
     uint64 spendable_pre_mine = 6;
+    // This is the total spendable token supply up to date ('spendable_rewards + spendable_pre_mine').
     uint64 total_spendable = 7;
+    // This is the total pre-mine tokens in the genesis block, time-locked and not time-locked.
+    uint64 total_pre_mine = 8;
+    // This is the total pre-mine tokens that are still time-locked up to date (`total_pre_mine - spendable_pre_mine`).
+    uint64 time_locked_pre_mine = 9;
 }
 
 // A generic uint value
@@ -630,10 +671,14 @@ message PaymentReferenceResponse {
     bytes commitment = 5;
     // Whether this output has been spent
     bool is_spent = 6;
-    // Height where output was spent (if spent)
+    // Height where output was spent - will be 0 for unspent outputs as it is not applicable
     uint64 spent_height = 7;
-    // Block hash where output was spent (if spent)
+    // Block hash where output was spent - will be empty for unspent outputs
     bytes spent_block_hash = 8;
-    // Transaction output amount will be 0 for non set a
+    // Minimum value promise
     uint64 min_value_promise = 9;
+    // Timestamp when the output was spent - will be 0 for unspent outputs as it is not applicable
+    uint64 spent_timestamp = 10;
+    // Output hash of the output
+    bytes output_hash = 11;
 }

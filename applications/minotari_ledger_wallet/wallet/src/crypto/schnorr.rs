@@ -14,12 +14,12 @@ use rand_core::{CryptoRng, RngCore};
 use tari_utilities::ByteArray;
 
 use crate::{
-    hash_domain,
-    hashing::DomainSeparatedHash,
     crypto::{
         hashing::{DomainSeparatedHasher, DomainSeparation},
         keys::{RistrettoPublicKey, RistrettoSecretKey},
     },
+    hash_domain,
+    hashing::DomainSeparatedHash,
 };
 
 hash_domain!(SchnorrSigChallenge, "com.tari.schnorr_signature", 1);

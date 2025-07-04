@@ -69,6 +69,7 @@ use crate::{
 pub mod config;
 pub mod error;
 pub mod handle;
+pub mod offline_signing;
 pub mod protocols;
 pub mod service;
 pub mod storage;

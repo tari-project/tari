@@ -65,8 +65,10 @@ pub use reorg::Reorg;
 mod lmdb_db;
 pub use lmdb_db::{
     create_lmdb_database,
+    create_lmdb_database_with_stats_channel,
     create_recovery_lmdb_database,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
+    DatabaseStats,
     LMDBDatabase,
 };
 mod stats;

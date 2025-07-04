@@ -1,7 +1,6 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 use alloc::{format, string::String};
-
 use core::marker::PhantomData;
 
 use digest::{Digest, FixedOutput, FixedOutputReset, Output, OutputSizeUser, Update};

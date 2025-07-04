@@ -67,6 +67,7 @@ pub enum GrpcMethod {
     GetTemplateRegistrations,
     GetSideChainUtxos,
     SearchPaymentReferences,
+    SearchPaymentReferencesViaOutputHash,
 }
 
 impl GrpcMethod {
@@ -110,6 +111,7 @@ impl GrpcMethod {
         GrpcMethod::GetTemplateRegistrations,
         GrpcMethod::GetSideChainUtxos,
         GrpcMethod::SearchPaymentReferences,
+        GrpcMethod::SearchPaymentReferencesViaOutputHash,
     ];
 }
 
@@ -167,6 +169,7 @@ impl FromStr for GrpcMethod {
             "get_template_registrations" => Ok(GrpcMethod::GetTemplateRegistrations),
             "get_side_chain_utxos" => Ok(GrpcMethod::GetSideChainUtxos),
             "search_payment_references" => Ok(GrpcMethod::SearchPaymentReferences),
+            "search_payment_references_via_output_hash" => Ok(GrpcMethod::SearchPaymentReferencesViaOutputHash),
             _ => Err(format!("'{}' not supported", s)),
         }
     }
@@ -265,6 +268,7 @@ mod tests {
                 GrpcMethod::GetTemplateRegistrations => count += 1,
                 GrpcMethod::GetSideChainUtxos => count += 1,
                 GrpcMethod::SearchPaymentReferences => count += 1,
+                GrpcMethod::SearchPaymentReferencesViaOutputHash => count += 1,
             }
         }
         assert_eq!(count, GrpcMethod::ALL_VARIANTS.len());

@@ -74,6 +74,10 @@ pub enum NodeCommsRequest {
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
     },
+    FetchMinedInfoByPayRef(FixedHash),
+    FetchMinedInfoByOutputHash(HashOutput),
+    FetchOutputMinedInfo(HashOutput),
+    CheckOutputSpentStatus(HashOutput),
     FetchValidatorNodesKeys {
         height: u64,
         validator_network: Option<CompressedPublicKey>,
@@ -154,8 +158,14 @@ impl Display for NodeCommsRequest {
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
             },
-            FetchOutputByPayRef(payref) => {
-                write!(f, "FetchOutputByPayRef ({})", payref.to_hex())
+            FetchMinedInfoByPayRef(payref) => {
+                write!(f, "FetchMinedInfoByPayRef ({})", payref)
+            },
+            FetchMinedInfoByOutputHash(payref) => {
+                write!(f, "FetchMinedInfoByOutputHash ({})", payref)
+            },
+            FetchOutputMinedInfo(output_hash) => {
+                write!(f, "FetchOutputMinedInfo ({})", output_hash)
             },
             CheckOutputSpentStatus(output_hash) => {
                 write!(f, "CheckOutputSpentStatus ({})", output_hash)
