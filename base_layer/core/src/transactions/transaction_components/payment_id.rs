@@ -186,14 +186,14 @@ impl PaymentId {
     const SIZE_VALUE_AND_META_DATA: usize = SIZE_VALUE + PaymentId::SIZE_META_DATA;
 
     pub fn new_address_and_data(
-        sender_address: Address,
-        fee: u64,
+        sender_address: TariAddress,
+        fee: MicroMinotari,
         sender_one_sided: bool,
-        tx_type: Option<TxType>,
+        tx_type: TxType,
         user_data: Vec<u8>,
     ) -> Result<Self, String> {
-        self.validate_user_data_size(sender_address, fee, sender_one_sided, tx_type, user_data)?;
-        Some(PaymentId::AddressAndData {
+        Self::validate_user_data_size(&user_data)?;
+        Ok(PaymentId::AddressAndData {
             sender_address,
             fee,
             sender_one_sided,
@@ -203,16 +203,16 @@ impl PaymentId {
     }
 
     pub fn new_transaction_info(
-        recipient_address: Address,
-        amount: MicroTari,
-        fee: MicroTari,
+        recipient_address: TariAddress,
+        amount: MicroMinotari,
+        fee: MicroMinotari,
         sender_one_sided: bool,
-        tx_type: Option<TxType>,
+        tx_type: TxType,
         sent_output_hashes: Vec<FixedHash>,
         user_data: Vec<u8>,
     ) -> Result<Self, String> {
-        self.validate_user_data_size(sender_address, fee, sender_one_sided, tx_type, user_data)?;
-        Some(PaymentId::TransactionInfo {
+        Self::validate_user_data_size(&user_data)?;
+        Ok(PaymentId::TransactionInfo {
             recipient_address,
             amount,
             fee,
@@ -284,15 +284,16 @@ impl PaymentId {
         }
     }
 
-    pub fn validate_user_data_size(&self, user_data: &[u8]) -> Result<(), String> {
-        let reserved_size = self.get_reserved_size();
-        let total_size = reserved_size + user_data.len();
+    pub fn validate_user_data_size(user_data: &[u8]) -> Result<(), String> {
+        // For static validation, we use the maximum possible reserved size
+        let max_reserved_size = TARI_ADDRESS_INTERNAL_DUAL_SIZE + 8 + 1 + 1 + 32; // address + amount + fee + flags + hash
+        let total_size = max_reserved_size + user_data.len();
 
         if total_size > SIZE_U256 {
             return Err(format!(
                 "PaymentId would exceed 256-bit limit: {} bytes (reserved: {}, user data: {})",
                 total_size,
-                reserved_size,
+                max_reserved_size,
                 user_data.len()
             ));
         }
@@ -414,7 +415,7 @@ impl PaymentId {
                     tx_type,
                     user_data: user_data.clone(),
                 };
-                if let Err(e) = new_payment_id.validate_user_data_size(&user_data) {
+                if let Err(e) = PaymentId::validate_user_data_size(&user_data) {
                     panic!("Invalid user data size: {}", e);
                 }
                 new_payment_id
@@ -913,123 +914,135 @@ mod test {
             },
             // AddressAndData - dual, no data
             PaymentId::new_address_and_data(
-                sender_address: TariAddress::from_base58(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::PaymentToSelf,
-                user_data: vec![],
-            ).unwrap(),
+                MicroMinotari::from(123),
+                false,
+                TxType::PaymentToSelf,
+                vec![],
+            )
+            .unwrap(),
             // // AddressAndData - dual, some data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58(
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::PaymentToOther,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            },
+                MicroMinotari::from(123),
+                false,
+                TxType::PaymentToOther,
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
             // AddressAndData - dual,
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58(
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                fee: MicroMinotari::from(123),
-                sender_one_sided: false,
-                tx_type: TxType::PaymentToSelf,
-                user_data: vec![1; 80],
-            },
+                MicroMinotari::from(123),
+                false,
+                TxType::PaymentToSelf,
+                vec![1; 80],
+            )
+            .unwrap(),
             // AddressAndData - single, no data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinSplit,
-                user_data: vec![],
-            },
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                MicroMinotari::from(123),
+                false,
+                TxType::CoinSplit,
+                vec![],
+            )
+            .unwrap(),
             // AddressAndData - single, some data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            },
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
             // AddressAndData - single, max data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinSplit,
-                user_data: vec![1; 100],
-            },
-            PaymentId::AddressAndData {
-                sender_address: pay_id_address.clone(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinSplit,
-                user_data: vec![1; 80],
-            },
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                MicroMinotari::from(123),
+                false,
+                TxType::CoinSplit,
+                vec![1; 100],
+            )
+            .unwrap(),
+            PaymentId::new_address_and_data(
+                pay_id_address.clone(),
+                MicroMinotari::from(123),
+                false,
+                TxType::CoinSplit,
+                vec![1; 80],
+            )
+            .unwrap(),
             // TransactionInfo - single + amount, no data
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinJoin,
-                user_data: vec![],
-                sent_output_hashes: vec![],
-            },
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::CoinJoin,
+                vec![],
+                vec![],
+            )
+            .unwrap(),
             // TransactionInfo - single + amount + some data
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::ValidatorNodeRegistration,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                sent_output_hashes: sent_output_hashes.clone(),
-            },
-            // TransactionInfo - dual + amount, no dta
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58(
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::ValidatorNodeRegistration,
+                sent_output_hashes.clone(),
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
+            // TransactionInfo - dual + amount, no data
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: true,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinSplit,
-                user_data: vec![],
-                sent_output_hashes: sent_output_hashes.clone(),
-            },
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                true,
+                TxType::CoinSplit,
+                sent_output_hashes.clone(),
+                vec![],
+            )
+            .unwrap(),
             // TransactionInfo - dual + amount + some data
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58(
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                sent_output_hashes: sent_output_hashes.clone(),
-            },
-            PaymentId::TransactionInfo {
-                recipient_address: pay_id_address,
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                sent_output_hashes: sent_output_hashes.clone(),
-            },
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                sent_output_hashes.clone(),
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
+            PaymentId::new_transaction_info(
+                pay_id_address,
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                sent_output_hashes.clone(),
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
         ]
     }
 
