@@ -71,7 +71,7 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_burn_transaction_task, send_register_template_transaction_task, send_transaction_task},
+            tasks::{send_burn_transaction_task, send_register_template_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
         ui_burnt_proof::UiBurntProof,
@@ -238,36 +238,6 @@ impl AppState {
         inner.refresh_burnt_proofs_state().await?;
         drop(inner);
         self.update_cache().await;
-
-        Ok(())
-    }
-
-    pub async fn send_transaction(
-        &mut self,
-        address: String,
-        amount: u64,
-        selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: u64,
-        payment_id: PaymentId,
-        result_tx: watch::Sender<UiTransactionSendStatus>,
-    ) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let address = TariAddress::from_str(&address)?;
-
-        let output_features = OutputFeatures { ..Default::default() };
-
-        let fee_per_gram = fee_per_gram * uT;
-        let tx_service_handle = inner.wallet.transaction_service.clone();
-        tokio::spawn(send_transaction_task(
-            address,
-            MicroMinotari::from(amount),
-            selection_criteria,
-            output_features,
-            payment_id,
-            fee_per_gram,
-            tx_service_handle,
-            result_tx,
-        ));
 
         Ok(())
     }
@@ -912,7 +882,6 @@ impl AppStateInner {
             .skip(1)
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
         let identity = MyIdentity {
-            tari_address_interactive: wallet_id.address_interactive.clone(),
             tari_address_one_sided: wallet_id.address_one_sided.clone(),
             network_address: wallet_id
                 .node_identity
@@ -1132,7 +1101,6 @@ impl AppStateData {
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
 
         let identity = MyIdentity {
-            tari_address_interactive: wallet_identity.address_interactive.clone(),
             tari_address_one_sided: wallet_identity.address_one_sided.clone(),
             network_address: wallet_identity
                 .node_identity
@@ -1166,7 +1134,6 @@ impl AppStateData {
 
 #[derive(Clone)]
 pub struct MyIdentity {
-    pub tari_address_interactive: TariAddress,
     pub tari_address_one_sided: TariAddress,
     pub network_address: String,
     pub qr_code: String,
@@ -1177,11 +1144,7 @@ pub struct MyIdentity {
 #[derive(Clone, Debug)]
 pub enum UiTransactionSendStatus {
     Initiated,
-    Queued,
-    SentDirect,
     TransactionComplete,
-    DiscoveryInProgress,
-    SentViaSaf,
     Error(String),
 }
 

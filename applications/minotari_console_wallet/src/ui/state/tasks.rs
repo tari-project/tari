@@ -28,7 +28,7 @@ use log::{debug, error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
-    transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
+    transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
 };
 use rand::{random, rngs::OsRng};
 use tari_common_types::{
@@ -55,82 +55,6 @@ use crate::ui::{
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
-
-pub async fn send_transaction_task(
-    address: TariAddress,
-    amount: MicroMinotari,
-    selection_criteria: UtxoSelectionCriteria,
-    output_features: OutputFeatures,
-    payment_id: PaymentId,
-    fee_per_gram: MicroMinotari,
-    mut transaction_service_handle: TransactionServiceHandle,
-    result_tx: watch::Sender<UiTransactionSendStatus>,
-) {
-    let _result = result_tx.send(UiTransactionSendStatus::Initiated);
-    let mut event_stream = transaction_service_handle.get_event_stream();
-    let mut send_status = TransactionSendStatus::default();
-    match transaction_service_handle
-        .send_transaction(
-            address,
-            amount,
-            selection_criteria,
-            output_features,
-            fee_per_gram,
-            payment_id,
-        )
-        .await
-    {
-        Err(e) => {
-            let _result = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
-        },
-        Ok(our_tx_id) => {
-            loop {
-                let next_event = event_stream.recv().await;
-                match next_event {
-                    Ok(event) => match &*event {
-                        TransactionEvent::TransactionDiscoveryInProgress(tx_id) => {
-                            if our_tx_id == *tx_id {
-                                let _result = result_tx.send(UiTransactionSendStatus::DiscoveryInProgress);
-                            }
-                        },
-                        TransactionEvent::TransactionSendResult(tx_id, status) => {
-                            if our_tx_id == *tx_id {
-                                send_status = status.clone();
-                                break;
-                            }
-                        },
-                        TransactionEvent::TransactionCompletedImmediately(tx_id) => {
-                            if our_tx_id == *tx_id {
-                                let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
-                                return;
-                            }
-                        },
-                        _ => (),
-                    },
-                    Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
-                        continue;
-                    },
-                    Err(broadcast::error::RecvError::Closed) => {
-                        break;
-                    },
-                }
-            }
-
-            if send_status.direct_send_result {
-                let _result = result_tx.send(UiTransactionSendStatus::SentDirect);
-            } else if send_status.store_and_forward_send_result {
-                let _result = result_tx.send(UiTransactionSendStatus::SentViaSaf);
-            } else if send_status.queued_for_retry {
-                let _result = result_tx.send(UiTransactionSendStatus::Queued);
-            } else {
-                let _result = result_tx.send(UiTransactionSendStatus::Error(
-                    "Transaction could not be sent".to_string(),
-                ));
-            }
-        },
-    }
-}
 
 pub async fn send_one_sided_to_stealth_address_transaction(
     address: TariAddress,

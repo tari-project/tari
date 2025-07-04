@@ -662,10 +662,6 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                         Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
                     return;
                 },
-                status => {
-                    warn!("unhandled transaction status {:?}", status);
-                    return;
-                },
             };
             draw_dialog(
                 f,
