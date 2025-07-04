@@ -1034,6 +1034,43 @@ TariPublicKey *tari_address_spend_key(TariWalletAddress *address,
                                       int *error_out);
 
 /**
+ * Gets the user payment ID of a TariAddress in string format
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariAddress
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+ * to an empty char array if address is null
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+ */
+char *tari_address_get_user_payment_id(TariWalletAddress *address,
+                                       int *error_out);
+
+/**
+ * Gets the user payment ID of a TariAddress as bytes
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariAddress
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created or the address does not have a user payment ID.
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *tari_address_get_user_payment_id_as_bytes(TariWalletAddress *address,
+                                                             int *error_out);
+
+/**
  * Creates a TariWalletAddress from a char array in emoji format
  *
  * ## Arguments
