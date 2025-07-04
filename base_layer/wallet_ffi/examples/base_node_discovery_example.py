@@ -31,10 +31,12 @@ def basic_discovery_example():
     
     try:
         # Create wallet with automatic base node discovery
+        # Use minimal logging and shorter timeouts for nextnet debugging
         wallet, base_node_info = create_wallet_with_auto_discovery(
             network="nextnet",
             database_name="discovery_example",
-            log_verbosity=1
+            log_verbosity=0,  # Reduce logging noise
+            dns_timeout=3.0   # Shorter timeout for testing
         )
         
         print("Wallet created successfully!")
