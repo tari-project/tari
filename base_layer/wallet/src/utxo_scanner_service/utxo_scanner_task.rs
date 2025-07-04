@@ -182,14 +182,14 @@ where
             // Keep going backwards until we find a header that is known to the base node
             loop {
                 next_header = wallet_service_client
-                    .get_header_by_height(last_scanned_block.height + 1)
+                    .get_header_by_height(height + 1)
                     .await?;
                 if next_header.is_some() {
                     break;
                 }
                 height = height.saturating_sub(1);
             }
-            let next_header = next_header.unwrap();
+            let next_header = next_header.expect("we check this above");
             let next_header_hash = next_header.hash;
 
             Ok(ScannedBlock {
@@ -500,7 +500,6 @@ where
             }
         }
         // We need to update the last one
-        // TODO: why do we do this twice? Surely this is already done above?
         if let Some(scanned_block) = prev_scanned_block {
             self.resources.db.clear_scanned_blocks_before_height(
                 scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
