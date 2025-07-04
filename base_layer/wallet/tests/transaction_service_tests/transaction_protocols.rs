@@ -110,7 +110,6 @@ pub async fn setup() -> (
     let mut mock_rpc_server = MockRpcServer::new(server, server_node_identity.clone());
     mock_rpc_server.serve();
 
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
@@ -275,7 +274,6 @@ async fn tx_broadcast_protocol_submit_success() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // let timeout_watch = Watch::new(Duration::from_secs(1));
 
@@ -360,7 +358,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
 
     // let protocol =
     //     TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
@@ -442,7 +440,6 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // let protocol =
     //     TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
@@ -526,7 +523,6 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // let protocol =
     //     TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
@@ -618,7 +614,6 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // let protocol =
     //     TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
@@ -688,7 +683,6 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // let protocol =
     //     TransactionBroadcastProtocol::new(1u64.into(), resources.clone(), timeout_update_watch.get_receiver());
@@ -714,7 +708,6 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     // let mut connection = new_mock_server
     //     .create_connection(new_server_node_identity.to_peer(), protocol_name.into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // // Set new Base Node response to be accepted
     // new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -770,7 +763,6 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     // add_transaction_to_database(
     //     1u64.into(),
     //     1 * T,
@@ -951,7 +943,6 @@ async fn tx_revalidation() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     // add_transaction_to_database(
     //     1u64.into(),
     //     1 * T,
@@ -1100,7 +1091,6 @@ async fn tx_validation_protocol_reorg() {
     // let mut connection = mock_rpc_server
     //     .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
     //     .await;
-    // wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // for i in 1..=5 {
     //     add_transaction_to_database(

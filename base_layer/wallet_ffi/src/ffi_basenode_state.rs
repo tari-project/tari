@@ -299,80 +299,68 @@ mod tests {
 
     #[test]
     fn test_basenode_state_ffi_accessors() {
-        // let mut error_code = 0;
-        // let original_node_id = NodeId::from_key(&TariPublicKey::new_from_pk(
-        //     UncompressedTariPublicKey::new_generator("test").unwrap(),
-        // ));
-        // let original_best_block = BlockHash::zero();
+        let mut error_code = 0;
+        let original_node_id = NodeId::from_key(&TariPublicKey::new_from_pk(
+            UncompressedTariPublicKey::new_generator("test").unwrap(),
+        ));
+        let original_best_block = BlockHash::zero();
 
-        // let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
-        //     node_id: Some(original_node_id.clone()),
-        //     best_block_height: 123,
-        //     best_block_hash: original_best_block,
-        //     best_block_timestamp: 12345,
-        //     pruning_horizon: 456,
-        //     pruned_height: 789,
-        //     is_node_synced: true,
-        //     updated_at: 135,
-        //     latency: 115,
-        // }));
+        let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
+            best_block_height: 123,
+            best_block_hash: original_best_block,
+            best_block_timestamp: 12345,
+            pruning_horizon: 456,
+            pruned_height: 789,
+            is_node_synced: true,
+            updated_at: 135,
+            latency: 115,
+        }));
 
-        // unsafe {
-        //     // ----------------------------------------------------------------------------
-        //     // node id
+        unsafe {
+            // ----------------------------------------------------------------------------
+            // best block
 
-        //     let wrapped_node_id = basenode_state_get_node_id(boxed_state, &mut error_code);
+            let mut block_hash = [0u8; FixedHash::byte_size()];
+            block_hash.copy_from_slice(
+                (*basenode_state_get_best_block(boxed_state, &mut error_code))
+                    .0
+                    .as_bytes(),
+            );
 
-        //     assert_eq!(
-        //         original_node_id,
-        //         NodeId::from_canonical_bytes((*wrapped_node_id).0.as_bytes()).unwrap()
-        //     );
-        //     assert_eq!(error_code, 0);
+            let best_block = FixedHash::from(block_hash);
 
-        //     // ----------------------------------------------------------------------------
-        //     // best block
+            assert_eq!(best_block, original_best_block);
+            assert_eq!(error_code, 0);
 
-        //     let mut block_hash = [0u8; FixedHash::byte_size()];
-        //     block_hash.copy_from_slice(
-        //         (*basenode_state_get_best_block(boxed_state, &mut error_code))
-        //             .0
-        //             .as_bytes(),
-        //     );
+            // ----------------------------------------------------------------------------
+            // other scalars
 
-        //     let best_block = FixedHash::from(block_hash);
+            assert_eq!(
+                basenode_state_get_height_of_the_longest_chain(boxed_state, &mut error_code),
+                123
+            );
+            assert_eq!(error_code, 0);
 
-        //     assert_eq!(best_block, original_best_block);
-        //     assert_eq!(error_code, 0);
+            assert_eq!(
+                basenode_state_get_best_block_timestamp(boxed_state, &mut error_code),
+                12345
+            );
+            assert_eq!(error_code, 0);
 
-        //     // ----------------------------------------------------------------------------
-        //     // other scalars
+            assert_eq!(basenode_state_get_pruning_horizon(boxed_state, &mut error_code), 456);
+            assert_eq!(error_code, 0);
 
-        //     assert_eq!(
-        //         basenode_state_get_height_of_the_longest_chain(boxed_state, &mut error_code),
-        //         123
-        //     );
-        //     assert_eq!(error_code, 0);
+            assert_eq!(basenode_state_get_pruned_height(boxed_state, &mut error_code), 789);
+            assert_eq!(error_code, 0);
 
-        //     assert_eq!(
-        //         basenode_state_get_best_block_timestamp(boxed_state, &mut error_code),
-        //         12345
-        //     );
-        //     assert_eq!(error_code, 0);
+            assert!(basenode_state_get_is_node_synced(boxed_state, &mut error_code));
+            assert_eq!(error_code, 0);
 
-        //     assert_eq!(basenode_state_get_pruning_horizon(boxed_state, &mut error_code), 456);
-        //     assert_eq!(error_code, 0);
+            assert_eq!(basenode_state_get_node_updated_at(boxed_state, &mut error_code), 135);
+            assert_eq!(error_code, 0);
 
-        //     assert_eq!(basenode_state_get_pruned_height(boxed_state, &mut error_code), 789);
-        //     assert_eq!(error_code, 0);
-
-        //     assert!(basenode_state_get_is_node_synced(boxed_state, &mut error_code));
-        //     assert_eq!(error_code, 0);
-
-        //     assert_eq!(basenode_state_get_node_updated_at(boxed_state, &mut error_code), 135);
-        //     assert_eq!(error_code, 0);
-
-        //     assert_eq!(basenode_state_get_latency(boxed_state, &mut error_code), 115);
-        //     assert_eq!(error_code, 0);
-        // }
+            assert_eq!(basenode_state_get_latency(boxed_state, &mut error_code), 115);
+            assert_eq!(error_code, 0);
+        }
     }
 }

@@ -32,24 +32,24 @@ use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{BlockHash, CompressedPublicKey, FixedHash, HashOutput},
+    types::{BlockHash, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
 use tari_core::{
     base_node::rpc::models::MinimalUtxoSyncInfo,
-    one_sided::public_key_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{payment_id::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
         transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
-use tari_crypto::{compressed_commitment::CompressedCommitment, ristretto::RistrettoPublicKey};
+use tari_crypto::{compressed_commitment::CompressedCommitment};
+use tari_crypto::compressed_key::CompressedKey;
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
-
+use tari_core::one_sided::shared_secret_to_output_encryption_key;
 use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
@@ -517,14 +517,14 @@ where
     ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
         let mut found_outputs: Vec<MinimalUtxoSyncInfo> = Vec::new();
         let start = Instant::now();
-        let view_key = self.key_manager.get_private_view_key().await?;
+        let view_key = self.key_manager.get_view_key().await?;
         for output in outputs {
             let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
                 .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
 
             // Change outputs just use the view key.
-            if EncryptedData::decrypt_data(&view_key, &commitment, &encrypted)
+            if self.key_manager.try_output_key_recovery(&commitment, &encrypted, None).await
                 .ok()
                 .is_some()
             {
@@ -533,13 +533,13 @@ where
             }
 
             // Received output use the DH of view key and sender offset.
-            let offfset_pub_key = RistrettoPublicKey::from_canonical_bytes(&output.sender_offset_public_key)
+            let offset_pub_key = CompressedKey::from_canonical_bytes(&output.sender_offset_public_key)
                 .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
-
-            let recovery_key = offfset_pub_key * &view_key;
-
-            let recovery_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(recovery_key))
-                .map_err(|e| anyhow!("Could not convert to encryption key: {}", e.to_string()))?;
+            let shared_secret = self
+                .key_manager
+                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)
+                .await?;
+            let recovery_key = shared_secret_to_output_encryption_key(&shared_secret).map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
                 .ok()
                 .is_some()
