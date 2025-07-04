@@ -28,9 +28,8 @@ class TestPyTariWallet:
             log_verbosity=1,
             num_rolling_log_files=3,
             size_per_log_file_bytes=512*1024,
-            network_str="localnet",
-            passphrase="test_passphrase",
-            seed_passphrase="test_seed_passphrase"
+            network_str="nextnet",
+            passphrase="test_passphrase"
         )
         assert wallet is not None
     
@@ -147,7 +146,8 @@ class TestPyTariWallet:
                 log_verbosity=level,
                 num_rolling_log_files=3,
                 size_per_log_file_bytes=512*1024,
-                network_str="localnet"
+                network_str="nextnet",
+                passphrase="test_wallet_passphrase"
             )
             assert wallet is not None
     

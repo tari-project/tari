@@ -20,12 +20,14 @@ def temp_dir():
 @pytest.fixture
 def basic_config(temp_dir):
     """Create a basic wallet configuration for testing."""
+    transport = tari_wallet.PyTariTransportConfig.create_tcp("/ip4/127.0.0.1/tcp/18188")
     return tari_wallet.PyTariCommsConfig(
         public_address="/ip4/127.0.0.1/tcp/18188",
         database_name="test_wallet",
         datastore_path=temp_dir,
         discovery_timeout=30,
-        exclude_dial_test_addresses=True
+        exclude_dial_test_addresses=True,
+        transport=transport
     )
 
 
@@ -38,7 +40,8 @@ def test_wallet(basic_config, temp_dir):
         log_verbosity=1,
         num_rolling_log_files=3,
         size_per_log_file_bytes=512*1024,
-        network_str="localnet"
+        network_str="nextnet",
+        passphrase="test_wallet_passphrase"
     )
 
 
@@ -80,7 +83,8 @@ def wallet_with_callbacks(basic_config, temp_dir, event_collector):
         log_verbosity=2,  # Debug level for tests
         num_rolling_log_files=3,
         size_per_log_file_bytes=256*1024,
-        network_str="localnet",
+        network_str="nextnet",
+        passphrase="test_wallet_passphrase",
         callbacks=callbacks
     )
 
