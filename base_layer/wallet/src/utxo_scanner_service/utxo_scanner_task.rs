@@ -181,9 +181,7 @@ where
             let mut next_header;
             // Keep going backwards until we find a header that is known to the base node
             loop {
-                next_header = wallet_service_client
-                    .get_header_by_height(height + 1)
-                    .await?;
+                next_header = wallet_service_client.get_header_by_height(height + 1).await?;
                 if next_header.is_some() {
                     break;
                 }

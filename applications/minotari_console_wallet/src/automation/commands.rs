@@ -113,7 +113,6 @@ use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
 };
-use url::Url;
 
 use super::error::CommandError;
 use crate::{
@@ -2308,10 +2307,7 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
-                    let http_client_url = Url::parse(&config.http_client_url.clone())
-                        .map_err(|e| CommandError::General(format!("Not a valid url: {}", e)))?;
-
-                    wallet_recovery(&new_wallet, http_client_url, new_config.recovery_retry_limit)
+                    wallet_recovery(&new_wallet, new_config.recovery_retry_limit)
                         .await
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     print!("Wallet recovery completed");

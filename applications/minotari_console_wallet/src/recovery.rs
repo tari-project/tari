@@ -21,22 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::offset::Local;
-use futures::FutureExt;
 use log::*;
-use minotari_wallet::{
-    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
-    storage::sqlite_db::wallet::WalletSqliteDatabase,
-    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
-    WalletKeyManager,
-    WalletSqlite,
-};
+use minotari_wallet::{utxo_scanner_service::handle::UtxoScannerEvent, WalletSqlite};
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
-use tari_shutdown::Shutdown;
 use tari_utilities::{Hidden, SafePassword};
 use tokio::sync::broadcast;
-use url::Url;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
@@ -91,26 +82,19 @@ pub fn get_seed_from_seed_words(
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
 #[allow(clippy::too_many_lines)]
-pub async fn wallet_recovery(wallet: &WalletSqlite, http_client_url: Url, retry_limit: usize) -> Result<(), ExitError> {
+pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Result<(), ExitError> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
-    // We dont care about the shutdown signal here, so we just create one
-    let shutdown = Shutdown::new();
-    let shutdown_signal = shutdown.to_signal();
 
-    let mut recovery_task =
-        UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager, DefaultHttpClientFactory>::builder()
-        .with_client_factory(DefaultHttpClientFactory::new( http_client_url))
-        // Do not make this a small number as wallet recovery needs to be resilient
-        .with_retry_limit(retry_limit)
-        .build_with_wallet(wallet, shutdown_signal).await
-        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
-
-    let mut event_stream = recovery_task.get_event_receiver();
-
-    let recovery_join_handle = tokio::spawn(recovery_task.run()).fuse();
+    let mut event_stream = wallet.utxo_scanner_service.clone().get_event_receiver();
 
     // Read recovery task events. The event stream will end once recovery has completed.
+    let mut failed_events = 0;
     loop {
+        if failed_events > retry_limit {
+            let err_msg = format!("Recovery process failed after {} attempts. Exiting.", retry_limit);
+            error!(target: LOG_TARGET, "{}", err_msg);
+            return Err(ExitError::new(ExitCode::RecoveryError, err_msg));
+        }
         match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode) => {
                 println!("Connecting to base node... ");
@@ -147,6 +131,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, http_client_url: Url, retry_
                 );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
+                failed_events += 1;
             },
             Ok(UtxoScannerEvent::ConnectionFailedToBaseNode {
                 peer,
@@ -160,6 +145,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, http_client_url: Url, retry_
                 );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
+                failed_events += 1;
             },
             Ok(UtxoScannerEvent::Completed {
                 final_height,
@@ -173,6 +159,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, http_client_url: Url, retry_
                 );
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);
+                break;
             },
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                 debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
@@ -187,9 +174,5 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, http_client_url: Url, retry_
             },
         }
     }
-
-    recovery_join_handle
-        .await
-        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?
-        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))
+    Ok(())
 }
