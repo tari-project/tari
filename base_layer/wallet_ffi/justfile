@@ -1,0 +1,170 @@
+# justfile for Tari Wallet FFI development
+# Install just: https://github.com/casey/just
+
+set dotenv-load
+
+# Default recipe to display help
+default:
+    @just --list
+
+# Environment variables
+export RUST_LOG := env_var_or_default("RUST_LOG", "debug")
+export TARI_TARGET_NETWORK := env_var_or_default("TARI_TARGET_NETWORK", "nextnet")
+
+# Build recipes
+build: build-release
+
+# Build in debug mode
+build-debug:
+    @echo "Building in debug mode..."
+    cargo build --features python-bindings
+
+# Build in release mode
+build-release:
+    @echo "Building in release mode..."
+    cargo build --release --features python-bindings
+
+# Build and install for development
+develop:
+    @echo "Building for development..."
+    maturin develop --release --features python-bindings
+
+# Build Python wheel
+wheel:
+    @echo "Building Python wheel..."
+    maturin build --release --features python-bindings
+
+# Testing recipes
+test: test-rust test-python
+
+# Run Rust tests
+test-rust:
+    @echo "Running Rust tests..."
+    cargo test --features python-bindings
+
+# Run Python tests
+test-python:
+    @echo "Running Python tests..."
+    python -m pytest tests/ -v
+
+# Run specific Python test file
+test-file file:
+    @echo "Running {{file}}..."
+    python -m pytest {{file}} -v
+
+# Code quality recipes
+fmt:
+    @echo "Formatting code..."
+    cargo fmt
+    black python/ tests/ examples/ || echo "black not available"
+    isort python/ tests/ examples/ || echo "isort not available"
+
+# Run linting
+lint:
+    @echo "Running linting..."
+    cargo clippy --features python-bindings -- -D warnings
+    ruff check python/ tests/ examples/ || echo "ruff not available"
+
+# Run type checking
+typecheck:
+    @echo "Running type checking..."
+    mypy python/ --ignore-missing-imports || echo "mypy not available"
+
+# Run all quality checks
+check: fmt lint typecheck test
+
+# Development setup recipes
+install-dev:
+    @echo "Installing development dependencies..."
+    pip install -r requirements-dev.txt
+    pip install maturin
+
+# Install pre-commit hooks
+install-hooks:
+    @echo "Installing pre-commit hooks..."
+    pre-commit install
+
+# Clean build artifacts
+clean:
+    @echo "Cleaning build artifacts..."
+    cargo clean
+    rm -rf target/wheels
+    find . -name "*.pyc" -delete
+    find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Documentation recipes
+docs:
+    @echo "Building documentation..."
+    cargo doc --features python-bindings --open
+
+# Benchmark recipes
+bench:
+    @echo "Running benchmarks..."
+    cargo bench --features python-bindings
+
+# Development workflow recipes
+dev: clean build-debug test-python
+
+# Full CI-like check
+ci: clean fmt lint typecheck test wheel
+
+# Quick syntax check
+syntax:
+    @echo "Checking syntax..."
+    cargo check --features python-bindings
+    python -m py_compile python/tari_wallet/__init__.py
+
+# Run with different Python versions (requires pyenv)
+test-python-versions:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for version in 3.8 3.9 3.10 3.11 3.12; do
+        if command -v python$version &> /dev/null; then
+            echo "Testing with Python $version..."
+            python$version -m pytest tests/test_basic_setup.py -v
+        else
+            echo "Python $version not available, skipping..."
+        fi
+    done
+
+# Profile build performance
+profile-build:
+    @echo "Profiling build performance..."
+    cargo clean
+    time cargo build --release --features python-bindings
+
+# Watch for file changes and rebuild
+watch:
+    @echo "Watching for changes..."
+    cargo watch -x "build --features python-bindings"
+
+# Setup development environment from scratch
+setup: install-dev install-hooks
+    @echo "Development environment setup complete!"
+    @echo "Run 'just develop' to build and install the package for development."
+
+# Show project info
+info:
+    @echo "Tari Wallet FFI Development Environment"
+    @echo "======================================"
+    @echo "Rust version: $(rustc --version)"
+    @echo "Python version: $(python --version)"
+    @echo "Target network: $TARI_TARGET_NETWORK"
+    @echo "Log level: $RUST_LOG"
+    @echo ""
+    @echo "Available commands:"
+    @just --list
+
+# Release helpers
+tag version:
+    @echo "Creating tag v{{version}}..."
+    git tag -a v{{version}} -m "Release v{{version}}"
+    git push origin v{{version}}
+
+# Generate release notes
+release-notes version:
+    @echo "Generating release notes for v{{version}}..."
+    @echo "# Release v{{version}}" > RELEASE_NOTES.md
+    @echo "" >> RELEASE_NOTES.md
+    @echo "## Changes" >> RELEASE_NOTES.md
+    git log --oneline --since="$(git log -1 --format=%ai $(git describe --tags --abbrev=0 HEAD^))" >> RELEASE_NOTES.md

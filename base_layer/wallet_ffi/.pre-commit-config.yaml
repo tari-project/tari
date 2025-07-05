@@ -1,0 +1,98 @@
+repos:
+  # Rust formatting and linting
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Format Rust code with cargo fmt
+        entry: cargo fmt
+        language: system
+        files: \.rs$
+        pass_filenames: false
+      
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Lint Rust code with cargo clippy
+        entry: bash -c 'cargo clippy --features python-bindings -- -D warnings'
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+  # Python formatting and linting
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3
+        files: ^(python/|tests/|examples/).*\.py$
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+        files: ^(python/|tests/|examples/).*\.py$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^(python/|tests/|examples/).*\.py$
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+        exclude: \.md$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  # Security checks
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: \.lock$
+
+  # Python-specific checks
+  - repo: local
+    hooks:
+      - id: python-tests
+        name: Python tests
+        description: Run Python test suite
+        entry: bash -c 'cd base_layer/wallet_ffi && python -m pytest tests/test_basic_setup.py -v'
+        language: system
+        files: ^(python/|tests/).*\.py$
+        pass_filenames: false
+
+  # Rust tests
+  - repo: local
+    hooks:
+      - id: rust-tests
+        name: Rust tests
+        description: Run Rust test suite
+        entry: bash -c 'cd base_layer/wallet_ffi && cargo test --features python-bindings'
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+# Configuration
+default_stages: [commit]
+fail_fast: false
+
+ci:
+  autofix_commit_msg: 'style: auto fixes from pre-commit hooks'
+  autoupdate_commit_msg: 'ci: pre-commit autoupdate'
+  skip: []

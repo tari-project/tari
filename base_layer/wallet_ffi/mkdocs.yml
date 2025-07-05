@@ -1,0 +1,95 @@
+site_name: Tari Wallet Python Bindings
+site_description: Python bindings for the Tari cryptocurrency wallet
+site_author: The Tari Development Community
+site_url: https://tari.com
+
+repo_name: tari-project/tari
+repo_url: https://github.com/tari-project/tari
+edit_uri: edit/main/base_layer/wallet_ffi/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.annotate
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [python]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: true
+            show_root_full_path: true
+            show_object_full_path: true
+            show_category_heading: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - User Guide:
+    - Installation: user-guide/installation.md
+    - Quick Start: user-guide/quickstart.md
+    - API Reference: user-guide/api.md
+    - Examples: user-guide/examples.md
+  - Developer Guide:
+    - Development Setup: development.md
+    - Architecture: architecture.md
+    - Testing: developer-guide/testing.md
+    - Contributing: developer-guide/contributing.md
+  - API Reference:
+    - Wallet: api/wallet.md
+    - Types: api/types.md
+    - Exceptions: api/exceptions.md
+    - Callbacks: api/callbacks.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/tari-project/tari
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/tari
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/tari
+
+copyright: Copyright &copy; 2024 The Tari Development Community
