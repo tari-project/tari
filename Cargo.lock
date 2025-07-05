@@ -4435,6 +4435,7 @@ dependencies = [
 name = "minotari_wallet_ffi"
 version = "4.7.0-pre.0"
 dependencies = [
+ "bincode",
  "borsh",
  "cbindgen",
  "chacha20poly1305",
@@ -4453,6 +4454,7 @@ dependencies = [
  "proptest",
  "pyo3",
  "rand 0.8.5",
+ "serde",
  "serde_json",
  "serial_test 3.2.0",
  "tari_common",
@@ -4475,6 +4477,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
+ "uuid",
  "zeroize",
 ]
 
@@ -8690,6 +8693,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8c5f0a0af699448548ad1a2fbf920fb4bee257eae39953ba95cb84891a0446a"
 dependencies = [
  "getrandom 0.2.15",
+ "serde",
 ]
 
 [[package]]

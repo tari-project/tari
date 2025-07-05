@@ -79,3 +79,5 @@ app_nanos.json
 # Ignore pycache for python bindings
 __pycache__/
 .gitignore
+__pycache__/
+*.py[cod]

@@ -204,6 +204,7 @@ mod callback_handler;
 mod callback_handler_tests;
 mod enums;
 mod error;
+pub mod event_bridge;
 mod ffi_basenode_state;
 #[cfg(test)]
 mod output_manager_service_mock;

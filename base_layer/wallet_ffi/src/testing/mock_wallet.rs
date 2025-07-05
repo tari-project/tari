@@ -15,6 +15,7 @@ use std::{
 
 use tari_common_types::tari_address::TariAddress;
 use minotari_wallet::output_manager_service::service::Balance;
+use crate::event_bridge::{EventBridge, types::{WalletEvent, EventType, EventData, ConnectivityState}};
 
 /// Mock wallet configuration for testing
 #[derive(Debug, Clone)]
@@ -43,6 +44,8 @@ pub struct MockWallet {
     mock_balance: Balance,
     mock_address: Option<TariAddress>,
     is_running: bool,
+    event_bridge: Option<EventBridge>,
+    wallet_id: u64,
 }
 
 /// Mock callback registration
@@ -60,12 +63,17 @@ unsafe impl Sync for MockCallback {}
 impl MockWallet {
     /// Create a new mock wallet
     pub fn new(config: MockWalletConfig) -> Self {
+        use rand::Rng;
+        let wallet_id = rand::thread_rng().gen::<u64>();
+        
         Self {
             config,
             callbacks: Arc::new(Mutex::new(HashMap::new())),
             mock_balance: Balance::zero(),
             mock_address: None,
             is_running: false,
+            event_bridge: None,
+            wallet_id,
         }
     }
     
@@ -83,6 +91,15 @@ impl MockWallet {
         // Create data directory if it doesn't exist
         if !self.config.data_dir.exists() {
             std::fs::create_dir_all(&self.config.data_dir)?;
+        }
+        
+        // Initialize event bridge if callbacks are enabled
+        // Only create event bridge in async contexts (tests will handle separately)
+        if self.config.enable_callbacks {
+            // Check if we're in a tokio runtime context
+            if tokio::runtime::Handle::try_current().is_ok() {
+                self.event_bridge = Some(EventBridge::new(self.wallet_id));
+            }
         }
         
         // Initialize mock balance
@@ -105,6 +122,9 @@ impl MockWallet {
         if let Ok(mut callbacks) = self.callbacks.lock() {
             callbacks.clear();
         }
+        
+        // Clear event bridge
+        self.event_bridge = None;
     }
     
     /// Register a mock callback
@@ -195,8 +215,35 @@ impl MockWallet {
         self.simulate_callback_invocation("callback_balance_updated").ok();
     }
     
-    /// Simulate receiving a transaction
-    pub fn simulate_received_transaction(&self) -> Result<(), String> {
+    /// Simulate receiving a transaction (through event bridge)
+    pub async fn simulate_received_transaction(&self, tx_id: u64, amount: u64, sender: &str) -> Result<(), String> {
+        if !self.is_running {
+            return Err("Mock wallet is not running".to_string());
+        }
+        
+        // Send through event bridge if available
+        if let Some(ref bridge) = self.event_bridge {
+            let event = WalletEvent::new(
+                EventType::TransactionReceived,
+                self.wallet_id,
+                EventData::TransactionReceived {
+                    tx_id,
+                    amount,
+                    sender_address: sender.to_string(),
+                    message: Some("Mock transaction".to_string()),
+                },
+            );
+            
+            bridge.send_event(event).await
+                .map_err(|e| format!("Failed to send event: {}", e))?;
+        }
+        
+        // Also simulate the callback invocation for backwards compatibility
+        self.simulate_callback_invocation("callback_received_transaction")
+    }
+    
+    /// Simulate receiving a transaction (sync version for backwards compatibility)
+    pub fn simulate_received_transaction_sync(&self) -> Result<(), String> {
         if !self.is_running {
             return Err("Mock wallet is not running".to_string());
         }
@@ -205,8 +252,33 @@ impl MockWallet {
         self.simulate_callback_invocation("callback_received_transaction")
     }
     
-    /// Simulate transaction broadcast
-    pub fn simulate_transaction_broadcast(&self) -> Result<(), String> {
+    /// Simulate transaction broadcast (through event bridge)
+    pub async fn simulate_transaction_broadcast(&self, tx_id: u64) -> Result<(), String> {
+        if !self.is_running {
+            return Err("Mock wallet is not running".to_string());
+        }
+        
+        // Send through event bridge if available
+        if let Some(ref bridge) = self.event_bridge {
+            let event = WalletEvent::new(
+                EventType::TransactionBroadcast,
+                self.wallet_id,
+                EventData::TransactionBroadcast {
+                    tx_id,
+                    amount: 1000000, // Mock amount
+                    fee: 100, // Mock fee
+                },
+            );
+            
+            bridge.send_event(event).await
+                .map_err(|e| format!("Failed to send event: {}", e))?;
+        }
+        
+        self.simulate_callback_invocation("callback_transaction_broadcast")
+    }
+    
+    /// Simulate transaction broadcast (sync version for backwards compatibility)
+    pub fn simulate_transaction_broadcast_sync(&self) -> Result<(), String> {
         if !self.is_running {
             return Err("Mock wallet is not running".to_string());
         }
@@ -214,8 +286,33 @@ impl MockWallet {
         self.simulate_callback_invocation("callback_transaction_broadcast")
     }
     
-    /// Simulate transaction mined
-    pub fn simulate_transaction_mined(&self) -> Result<(), String> {
+    /// Simulate transaction mined (through event bridge)
+    pub async fn simulate_transaction_mined(&self, tx_id: u64, amount: u64, block_height: Option<u64>) -> Result<(), String> {
+        if !self.is_running {
+            return Err("Mock wallet is not running".to_string());
+        }
+        
+        // Send through event bridge if available
+        if let Some(ref bridge) = self.event_bridge {
+            let event = WalletEvent::new(
+                EventType::TransactionMined,
+                self.wallet_id,
+                EventData::TransactionMined {
+                    tx_id,
+                    amount,
+                    block_height,
+                },
+            );
+            
+            bridge.send_event(event).await
+                .map_err(|e| format!("Failed to send event: {}", e))?;
+        }
+        
+        self.simulate_callback_invocation("callback_transaction_mined")
+    }
+    
+    /// Simulate transaction mined (sync version for backwards compatibility)
+    pub fn simulate_transaction_mined_sync(&self) -> Result<(), String> {
         if !self.is_running {
             return Err("Mock wallet is not running".to_string());
         }
@@ -223,13 +320,112 @@ impl MockWallet {
         self.simulate_callback_invocation("callback_transaction_mined")
     }
     
-    /// Simulate connectivity status change
-    pub fn simulate_connectivity_change(&self, online: bool) -> Result<(), String> {
+    /// Simulate connectivity status change (through event bridge)
+    pub async fn simulate_connectivity_change(&self, online: bool) -> Result<(), String> {
+        if !self.is_running {
+            return Err("Mock wallet is not running".to_string());
+        }
+        
+        // Send through event bridge if available
+        if let Some(ref bridge) = self.event_bridge {
+            let status = if online { ConnectivityState::Connected } else { ConnectivityState::Disconnected };
+            let event = WalletEvent::new(
+                EventType::ConnectivityStatus,
+                self.wallet_id,
+                EventData::ConnectivityStatus {
+                    status,
+                    peer_count: if online { 5 } else { 0 },
+                },
+            );
+            
+            bridge.send_event(event).await
+                .map_err(|e| format!("Failed to send event: {}", e))?;
+        }
+        
+        self.simulate_callback_invocation("callback_connectivity_status")
+    }
+    
+    /// Simulate connectivity status change (sync version for backwards compatibility)
+    pub fn simulate_connectivity_change_sync(&self, _online: bool) -> Result<(), String> {
         if !self.is_running {
             return Err("Mock wallet is not running".to_string());
         }
         
         self.simulate_callback_invocation("callback_connectivity_status")
+    }
+    
+    /// Get a reference to the event bridge for testing
+    pub fn get_event_bridge(&self) -> Option<&EventBridge> {
+        self.event_bridge.as_ref()
+    }
+    
+    /// Initialize event bridge for async testing (call this in tokio tests)
+    pub fn init_event_bridge(&mut self) -> Result<(), String> {
+        if !self.is_running {
+            return Err("Mock wallet is not running".to_string());
+        }
+        
+        if self.event_bridge.is_none() {
+            self.event_bridge = Some(EventBridge::new(self.wallet_id));
+        }
+        
+        Ok(())
+    }
+    
+    /// Register an event callback through the event bridge
+    pub async fn register_event_callback<F>(&self, event_type: EventType, callback_name: String, callback: F) -> Result<(), String>
+    where
+        F: Fn(&WalletEvent) -> Result<(), Box<dyn std::error::Error + Send + Sync>> + Send + Sync + 'static,
+    {
+        if let Some(ref bridge) = self.event_bridge {
+            bridge.dispatcher()
+                .register_callback(event_type, callback_name, callback)
+                .await;
+            Ok(())
+        } else {
+            Err("Event bridge not available".to_string())
+        }
+    }
+    
+    /// Simulate balance updated event through event bridge
+    pub async fn simulate_balance_updated(&mut self, balance: Balance) -> Result<(), String> {
+        if !self.is_running {
+            return Err("Mock wallet is not running".to_string());
+        }
+        
+        // Update internal balance
+        self.mock_balance = balance.clone();
+        
+        // Send through event bridge if available
+        if let Some(ref bridge) = self.event_bridge {
+            let event = WalletEvent::new(
+                EventType::BalanceUpdated,
+                self.wallet_id,
+                EventData::BalanceUpdated {
+                    available: balance.available_balance.as_u64(),
+                    pending_incoming: balance.pending_incoming_balance.as_u64(),
+                    pending_outgoing: balance.pending_outgoing_balance.as_u64(),
+                    timelocked: balance.time_locked_balance.map(|t| t.as_u64()),
+                },
+            );
+            
+            bridge.send_event(event).await
+                .map_err(|e| format!("Failed to send event: {}", e))?;
+        }
+        
+        // Also simulate the callback invocation for backwards compatibility
+        self.simulate_callback_invocation("callback_balance_updated").ok();
+        
+        Ok(())
+    }
+    
+    /// Get event bridge statistics
+    pub async fn get_event_bridge_stats(&self) -> Option<crate::event_bridge::dispatcher::DispatcherStats> {
+        if let Some(ref bridge) = self.event_bridge {
+            Some(bridge.get_stats().await)
+        } else {
+            None
+        }
     }
     
     /// Get comprehensive status for testing
@@ -362,9 +558,9 @@ mod tests {
         assert!(wallet.register_callback("callback_transaction_mined", context).is_ok());
         
         // Simulate transaction flow
-        assert!(wallet.simulate_received_transaction().is_ok());
-        assert!(wallet.simulate_transaction_broadcast().is_ok());
-        assert!(wallet.simulate_transaction_mined().is_ok());
+        assert!(wallet.simulate_received_transaction_sync().is_ok());
+        assert!(wallet.simulate_transaction_broadcast_sync().is_ok());
+        assert!(wallet.simulate_transaction_mined_sync().is_ok());
         
         // Verify invocations
         assert_eq!(wallet.get_callback_invocation_count("callback_received_transaction"), 1);
@@ -406,5 +602,40 @@ mod tests {
         assert!(status.is_running);
         assert_eq!(status.registered_callbacks.len(), 1);
         assert_eq!(status.callback_invocation_counts.get("test_callback"), Some(&1));
+    }
+    
+    #[tokio::test]
+    async fn test_event_bridge_integration() {
+        let mut wallet = MockWallet::default();
+        assert!(wallet.start().is_ok());
+        
+        // Initialize event bridge for async testing
+        assert!(wallet.init_event_bridge().is_ok());
+        
+        // Verify event bridge is created
+        assert!(wallet.get_event_bridge().is_some());
+        
+        // Test sending events through event bridge
+        assert!(wallet.simulate_received_transaction(123, 1000000, "test_sender").await.is_ok());
+        assert!(wallet.simulate_transaction_broadcast(123).await.is_ok());
+        assert!(wallet.simulate_transaction_mined(123, 1000000, Some(12345)).await.is_ok());
+        assert!(wallet.simulate_connectivity_change(true).await.is_ok());
+        
+        // Test balance update through event bridge
+        let new_balance = Balance {
+            available_balance: 2000000.into(),
+            time_locked_balance: None,
+            pending_incoming_balance: 100000.into(),
+            pending_outgoing_balance: 50000.into(),
+        };
+        assert!(wallet.simulate_balance_updated(new_balance.clone()).await.is_ok());
+        assert_eq!(wallet.get_balance().available_balance, new_balance.available_balance);
+        
+        // Check event bridge statistics
+        let stats = wallet.get_event_bridge_stats().await;
+        assert!(stats.is_some());
+        if let Some(stats) = stats {
+            assert!(stats.events_processed > 0);
+        }
     }
 }
