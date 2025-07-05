@@ -7,7 +7,6 @@
 //! structures passed to wallet callbacks, including their memory layout,
 //! Python conversion requirements, and field descriptions.
 
-use std::ffi::{c_char, c_void};
 use minotari_wallet::{
     output_manager_service::service::Balance,
     transaction_service::{
@@ -15,22 +14,15 @@ use minotari_wallet::{
         storage::models::{CompletedTransaction, InboundTransaction},
     },
 };
-use tari_common_types::{
-    tari_address::TariAddress,
-    transaction::TxId,
-    types::{BlockHash, MicroMinotari},
-};
 use tari_contacts::contacts_service::handle::ContactsLivenessData;
 use crate::ffi_basenode_state::TariBaseNodeState;
 
 /// Comprehensive documentation of callback data structures
 pub mod data_structures {
-    use super::*;
 
     /// Analysis of TariPendingInboundTransaction structure
     /// Used by: callback_received_transaction
     pub mod pending_inbound_transaction {
-        use super::*;
         
         /// Memory layout documentation for InboundTransaction
         pub fn document_structure() -> String {
@@ -77,7 +69,6 @@ Memory Safety:
     /// Analysis of TariCompletedTransaction structure  
     /// Used by: Multiple transaction callbacks
     pub mod completed_transaction {
-        use super::*;
         
         pub fn document_structure() -> String {
             format!(r#"
@@ -126,7 +117,6 @@ Python Conversion Requirements:
     /// Analysis of Balance structure
     /// Used by: callback_balance_updated
     pub mod balance {
-        use super::*;
         
         pub fn document_structure() -> String {
             format!(r#"
@@ -162,7 +152,6 @@ Precision Notes:
     /// Analysis of TransactionSendStatus
     /// Used by: callback_transaction_send_result  
     pub mod transaction_send_status {
-        use super::*;
         
         pub fn document_structure() -> String {
             format!(r#"
@@ -200,7 +189,6 @@ Error Reasons (Failed variant):
     /// Analysis of ContactsLivenessData
     /// Used by: callback_contacts_liveness_data_updated
     pub mod contacts_liveness_data {
-        use super::*;
         
         pub fn document_structure() -> String {
             format!(r#"
@@ -227,7 +215,6 @@ Use Cases:
     /// Analysis of TariBaseNodeState
     /// Used by: callback_base_node_state
     pub mod base_node_state {
-        use super::*;
         
         pub fn document_structure() -> String {
             format!(r#"

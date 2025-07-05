@@ -194,7 +194,7 @@ pub struct CallbackParameter {
 }
 
 /// Callback categories for functional grouping
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CallbackCategory {
     Transaction,
     Balance,

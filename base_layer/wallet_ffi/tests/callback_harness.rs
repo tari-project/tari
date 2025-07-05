@@ -15,6 +15,9 @@ use std::{
     cell::RefCell,
 };
 
+// Import using the actual crate structure
+extern crate minotari_wallet_ffi;
+
 use minotari_wallet_ffi::ffi::{
     callback_signatures::{CallbackCategory, get_all_callback_signatures},
     callback_categories::CallbackCategorizer,
