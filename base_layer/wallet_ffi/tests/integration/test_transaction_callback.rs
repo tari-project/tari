@@ -13,6 +13,7 @@ mod tests {
         transaction::extract_transaction_data,
     };
     use crate::ffi::transaction_types::TariPendingInboundTransaction;
+    use crate::python_event_bridge::PythonEventBridge;
 
     /// Test transaction data extraction from mock C structure
     #[test]
@@ -184,5 +185,50 @@ mod tests {
         
         // Should be well under 1ms per event creation
         assert!(duration.as_millis() < 10, "Transaction event creation too slow: {:?}", duration);
+    }
+
+    /// Test that python_event_bridge correctly uses main event bridge types
+    #[tokio::test]
+    async fn test_python_event_bridge_integration() {
+        let (bridge, mut receiver) = PythonEventBridge::new();
+        
+        // Create a transaction data event using the main event bridge types
+        let transaction_data = TransactionData {
+            tx_id: 98765,
+            source_address: "python_test_address".to_string(),
+            amount: 2000000, // 2 Tari in microTari
+            message: Some("Python bridge test".to_string()),
+            timestamp: 1640995300,
+            status: 1,
+        };
+
+        let event = WalletEvent::new(
+            EventType::TransactionReceived,
+            1,
+            EventData::TransactionReceived(transaction_data.clone()),
+        );
+
+        // Send event through python bridge
+        bridge.send_event(event.clone());
+        
+        // Verify event is received correctly
+        let received_event = timeout(Duration::from_millis(100), receiver.recv())
+            .await
+            .expect("Timeout waiting for event")
+            .expect("Event not received");
+        
+        assert_eq!(received_event.event_type, EventType::TransactionReceived);
+        assert_eq!(received_event.wallet_id, 1);
+        
+        if let EventData::TransactionReceived(received_tx_data) = received_event.data {
+            assert_eq!(received_tx_data.tx_id, 98765);
+            assert_eq!(received_tx_data.amount, 2000000);
+            assert_eq!(received_tx_data.source_address, "python_test_address");
+            assert_eq!(received_tx_data.message, Some("Python bridge test".to_string()));
+        } else {
+            panic!("Expected TransactionReceived event data");
+        }
+        
+        println!("Python event bridge integration test passed - uses consistent event types");
     }
 }
