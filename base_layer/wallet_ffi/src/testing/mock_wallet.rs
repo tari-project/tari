@@ -238,8 +238,12 @@ impl MockWallet {
                 .map_err(|e| format!("Failed to send event: {}", e))?;
         }
         
-        // Also simulate the callback invocation for backwards compatibility
-        self.simulate_callback_invocation("callback_received_transaction")
+        // Also simulate the callback invocation for backwards compatibility (only if callbacks are registered)
+        if self.callbacks.lock().unwrap().contains_key("callback_received_transaction") {
+            self.simulate_callback_invocation("callback_received_transaction")
+        } else {
+            Ok(())
+        }
     }
     
     /// Simulate receiving a transaction (sync version for backwards compatibility)
@@ -274,7 +278,12 @@ impl MockWallet {
                 .map_err(|e| format!("Failed to send event: {}", e))?;
         }
         
-        self.simulate_callback_invocation("callback_transaction_broadcast")
+        // Also simulate the callback invocation for backwards compatibility (only if callbacks are registered)
+        if self.callbacks.lock().unwrap().contains_key("callback_transaction_broadcast") {
+            self.simulate_callback_invocation("callback_transaction_broadcast")
+        } else {
+            Ok(())
+        }
     }
     
     /// Simulate transaction broadcast (sync version for backwards compatibility)
@@ -308,7 +317,12 @@ impl MockWallet {
                 .map_err(|e| format!("Failed to send event: {}", e))?;
         }
         
-        self.simulate_callback_invocation("callback_transaction_mined")
+        // Also simulate the callback invocation for backwards compatibility (only if callbacks are registered)
+        if self.callbacks.lock().unwrap().contains_key("callback_transaction_mined") {
+            self.simulate_callback_invocation("callback_transaction_mined")
+        } else {
+            Ok(())
+        }
     }
     
     /// Simulate transaction mined (sync version for backwards compatibility)
@@ -342,7 +356,12 @@ impl MockWallet {
                 .map_err(|e| format!("Failed to send event: {}", e))?;
         }
         
-        self.simulate_callback_invocation("callback_connectivity_status")
+        // Also simulate the callback invocation for backwards compatibility (only if callbacks are registered)
+        if self.callbacks.lock().unwrap().contains_key("callback_connectivity_status") {
+            self.simulate_callback_invocation("callback_connectivity_status")
+        } else {
+            Ok(())
+        }
     }
     
     /// Simulate connectivity status change (sync version for backwards compatibility)
@@ -413,8 +432,10 @@ impl MockWallet {
                 .map_err(|e| format!("Failed to send event: {}", e))?;
         }
         
-        // Also simulate the callback invocation for backwards compatibility
-        self.simulate_callback_invocation("callback_balance_updated").ok();
+        // Also simulate the callback invocation for backwards compatibility (only if callbacks are registered)
+        if self.callbacks.lock().unwrap().contains_key("callback_balance_updated") {
+            self.simulate_callback_invocation("callback_balance_updated").ok();
+        }
         
         Ok(())
     }
@@ -616,7 +637,11 @@ mod tests {
         assert!(wallet.get_event_bridge().is_some());
         
         // Test sending events through event bridge
-        assert!(wallet.simulate_received_transaction(123, 1000000, "test_sender").await.is_ok());
+        let result = wallet.simulate_received_transaction(123, 1000000, "test_sender").await;
+        if let Err(e) = &result {
+            println!("simulate_received_transaction failed: {}", e);
+        }
+        assert!(result.is_ok());
         assert!(wallet.simulate_transaction_broadcast(123).await.is_ok());
         assert!(wallet.simulate_transaction_mined(123, 1000000, Some(12345)).await.is_ok());
         assert!(wallet.simulate_connectivity_change(true).await.is_ok());

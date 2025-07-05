@@ -155,11 +155,14 @@ impl EventChannel {
         self.sender.is_closed()
     }
 
-    /// Get current queue length (approximation)
+    /// Get current queue length
     pub fn len(&self) -> usize {
-        // This is an approximation since we can't get exact queue size from UnboundedSender
-        // In practice, this will be managed by the queue size tracking in send operations
-        0
+        // Use the tracked queue size from send/receive operations
+        if let Ok(queue_size) = self.current_queue_size.try_read() {
+            *queue_size
+        } else {
+            0 // Fallback if lock is contended
+        }
     }
 
     /// Check if the queue is empty
