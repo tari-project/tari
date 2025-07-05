@@ -1,0 +1,211 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop, "python-lib" ]
+    paths:
+      - 'base_layer/wallet_ffi/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'base_layer/wallet_ffi/**'
+
+env:
+  CARGO_TERM_COLOR: always
+  TARI_TARGET_NETWORK: nextnet
+
+jobs:
+  test-rust:
+    name: Test Rust FFI
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Run Rust tests
+      run: |
+        cd base_layer/wallet_ffi
+        cargo test --features python-bindings
+        
+    - name: Run Rust clippy
+      run: |
+        cd base_layer/wallet_ffi
+        cargo clippy --features python-bindings -- -D warnings
+        
+    - name: Check Rust formatting
+      run: |
+        cd base_layer/wallet_ffi
+        cargo fmt -- --check
+        
+    - name: Build FFI library
+      run: |
+        cd base_layer/wallet_ffi
+        cargo build --release --features python-bindings
+
+  test-python:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+    
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-python${{ matrix.python-version }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-python${{ matrix.python-version }}-cargo-
+    
+    - name: Install Python dependencies
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install maturin
+    
+    - name: Run Python tests
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pytest tests/ -v --tb=short
+        
+    - name: Test maturin build
+      run: |
+        cd base_layer/wallet_ffi
+        maturin build --features python-bindings
+        
+    - name: Test wheel installation
+      run: |
+        cd base_layer/wallet_ffi
+        pip install target/wheels/*.whl
+        python -c "import tari_wallet; print('Import successful')"
+
+  lint-python:
+    name: Lint Python Code
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    
+    - name: Install Python dependencies
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+    
+    - name: Run black
+      run: |
+        cd base_layer/wallet_ffi
+        black --check python/ tests/ examples/
+        
+    - name: Run isort
+      run: |
+        cd base_layer/wallet_ffi
+        isort --check-only python/ tests/ examples/
+        
+    - name: Run ruff
+      run: |
+        cd base_layer/wallet_ffi
+        ruff check python/ tests/ examples/
+        
+    - name: Run mypy
+      run: |
+        cd base_layer/wallet_ffi
+        mypy python/ --ignore-missing-imports
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+    
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+    
+    - name: Run cargo audit
+      run: |
+        cd base_layer/wallet_ffi
+        cargo audit
+        
+    - name: Run security checks
+      run: |
+        cd base_layer/wallet_ffi
+        pip install safety bandit
+        pip install -r requirements-dev.txt
+        safety check
+        bandit -r python/ -f json
+
+  docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+    
+    - name: Install dependencies
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install mkdocs-material mkdocstrings[python]
+    
+    - name: Build documentation
+      run: |
+        cd base_layer/wallet_ffi
+        mkdocs build --strict
+        
+    - name: Test documentation links
+      run: |
+        cd base_layer/wallet_ffi
+        pip install pytest-check-links
+        pytest --check-links site/
