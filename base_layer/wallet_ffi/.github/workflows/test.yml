@@ -1,0 +1,149 @@
+name: Test Phase 0 Setup
+
+on:
+  push:
+    branches: [ main, develop, "python-lib" ]
+    paths:
+      - 'base_layer/wallet_ffi/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'base_layer/wallet_ffi/**'
+
+env:
+  CARGO_TERM_COLOR: always
+  TARI_TARGET_NETWORK: nextnet
+
+jobs:
+  test-rust:
+    name: Test Rust FFI
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
+    - name: Run Rust tests
+      run: |
+        cd base_layer/wallet_ffi
+        cargo test --features python-bindings
+        
+    - name: Run Rust clippy
+      run: |
+        cd base_layer/wallet_ffi
+        cargo clippy --features python-bindings -- -D warnings
+        
+    - name: Check Rust formatting
+      run: |
+        cd base_layer/wallet_ffi
+        cargo fmt -- --check
+
+  test-python:
+    name: Test Python Integration
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+    
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-python${{ matrix.python-version }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-python${{ matrix.python-version }}-cargo-
+    
+    - name: Install Python dependencies
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install maturin
+    
+    - name: Run Python basic tests
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pytest tests/test_basic_setup.py -v
+        
+    - name: Test build process
+      run: |
+        cd base_layer/wallet_ffi
+        maturin build --features python-bindings
+
+  test-cross-platform:
+    name: Test Cross Platform
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10"]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+    
+    - name: Install Python dependencies
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install maturin
+    
+    - name: Run build script (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        cd base_layer/wallet_ffi
+        chmod +x scripts/build.sh
+        ./scripts/build.sh debug
+    
+    - name: Run build script (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd base_layer/wallet_ffi
+        powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -BuildMode debug
+    
+    - name: Test basic Python setup
+      run: |
+        cd base_layer/wallet_ffi
+        python -m pytest tests/test_basic_setup.py -v
