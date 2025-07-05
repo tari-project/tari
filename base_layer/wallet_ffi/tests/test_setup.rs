@@ -6,7 +6,8 @@
 use std::sync::Once;
 
 use log::LevelFilter;
-use minotari_wallet_ffi::*;
+// Note: Import specific items as needed when implementing actual FFI functions
+// use minotari_wallet_ffi::*;
 use tempfile::tempdir;
 
 static INIT: Once = Once::new();
