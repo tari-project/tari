@@ -1,4 +1,4 @@
-.PHONY: help clean build build-debug build-release test test-rust test-python fmt lint check develop install-dev wheel docs
+.PHONY: help clean build build-debug build-release test test-rust test-python test-memory memory-safety fmt lint check develop install-dev wheel docs
 
 # Default target
 help:
@@ -15,6 +15,8 @@ help:
 	@echo "  test          Run all tests"
 	@echo "  test-rust     Run Rust tests only"
 	@echo "  test-python   Run Python tests only"
+	@echo "  test-memory   Run memory safety tests with valgrind"
+	@echo "  memory-safety Alias for test-memory"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  fmt           Format code (Rust and Python)"
@@ -65,6 +67,15 @@ test-python:
 	@echo "Running Python tests..."
 	TARI_TARGET_NETWORK=$(TARI_TARGET_NETWORK) \
 	python -m pytest tests/ $(PYTEST_FLAGS)
+
+test-memory:
+	@echo "Running memory safety tests with valgrind..."
+	chmod +x ../../scripts/run_valgrind_tests.sh
+	TARI_TARGET_NETWORK=$(TARI_TARGET_NETWORK) \
+	RUST_LOG=$(RUST_LOG) \
+	../../scripts/run_valgrind_tests.sh
+
+memory-safety: test-memory
 
 # Code Quality
 fmt:

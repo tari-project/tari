@@ -47,6 +47,15 @@ test-python:
     @echo "Running Python tests..."
     python -m pytest tests/ -v
 
+# Run memory safety tests with valgrind
+test-memory:
+    @echo "Running memory safety tests with valgrind..."
+    chmod +x ../../scripts/run_valgrind_tests.sh
+    ../../scripts/run_valgrind_tests.sh
+
+# Alias for memory safety tests
+memory-safety: test-memory
+
 # Run specific Python test file
 test-file file:
     @echo "Running {{file}}..."

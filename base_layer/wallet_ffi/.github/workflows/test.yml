@@ -147,3 +147,65 @@ jobs:
       run: |
         cd base_layer/wallet_ffi
         python -m pytest tests/test_basic_setup.py -v
+
+  memory-safety:
+    name: Memory Safety Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    
+    - name: Install Valgrind
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y valgrind
+        valgrind --version
+    
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-memory-safety-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-memory-safety-cargo-
+    
+    - name: Run Memory Safety Tests
+      run: |
+        cd base_layer/wallet_ffi
+        chmod +x ../../scripts/run_valgrind_tests.sh
+        ../../scripts/run_valgrind_tests.sh
+      env:
+        TARI_TARGET_NETWORK: nextnet
+        RUST_LOG: debug
+    
+    - name: Upload Memory Test Logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: memory-safety-logs
+        path: |
+          target/valgrind_logs/
+          base_layer/wallet_ffi/target/valgrind_logs/
+        retention-days: 7
+    
+    - name: Memory Safety Summary
+      if: always()
+      run: |
+        echo "## Memory Safety Test Results" >> $GITHUB_STEP_SUMMARY
+        if [ -f base_layer/wallet_ffi/target/valgrind_logs/memory_test_summary_*.txt ]; then
+          echo "### Summary Report" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat base_layer/wallet_ffi/target/valgrind_logs/memory_test_summary_*.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "No memory test summary found" >> $GITHUB_STEP_SUMMARY
+        fi
