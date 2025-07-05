@@ -97,3 +97,17 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(tari_target_network_nextnet)',
     'cfg(tari_target_network_testnet)',
 ] }
+
+# Profile for memory testing with valgrind
+[profile.memory-test]
+inherits = "dev"
+debug = 2           # Full debug symbols for valgrind
+opt-level = 0       # No optimization to preserve allocation patterns
+overflow-checks = true
+debug-assertions = true
+lto = false         # Disable LTO for better debugging
+
+# Features for memory testing
+[features]
+memory-testing = ["debug-allocations"]
+debug-allocations = []

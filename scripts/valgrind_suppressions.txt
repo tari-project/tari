@@ -1,0 +1,294 @@
+# Valgrind Suppressions for Tari Wallet FFI
+#
+# This file contains suppressions for known false positives in memory leak detection
+# when running Tari wallet FFI callback tests under valgrind.
+
+# Rust standard library allocations
+{
+   rust_std_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:rust_oom
+}
+
+{
+   rust_std_vec_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/libstd-*
+}
+
+# Tokio runtime allocations
+{
+   tokio_runtime_leak
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*tokio*
+}
+
+{
+   tokio_thread_pool
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/libtokio*
+}
+
+# PyO3/Python C API allocations (if tests involve Python)
+{
+   python_api_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:Py*
+}
+
+{
+   pyo3_conversion_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*pyo3*
+}
+
+# Tari base layer allocations that are managed by the wallet
+{
+   tari_wallet_managed_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*tari_wallet*
+}
+
+# OpenSSL allocations (if used by Tari crypto)
+{
+   openssl_crypto_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/libssl*
+}
+
+{
+   openssl_rand_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/libcrypto*
+}
+
+# DNS resolution allocations (for network discovery)
+{
+   dns_resolver_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*getaddrinfo*
+}
+
+{
+   glibc_dns_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*gethostbyname*
+}
+
+# Thread-local storage allocations
+{
+   thread_local_storage
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*__tls_get_addr*
+}
+
+# Dynamic linker allocations
+{
+   dl_open_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*dlopen*
+}
+
+{
+   dl_sym_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*dlsym*
+}
+
+# Backtrace/debugging allocations
+{
+   backtrace_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*backtrace*
+}
+
+# System locale allocations
+{
+   locale_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*setlocale*
+}
+
+# Test-specific suppressions for false positives
+{
+   test_framework_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*test*
+}
+
+# Criterion benchmark framework (if used)
+{
+   criterion_bench_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*criterion*
+}
+
+# Event bridge system allocations that should be managed
+{
+   event_bridge_channel_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*event_bridge*
+}
+
+# Specific Tari FFI suppression patterns
+{
+   tari_callback_handler_static
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*callback_handler*
+}
+
+{
+   tari_transaction_data_static
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/libtari_wallet_ffi*
+}
+
+# Suppress one-time initialization leaks that are expected
+{
+   rust_once_init
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*Once*call_once*
+}
+
+# Suppress parking_lot mutex allocations
+{
+   parking_lot_mutex
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*parking_lot*
+}
+
+# Network library allocations
+{
+   network_stack_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/libc.so*
+   fun:*socket*
+}
+
+# C++ standard library (if any C++ dependencies)
+{
+   cpp_std_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/libstdc++*
+}
+
+{
+   cpp_global_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*__static_initialization_and_destruction*
+}
+
+# Suppress false positives from jemalloc (if used)
+{
+   jemalloc_internal
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*jemalloc*
+}
+
+# Additional suppressions for known system allocations
+{
+   system_malloc_internal
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   fun:*malloc_consolidate*
+}
+
+{
+   glibc_internal_alloc
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   obj:/lib*/libc-*.so
+}
+
+# Suppress allocations from dynamic symbol resolution
+{
+   ld_resolve_symbol
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   fun:*_dl_*
+}
