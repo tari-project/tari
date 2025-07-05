@@ -6,7 +6,7 @@
 mod tests {
     use crate::event_bridge::types::{
         WalletEvent, EventType, EventData, EventCategory, EventPriority,
-        ConnectivityState, ValidationResults, ContactUpdate,
+        ConnectivityState, ValidationResults, ContactUpdate, TransactionData,
     };
     use crate::event_bridge::serialization::{
         serialize_event, deserialize_event, SerializationFormat,
@@ -20,12 +20,14 @@ mod tests {
             WalletEvent::new(
                 EventType::TransactionReceived,
                 1,
-                EventData::TransactionReceived {
+                EventData::TransactionReceived(TransactionData {
                     tx_id: 123,
+                    source_address: "sender_123".to_string(),
                     amount: 1000000,
-                    sender_address: "sender_123".to_string(),
                     message: Some("Payment for services".to_string()),
-                },
+                    timestamp: 1640995200, // Example timestamp
+                    status: 1,
+                }),
             ),
             WalletEvent::new(
                 EventType::BalanceUpdated,

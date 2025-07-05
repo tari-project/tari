@@ -440,6 +440,50 @@ impl MockWallet {
         Ok(())
     }
     
+    /// Simulate transaction received event through event bridge
+    pub async fn simulate_transaction_received(
+        &mut self, 
+        tx_id: u64,
+        source_address: String,
+        amount: u64,
+        message: Option<String>
+    ) -> Result<(), String> {
+        if !self.is_running {
+            return Err("Mock wallet is not running".to_string());
+        }
+        
+        // Send through event bridge if available
+        if let Some(ref bridge) = self.event_bridge {
+            let transaction_data = crate::event_bridge::types::TransactionData {
+                tx_id,
+                source_address,
+                amount,
+                message,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+                status: 1, // Pending
+            };
+            
+            let event = WalletEvent::new(
+                EventType::TransactionReceived,
+                self.wallet_id,
+                EventData::TransactionReceived(transaction_data),
+            );
+            
+            bridge.send_event(event).await
+                .map_err(|e| format!("Failed to send transaction event: {}", e))?;
+        }
+        
+        // Also simulate the callback invocation for backwards compatibility
+        if self.callbacks.lock().unwrap().contains_key("callback_received_transaction") {
+            self.simulate_callback_invocation("callback_received_transaction").ok();
+        }
+        
+        Ok(())
+    }
+    
     /// Get event bridge statistics
     pub async fn get_event_bridge_stats(&self) -> Option<crate::event_bridge::dispatcher::DispatcherStats> {
         if let Some(ref bridge) = self.event_bridge {
