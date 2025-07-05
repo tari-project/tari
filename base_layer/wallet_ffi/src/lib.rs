@@ -212,6 +212,7 @@ mod tasks;
 pub mod ffi {
     pub mod callback_signatures;
     pub mod callback_categories;
+    pub mod callback_data_types;
 }
 
 #[cfg(test)]

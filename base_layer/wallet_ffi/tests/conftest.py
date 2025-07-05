@@ -7,6 +7,7 @@ import tempfile
 import shutil
 import os
 import tari_wallet
+from fixtures.mock_callbacks import MockCallbackRegistry, mock_callback_registry
 
 
 @pytest.fixture
@@ -113,3 +114,22 @@ def test_messages():
         "A" * 1000,  # Long message
         "Special chars: !@#$%^&*()_+-=[]{}|;:,.<>?",
     ]
+
+
+@pytest.fixture
+def mock_callbacks():
+    """Provide mock callback registry for testing."""
+    # Clear any previous state
+    mock_callback_registry.clear_stats()
+    yield mock_callback_registry
+    # Clean up after test
+    mock_callback_registry.clear_stats()
+
+
+@pytest.fixture
+def callback_tracker():
+    """Provide a fresh callback tracker for each test."""
+    from fixtures.mock_callbacks import MockCallbackRegistry
+    tracker = MockCallbackRegistry()
+    yield tracker
+    tracker.clear_stats()
