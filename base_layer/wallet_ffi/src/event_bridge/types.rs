@@ -7,6 +7,17 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
+/// Transaction data structure for safe representation of C FFI transaction data
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TransactionData {
+    pub tx_id: u64,
+    pub source_address: String,
+    pub amount: u64,
+    pub message: Option<String>,
+    pub timestamp: i64,
+    pub status: u8,
+}
+
 /// Main wallet event envelope containing type, timestamp, and data
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WalletEvent {
@@ -94,12 +105,7 @@ pub enum EventType {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum EventData {
     /// Inbound transaction received from external wallet
-    TransactionReceived {
-        tx_id: u64,
-        amount: u64,
-        sender_address: String,
-        message: Option<String>,
-    },
+    TransactionReceived(TransactionData),
     
     /// Reply received for pending outbound transaction
     TransactionReply {

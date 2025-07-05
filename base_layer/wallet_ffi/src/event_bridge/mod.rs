@@ -121,6 +121,7 @@ pub mod types;
 pub mod channel;
 pub mod dispatcher;
 pub mod serialization;
+pub mod transaction;
 
 #[cfg(test)]
 pub mod tests;
