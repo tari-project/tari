@@ -5,7 +5,7 @@
 //! channels, callback registrations, and provides performance monitoring.
 
 use super::{
-    types::{WalletEvent, EventType, EventCategory, EventPriority},
+    types::{WalletEvent, EventType, EventCategory, EventPriority, TransactionData},
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -507,12 +507,14 @@ mod tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 123,
+                source_address: "test".to_string(),
                 amount: 1000000,
-                sender_address: "test".to_string(),
                 message: None,
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         dispatcher.send_event(event).await.unwrap();

@@ -67,12 +67,14 @@
 //! let event = WalletEvent::new(
 //!     EventType::TransactionReceived,
 //!     wallet_id,
-//!     EventData::TransactionReceived {
+//!     EventData::TransactionReceived(TransactionData {
 //!         tx_id: 123,
+//!         source_address: "sender123".to_string(),
 //!         amount: 1000000,
-//!         sender_address: "sender123".to_string(),
 //!         message: Some("Payment received".to_string()),
-//!     },
+//!         timestamp: 1640995200,
+//!         status: 1,
+//!     }),
 //! );
 //! bridge.send_event(event).await?;
 //! 

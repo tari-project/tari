@@ -9,7 +9,7 @@ pub mod event_tests;
 #[cfg(test)]
 mod integration_tests {
     use super::super::*;
-    use crate::event_bridge::types::{EventType, EventData, ConnectivityState};
+    use crate::event_bridge::types::{EventType, EventData, ConnectivityState, TransactionData};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
     use tokio::time::{sleep, Duration};
@@ -38,12 +38,14 @@ mod integration_tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 123,
+                source_address: "test_sender".to_string(),
                 amount: 1000000,
-                sender_address: "test_sender".to_string(),
                 message: Some("integration test".to_string()),
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         bridge.send_event(event).await.unwrap();
@@ -112,12 +114,14 @@ mod integration_tests {
             WalletEvent::new(
                 EventType::TransactionReceived,
                 2,
-                EventData::TransactionReceived {
+                EventData::TransactionReceived(TransactionData {
                     tx_id: 1,
+                    source_address: "sender1".to_string(),
                     amount: 1000000,
-                    sender_address: "sender1".to_string(),
                     message: None,
-                },
+                    timestamp: 1640995200,
+                    status: 1,
+                }),
             ),
             WalletEvent::new(
                 EventType::BalanceUpdated,
@@ -189,12 +193,14 @@ mod integration_tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             3,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 456,
+                source_address: "error_test".to_string(),
                 amount: 2000000,
-                sender_address: "error_test".to_string(),
                 message: None,
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         bridge.send_event(event).await.unwrap();
@@ -254,12 +260,14 @@ mod integration_tests {
             WalletEvent::new(
                 EventType::TransactionReceived,
                 4,
-                EventData::TransactionReceived {
+                EventData::TransactionReceived(TransactionData {
                     tx_id: 1,
+                    source_address: "priority_test".to_string(),
                     amount: 1000000,
-                    sender_address: "priority_test".to_string(),
                     message: None,
-                },
+                    timestamp: 1640995200,
+                    status: 1,
+                }),
             ),
             WalletEvent::new(
                 EventType::TransactionBroadcast,
@@ -288,7 +296,7 @@ mod integration_tests {
 #[cfg(test)]
 mod performance_tests {
     use super::super::*;
-    use crate::event_bridge::types::{EventType, EventData};
+    use crate::event_bridge::types::{EventType, EventData, TransactionData};
     use std::time::Instant;
     use tokio::time::{sleep, Duration};
 
@@ -319,12 +327,14 @@ mod performance_tests {
             let event = WalletEvent::new(
                 EventType::TransactionReceived,
                 100,
-                EventData::TransactionReceived {
+                EventData::TransactionReceived(TransactionData {
                     tx_id: i as u64,
+                    source_address: format!("sender_{}", i),
                     amount: 1000000,
-                    sender_address: format!("sender_{}", i),
                     message: None,
-                },
+                    timestamp: 1640995200,
+                    status: 1,
+                }),
             );
             bridge.send_event(event).await.unwrap();
         }

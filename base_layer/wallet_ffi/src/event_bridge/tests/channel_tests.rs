@@ -5,11 +5,10 @@
 #[cfg(test)]
 mod tests {
     use crate::event_bridge::{
-        channel::{EventChannel, EventChannelBuilder, ChannelStats},
-        types::{WalletEvent, EventType, EventData, ConnectivityState},
+        channel::EventChannelBuilder,
+        types::{WalletEvent, EventType, EventData, ConnectivityState, TransactionData},
     };
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicU32, Ordering};
     use tokio::time::{sleep, Duration, timeout};
 
     #[tokio::test]
@@ -24,12 +23,14 @@ mod tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 123,
+                source_address: "test_sender".to_string(),
                 amount: 1000000,
-                sender_address: "test_sender".to_string(),
                 message: Some("test".to_string()),
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         channel.send(event.clone()).await.unwrap();

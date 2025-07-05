@@ -258,18 +258,20 @@ impl BatchSerializer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event_bridge::types::{EventType, EventData, ConnectivityState};
+    use crate::event_bridge::types::{EventType, EventData, ConnectivityState, TransactionData};
 
     fn create_test_event() -> WalletEvent {
         WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 123,
+                source_address: "test_address".to_string(),
                 amount: 1000000,
-                sender_address: "test_address".to_string(),
                 message: Some("test message".to_string()),
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         )
     }
 
@@ -295,8 +297,8 @@ mod tests {
         assert_eq!(deserialized.event_type, event.event_type);
         assert_eq!(deserialized.wallet_id, event.wallet_id);
         
-        if let (EventData::TransactionReceived { tx_id: orig_tx_id, .. }, 
-                EventData::TransactionReceived { tx_id: deser_tx_id, .. }) = 
+        if let (EventData::TransactionReceived(TransactionData { tx_id: orig_tx_id, .. }), 
+                EventData::TransactionReceived(TransactionData { tx_id: deser_tx_id, .. })) = 
                 (&event.data, &deserialized.data) {
             assert_eq!(orig_tx_id, deser_tx_id);
         } else {
@@ -431,8 +433,8 @@ mod tests {
         assert_eq!(deserialized.event_type, event.event_type);
         assert_eq!(deserialized.wallet_id, event.wallet_id);
         
-        if let (EventData::TransactionReceived { tx_id: orig_tx_id, .. }, 
-                EventData::TransactionReceived { tx_id: deser_tx_id, .. }) = 
+        if let (EventData::TransactionReceived(TransactionData { tx_id: orig_tx_id, .. }), 
+                EventData::TransactionReceived(TransactionData { tx_id: deser_tx_id, .. })) = 
                 (&event.data, &deserialized.data) {
             assert_eq!(orig_tx_id, deser_tx_id);
         } else {

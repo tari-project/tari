@@ -15,6 +15,12 @@ Only the first four applications will be discussed in this README (see [wallet-a
 ## Developers
 Want to contribute? Start by reading the [Contributing Guide](Contributing.md) and the [Reviewing Guide](docs/src/reviewing_guide.md).
 
+### Wallet Integration
+The Tari Wallet provides comprehensive callback and event systems for real-time transaction monitoring:
+- **[Callback System Overview](docs/callbacks.md)** - High-performance event handling with C FFI and event bridge architectures
+- **[Transaction Events API](docs/api/transaction_events.md)** - Complete API reference for transaction callbacks
+- **[Python Bindings](docs/python_bindings/)** - Python wallet integration documentation
+
 ## Installing using binaries
 
 ### Versions

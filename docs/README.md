@@ -12,8 +12,12 @@ These documents are working developer docs in the form of an mdbook.
 - In the `/docs` folder run `mdbook serve`
 - In a browser navigate to [`localhost:3000`](http://localhost:3000)
 
-### Python Bindings Documentation
-Complete documentation for the Tari Python wallet bindings:
+### Wallet Integration Documentation
+Complete documentation for Tari wallet integration:
+
+- **[Callback System](callbacks.md)** - High-performance event handling overview
+  - [Transaction Events API](api/transaction_events.md) - Complete transaction callback reference
+  - [API Documentation Index](api/README.md) - All wallet APIs and integration guides
 
 - **[Python Bindings](python_bindings/)** - Python wallet interface documentation
   - [Getting Started](python_bindings/README.md) - Installation and basic usage

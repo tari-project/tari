@@ -15,7 +15,7 @@ use std::{
 
 use tari_common_types::tari_address::TariAddress;
 use minotari_wallet::output_manager_service::service::Balance;
-use crate::event_bridge::{EventBridge, types::{WalletEvent, EventType, EventData, ConnectivityState}};
+use crate::event_bridge::{EventBridge, types::{WalletEvent, EventType, EventData, ConnectivityState, TransactionData}};
 
 /// Mock wallet configuration for testing
 #[derive(Debug, Clone)]
@@ -226,12 +226,14 @@ impl MockWallet {
             let event = WalletEvent::new(
                 EventType::TransactionReceived,
                 self.wallet_id,
-                EventData::TransactionReceived {
+                EventData::TransactionReceived(TransactionData {
                     tx_id,
+                    source_address: sender.to_string(),
                     amount,
-                    sender_address: sender.to_string(),
                     message: Some("Mock transaction".to_string()),
-                },
+                    timestamp: 1640995200,
+                    status: 1,
+                }),
             );
             
             bridge.send_event(event).await

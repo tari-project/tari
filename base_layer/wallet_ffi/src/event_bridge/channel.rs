@@ -4,7 +4,7 @@
 //! It implements high-performance async channels using Tokio primitives
 //! with proper error handling and backpressure management.
 
-use super::types::WalletEvent;
+use super::types::{WalletEvent, TransactionData};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use std::time::Instant;
@@ -340,12 +340,14 @@ mod tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 123,
+                source_address: "test".to_string(),
                 amount: 1000000,
-                sender_address: "test".to_string(),
                 message: None,
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         // Send event
@@ -416,12 +418,14 @@ mod tests {
             let event = WalletEvent::new(
                 EventType::TransactionReceived,
                 1,
-                EventData::TransactionReceived {
+                EventData::TransactionReceived(TransactionData {
                     tx_id: i as u64,
+                    source_address: format!("test_{}", i),
                     amount: 1000000,
-                    sender_address: format!("test_{}", i),
                     message: None,
-                },
+                    timestamp: 1640995200,
+                    status: 1,
+                }),
             );
             channel.send(event).await.unwrap();
         }
@@ -429,7 +433,7 @@ mod tests {
         // Receive all events
         for i in 0..10 {
             let received = receiver.recv().await.unwrap();
-            if let EventData::TransactionReceived { tx_id, .. } = received.data {
+            if let EventData::TransactionReceived(TransactionData { tx_id, .. }) = received.data {
                 assert_eq!(tx_id, i as u64);
             } else {
                 panic!("Expected TransactionReceived event");

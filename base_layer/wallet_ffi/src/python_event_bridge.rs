@@ -5,15 +5,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
-/// Event types that can be sent to Python
-#[derive(Clone, Debug)]
-pub enum WalletEvent {
-    TransactionReceived { tx_id: u64, amount: u64 },
-    TransactionMined { tx_id: u64 },
-    BalanceUpdated { available: u64, pending_incoming: u64, pending_outgoing: u64 },
-    ConnectivityChanged { status: String },
-    BaseNodeStateChanged { is_synced: bool, height: u64 },
-}
+// Import event types from the main event bridge system
+use crate::event_bridge::types::{WalletEvent, EventType, EventData, TransactionData};
+use crate::event_bridge::transaction::extract_transaction_data;
 
 /// Thread-safe event callback manager
 pub struct PythonEventBridge {
@@ -51,24 +45,35 @@ impl PythonEventBridge {
     ) {
         while let Some(event) = receiver.recv().await {
             let callbacks_guard = callbacks.lock().await;
+            let event_name = event.event_name();
             
-            match &event {
-                WalletEvent::TransactionReceived { tx_id, amount } => {
-                    if let Some(callback) = callbacks_guard.get("transaction_received") {
-                        Self::call_python_callback_safe(callback, (*tx_id, *amount)).await;
+            match &event.data {
+                EventData::TransactionReceived(tx_data) => {
+                    if let Some(callback) = callbacks_guard.get(event_name) {
+                        Self::call_python_callback_safe(callback, (tx_data.tx_id, tx_data.amount)).await;
                     }
                 },
-                WalletEvent::BalanceUpdated { available, pending_incoming, pending_outgoing } => {
-                    if let Some(callback) = callbacks_guard.get("balance_updated") {
+                EventData::BalanceUpdated { available, pending_incoming, pending_outgoing } => {
+                    if let Some(callback) = callbacks_guard.get(event_name) {
                         Self::call_python_callback_safe(callback, (*available, *pending_incoming, *pending_outgoing)).await;
                     }
                 },
-                WalletEvent::ConnectivityChanged { status } => {
-                    if let Some(callback) = callbacks_guard.get("connectivity_changed") {
+                EventData::ConnectivityStatus { status } => {
+                    if let Some(callback) = callbacks_guard.get(event_name) {
                         Self::call_python_callback_safe(callback, status.clone()).await;
                     }
                 },
-                // Handle other event types...
+                EventData::TransactionMined { tx_id, amount, block_height } => {
+                    if let Some(callback) = callbacks_guard.get(event_name) {
+                        Self::call_python_callback_safe(callback, (*tx_id, *amount, *block_height)).await;
+                    }
+                },
+                EventData::BaseNodeState { is_synced, height } => {
+                    if let Some(callback) = callbacks_guard.get(event_name) {
+                        Self::call_python_callback_safe(callback, (*is_synced, *height)).await;
+                    }
+                },
+                // Handle other event types as needed...
                 _ => {}
             }
         }
@@ -113,12 +118,13 @@ pub mod safe_callbacks {
         let bridge = &*(context as *const PythonEventBridge);
         let balance_ref = &*balance;
         
-        let event = WalletEvent::BalanceUpdated {
+        let event_data = EventData::BalanceUpdated {
             available: balance_ref.available,
             pending_incoming: balance_ref.pending_incoming,
             pending_outgoing: balance_ref.pending_outgoing,
         };
         
+        let event = WalletEvent::new(EventType::BalanceUpdated, 0, event_data);
         bridge.send_event(event);
     }
 
@@ -131,14 +137,18 @@ pub mod safe_callbacks {
         }
 
         let bridge = &*(context as *const PythonEventBridge);
-        let tx_ref = &*tx;
         
-        let event = WalletEvent::TransactionReceived {
-            tx_id: tx_ref.tx_id,
-            amount: tx_ref.amount,
-        };
-        
-        bridge.send_event(event);
+        // Use extraction safety layer to convert C data to safe structure
+        match extract_transaction_data(tx as *mut c_void) {
+            Ok(tx_data) => {
+                let event_data = EventData::TransactionReceived(tx_data);
+                let event = WalletEvent::new(EventType::TransactionReceived, 0, event_data);
+                bridge.send_event(event);
+            },
+            Err(e) => {
+                eprintln!("Failed to extract transaction data: {}", e);
+            }
+        }
     }
 
     pub unsafe extern "C" fn bridged_connectivity_status(
@@ -157,10 +167,11 @@ pub mod safe_callbacks {
             _ => "Unknown",
         };
         
-        let event = WalletEvent::ConnectivityChanged {
+        let event_data = EventData::ConnectivityStatus {
             status: status_str.to_string(),
         };
         
+        let event = WalletEvent::new(EventType::ConnectivityStatus, 0, event_data);
         bridge.send_event(event);
     }
 } 

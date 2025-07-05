@@ -78,12 +78,14 @@ mod tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             42,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 100,
+                source_address: "test_sender".to_string(),
                 amount: 50000,
-                sender_address: "test_sender".to_string(),
                 message: None,
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         assert_eq!(event.event_type, EventType::TransactionReceived);
@@ -91,7 +93,7 @@ mod tests {
         assert_eq!(event.event_name(), "transaction_received");
         
         match event.data {
-            EventData::TransactionReceived { tx_id, amount, .. } => {
+            EventData::TransactionReceived(TransactionData { tx_id, amount, .. }) => {
                 assert_eq!(tx_id, 100);
                 assert_eq!(amount, 50000);
             }
@@ -228,12 +230,14 @@ mod tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 123,
+                source_address: "test_address".to_string(),
                 amount: 1000000,
-                sender_address: "test_address".to_string(),
                 message: Some("test message".to_string()),
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         let pretty_bytes = serialize_event(&event, SerializationFormat::JsonPretty).unwrap();
@@ -411,9 +415,9 @@ mod tests {
         // Test that all event types can be serialized and deserialized correctly
         let events = vec![
             // Transaction events
-            WalletEvent::new(EventType::TransactionReceived, 1, EventData::TransactionReceived {
-                tx_id: 1, amount: 1000000, sender_address: "addr1".to_string(), message: None,
-            }),
+            WalletEvent::new(EventType::TransactionReceived, 1, EventData::TransactionReceived(TransactionData {
+                tx_id: 1, source_address: "addr1".to_string(), amount: 1000000, message: None, timestamp: 1640995200, status: 1,
+            })),
             WalletEvent::new(EventType::TransactionReply, 1, EventData::TransactionReply {
                 tx_id: 2, amount: 2000000, is_success: true,
             }),
@@ -480,12 +484,14 @@ mod tests {
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
+            EventData::TransactionReceived(TransactionData {
                 tx_id: 123,
+                source_address: "test".to_string(),
                 amount: 1000000,
-                sender_address: "test".to_string(),
                 message: None,
-            },
+                timestamp: 1640995200,
+                status: 1,
+            }),
         );
 
         let after_creation = SystemTime::now();

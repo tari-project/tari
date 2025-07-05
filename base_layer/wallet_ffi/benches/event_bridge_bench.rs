@@ -11,7 +11,7 @@ use std::time::Duration;
 
 // Import the modules we need to benchmark from the current crate
 use minotari_wallet_ffi::event_bridge::{
-    types::{WalletEvent, EventType, EventData, ConnectivityState},
+    types::{WalletEvent, EventType, EventData, ConnectivityState, TransactionData},
     channel::EventChannelBuilder,
     EventBridge,
 };
@@ -21,12 +21,14 @@ fn create_sample_transaction_event(tx_id: u64) -> WalletEvent {
     WalletEvent::new(
         EventType::TransactionReceived,
         1,
-        EventData::TransactionReceived {
+        EventData::TransactionReceived(TransactionData {
             tx_id,
+            source_address: format!("sender_{}", tx_id),
             amount: 1000000,
-            sender_address: format!("sender_{}", tx_id),
             message: Some("benchmark event".to_string()),
-        },
+            timestamp: 1640995200,
+            status: 1,
+        }),
     )
 }
 
