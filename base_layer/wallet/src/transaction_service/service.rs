@@ -1032,14 +1032,13 @@ where
             TransactionServiceRequest::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                additional_outputs,
+                // additional_outputs,
             } => self
                 .replace_by_fee(
                     tx_id,
                     new_fee_per_gram,
-                    additional_outputs,
+                    // additional_outputs,
                     send_transaction_join_handles,
-                    transaction_broadcast_join_handles,
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionReplaced),
@@ -3974,12 +3973,9 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        additional_outputs: Vec<TransactionOutput>,
+        // additional_outputs: Vec<TransactionOutput>,
         send_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
-        >,
-        transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
         // Get the original pending outbound transaction
@@ -4015,13 +4011,13 @@ where
         // Note: We cannot extract values from TransactionOutput commitments since they are
         // homomorphically encrypted. Additional outputs would need to be handled separately
         // or the caller should provide the amounts explicitly.
-        if !additional_outputs.is_empty() {
-            warn!(
-                target: LOG_TARGET,
-                "Replace-by-fee: Additional outputs provided but cannot extract amounts from commitments. \
-                 Additional outputs will be ignored. Consider using separate transactions for additional outputs."
-            );
-        }
+        // if !additional_outputs.is_empty() {
+        //     warn!(
+        //         target: LOG_TARGET,
+        //         "Replace-by-fee: Additional outputs provided but cannot extract amounts from commitments. \
+        //          Additional outputs will be ignored. Consider using separate transactions for additional outputs."
+        //     );
+        // }
 
         // Create a new transaction with the same parameters but new fee
         let new_tx_id = TxId::new_random();

@@ -100,7 +100,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
-use tari_utilities::{encoding::MBase58, hex::Hex, message_format::MessageFormat, ByteArray, SafePassword};
+use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -1413,8 +1413,11 @@ pub async fn command_runner(
                 println!();
             },
             ReplaceByFee(args) => {
-                let tx_id = TxId::from_base64(&args.tx_id);
-                transaction_service.replace_by_fee(tx_id, args.new_fee_per_gram, args.additional_outputs);
+                transaction_service
+                    // .replace_by_fee(tx_id, args.new_fee_per_gram, args.additional_outputs)
+                    .replace_by_fee(args.tx_id.into(), args.new_fee_per_gram)
+                    .await
+                    .unwrap();
             },
             UserPayForFee(args) => {
                 todo!("User pay for fee not implemented!");

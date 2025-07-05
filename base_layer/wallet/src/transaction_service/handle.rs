@@ -215,7 +215,7 @@ pub enum TransactionServiceRequest {
     ReplaceByFee {
         tx_id: TxId,
         new_fee_per_gram: MicroMinotari,
-        additional_outputs: Vec<TransactionOutput>,
+        // additional_outputs: Vec<TransactionOutput>,
     },
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
@@ -426,13 +426,14 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                additional_outputs,
+                // additional_outputs,
             } => write!(
                 f,
-                "ReplaceByFee(tx_id: {}, fee_per_gram: {}, additional_outputs: {})",
+                // "ReplaceByFee(tx_id: {}, fee_per_gram: {}, additional_outputs: {})",
+                "ReplaceByFee(tx_id: {}, fee_per_gram: {})",
                 tx_id,
                 new_fee_per_gram,
-                additional_outputs.len()
+                // additional_outputs.len()
             ),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
@@ -1419,14 +1420,14 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         new_fee_per_gram: MicroMinotari,
-        additional_outputs: Vec<TransactionOutput>,
+        // additional_outputs: Vec<TransactionOutput>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                additional_outputs,
+                // additional_outputs,
             })
             .await??
         {
