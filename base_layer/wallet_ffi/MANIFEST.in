@@ -1,0 +1,80 @@
+# Include essential files
+include README.md
+include LICENSE
+include Cargo.toml
+include Cargo.lock
+include build.rs
+include pyproject.toml
+include setup.cfg
+
+# Include Rust source code
+recursive-include src *.rs
+include src/*.rs
+
+# Include Python source code
+recursive-include python *.py
+recursive-include python *.pyi
+recursive-include python *.typed
+
+# Include C header files
+include *.h
+include wallet.h
+
+# Include configuration files
+include .cargo/config.toml
+include requirements-dev.txt
+include mkdocs.yml
+include .readthedocs.yml
+include pytest.ini
+
+# Include build scripts
+include scripts/build.sh
+include scripts/build.ps1
+include scripts/dev-setup.sh
+
+# Include documentation
+recursive-include docs *.md
+recursive-include docs *.yml
+recursive-include docs *.yaml
+
+# Include examples
+recursive-include examples *.py
+recursive-include examples *.md
+
+# Include test files
+recursive-include tests *.py
+recursive-include tests *.rs
+recursive-include tests *.md
+
+# Include workflow files
+recursive-include .github *.yml
+recursive-include .github *.yaml
+
+# Include pre-commit configuration
+include .pre-commit-config.yaml
+
+# Include development automation
+include Makefile
+include justfile
+
+# Exclude unnecessary files
+exclude .DS_Store
+exclude .pytest_cache
+exclude __pycache__
+exclude *.pyc
+exclude *.pyo
+exclude *.pyd
+exclude .git
+exclude .gitignore
+exclude build
+exclude dist
+exclude *.egg-info
+exclude target
+exclude .cargo/registry
+exclude .cargo/git
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude target *
+recursive-exclude .pytest_cache *
+recursive-exclude __pycache__ *
