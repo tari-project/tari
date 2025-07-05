@@ -70,6 +70,12 @@ tari_core = { workspace = true, default-features = false, features = [
 borsh = "1.5.7"
 env_logger = "0.7.1"
 
+# Additional development dependencies for Phase 0
+tokio-test = "0.4"
+proptest = "1.4"
+criterion = "0.5"
+serial_test = "3.0"
+
 [build-dependencies]
 cbindgen = "0.24.5"
 tari_common = { workspace = true, features = [

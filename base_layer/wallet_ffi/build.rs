@@ -10,6 +10,12 @@ use tari_features::resolver::build_features;
 fn main() {
     build_features();
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    
+    // Configure FFI library discovery
+    configure_ffi_discovery();
+    
+    // Configure Python-specific build settings
+    configure_python_build();
 
     // generate version info
     let gen = StaticApplicationInfo::initialize().unwrap();
@@ -46,4 +52,63 @@ fn main() {
     cbindgen::generate_with_config(&crate_dir, config)
         .unwrap()
         .write_to_file(output_file);
+}
+
+fn configure_ffi_discovery() {
+    // Allow environment variable override for FFI library path
+    if let Ok(ffi_path) = env::var("TARI_FFI_LIB_PATH") {
+        println!("cargo:rustc-link-search=native={}", ffi_path);
+        println!("cargo:rustc-link-lib=dylib=tari_wallet_ffi");
+    }
+    
+    // Platform-specific FFI library discovery
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    match target_os.as_str() {
+        "macos" => {
+            if let Some(homebrew_lib) = find_homebrew_lib_path() {
+                println!("cargo:rustc-link-search=native={}", homebrew_lib);
+            }
+        }
+        "linux" => {
+            println!("cargo:rustc-link-search=native=/usr/local/lib");
+            println!("cargo:rustc-link-search=native=/usr/lib");
+        }
+        "windows" => {
+            println!("cargo:rustc-link-search=native=C:\\Program Files\\Tari\\lib");
+        }
+        _ => {}
+    }
+}
+
+fn configure_python_build() {
+    // Set Python-specific build flags when building with python-bindings feature
+    if cfg!(feature = "python-bindings") {
+        println!("cargo:rustc-cfg=python_bindings");
+        
+        // Configure for different Python versions
+        if let Ok(python_version) = env::var("PYTHON_VERSION") {
+            match python_version.as_str() {
+                "3.8" => println!("cargo:rustc-cfg=python38"),
+                "3.9" => println!("cargo:rustc-cfg=python39"),
+                "3.10" => println!("cargo:rustc-cfg=python310"),
+                "3.11" => println!("cargo:rustc-cfg=python311"),
+                "3.12" => println!("cargo:rustc-cfg=python312"),
+                _ => {}
+            }
+        }
+    }
+}
+
+fn find_homebrew_lib_path() -> Option<String> {
+    // Try to find Homebrew installation
+    let homebrew_prefixes = ["/opt/homebrew", "/usr/local"];
+    
+    for prefix in &homebrew_prefixes {
+        let lib_path = format!("{}/lib", prefix);
+        if std::path::Path::new(&lib_path).exists() {
+            return Some(lib_path);
+        }
+    }
+    
+    None
 }
