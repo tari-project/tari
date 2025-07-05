@@ -4,7 +4,7 @@
 //! It handles all error cases and validates pointers before dereferencing.
 
 use super::types::TransactionData;
-use crate::ffi::transaction_types::{TariPendingInboundTransaction, TariCompletedTransaction};
+use crate::ffi::transaction_types::TariPendingInboundTransaction;
 use std::ffi::CStr;
 use std::os::raw::c_void;
 

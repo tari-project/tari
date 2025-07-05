@@ -374,15 +374,19 @@ mod tests {
 
     #[test]
     fn test_event_creation() {
+        let transaction_data = TransactionData {
+            tx_id: 123,
+            source_address: "test_address".to_string(),
+            amount: 1000000,
+            message: Some("test message".to_string()),
+            timestamp: 1640995200,
+            status: 1,
+        };
+
         let event = WalletEvent::new(
             EventType::TransactionReceived,
             1,
-            EventData::TransactionReceived {
-                tx_id: 123,
-                amount: 1000000,
-                sender_address: "test_address".to_string(),
-                message: Some("test message".to_string()),
-            },
+            EventData::TransactionReceived(transaction_data),
         );
 
         assert_eq!(event.event_type, EventType::TransactionReceived);

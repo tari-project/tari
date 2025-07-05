@@ -37,14 +37,6 @@ struct BulletRangeProof;
 
 struct ByteVector;
 
-struct CompletedTransaction;
-
-/**
- * This stores a Commitment And PublicKey Signature in compressed form, keeping it in compressed form until the point
- * is needed, only then decompressing it back down to a Commitment And PublicKey Signature
- */
-struct CompressedCommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey;
-
 /**
  * This stores a public key in compressed form, keeping it in compressed form until the point is needed, only then
  * decompressing it back down to a public key
@@ -70,8 +62,6 @@ struct EncryptedData;
 struct FeePerGramStat;
 
 struct FeePerGramStatsResponse;
-
-struct InboundTransaction;
 
 struct OutboundTransaction;
 
@@ -110,8 +100,6 @@ struct P2pConfig;
  */
 struct RistrettoSecretKey;
 
-struct TariAddress;
-
 struct TariBaseNodeState;
 
 struct TariCompletedTransactions;
@@ -131,15 +119,6 @@ struct TariSeedWords;
 struct TariUnblindedOutputs;
 
 struct TariWallet;
-
-/**
- * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
- * why it is necessary, refer to the
- * [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
- * The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
- * this transaction can be mined) and the transaction fee, in cleartext.
- */
-struct TransactionKernel;
 
 struct TransactionSendStatus;
 
@@ -180,7 +159,13 @@ struct TariUtxo {
   const char *mined_in_block;
 };
 
-typedef struct TransactionKernel TariTransactionKernel;
+/**
+ * Opaque pointer type for transaction kernels
+ * We don't need the full structure, just safe pointer handling
+ */
+struct TariTransactionKernel {
+  uint8_t _private[0];
+};
 
 /**
  * Define the explicit Public key implementation for the Tari base layer
@@ -196,19 +181,21 @@ typedef struct RistrettoSecretKey PrivateKey;
 
 typedef PrivateKey TariPrivateKey;
 
-typedef struct TariAddress TariWalletAddress;
+/**
+ * Opaque pointer type for wallet addresses
+ * We don't need the full structure, just safe pointer handling
+ */
+struct TariWalletAddress {
+  uint8_t _private[0];
+};
 
 /**
- * # A compressed commitment and public key (CAPK) signature implementation on Ristretto
+ * Opaque pointer type for signatures
+ * We don't need the full structure, just safe pointer handling
  */
-typedef struct CompressedCommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSecretKey CompressedRistrettoComAndPubSig;
-
-/**
- * Define the explicit Commitment Signature implementation for the Tari base layer.
- */
-typedef CompressedRistrettoComAndPubSig ComAndPubSignature;
-
-typedef ComAndPubSignature TariComAndPubSignature;
+struct TariComAndPubSignature {
+  uint8_t _private[0];
+};
 
 typedef struct UnblindedOutput TariUnblindedOutput;
 
@@ -229,11 +216,38 @@ typedef struct Contact TariContact;
 
 typedef struct ContactsLivenessData TariContactsLivenessData;
 
-typedef struct CompletedTransaction TariCompletedTransaction;
+/**
+ * C representation of TariCompletedTransaction structure
+ * This matches the layout from the Tari wallet C FFI
+ */
+struct TariCompletedTransaction {
+  unsigned long long tx_id;
+  const struct TariWalletAddress *source_pk;
+  const struct TariWalletAddress *dest_pk;
+  unsigned long long amount;
+  unsigned long long fee;
+  const char *message;
+  long long timestamp;
+  unsigned long long status;
+  unsigned long long direction;
+  const struct TariComAndPubSignature *excess_sig;
+  const struct TariTransactionKernel *kernel;
+};
 
 typedef struct OutboundTransaction TariPendingOutboundTransaction;
 
-typedef struct InboundTransaction TariPendingInboundTransaction;
+/**
+ * C representation of TariPendingInboundTransaction structure
+ * This matches the layout from the Tari wallet C FFI
+ */
+struct TariPendingInboundTransaction {
+  unsigned long long tx_id;
+  const struct TariWalletAddress *source_pk;
+  unsigned long long amount;
+  const char *message;
+  long long timestamp;
+  unsigned long long status;
+};
 
 typedef struct TransactionSendStatus TariTransactionSendStatus;
 
@@ -536,7 +550,7 @@ char *tari_utxo_get_mined_in_block(const struct TariUtxo *utxo,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-char *transaction_kernel_get_excess_hex(TariTransactionKernel *kernel,
+char *transaction_kernel_get_excess_hex(struct TariTransactionKernel *kernel,
                                         int *error_out);
 
 /**
@@ -554,7 +568,7 @@ char *transaction_kernel_get_excess_hex(TariTransactionKernel *kernel,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-char *transaction_kernel_get_excess_public_nonce_hex(TariTransactionKernel *kernel,
+char *transaction_kernel_get_excess_public_nonce_hex(struct TariTransactionKernel *kernel,
                                                      int *error_out);
 
 /**
@@ -572,7 +586,7 @@ char *transaction_kernel_get_excess_public_nonce_hex(TariTransactionKernel *kern
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-char *transaction_kernel_get_excess_signature_hex(TariTransactionKernel *kernel,
+char *transaction_kernel_get_excess_signature_hex(struct TariTransactionKernel *kernel,
                                                   int *error_out);
 
 /**
@@ -587,7 +601,7 @@ char *transaction_kernel_get_excess_signature_hex(TariTransactionKernel *kernel,
  * # Safety
  * None
  */
-void transaction_kernel_destroy(TariTransactionKernel *x);
+void transaction_kernel_destroy(struct TariTransactionKernel *x);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -800,8 +814,8 @@ TariPublicKey *public_key_from_hex(const char *key,
  * The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
  * leak
  */
-TariWalletAddress *tari_address_create(struct ByteVector *bytes,
-                                       int *error_out);
+struct TariWalletAddress *tari_address_create(struct ByteVector *bytes,
+                                              int *error_out);
 
 /**
  * Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a ByteVector
@@ -820,9 +834,9 @@ TariWalletAddress *tari_address_create(struct ByteVector *bytes,
  * The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
  * leak
  */
-TariWalletAddress *tari_address_create_with_payment_id_bytes(TariWalletAddress *address,
-                                                             struct ByteVector *bytes,
-                                                             int *error_out);
+struct TariWalletAddress *tari_address_create_with_payment_id_bytes(struct TariWalletAddress *address,
+                                                                    struct ByteVector *bytes,
+                                                                    int *error_out);
 
 /**
  * Creates a new TariWalletAddress from an existing TariWalletAddress adding a payment id in the form a utf8 string
@@ -841,9 +855,9 @@ TariWalletAddress *tari_address_create_with_payment_id_bytes(TariWalletAddress *
  * The ```tari_address_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory
  * leak
  */
-TariWalletAddress *tari_address_create_with_payment_id_utf8(TariWalletAddress *address,
-                                                            const char *utf8string,
-                                                            int *error_out);
+struct TariWalletAddress *tari_address_create_with_payment_id_utf8(struct TariWalletAddress *address,
+                                                                   const char *utf8string,
+                                                                   int *error_out);
 
 /**
  * Frees memory for a TariWalletAddress
@@ -857,7 +871,7 @@ TariWalletAddress *tari_address_create_with_payment_id_utf8(TariWalletAddress *a
  * # Safety
  * None
  */
-void tari_address_destroy(TariWalletAddress *address);
+void tari_address_destroy(struct TariWalletAddress *address);
 
 /**
  * Gets a ByteVector from a TariWalletAddress
@@ -873,7 +887,7 @@ void tari_address_destroy(TariWalletAddress *address);
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
  */
-struct ByteVector *tari_address_get_bytes(TariWalletAddress *address,
+struct ByteVector *tari_address_get_bytes(struct TariWalletAddress *address,
                                           int *error_out);
 
 /**
@@ -891,8 +905,8 @@ struct ByteVector *tari_address_get_bytes(TariWalletAddress *address,
  * # Safety
  * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *tari_address_from_base58(const char *address,
-                                            int *error_out);
+struct TariWalletAddress *tari_address_from_base58(const char *address,
+                                                   int *error_out);
 
 /**
  * Creates a char array from a TariWalletAddress in emoji format
@@ -909,7 +923,7 @@ TariWalletAddress *tari_address_from_base58(const char *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-char *tari_address_to_emoji_id(TariWalletAddress *address,
+char *tari_address_to_emoji_id(struct TariWalletAddress *address,
                                int *error_out);
 
 /**
@@ -927,7 +941,7 @@ char *tari_address_to_emoji_id(TariWalletAddress *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-char *tari_address_network(TariWalletAddress *address,
+char *tari_address_network(struct TariWalletAddress *address,
                            int *error_out);
 
 /**
@@ -944,7 +958,7 @@ char *tari_address_network(TariWalletAddress *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-uint8_t tari_address_network_u8(TariWalletAddress *address,
+uint8_t tari_address_network_u8(struct TariWalletAddress *address,
                                 int *error_out);
 
 /**
@@ -961,7 +975,7 @@ uint8_t tari_address_network_u8(TariWalletAddress *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-uint8_t tari_address_checksum_u8(TariWalletAddress *address,
+uint8_t tari_address_checksum_u8(struct TariWalletAddress *address,
                                  int *error_out);
 
 /**
@@ -979,7 +993,7 @@ uint8_t tari_address_checksum_u8(TariWalletAddress *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-char *tari_address_features(TariWalletAddress *address,
+char *tari_address_features(struct TariWalletAddress *address,
                             int *error_out);
 
 /**
@@ -996,7 +1010,7 @@ char *tari_address_features(TariWalletAddress *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-uint8_t tari_address_features_u8(TariWalletAddress *address,
+uint8_t tari_address_features_u8(struct TariWalletAddress *address,
                                  int *error_out);
 
 /**
@@ -1013,7 +1027,7 @@ uint8_t tari_address_features_u8(TariWalletAddress *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-TariPublicKey *tari_address_view_key(TariWalletAddress *address,
+TariPublicKey *tari_address_view_key(struct TariWalletAddress *address,
                                      int *error_out);
 
 /**
@@ -1030,7 +1044,7 @@ TariPublicKey *tari_address_view_key(TariWalletAddress *address,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
  */
-TariPublicKey *tari_address_spend_key(TariWalletAddress *address,
+TariPublicKey *tari_address_spend_key(struct TariWalletAddress *address,
                                       int *error_out);
 
 /**
@@ -1047,8 +1061,8 @@ TariPublicKey *tari_address_spend_key(TariWalletAddress *address,
  * # Safety
  * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
-                                            int *error_out);
+struct TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
+                                                   int *error_out);
 
 /**
  * Does a lookup of the emoji character for a byte, using the emoji encoding of tari
@@ -1087,12 +1101,12 @@ char *byte_to_emoji(uint8_t byte);
  * The ```commitment_signature_destroy``` function must be called when finished with a TariComAndPubSignature to
  * prevent a memory leak
  */
-TariComAndPubSignature *commitment_and_public_signature_create_from_bytes(const struct ByteVector *ephemeral_commitment_bytes,
-                                                                          const struct ByteVector *ephemeral_pubkey_bytes,
-                                                                          const struct ByteVector *u_a_bytes,
-                                                                          const struct ByteVector *u_x_bytes,
-                                                                          const struct ByteVector *u_y_bytes,
-                                                                          int *error_out);
+struct TariComAndPubSignature *commitment_and_public_signature_create_from_bytes(const struct ByteVector *ephemeral_commitment_bytes,
+                                                                                 const struct ByteVector *ephemeral_pubkey_bytes,
+                                                                                 const struct ByteVector *u_a_bytes,
+                                                                                 const struct ByteVector *u_x_bytes,
+                                                                                 const struct ByteVector *u_y_bytes,
+                                                                                 int *error_out);
 
 /**
  * Frees memory for a TariComAndPubSignature
@@ -1106,7 +1120,7 @@ TariComAndPubSignature *commitment_and_public_signature_create_from_bytes(const 
  * # Safety
  * None
  */
-void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig);
+void commitment_and_public_signature_destroy(struct TariComAndPubSignature *compub_sig);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -1141,7 +1155,7 @@ TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
                                                   TariOutputFeatures *features,
                                                   const char *script,
                                                   const char *input_data,
-                                                  TariComAndPubSignature *metadata_signature,
+                                                  struct TariComAndPubSignature *metadata_signature,
                                                   TariPublicKey *sender_offset_public_key,
                                                   TariPrivateKey *script_private_key,
                                                   TariCovenant *covenant,
@@ -1297,7 +1311,7 @@ struct TariUnblindedOutputs *wallet_get_unspent_outputs(struct TariWallet *walle
  */
 unsigned long long wallet_import_external_utxo_as_non_rewindable(struct TariWallet *wallet,
                                                                  TariUnblindedOutput *output,
-                                                                 TariWalletAddress *source_address,
+                                                                 struct TariWalletAddress *source_address,
                                                                  const char *payment_id,
                                                                  int *error_out);
 
@@ -1804,7 +1818,7 @@ void seed_words_destroy(struct TariSeedWords *seed_words);
  * The ```contact_destroy``` method must be called when finished with a TariContact
  */
 TariContact *contact_create(const char *alias,
-                            TariWalletAddress *address,
+                            struct TariWalletAddress *address,
                             bool favourite,
                             int *error_out);
 
@@ -1859,8 +1873,8 @@ bool contact_get_favourite(TariContact *contact,
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *contact_get_tari_address(TariContact *contact,
-                                            int *error_out);
+struct TariWalletAddress *contact_get_tari_address(TariContact *contact,
+                                                   int *error_out);
 
 /**
  * Frees memory for a TariContact
@@ -1947,8 +1961,8 @@ void contacts_destroy(struct TariContacts *contacts);
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
  * memory leak
  */
-TariWalletAddress *liveness_data_get_public_key(TariContactsLivenessData *liveness_data,
-                                                int *error_out);
+struct TariWalletAddress *liveness_data_get_public_key(TariContactsLivenessData *liveness_data,
+                                                       int *error_out);
 
 /**
  * Gets the latency in milli-seconds (ms) from a TariContactsLivenessData
@@ -2088,9 +2102,9 @@ unsigned int completed_transactions_get_length(struct TariCompletedTransactions 
  * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
  * prevent a memory leak
  */
-TariCompletedTransaction *completed_transactions_get_at(struct TariCompletedTransactions *transactions,
-                                                        unsigned int position,
-                                                        int *error_out);
+struct TariCompletedTransaction *completed_transactions_get_at(struct TariCompletedTransactions *transactions,
+                                                               unsigned int position,
+                                                               int *error_out);
 
 /**
  * Frees memory for a TariCompletedTransactions
@@ -2198,9 +2212,9 @@ unsigned int pending_inbound_transactions_get_length(struct TariPendingInboundTr
  * The ```pending_inbound_transaction_destroy``` method must be called when finished with a
  * TariPendingOutboundTransaction to prevent a memory leak
  */
-TariPendingInboundTransaction *pending_inbound_transactions_get_at(struct TariPendingInboundTransactions *transactions,
-                                                                   unsigned int position,
-                                                                   int *error_out);
+struct TariPendingInboundTransaction *pending_inbound_transactions_get_at(struct TariPendingInboundTransactions *transactions,
+                                                                          unsigned int position,
+                                                                          int *error_out);
 
 /**
  * Frees memory for a TariPendingInboundTransactions
@@ -2232,7 +2246,7 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
  * # Safety
  * None
  */
-unsigned long long completed_transaction_get_transaction_id(TariCompletedTransaction *transaction,
+unsigned long long completed_transaction_get_transaction_id(struct TariCompletedTransaction *transaction,
                                                             int *error_out);
 
 /**
@@ -2250,8 +2264,8 @@ unsigned long long completed_transaction_get_transaction_id(TariCompletedTransac
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *completed_transaction_get_destination_tari_address(TariCompletedTransaction *transaction,
-                                                                      int *error_out);
+struct TariWalletAddress *completed_transaction_get_destination_tari_address(struct TariCompletedTransaction *transaction,
+                                                                             int *error_out);
 
 /**
  * Gets the TariTransactionKernel of a TariCompletedTransaction
@@ -2270,8 +2284,8 @@ TariWalletAddress *completed_transaction_get_destination_tari_address(TariComple
  * The ```transaction_kernel_destroy``` method must be called when finished with a TariTransactionKernel to prevent a
  * memory leak
  */
-TariTransactionKernel *completed_transaction_get_transaction_kernel(TariCompletedTransaction *transaction,
-                                                                    int *error_out);
+struct TariTransactionKernel *completed_transaction_get_transaction_kernel(struct TariCompletedTransaction *transaction,
+                                                                           int *error_out);
 
 /**
  * Gets the source TariWalletAddress of a TariCompletedTransaction
@@ -2288,8 +2302,8 @@ TariTransactionKernel *completed_transaction_get_transaction_kernel(TariComplete
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *completed_transaction_get_source_tari_address(TariCompletedTransaction *transaction,
-                                                                 int *error_out);
+struct TariWalletAddress *completed_transaction_get_source_tari_address(struct TariCompletedTransaction *transaction,
+                                                                        int *error_out);
 
 /**
  * Gets the status of a TariCompletedTransaction
@@ -2315,7 +2329,7 @@ TariWalletAddress *completed_transaction_get_source_tari_address(TariCompletedTr
  * # Safety
  * None
  */
-int completed_transaction_get_status(TariCompletedTransaction *transaction,
+int completed_transaction_get_status(struct TariCompletedTransaction *transaction,
                                      int *error_out);
 
 /**
@@ -2332,7 +2346,7 @@ int completed_transaction_get_status(TariCompletedTransaction *transaction,
  * # Safety
  * None
  */
-unsigned long long completed_transaction_get_amount(TariCompletedTransaction *transaction,
+unsigned long long completed_transaction_get_amount(struct TariCompletedTransaction *transaction,
                                                     int *error_out);
 
 /**
@@ -2349,7 +2363,7 @@ unsigned long long completed_transaction_get_amount(TariCompletedTransaction *tr
  * # Safety
  * None
  */
-unsigned long long completed_transaction_get_fee(TariCompletedTransaction *transaction,
+unsigned long long completed_transaction_get_fee(struct TariCompletedTransaction *transaction,
                                                  int *error_out);
 
 /**
@@ -2366,7 +2380,7 @@ unsigned long long completed_transaction_get_fee(TariCompletedTransaction *trans
  * # Safety
  * None
  */
-unsigned long long completed_transaction_get_timestamp(TariCompletedTransaction *transaction,
+unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction,
                                                        int *error_out);
 
 /**
@@ -2383,7 +2397,7 @@ unsigned long long completed_transaction_get_timestamp(TariCompletedTransaction 
  * # Safety
  * None
  */
-unsigned long long completed_transaction_get_mined_timestamp(TariCompletedTransaction *transaction,
+unsigned long long completed_transaction_get_mined_timestamp(struct TariCompletedTransaction *transaction,
                                                              int *error_out);
 
 /**
@@ -2400,7 +2414,7 @@ unsigned long long completed_transaction_get_mined_timestamp(TariCompletedTransa
  * # Safety
  * None
  */
-unsigned long long completed_transaction_get_mined_height(TariCompletedTransaction *transaction,
+unsigned long long completed_transaction_get_mined_height(struct TariCompletedTransaction *transaction,
                                                           int *error_out);
 
 /**
@@ -2418,7 +2432,7 @@ unsigned long long completed_transaction_get_mined_height(TariCompletedTransacti
  * # Safety
  * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
  */
-char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transaction,
+char *completed_transaction_get_mined_in_block(struct TariCompletedTransaction *transaction,
                                                int *error_out);
 
 /**
@@ -2436,7 +2450,7 @@ char *completed_transaction_get_mined_in_block(TariCompletedTransaction *transac
  * # Safety
  * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
  */
-char *completed_transaction_get_user_payment_id(TariCompletedTransaction *transaction,
+char *completed_transaction_get_user_payment_id(struct TariCompletedTransaction *transaction,
                                                 int *error_out);
 
 /**
@@ -2455,7 +2469,7 @@ char *completed_transaction_get_user_payment_id(TariCompletedTransaction *transa
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
  */
-struct ByteVector *completed_transaction_get_user_payment_id_as_bytes(TariCompletedTransaction *transaction,
+struct ByteVector *completed_transaction_get_user_payment_id_as_bytes(struct TariCompletedTransaction *transaction,
                                                                       int *error_out);
 
 /**
@@ -2474,7 +2488,7 @@ struct ByteVector *completed_transaction_get_user_payment_id_as_bytes(TariComple
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
  */
-struct ByteVector *completed_transaction_get_payment_id_as_bytes(TariCompletedTransaction *transaction,
+struct ByteVector *completed_transaction_get_payment_id_as_bytes(struct TariCompletedTransaction *transaction,
                                                                  int *error_out);
 
 /**
@@ -2501,7 +2515,7 @@ struct ByteVector *completed_transaction_get_payment_id_as_bytes(TariCompletedTr
  * # Safety
  * None
  */
-unsigned int completed_transaction_get_transaction_type(const TariCompletedTransaction *transaction,
+unsigned int completed_transaction_get_transaction_type(const struct TariCompletedTransaction *transaction,
                                                         int *error_out);
 
 /**
@@ -2518,7 +2532,7 @@ unsigned int completed_transaction_get_transaction_type(const TariCompletedTrans
  * # Safety
  * None
  */
-bool completed_transaction_is_outbound(TariCompletedTransaction *tx,
+bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx,
                                        int *error_out);
 
 /**
@@ -2535,7 +2549,7 @@ bool completed_transaction_is_outbound(TariCompletedTransaction *tx,
  * # Safety
  * None
  */
-unsigned long long completed_transaction_get_confirmations(TariCompletedTransaction *tx,
+unsigned long long completed_transaction_get_confirmations(struct TariCompletedTransaction *tx,
                                                            int *error_out);
 
 /**
@@ -2562,7 +2576,7 @@ unsigned long long completed_transaction_get_confirmations(TariCompletedTransact
  * # Safety
  * None
  */
-int completed_transaction_get_cancellation_reason(TariCompletedTransaction *tx,
+int completed_transaction_get_cancellation_reason(struct TariCompletedTransaction *tx,
                                                   int *error_out);
 
 /**
@@ -2581,7 +2595,7 @@ int completed_transaction_get_cancellation_reason(TariCompletedTransaction *tx,
  *  The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
  * prevent a memory leak
  */
-char *tari_completed_transaction_to_json(TariCompletedTransaction *tx,
+char *tari_completed_transaction_to_json(struct TariCompletedTransaction *tx,
                                          int *error_out);
 
 /**
@@ -2599,8 +2613,8 @@ char *tari_completed_transaction_to_json(TariCompletedTransaction *tx,
  * # Safety
  * The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
  */
-TariCompletedTransaction *create_tari_completed_transaction_from_json(const char *tx_json,
-                                                                      int *error_out);
+struct TariCompletedTransaction *create_tari_completed_transaction_from_json(const char *tx_json,
+                                                                             int *error_out);
 
 /**
  * Frees memory for a TariCompletedTransaction
@@ -2614,7 +2628,7 @@ TariCompletedTransaction *create_tari_completed_transaction_from_json(const char
  * # Safety
  * None
  */
-void completed_transaction_destroy(TariCompletedTransaction *transaction);
+void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -2650,8 +2664,8 @@ unsigned long long pending_outbound_transaction_get_transaction_id(TariPendingOu
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *pending_outbound_transaction_get_destination_tari_address(TariPendingOutboundTransaction *transaction,
-                                                                             int *error_out);
+struct TariWalletAddress *pending_outbound_transaction_get_destination_tari_address(TariPendingOutboundTransaction *transaction,
+                                                                                    int *error_out);
 
 /**
  * Gets the amount of a TariPendingOutboundTransaction
@@ -2817,7 +2831,7 @@ void pending_outbound_transaction_destroy(TariPendingOutboundTransaction *transa
  * # Safety
  * None
  */
-unsigned long long pending_inbound_transaction_get_transaction_id(TariPendingInboundTransaction *transaction,
+unsigned long long pending_inbound_transaction_get_transaction_id(struct TariPendingInboundTransaction *transaction,
                                                                   int *error_out);
 
 /**
@@ -2836,8 +2850,8 @@ unsigned long long pending_inbound_transaction_get_transaction_id(TariPendingInb
  *  The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory
  * leak
  */
-TariWalletAddress *pending_inbound_transaction_get_source_tari_address(TariPendingInboundTransaction *transaction,
-                                                                       int *error_out);
+struct TariWalletAddress *pending_inbound_transaction_get_source_tari_address(struct TariPendingInboundTransaction *transaction,
+                                                                              int *error_out);
 
 /**
  * Gets the amount of a TariPendingInboundTransaction
@@ -2853,7 +2867,7 @@ TariWalletAddress *pending_inbound_transaction_get_source_tari_address(TariPendi
  * # Safety
  * None
  */
-unsigned long long pending_inbound_transaction_get_amount(TariPendingInboundTransaction *transaction,
+unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInboundTransaction *transaction,
                                                           int *error_out);
 
 /**
@@ -2870,7 +2884,7 @@ unsigned long long pending_inbound_transaction_get_amount(TariPendingInboundTran
  * # Safety
  * None
  */
-unsigned long long pending_inbound_transaction_get_timestamp(TariPendingInboundTransaction *transaction,
+unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction,
                                                              int *error_out);
 
 /**
@@ -2889,7 +2903,7 @@ unsigned long long pending_inbound_transaction_get_timestamp(TariPendingInboundT
  *  The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory
  * leak
  */
-const char *pending_inbound_transaction_get_payment_id(TariPendingInboundTransaction *transaction,
+const char *pending_inbound_transaction_get_payment_id(struct TariPendingInboundTransaction *transaction,
                                                        int *error_out);
 
 /**
@@ -2908,7 +2922,7 @@ const char *pending_inbound_transaction_get_payment_id(TariPendingInboundTransac
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
  */
-struct ByteVector *pending_inbound_transaction_get_user_payment_id_as_bytes(TariPendingInboundTransaction *transaction,
+struct ByteVector *pending_inbound_transaction_get_user_payment_id_as_bytes(struct TariPendingInboundTransaction *transaction,
                                                                             int *error_out);
 
 /**
@@ -2927,7 +2941,7 @@ struct ByteVector *pending_inbound_transaction_get_user_payment_id_as_bytes(Tari
  * # Safety
  * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
  */
-struct ByteVector *pending_inbound_transaction_get_payment_id_as_bytes(TariPendingInboundTransaction *transaction,
+struct ByteVector *pending_inbound_transaction_get_payment_id_as_bytes(struct TariPendingInboundTransaction *transaction,
                                                                        int *error_out);
 
 /**
@@ -2952,7 +2966,7 @@ struct ByteVector *pending_inbound_transaction_get_payment_id_as_bytes(TariPendi
  * # Safety
  * None
  */
-int pending_inbound_transaction_get_status(TariPendingInboundTransaction *transaction,
+int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction,
                                            int *error_out);
 
 /**
@@ -2967,7 +2981,7 @@ int pending_inbound_transaction_get_status(TariPendingInboundTransaction *transa
  * # Safety
  * None
  */
-void pending_inbound_transaction_destroy(TariPendingInboundTransaction *transaction);
+void pending_inbound_transaction_destroy(struct TariPendingInboundTransaction *transaction);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -3336,28 +3350,28 @@ struct TariWallet *wallet_create(void *context,
                                  const char *dns_seed_name_servers_str,
                                  bool use_dns_sec,
                                  void (*callback_received_transaction)(void *context,
-                                                                       TariPendingInboundTransaction*),
+                                                                       struct TariPendingInboundTransaction*),
                                  void (*callback_received_transaction_reply)(void *context,
-                                                                             TariCompletedTransaction*),
+                                                                             struct TariCompletedTransaction*),
                                  void (*callback_received_finalized_transaction)(void *context,
-                                                                                 TariCompletedTransaction*),
+                                                                                 struct TariCompletedTransaction*),
                                  void (*callback_transaction_broadcast)(void *context,
-                                                                        TariCompletedTransaction*),
+                                                                        struct TariCompletedTransaction*),
                                  void (*callback_transaction_mined)(void *context,
-                                                                    TariCompletedTransaction*),
+                                                                    struct TariCompletedTransaction*),
                                  void (*callback_transaction_mined_unconfirmed)(void *context,
-                                                                                TariCompletedTransaction*,
+                                                                                struct TariCompletedTransaction*,
                                                                                 uint64_t),
                                  void (*callback_faux_transaction_confirmed)(void *context,
-                                                                             TariCompletedTransaction*),
+                                                                             struct TariCompletedTransaction*),
                                  void (*callback_faux_transaction_unconfirmed)(void *context,
-                                                                               TariCompletedTransaction*,
+                                                                               struct TariCompletedTransaction*,
                                                                                uint64_t),
                                  void (*callback_transaction_send_result)(void *context,
                                                                           unsigned long long,
                                                                           TariTransactionSendStatus*),
                                  void (*callback_transaction_cancellation)(void *context,
-                                                                           TariCompletedTransaction*,
+                                                                           struct TariCompletedTransaction*,
                                                                            uint64_t),
                                  void (*callback_txo_validation_complete)(void *context,
                                                                           uint64_t,
@@ -3841,7 +3855,7 @@ void balance_destroy(TariBalance *balance);
  * None
  */
 unsigned long long wallet_send_transaction(struct TariWallet *wallet,
-                                           TariWalletAddress *destination,
+                                           struct TariWalletAddress *destination,
                                            unsigned long long amount,
                                            struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
@@ -3866,7 +3880,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  * None
  */
 unsigned long long scrape_wallet(struct TariWallet *wallet,
-                                 TariWalletAddress *destination,
+                                 struct TariWalletAddress *destination,
                                  unsigned long long fee_per_gram,
                                  int *error_out);
 
@@ -4058,9 +4072,9 @@ struct TariCompletedTransactions *wallet_get_cancelled_transactions(struct TariW
  * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
  * prevent a memory leak
  */
-TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWallet *wallet,
-                                                                 unsigned long long transaction_id,
-                                                                 int *error_out);
+struct TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWallet *wallet,
+                                                                        unsigned long long transaction_id,
+                                                                        int *error_out);
 
 /**
  * Get the TariPendingInboundTransaction from a TariWallet by its' TransactionId
@@ -4080,10 +4094,10 @@ TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWall
  * The ```pending_inbound_transaction_destroy``` method must be called when finished with a
  * TariPendingInboundTransaction to prevent a memory leak
  */
-TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(struct TariWallet *wallet,
-                                                                            unsigned long long transaction_id,
-                                                                            unsigned long long max_search_limit,
-                                                                            int *error_out);
+struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(struct TariWallet *wallet,
+                                                                                   unsigned long long transaction_id,
+                                                                                   unsigned long long max_search_limit,
+                                                                                   int *error_out);
 
 /**
  * Get the TariPendingOutboundTransaction from a TariWallet by its' TransactionId
@@ -4126,9 +4140,9 @@ TariPendingOutboundTransaction *wallet_get_pending_outbound_transaction_by_id(st
  * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
  * prevent a memory leak
  */
-TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWallet *wallet,
-                                                                 unsigned long long transaction_id,
-                                                                 int *error_out);
+struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWallet *wallet,
+                                                                        unsigned long long transaction_id,
+                                                                        int *error_out);
 
 /**
  * Get the interactive TariWalletAddress from a TariWallet
@@ -4145,8 +4159,8 @@ TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWall
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *wallet_get_tari_interactive_address(struct TariWallet *wallet,
-                                                       int *error_out);
+struct TariWalletAddress *wallet_get_tari_interactive_address(struct TariWallet *wallet,
+                                                              int *error_out);
 
 /**
  * Get the one_sided only TariWalletAddress from a TariWallet
@@ -4163,8 +4177,8 @@ TariWalletAddress *wallet_get_tari_interactive_address(struct TariWallet *wallet
  * # Safety
  * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
-TariWalletAddress *wallet_get_tari_one_sided_address(struct TariWallet *wallet,
-                                                     int *error_out);
+struct TariWalletAddress *wallet_get_tari_one_sided_address(struct TariWallet *wallet,
+                                                            int *error_out);
 
 /**
  * Cancel a Pending Transaction
@@ -4224,9 +4238,9 @@ struct TariPaymentRecords *wallet_get_transaction_payrefs(struct TariWallet *wal
  * The ```byte_vector_destroy``` method must be called when finished with a ByteVector to
  * prevent a memory leak
  */
-TariCompletedTransaction *wallet_get_transaction_by_payref(struct TariWallet *wallet,
-                                                           struct ByteVector *payref,
-                                                           int *error_out);
+struct TariCompletedTransaction *wallet_get_transaction_by_payref(struct TariWallet *wallet,
+                                                                  struct ByteVector *payref,
+                                                                  int *error_out);
 
 /**
  * This function will tell the wallet to query the set base node to confirm the status of transaction outputs
