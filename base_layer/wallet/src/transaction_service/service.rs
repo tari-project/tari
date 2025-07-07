@@ -1032,16 +1032,17 @@ where
             TransactionServiceRequest::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                // additional_inputs,
             } => self
-                .replace_by_fee(
-                    tx_id,
-                    new_fee_per_gram,
-                    // additional_inputs,
-                    send_transaction_join_handles,
-                )
+                .replace_by_fee(tx_id, new_fee_per_gram, send_transaction_join_handles)
                 .await
                 .map(TransactionServiceResponse::TransactionReplaced),
+            TransactionServiceRequest::UserPayForFee {
+                tx_id,
+                additional_outputs,
+            } => {
+                self.user_pay_for_fee(tx_id, additional_outputs);
+                return Ok(());
+            },
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -3973,7 +3974,6 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        // additional_inputs: Vec<TransactionOutput>,
         send_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -4001,23 +4001,12 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "Replace-by-fee: Cancelled transaction {} for destination {}, amount {}",
+            "Replace-by-fee: Cancelled transaction {} for destination {} previous fee: {} new fee: {}",
             tx_id,
             destination,
-            original_amount
+            original_transaction.fee,
+            fee_per_gram
         );
-
-        // Handle additional inputs as separate transactions if provided
-        // Note: We cannot extract values from TransactionOutput commitments since they are
-        // homomorphically encrypted. Additional inputs would need to be handled separately
-        // or the caller should provide the amounts explicitly.
-        // if !additional_inputs.is_empty() {
-        //     warn!(
-        //         target: LOG_TARGET,
-        //         "Replace-by-fee: Additional inputs provided but cannot extract amounts from commitments. \
-        //          Additional inputs will be ignored. Consider using separate transactions for additional inputs."
-        //     );
-        // }
 
         // Create a new transaction with the same parameters but new fee
         let new_tx_id = TxId::new_random();
@@ -4059,6 +4048,13 @@ where
         );
 
         Ok(new_tx_id)
+    }
+
+    async fn user_pay_for_fee(
+        &mut self,
+        tx_id: TxId,
+        additional_outputs: Vec<TransactionOutput>,
+    ) -> Result<TxId, TransactionServiceError> {
     }
 
     async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {

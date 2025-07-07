@@ -1414,13 +1414,15 @@ pub async fn command_runner(
             },
             ReplaceByFee(args) => {
                 transaction_service
-                    // .replace_by_fee(tx_id, args.new_fee_per_gram, args.additional_inputs)
                     .replace_by_fee(args.tx_id.into(), args.new_fee_per_gram)
                     .await
                     .unwrap();
             },
             UserPayForFee(args) => {
-                todo!("User pay for fee not implemented!");
+                transaction_service
+                    .user_pay_for_fee(args.tx_id.into(), args.amount, args.additional_outputs)
+                    .await
+                    .unwrap();
             },
             PreMineSigs(args) => {
                 let session_info;

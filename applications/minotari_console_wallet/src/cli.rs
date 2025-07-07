@@ -233,7 +233,6 @@ pub struct ReplaceByFeeArgs {
     pub tx_id: u64,
     #[clap(short, long)]
     pub new_fee_per_gram: MicroMinotari,
-    // pub additional_inputs: Vec<TransactionInput>,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -241,7 +240,6 @@ pub struct UserPayForFeeArgs {
     #[clap(short, long)]
     pub tx_id: String,
     pub new_outputs: Vec<MicroMinotari>,
-    pub new_inputs: Vec<MicroMinotari>,
 }
 
 #[derive(Debug, Args, Clone)]

@@ -42,7 +42,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::PaymentId, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
-            TransactionInput, TransactionOutput,
+            TransactionOutput,
         },
     },
 };
@@ -215,7 +215,10 @@ pub enum TransactionServiceRequest {
     ReplaceByFee {
         tx_id: TxId,
         new_fee_per_gram: MicroMinotari,
-        // additional_inputs: Vec<TransactionInput>,
+    },
+    UserPayForFee {
+        tx_id: TxId,
+        additional_outputs: Vec<TransactionOutput>,
     },
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
@@ -426,15 +429,18 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                // additional_inputs,
-            } => write!(
-                f,
-                // "ReplaceByFee(tx_id: {}, fee_per_gram: {}, additional_inputs: {})",
-                "ReplaceByFee(tx_id: {}, fee_per_gram: {})",
+            } => write!(f, "ReplaceByFee(tx_id: {}, fee_per_gram: {})", tx_id, new_fee_per_gram,),
+            Self::UserPayForFee {
                 tx_id,
-                new_fee_per_gram,
-                // additional_inputs.len()
-            ),
+                additional_outputs,
+            } => {
+                write!(
+                    f,
+                    "UserPayForFee(tx_id: {}, new_outputs: {})",
+                    tx_id,
+                    additional_outputs.len()
+                )
+            },
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
@@ -1412,7 +1418,6 @@ impl TransactionServiceHandle {
     /// # Arguments
     /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
     /// * `fee_per_gram` - New fee per gram (should be higher than original)
-    /// * `additional_inputs` - Additional inputs to include (Note: values cannot be extracted from commitments)
     ///
     /// # Returns
     /// The new transaction ID or an error
@@ -1420,18 +1425,34 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         new_fee_per_gram: MicroMinotari,
-        // additional_inputs: Vec<TransactionInput>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                // additional_inputs,
             })
             .await??
         {
             TransactionServiceResponse::TransactionReplaced(new_tx_id) => Ok(new_tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn user_pay_for_fee(
+        &mut self,
+        tx_id: TxId,
+        additional_outputs: Vec<TransactionOutput>,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::UserPayForFee {
+                tx_id,
+                additional_outputs,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionReplaced(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
