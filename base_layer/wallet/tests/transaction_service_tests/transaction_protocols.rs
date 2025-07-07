@@ -163,7 +163,7 @@ pub async fn setup() -> (
     let recovery_message_watch = Watch::new("unset".to_string());
     let one_sided_message_watch = Watch::new("unset".to_string());
 
-    let wallet_connectivity = WalletConnectivityHandle::new(Watch::new(None), MockHttpClientFactory::default());
+    let wallet_connectivity = WalletConnectivityHandle::new(MockHttpClientFactory::default());
     let utxo_scanner_handle =
         UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
     let resources = TransactionServiceResources {

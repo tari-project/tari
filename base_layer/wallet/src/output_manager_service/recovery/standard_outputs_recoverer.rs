@@ -154,20 +154,27 @@ where
                 Some(id) => *id,
                 None => {
                     let mut related_txs: Vec<CompletedTransaction> = Vec::new();
-                    let (source_address, recipient_address) = match &db_output.payment_id {
-                        PaymentId::AddressAndData { sender_address, .. } => (Some(sender_address.clone()), None),
-                        PaymentId::TransactionInfo { recipient_address, .. } => (None, Some(recipient_address.clone())),
-                        _ => (None, None),
-                    };
+                    if outputs_length < 6 {
+                        // This is very much a hacky fix to a hacky fix, but this call takes 140ms at min. This piece of
+                        // code is here as a hacky fix to attempt to find the tx if TU already imported it. This will be
+                        // low-volume so we can afford to do this. Scanning during recovery for higher output wallets,
+                        // this becomes a massive bottleneck.
+                        let (source_address, recipient_address) = match &db_output.payment_id {
+                            PaymentId::AddressAndData { sender_address, .. } => (Some(sender_address.clone()), None),
+                            PaymentId::TransactionInfo { recipient_address, .. } => {
+                                (None, Some(recipient_address.clone()))
+                            },
+                            _ => (None, None),
+                        };
 
-                    if source_address.is_some() || recipient_address.is_some() {
-                        related_txs = self
-                            .transaction_service_handle
-                            .get_completed_transactions_by_addresses(source_address, recipient_address)
-                            .await
-                            .unwrap_or_default();
+                        if source_address.is_some() || recipient_address.is_some() {
+                            related_txs = self
+                                .transaction_service_handle
+                                .get_completed_transactions_by_addresses(source_address, recipient_address)
+                                .await
+                                .unwrap_or_default();
+                        }
                     }
-
                     let tx_id = related_txs.iter().find_map(|tx| {
                         tx.transaction
                             .body

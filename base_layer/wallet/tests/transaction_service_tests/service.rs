@@ -272,6 +272,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             Network::LocalNet,
             14,
             http_node_url,
+            1,
         ))
         .build()
         .await
@@ -385,8 +386,7 @@ async fn setup_transaction_service_no_comms(
 
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
 
-    let watch = Watch::new(None);
-    let wallet_connectivity_service_mock = WalletConnectivityHandle::new(watch, MockHttpClientFactory::default());
+    let wallet_connectivity_service_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver,

@@ -13712,12 +13712,6 @@ mod test {
             let base_node_peer_address_ptr =
                 CString::into_raw(CString::new(node_identity.first_public_address().unwrap().to_string()).unwrap())
                     as *const c_char;
-            wallet_set_base_node_peer(
-                wallet_ptr,
-                base_node_peer_public_key_ptr,
-                base_node_peer_address_ptr,
-                error_ptr,
-            );
 
             let source_address_ptr = Box::into_raw(Box::default());
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
@@ -14178,12 +14172,6 @@ mod test {
             let bob_peer_address_ptr =
                 CString::into_raw(CString::new(bob_node_identity.first_public_address().unwrap().to_string()).unwrap())
                     as *const c_char;
-            wallet_set_base_node_peer(
-                alice_wallet_ptr,
-                bob_peer_public_key_ptr,
-                bob_peer_address_ptr,
-                error_ptr,
-            );
             string_destroy(bob_peer_address_ptr as *mut c_char);
             let _destroyed = Box::from_raw(bob_peer_public_key_ptr);
             // - Wallet peer for Bob (add Alice as a base node peer; same as above)
@@ -14193,12 +14181,6 @@ mod test {
             let alice_peer_address_ptr = CString::into_raw(
                 CString::new(alice_node_identity.first_public_address().unwrap().to_string()).unwrap(),
             ) as *const c_char;
-            wallet_set_base_node_peer(
-                bob_wallet_ptr,
-                alice_peer_public_key_ptr,
-                alice_peer_address_ptr,
-                error_ptr,
-            );
             string_destroy(alice_peer_address_ptr as *mut c_char);
             let _destroyed = Box::from_raw(alice_peer_public_key_ptr);
 

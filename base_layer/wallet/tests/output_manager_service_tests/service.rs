@@ -121,9 +121,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (event_publisher_bns, _) = broadcast::channel(100);
     let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
 
-    let watch = Watch::new(None);
-
-    let wallet_connectivity_mock = WalletConnectivityHandle::new(watch, MockHttpClientFactory::default());
+    let wallet_connectivity_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
 
     let key_manager = create_memory_db_key_manager().unwrap();
 
@@ -191,7 +189,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let (event_publisher_bns, _) = broadcast::channel(100);
 
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
-    let connectivity = WalletConnectivityHandle::new(Watch::new(None), MockHttpClientFactory::default());
+    let connectivity = WalletConnectivityHandle::new(MockHttpClientFactory::default());
     let key_manager = create_memory_db_key_manager().unwrap();
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
