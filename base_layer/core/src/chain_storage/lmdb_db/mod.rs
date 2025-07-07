@@ -39,6 +39,7 @@ pub(crate) mod helpers;
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
+pub use lmdb_db::PayrefRebuildStatus;
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
 mod stats_collector;

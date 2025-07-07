@@ -821,7 +821,7 @@ impl ConnectivityManagerActor {
             },
             PeerConnectFailed(node_id, ConnectionManagerError::NoiseHandshakeError(msg)) => {
                 if let Some(conn) = self.pool.get_connection(node_id) {
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
                         "Handshake error to peer '{}', disconnecting for a fresh retry ({})",
                         node_id,

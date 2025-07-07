@@ -67,7 +67,7 @@ use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{smt_hasher::SmtHasher, MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
+use super::{smt_hasher::SmtHasher, MinedInfo, PayrefRebuildStatus, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
@@ -360,6 +360,88 @@ where B: BlockchainBackend
         if !config.track_reorgs {
             self.clear_all_reorgs()?;
         }
+
+        self.rebuild_payref_indexes_background_task()?;
+
+        Ok(())
+    }
+
+    /// This function will rebuild the payref indexes in the background if they are not already rebuilt.
+    pub fn rebuild_payref_indexes_background_task(&self) -> Result<(), ChainStorageError> {
+        let initial_status = {
+            let db = self.db_read_access()?;
+            db.fetch_payref_rebuild_status()?
+        };
+        if initial_status.is_rebuilt {
+            debug!(target: LOG_TARGET, "[PayRef] Payref indexes has already been rebuilt.");
+            return Ok(());
+        }
+
+        // If we had a previous start metadata, we will use that to continue the rebuild, otherwise we will use the
+        // current chain metadata to set a new target rebuild height. All new or re-orged blocks added to the database
+        // after this process started will have the correct payref indexes and therefor do not need to be processed.
+        let metadata_at_start = if let Some(metadata) = initial_status.metadata_at_start.clone() {
+            metadata
+        } else {
+            let db = self.db_read_access()?;
+            db.fetch_chain_metadata()?
+        };
+        let db_rw_lock = self.db.clone();
+
+        tokio::task::spawn(async move {
+            let start_height = initial_status.last_rebuild_height.unwrap_or_default();
+            let mut last_status = initial_status.clone();
+            debug!(
+                target: LOG_TARGET,
+                "[PayRef] Starting index rebuilding for heights {} to {}",
+                start_height, metadata_at_start.best_block_height()
+            );
+
+            let mut initialize_stats = Some(metadata_at_start.best_block_height());
+            for height in start_height..=metadata_at_start.best_block_height() {
+                let finalize = height == metadata_at_start.best_block_height();
+                let metadata = metadata_at_start.clone();
+                let db = db_rw_lock.clone();
+                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
+                // shut down when base node shutdown is triggered
+                let res = tokio::task::spawn_blocking(move || {
+                    process_payref_for_height(db, height, metadata, initialize_stats, finalize)
+                })
+                .await;
+                match res {
+                    Ok(Ok(current_status)) => {
+                        last_status = current_status;
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
+                            initial_status, last_status, e
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
+                            initial_status, last_status, e
+                        );
+                        break;
+                    },
+                }
+                if initialize_stats.is_some() {
+                    initialize_stats = None;
+                }
+                if finalize || last_status.is_rebuilt {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[PayRef] Starting index rebuilding completed, Final status: {:?}",
+                        last_status
+                    );
+                    break;
+                }
+            }
+        });
 
         Ok(())
     }
@@ -2741,6 +2823,34 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
     };
 
     (start, end)
+}
+
+/// Process a batch of outputs in one block for PayRef migration
+fn process_payref_for_height<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    height: u64,
+    metadata_at_start: ChainMetadata,
+    initialize_stats: Option<u64>,
+    finalize: bool,
+) -> Result<PayrefRebuildStatus, ChainStorageError> {
+    debug!(target: LOG_TARGET, "[PayRef] Processing index rebuilding for height {}", height);
+
+    let write_txn = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+
+    let status =
+        write_txn.build_payref_indexes_for_height(height, metadata_at_start.clone(), initialize_stats, finalize)?;
+
+    if finalize || status.is_rebuilt {
+        debug!(
+            target: LOG_TARGET,
+            "[PayRef] Finalized index rebuilding for heights {} to {}",
+            metadata_at_start.best_block_height(), height
+        );
+    }
+
+    Ok(status)
 }
 
 #[cfg(test)]

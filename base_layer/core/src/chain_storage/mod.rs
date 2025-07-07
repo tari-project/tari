@@ -70,6 +70,7 @@ pub use lmdb_db::{
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     DatabaseStats,
     LMDBDatabase,
+    PayrefRebuildStatus,
 };
 mod stats;
 pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};

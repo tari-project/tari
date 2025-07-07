@@ -970,9 +970,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    // Exclude coinbases as they are validated from the OMS service, and we use these fields to know which tx to
-    // extract, thus we should not wipe it out. Coinbases can also not be mined in a different height so the data will
-    // never be wrong.
+    // We look at all rejected transactions and set them to be revalidated, we dont reset the coinbase transactions's
+    // mined_height as this can never change.
     fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -983,6 +982,16 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+            ))
+            .execute(&mut conn)?;
+        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        // we want to double check unmined coinbases again, so lets set those
+        let result = diesel::update(completed_transactions::table)
+            .filter(completed_transactions::status.eq(TransactionStatus::CoinbaseNotInBlockChain as i32))
+            .set((
+                completed_transactions::cancelled.eq::<Option<i32>>(None),
+                completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+                completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32),
             ))
             .execute(&mut conn)?;
         trace!(target: LOG_TARGET, "rows updated: {:?}", result);

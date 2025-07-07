@@ -565,7 +565,28 @@ impl ConsensusConstants {
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
         };
-        let consensus_constants = vec![consensus_constants1];
+
+        let mut con2 = consensus_constants1.clone();
+        con2.effective_from_height = 52000;
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty:  Difficulty::from_u64(60_000_000_000).expect("valid difficulty"),
+            target_time: 60,
+        });
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 60,
+        });
+        algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(600).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 60,
+        });
+        con2.proof_of_work = algos;
+
+        let consensus_constants = vec![consensus_constants1, con2];
         consensus_constants
     }
 

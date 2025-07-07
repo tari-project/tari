@@ -1955,6 +1955,80 @@ pub unsafe extern "C" fn tari_address_spend_key(
     Box::into_raw(Box::new(spend_key.clone()))
 }
 
+/// Gets the user payment ID of a TariAddress in string format
+///
+/// ## Arguments
+/// `address` - The pointer to a TariAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+/// to an empty char array if address is null
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_get_user_payment_id(
+    address: *mut TariWalletAddress,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    let mut result = CString::new("").expect("Blank CString will not fail.");
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return result.into_raw();
+    }
+    let payment_id = (*address).get_payment_id_user_data_bytes();
+    match CString::new(payment_id) {
+        Ok(v) => result = v,
+        Err(e) => {
+            *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
+        },
+    }
+
+    result.into_raw()
+}
+
+/// Gets the user payment ID of a TariAddress as bytes
+///
+/// ## Arguments
+/// `address` - The pointer to a TariAddress
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+/// if the byte_array pointer was null or if the elements in the byte_vector don't match
+/// element_count when it is created or the address does not have a user payment ID.
+///
+/// # Safety
+/// The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn tari_address_get_user_payment_id_as_bytes(
+    address: *mut TariWalletAddress,
+    error_out: *mut c_int,
+) -> *mut ByteVector {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if address.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        return ptr::null_mut();
+    }
+    let payment_id = (*address).get_payment_id_user_data_bytes();
+    let mut bytes = ByteVector(Vec::new());
+    bytes.0 = payment_id;
+
+    Box::into_raw(Box::new(bytes))
+}
+
 /// Creates a TariWalletAddress from a char array in emoji format
 ///
 /// ## Arguments
@@ -10846,7 +10920,7 @@ pub unsafe extern "C" fn payment_records_get_at(
         return ptr::null_mut();
     }
 
-    Box::into_raw(Box::new((*records).0[index as usize].clone()))
+    Box::into_raw(Box::new((&(*records).0)[index as usize].clone()))
 }
 
 /// Destroy TariPaymentRecord

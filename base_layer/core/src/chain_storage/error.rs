@@ -66,6 +66,14 @@ pub enum ChainStorageError {
     InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]
     InvalidQuery(String),
+    #[error(
+        "PayRef index not available: current `{current_height}`, start `{start_height}`, target `{target_height}`"
+    )]
+    PayRefIndexNotAvailable {
+        current_height: u64,
+        start_height: u64,
+        target_height: u64,
+    },
     #[error("Invalid argument `{arg}` in `{func}`: {message}")]
     InvalidArguments {
         func: &'static str,
@@ -204,7 +212,8 @@ impl ChainStorageError {
             _err @ ChainStorageError::InvalidChainMetaData(_) |
             _err @ ChainStorageError::OutOfRange |
             _err @ ChainStorageError::MrHashError(_) |
-            _err @ ChainStorageError::JellyfishMerkleTreeError(_) => None,
+            _err @ ChainStorageError::JellyfishMerkleTreeError(_) |
+            _err @ ChainStorageError::PayRefIndexNotAvailable { .. } => None,
         }
     }
 }

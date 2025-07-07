@@ -11,8 +11,9 @@ use tari_sidechain::ShardGroup;
 use super::{
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
     MinedInfo,
-    TemplateRegistrationEntry,
     ValidatorNodeRegistrationInfo,
+    PayrefRebuildStatus,
+    TemplateRegistrationEntry,
 };
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
@@ -41,7 +42,7 @@ use crate::{
 /// us to keep the reading and writing API extremely simple. Extending the types of data that the backends can handle
 /// will entail adding to those enums, and the backends, while this trait can remain unchanged.
 #[allow(clippy::ptr_arg)]
-pub trait BlockchainBackend: Send + Sync {
+pub trait BlockchainBackend: Send + Sync + 'static {
     /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
     /// the error condition returned. On success, every operation in the transaction will have been committed, and
     /// the function will return `Ok(())`.
@@ -145,6 +146,16 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError>;
     /// Returns the stored chain metadata.
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
+    /// Returns the stored payref rebuild status.
+    fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
+    /// Builds the payref indexes for a given block height, with stats.
+    fn build_payref_indexes_for_height(
+        &self,
+        height: u64,
+        metadata_at_start: ChainMetadata,
+        initialize_stats: Option<u64>,
+        finalize: bool,
+    ) -> Result<PayrefRebuildStatus, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count
