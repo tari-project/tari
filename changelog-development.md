@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.9.0-pre.0](https://github.com/tari-project/tari/compare/v4.8.0-pre.0...v4.9.0-pre.0) (2025-07-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* full http wallet refactor (#7215)
+
+### Features
+
+* full http wallet refactor ([#7215](https://github.com/tari-project/tari/issues/7215)) ([482a70e](https://github.com/tari-project/tari/commit/482a70e41cf06d7c2e09014a90f9f39510c0d807))
+
 ## [4.8.0-pre.0](https://github.com/tari-project/tari/compare/v4.7.0-pre.0...v4.8.0-pre.0) (2025-07-07)
 
 
