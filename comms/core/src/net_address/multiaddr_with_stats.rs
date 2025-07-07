@@ -162,6 +162,7 @@ impl MultiaddrWithStats {
     /// MAX_LATENCY_SAMPLE_COUNT and the new latency_measurement will have a weight of 1.
     pub fn update_latency(&mut self, latency_measurement: Duration) {
         self.last_seen = Some(Utc::now().naive_utc());
+        self.last_failed_reason = None;
 
         self.avg_latency = Some(
             ((self
@@ -185,6 +186,7 @@ impl MultiaddrWithStats {
 
     pub fn update_initial_dial_time(&mut self, initial_dial_time: Duration) {
         self.last_seen = Some(Utc::now().naive_utc());
+        self.last_failed_reason = None;
 
         self.avg_initial_dial_time = Some(
             ((self.avg_initial_dial_time.unwrap_or_default() * self.initial_dial_time_sample_count) +
