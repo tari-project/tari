@@ -2611,10 +2611,10 @@ impl BlockchainBackend for LMDBDatabase {
         initialize_stats: Option<u64>,
         finalize: bool,
     ) -> Result<PayrefRebuildStatus, ChainStorageError> {
-        let write_txn = self.write_transaction()?;
         unsafe {
             LMDBStore::resize_if_required(&self.env, &self.env_config, None)?;
         }
+        let write_txn = self.write_transaction()?;
         let best_block_height = self.fetch_chain_metadata()?.best_block_height();
         if height > best_block_height {
             return Err(ChainStorageError::InvalidOperation(format!(
