@@ -431,7 +431,7 @@ async fn get_peers(
                     );
                     continue;
                 }
-                if let Err(e) = conn.disconnect(Minimized::Yes).await {
+                if let Err(e) = conn.disconnect(Minimized::Yes, "SeedStrap disconnect seed on Ok").await {
                     warn!(target: LOG_TARGET, "SeedStrap: Failed to disconnect from seed peer '{}': {}", seed_peer_node_id_str, e);
                 } else {
                     debug!(target: LOG_TARGET, "SeedStrap: Successfully disconnected from seed peer '{}'", seed_peer_node_id_str);
@@ -449,7 +449,10 @@ async fn get_peers(
                     e
                 );
                 // Attempt to disconnect, log if it fails but continue
-                if let Err(disc_err) = conn.disconnect(Minimized::Yes).await {
+                if let Err(disc_err) = conn
+                    .disconnect(Minimized::Yes, "SeedStrap disconnect seed on Error")
+                    .await
+                {
                     warn!(
                         target: LOG_TARGET,
                         "SeedStrap: Also failed to disconnect from seed peer '{}' after fetch failure: {}",

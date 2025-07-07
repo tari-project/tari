@@ -317,7 +317,7 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
     }
 
     // RPC connections are closed when the peer is disconnected
-    conn1_2.disconnect(Minimized::No).await.unwrap();
+    conn1_2.disconnect(Minimized::No, "unit tests").await.unwrap();
 
     // Verify the RPC connections are closed
     async_assert_eventually!(

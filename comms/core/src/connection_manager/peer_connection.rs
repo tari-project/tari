@@ -120,7 +120,12 @@ pub enum PeerConnectionRequest {
         reply_tx: oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
     },
     /// Disconnect all substreams and close the transport connection
-    Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>, Minimized),
+    Disconnect(
+        bool,
+        oneshot::Sender<Result<(), PeerConnectionError>>,
+        Minimized,
+        String,
+    ),
 }
 
 /// ID type for peer connections
@@ -299,11 +304,24 @@ impl PeerConnection {
 
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker
     /// is shut down (and the peer is already disconnected)
-    pub async fn disconnect(&mut self, minimized: Minimized) -> Result<(), PeerConnectionError> {
+    pub async fn disconnect(&mut self, minimized: Minimized, requester: &str) -> Result<(), PeerConnectionError> {
+        trace!(
+            target: LOG_TARGET,
+            "Hard disconnect - requester: '{}', peer: `{}`, RPC clients: {}, substreams {}",
+            requester,
+            self.peer_node_id,
+            self.number_of_rpc_clients.load(Ordering::Relaxed),
+            self.substream_count()
+        );
         let (reply_tx, reply_rx) = oneshot::channel();
         let _unused = self
             .request_tx
-            .send(PeerConnectionRequest::Disconnect(false, reply_tx, minimized))
+            .send(PeerConnectionRequest::Disconnect(
+                false,
+                reply_tx,
+                minimized,
+                requester.to_string(),
+            ))
             .await
             .inspect_err(|e| {
                 info!(
@@ -318,11 +336,43 @@ impl PeerConnection {
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
-    pub(crate) async fn disconnect_silent(&mut self, minimized: Minimized) -> Result<(), PeerConnectionError> {
+    /// Request to disconnect the peer connection if unused by other services.
+    pub async fn disconnect_if_unused(
+        &mut self,
+        minimized: Minimized,
+        requester: &str,
+    ) -> Result<(), PeerConnectionError> {
+        let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
+        let substream_count = self.substream_count();
+        if number_of_rpc_clients >= 1 || substream_count >= 1 {
+            trace!(
+                target: LOG_TARGET,
+                "Soft disconnect - requester: '{}', peer: `{}`, RPC clients: {}, substreams {}, NOT disconnecting",
+                requester,
+                self.peer_node_id,
+                number_of_rpc_clients,
+                self.substream_count()
+            );
+            Ok(())
+        } else {
+            self.disconnect(minimized, requester).await
+        }
+    }
+
+    pub(crate) async fn disconnect_silent(
+        &mut self,
+        minimized: Minimized,
+        requester: &str,
+    ) -> Result<(), PeerConnectionError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let _unused = self
             .request_tx
-            .send(PeerConnectionRequest::Disconnect(true, reply_tx, minimized))
+            .send(PeerConnectionRequest::Disconnect(
+                true,
+                reply_tx,
+                minimized,
+                requester.to_string(),
+            ))
             .await
             .inspect_err(|e| {
                 info!(
@@ -462,7 +512,7 @@ impl PeerConnectionActor {
             }
         }
 
-        if let Err(err) = self.disconnect(false, Minimized::No).await {
+        if let Err(err) = self.disconnect(false, Minimized::No, "PeerConnectionActor exit").await {
             warn!(
                 target: LOG_TARGET,
                 "[{}] Failed to politely close connection to peer '{}' because '{}'",
@@ -487,16 +537,17 @@ impl PeerConnectionActor {
                     "Reply oneshot closed when sending reply",
                 );
             },
-            Disconnect(silent, reply_tx, minimized) => {
+            Disconnect(silent, reply_tx, minimized, requester) => {
                 debug!(
                     target: LOG_TARGET,
-                    "[{}] Disconnect{}requested for {} connection to peer '{}'",
+                    "[{}] Disconnect{}requested for {} connection to peer '{}', requester: '{}'",
                     self,
                     if silent { " (silent) " } else { " " },
                     self.direction,
-                    self.peer_node_id.short_str()
+                    self.peer_node_id.short_str(),
+                    requester,
                 );
-                let _result = reply_tx.send(self.disconnect(silent, minimized).await);
+                let _result = reply_tx.send(self.disconnect(silent, minimized, &requester).await);
             },
         }
     }
@@ -592,7 +643,12 @@ impl PeerConnectionActor {
     /// # Arguments
     ///
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
-    async fn disconnect(&mut self, silent: bool, minimized: Minimized) -> Result<(), PeerConnectionError> {
+    async fn disconnect(
+        &mut self,
+        silent: bool,
+        minimized: Minimized,
+        requester: &str,
+    ) -> Result<(), PeerConnectionError> {
         self.request_rx.close();
 
         // Only emit closed event once
@@ -618,7 +674,11 @@ impl PeerConnectionActor {
             ))
             .await;
         }
-        trace!(target: LOG_TARGET, "(Peer = {}) Connection closed", self.peer_node_id.short_str());
+        trace!(
+            target: LOG_TARGET,
+            "(Peer = {}) Connection closed, requester: '{}'",
+            self.peer_node_id.short_str(), requester
+        );
 
         Ok(())
     }

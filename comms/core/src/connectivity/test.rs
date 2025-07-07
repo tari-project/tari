@@ -421,7 +421,7 @@ async fn pool_management() {
         if conn != important_connection {
             assert_eq!(conn.handle_count(), 2);
             // The peer connection mock does not "automatically" publish event to connectivity manager
-            conn.disconnect(Minimized::No).await.unwrap();
+            conn.disconnect(Minimized::No, "unit test").await.unwrap();
             cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
                 conn.id(),
                 conn.peer_node_id().clone(),
@@ -442,7 +442,10 @@ async fn pool_management() {
     let conns = connectivity.get_active_connections().await.unwrap();
 
     assert_eq!(conns.len(), 1);
-    important_connection.disconnect(Minimized::No).await.unwrap();
+    important_connection
+        .disconnect(Minimized::No, "unit test")
+        .await
+        .unwrap();
     cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
         important_connection.id(),
         important_connection.peer_node_id().clone(),
