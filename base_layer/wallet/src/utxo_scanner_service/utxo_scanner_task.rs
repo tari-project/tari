@@ -56,7 +56,7 @@ use crate::{
     storage::database::WalletBackend,
     transaction_service::{
         error::{TransactionServiceError, TransactionStorageError},
-        tasks::check_faux_transaction_status::SAFETY_HEIGHT_MARGIN,
+        protocols::check_faux_transaction_status::SAFETY_HEIGHT_MARGIN,
     },
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
@@ -71,6 +71,7 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 struct SyncResult {
     final_height: u64,
     num_recovered: u64,
+    scanned_blocks: u64,
     value_recovered: MicroMinotari,
     elapsed: Duration,
 }
@@ -108,12 +109,22 @@ where
                 Ok(SyncResult {
                     final_height,
                     num_recovered,
+                    scanned_blocks,
                     value_recovered,
                     elapsed,
                 }) => {
                     debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
                     self.finalize(num_recovered, value_recovered, final_height, elapsed)
                         .await?;
+                    if scanned_blocks > SAFETY_HEIGHT_MARGIN {
+                        // if the TMS validates the transactions before the OMS does, it can invalidate some
+                        // transactions, so we need to reset them to ensure we can revalidate them
+                        let _result = self
+                            .resources
+                            .transaction_service
+                            .revalidate_rejected_transactions()
+                            .await;
+                    }
                     return Ok(());
                 },
                 Err(e) => {
@@ -227,6 +238,7 @@ where
         let timer = Instant::now();
         let mut total_num_recovered = 0;
         let mut total_value_recovered = MicroMinotari::zero();
+        let mut scanned_blocks = 0;
         loop {
             let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
@@ -245,6 +257,7 @@ where
                         final_height: last_scanned_block.height,
                         num_recovered: total_num_recovered,
                         value_recovered: total_value_recovered,
+                        scanned_blocks,
                         elapsed: timer.elapsed(),
                     });
                 }
@@ -276,6 +289,7 @@ where
                     tip_height,
                 )
                 .await?;
+            scanned_blocks += 1;
             total_num_recovered += num_recovered;
             total_value_recovered += amount_recovered;
             debug!(
