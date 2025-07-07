@@ -29,83 +29,29 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future,
-    SinkExt,
+    future, SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    BroadcastSignedOneSidedTransactionRequest,
-    BroadcastSignedOneSidedTransactionResponse,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    FeePerGramStat,
-    GetAddressResponse,
-    GetAllCompletedTransactionsRequest,
-    GetAllCompletedTransactionsResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetBlockHeightTransactionsRequest,
-    GetBlockHeightTransactionsResponse,
-    GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetFeeEstimateRequest,
-    GetFeeEstimateResponse,
-    GetFeePerGramStatsRequest,
-    GetFeePerGramStatsResponse,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetPaymentByReferenceRequest,
-    GetPaymentByReferenceResponse,
-    GetPaymentIdAddressRequest,
-    GetStateRequest,
-    GetStateResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetTransactionPayRefsRequest,
-    GetTransactionPayRefsResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportTransactionsRequest,
-    ImportTransactionsResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    PrepareOneSidedTransactionForSigningRequest,
-    PrepareOneSidedTransactionForSigningResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    ValidateRequest,
-    ValidateResponse,
+    self, payment_recipient::PaymentType, wallet_server, BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse, CheckConnectivityResponse, ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
+    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, FeePerGramStat, GetAddressResponse,
+    GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
+    GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse, GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetFeeEstimateRequest,
+    GetFeeEstimateResponse, GetFeePerGramStatsRequest, GetFeePerGramStatsResponse, GetIdentityRequest,
+    GetIdentityResponse, GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest,
+    GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest, GetTransactionPayRefsResponse, GetUnspentAmountsResponse, GetVersionRequest,
+    GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest, PrepareOneSidedTransactionForSigningResponse,
+    RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, ReplaceByFeeRequest, ReplaceByFeeResponse,
+    RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest,
+    SetBaseNodeResponse, TransactionDirection, TransactionEvent, TransactionEventRequest, TransactionEventResponse,
+    TransactionInfo, TransactionStatus, TransferRequest, TransferResponse, TransferResult, UserPayForFeeRequest,
+    UserPayForFeeResponse, ValidateRequest, ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -120,7 +66,7 @@ use minotari_wallet::{
 };
 use tari_common_types::{
     payment_reference::generate_payment_reference,
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, Signature},
 };
@@ -131,11 +77,7 @@ use tari_core::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CodeTemplateRegistration,
-            OutputFeatures,
-            OutputType,
-            SideChainFeature,
-            UnblindedOutput,
+            CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
@@ -1693,11 +1635,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_name = template_registration.template_name.clone();
 
         let mut output = output_manager
-            .create_output_with_features(1 * T, OutputFeatures {
-                output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                ..Default::default()
-            })
+            .create_output_with_features(
+                1 * T,
+                OutputFeatures {
+                    output_type: OutputType::CodeTemplateRegistration,
+                    sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+                    ..Default::default()
+                },
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -2041,6 +1986,48 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }
         Ok(Response::new(GetFeePerGramStatsResponse {
             fee_per_gram_stats: fee_stats,
+        }))
+    }
+
+    async fn user_pay_for_fee(
+        &self,
+        request: Request<UserPayForFeeRequest>,
+    ) -> Result<Response<UserPayForFeeResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let compressed_public_key = CompressedPublicKey::from_canonical_bytes(&request.destination_address)
+            .map_err(|e| Status::invalid_argument(format!("Invalid public key: {}", e)))?;
+        let destination_address = TariAddress::new_single_address(
+            compressed_public_key,
+            self.wallet.network.as_network(),
+            TariAddressFeatures::default(),
+        )
+        .map_err(|e| Status::invalid_argument(format!("Invalid address: {}", e)))?;
+        let tx_id = transaction_service
+            .user_pay_for_fee(
+                request.transaction_id.into(),
+                destination_address,
+                MicroMinotari::from(request.amount),
+            )
+            .await
+            .map_err(|e| Status::internal(format!("Failed to pay for fee: {}", e)))?;
+        Ok(Response::new(UserPayForFeeResponse {
+            transaction_id: tx_id.into(),
+        }))
+    }
+
+    async fn replace_by_fee(
+        &self,
+        request: Request<ReplaceByFeeRequest>,
+    ) -> Result<Response<ReplaceByFeeResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let tx_id = transaction_service
+            .replace_by_fee(request.transaction_id.into(), MicroMinotari::from(request.fee_per_gram))
+            .await
+            .map_err(|e| Status::internal(format!("Failed to replace by fee: {}", e)))?;
+        Ok(Response::new(ReplaceByFeeResponse {
+            transaction_id: tx_id.into(),
         }))
     }
 }
