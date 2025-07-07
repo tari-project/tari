@@ -22,7 +22,7 @@
 
 use std::{collections::HashSet, convert::TryInto};
 
-use log::{debug, trace, warn};
+use log::*;
 use tari_common_types::types::{
     CommitmentFactory,
     CompressedCommitment,
@@ -45,6 +45,7 @@ use crate::{
         transaction_components::{
             transaction_output::batch_verify_range_proofs,
             KernelSum,
+            SideChainFeature,
             TransactionError,
             TransactionInput,
             TransactionKernel,
@@ -123,7 +124,7 @@ impl AggregateBodyInternalConsistencyValidator {
         check_weight(body, height, constants)?;
         check_sorting_and_duplicates(body)?;
 
-        // Check that the inputs are are allowed to be spent
+        // Check that inputs are allowed to be spent
         check_maturity(height, body.inputs())?;
         check_kernel_lock_height(height, body.kernels())?;
 
@@ -145,6 +146,26 @@ impl AggregateBodyInternalConsistencyValidator {
     }
 }
 
+fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+    if let Some(template_reg) = sidechain_feature.code_template_registration() {
+        let message =
+            template_reg.create_signature_message(template_reg.author_signature.get_compressed_public_nonce());
+        let signature = template_reg
+            .author_signature
+            .to_schnorr_signature()
+            .map_err(|_| ValidationError::TemplateAuthorSignatureNotValid)?;
+        let author_public_key = template_reg
+            .author_public_key
+            .to_public_key()
+            .map_err(|_| ValidationError::TemplateAuthorSignatureNotValid)?;
+
+        if !signature.verify_raw_uniform(&author_public_key, &message) {
+            return Err(ValidationError::TemplateAuthorSignatureNotValid);
+        }
+    }
+    Ok(())
+}
+
 pub fn validate_individual_output(
     output: &TransactionOutput,
     consensus_constants: &ConsensusConstants,
@@ -154,8 +175,8 @@ pub fn validate_individual_output(
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
     check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
     check_permitted_range_proof_types(consensus_constants, output)?;
-    check_validator_node_registration_utxo(consensus_constants, output)?;
     output.verify_metadata_signature()?;
+    check_sidechain_features(consensus_constants, output)?;
 
     Ok(())
 }
@@ -400,28 +421,63 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
     Ok(())
 }
 
+fn check_sidechain_features(constants: &ConsensusConstants, output: &TransactionOutput) -> Result<(), ValidationError> {
+    let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() else {
+        return Ok(());
+    };
+    check_sidechain_id_proof_of_knowledge(sidechain_feature)?;
+    check_validator_node_registration_utxo(constants, output, sidechain_feature)?;
+    check_template_registration_utxo(sidechain_feature)?;
+    check_validator_node_exit_utxo(sidechain_feature)?;
+
+    Ok(())
+}
+fn check_sidechain_id_proof_of_knowledge(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+    if !sidechain_feature.is_sidechain_id_valid() {
+        return Err(ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof);
+    }
+
+    Ok(())
+}
+
 fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
+    sidechain_feature: &SideChainFeature,
 ) -> Result<(), ValidationError> {
-    if let Some(reg) = utxo.features.validator_node_registration() {
-        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
-                min: consensus_constants.validator_node_registration_min_deposit_amount(),
-                actual: utxo.minimum_value_promise,
-            });
-        }
-        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
-                min: consensus_constants.validator_node_registration_min_lock_height(),
-                actual: utxo.features.maturity,
-            });
-        }
+    let Some(reg) = sidechain_feature.validator_node_registration() else {
+        return Ok(());
+    };
 
-        if !reg.is_valid_signature_for(&[]) {
-            return Err(ValidationError::InvalidValidatorNodeSignature);
-        }
+    if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
+        return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
+            min: consensus_constants.validator_node_registration_min_deposit_amount(),
+            actual: utxo.minimum_value_promise,
+        });
     }
+    if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+        return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+            min: consensus_constants.validator_node_registration_min_lock_height(),
+            actual: utxo.features.maturity,
+        });
+    }
+
+    if !reg.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
+        return Err(ValidationError::InvalidValidatorNodeSignature);
+    }
+
+    Ok(())
+}
+
+fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+    let Some(exit) = sidechain_feature.validator_node_exit() else {
+        return Ok(());
+    };
+
+    if !exit.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
+        return Err(ValidationError::InvalidValidatorNodeSignature);
+    }
+
     Ok(())
 }
 

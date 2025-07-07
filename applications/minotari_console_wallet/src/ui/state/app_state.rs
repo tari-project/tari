@@ -47,7 +47,7 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::CompressedPublicKey,
+    types::{CompressedPublicKey, PrivateKey},
     wallet_types::WalletType,
 };
 use tari_contacts::contacts_service::types::Contact;
@@ -280,6 +280,7 @@ impl AppState {
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
         payment_id: PaymentId,
+        sidechain_deployment_key: Option<String>,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -307,6 +308,10 @@ impl AppState {
             },
         };
 
+        let sidechain_deploy_key = sidechain_deployment_key
+            .map(|sidechain_id| PrivateKey::from_hex(sidechain_id.as_str()).map_err(|_| UiError::PublicKeyParseError))
+            .transpose()?;
+
         send_burn_transaction_task(
             burn_proof_filepath,
             claim_public_key,
@@ -314,6 +319,7 @@ impl AppState {
             selection_criteria,
             payment_id,
             fee_per_gram,
+            sidechain_deploy_key,
             tx_service_handle,
             inner.wallet.db.clone(),
             result_tx,
@@ -323,6 +329,7 @@ impl AppState {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn register_code_template(
         &mut self,
         template_name: String,
@@ -333,6 +340,7 @@ impl AppState {
         repository_url: String,
         repository_commit_hash: String,
         fee_per_gram: MicroMinotari,
+        sidechain_id_key: Option<&PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
@@ -348,6 +356,7 @@ impl AppState {
             binary_url,
             binary_sha,
             fee_per_gram,
+            sidechain_id_key,
             selection_criteria,
             tx_service_handle,
             inner.wallet.db.clone(),
@@ -706,7 +715,7 @@ impl AppStateInner {
             }
         }
 
-        debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references", 
+        debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references",
                payref_by_tx_id.len());
 
         // Update completed transactions with their payment references
@@ -714,14 +723,14 @@ impl AppStateInner {
             // Look up payment reference by transaction ID
             if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id.as_u64()) {
                 tx.payment_reference_hex = Some(payref_hex.clone());
-                debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}", 
+                debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}",
                        tx.tx_id, payref_hex);
             }
 
             // Always set the status, regardless of whether PayRef is available
             if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id.as_u64()) {
                 tx.payment_reference_status = Some(status.clone());
-                debug!(target: LOG_TARGET, "payref_debug: Set status for tx {}: {}", 
+                debug!(target: LOG_TARGET, "payref_debug: Set status for tx {}: {}",
                        tx.tx_id, status);
             }
         }

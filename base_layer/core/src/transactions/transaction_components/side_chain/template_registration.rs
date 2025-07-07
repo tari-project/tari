@@ -20,12 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
+use digest::consts::U64;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, FixedHash, Signature};
+use tari_hashing::TransactionHashDomain;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+use crate::consensus::DomainSeparatedConsensusHasher;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct CodeTemplateRegistration {
     pub author_public_key: CompressedPublicKey,
     pub author_signature: Signature,
@@ -33,13 +38,42 @@ pub struct CodeTemplateRegistration {
     pub template_version: u16,
     pub template_type: TemplateType,
     pub build_info: BuildInfo,
-    pub binary_sha: MaxSizeBytes<32>,
+    pub binary_sha: FixedHash,
     pub binary_url: MaxSizeString<255>,
+}
+
+impl CodeTemplateRegistration {
+    pub fn author_signature(&self) -> &Signature {
+        &self.author_signature
+    }
+
+    pub fn build_info(&self) -> &BuildInfo {
+        &self.build_info
+    }
+
+    /// Creates a signature message used to prove knowledge of the author secret key
+    pub fn create_signature_message(&self, public_nonce: &CompressedPublicKey) -> [u8; 64] {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
+            .chain(&self.author_public_key)
+            .chain(public_nonce)
+            .chain(&self.template_name)
+            .chain(&self.template_version)
+            .chain(&self.template_type)
+            .chain(&self.build_info)
+            .chain(&self.binary_sha)
+            .chain(&self.binary_url)
+            .finalize()
+            .into()
+    }
+
+    pub fn sidechain_id_message(&self) -> [u8; 64] {
+        self.create_signature_message(self.author_signature.get_compressed_public_nonce())
+    }
 }
 
 // -------------------------------- TemplateType -------------------------------- //
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum TemplateType {
     /// Indicates that the template is a WASM module
     Wasm { abi_version: u16 },

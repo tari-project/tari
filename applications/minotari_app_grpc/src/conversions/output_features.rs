@@ -38,11 +38,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_feature = features
-            .sidechain_feature
-            .and_then(|f| f.side_chain_feature)
-            .map(SideChainFeature::try_from)
-            .transpose()?;
+        let sidechain_feature = features.sidechain_feature.map(SideChainFeature::try_from).transpose()?;
 
         let output_type = features
             .output_type
@@ -75,7 +71,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             output_type: u32::from(features.output_type.as_byte()),
             maturity: features.maturity,
             coinbase_extra: features.coinbase_extra.to_vec(),
-            sidechain_feature: features.sidechain_feature.map(Into::into),
+            sidechain_feature: features.sidechain_feature.as_ref().map(Into::into),
             range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }

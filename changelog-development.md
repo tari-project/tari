@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.8.0-pre.0](https://github.com/tari-project/tari/compare/v4.7.0-pre.0...v4.8.0-pre.0) (2025-07-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* expand gRPC readiness status to contain current processed block info (#7262)
+* payref migration and indexes, add grpc query via output hash (#7266)
+* improve grpc token supply (#7261)
+* Adds upper bound to sha3x difficulty for esmeralda
+* Enabled use of RxT also in esmeralda
+
+### Features
+
+* add payref background task ([#7280](https://github.com/tari-project/tari/issues/7280)) ([a2b8a93](https://github.com/tari-project/tari/commit/a2b8a93d256759169db183e254e930051cd382bb))
+* auto zero value coinbase reward calculation ([#7259](https://github.com/tari-project/tari/issues/7259)) ([607729a](https://github.com/tari-project/tari/commit/607729a6b7d5791f023803c2724b3311aa4d98c7))
+* expand gRPC readiness status to contain current processed block info ([#7262](https://github.com/tari-project/tari/issues/7262)) ([ee9f76d](https://github.com/tari-project/tari/commit/ee9f76da2cf5d7b6cd6d14492e5267429b7dc137))
+* improve connection stats ([#7285](https://github.com/tari-project/tari/issues/7285)) ([bf3cc16](https://github.com/tari-project/tari/commit/bf3cc164c99c9e32fc42ac31d3dae91919260aa5))
+* improve grpc token supply ([#7261](https://github.com/tari-project/tari/issues/7261)) ([b072a6f](https://github.com/tari-project/tari/commit/b072a6f6c13ff489248355fc01e034a20043f128))
+* new ffi method to get payment_id from tari address ([#7282](https://github.com/tari-project/tari/issues/7282)) ([37fd3e4](https://github.com/tari-project/tari/commit/37fd3e48d7f31a1180912c04ee6277e9f664f474))
+
+
+### Bug Fixes
+
+* correctly validate coinbase transactions for recovered wallets ([#7278](https://github.com/tari-project/tari/issues/7278)) ([3d5a043](https://github.com/tari-project/tari/commit/3d5a0439d1cfb43e39355d34ecdf5af90c50fc14))
+* payref migration and indexes, add grpc query via output hash ([#7266](https://github.com/tari-project/tari/issues/7266)) ([3ceea6e](https://github.com/tari-project/tari/commit/3ceea6e738a2e027ed83c7992c8d40f9c8a2b825))
+
 ### [4.7.0-pre.0](https://github.com/tari-project/tari/compare/v4.6.2-pre.0...v4.7.0-pre.0) (2025-06-26)
 
 

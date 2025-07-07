@@ -46,7 +46,11 @@ use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 pub use grpc_method::GrpcMethod;
 use log::*;
-use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tari_rpc, tls::identity::read_identity};
+use minotari_app_grpc::{
+    authentication::ServerAuthenticationInterceptor,
+    tari_rpc::{self, readiness_status::State as ReadinessState},
+    tls::identity::read_identity,
+};
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
@@ -65,10 +69,7 @@ use tonic::{
 pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
 #[cfg(feature = "metrics")]
 pub use crate::metrics::MetricsConfig;
-use crate::{
-    cli::Cli,
-    grpc::readiness_grpc_server::{ReadinessGrpcServer, ReadinessStatus},
-};
+use crate::{cli::Cli, grpc::readiness_grpc_server::ReadinessGrpcServer};
 
 const LOG_TARGET: &str = "minotari::base_node::app";
 
@@ -126,7 +127,7 @@ pub async fn run_base_node_with_cli(
 
     let (grpc_address, auth, tls_identity) = prepare_grpc_params(&config).await?;
 
-    let (readiness_grpc_server, readiness_tx) = ReadinessGrpcServer::new();
+    let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
     let mut readiness_grpc_shutdown = Shutdown::new();
     let readiness_task = task::spawn(run_grpc(
         readiness_grpc_server,
@@ -135,12 +136,14 @@ pub async fn run_base_node_with_cli(
         tls_identity.clone(),
         readiness_grpc_shutdown.to_signal(),
     ));
+    readiness_handler.send_readiness_status(ReadinessState::StartingUp);
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        drop(readiness_tx.send(ReadinessStatus::Recovering));
+        readiness_handler.send_readiness_status(ReadinessState::RecoveringPreparing);
         recovery::initiate_recover_db(&config.base_node)?;
-        recovery::run_recovery(&config.base_node)
+        readiness_handler.send_readiness_status(ReadinessState::RecoveringRebuilding);
+        recovery::run_recovery(&config.base_node, readiness_handler)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
@@ -148,16 +151,15 @@ pub async fn run_base_node_with_cli(
 
     // Build, node, build!
     let ctx =
-        builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal(), &readiness_tx)
+        builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal(), &readiness_handler)
             .await?;
 
-    drop(readiness_tx.send(ReadinessStatus::StartingUp));
     ctx.start()
         .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
-    drop(readiness_tx.send(ReadinessStatus::Ready));
+    readiness_handler.send_readiness_status(ReadinessState::Ready);
 
     // Go, GRPC, go go
     let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());

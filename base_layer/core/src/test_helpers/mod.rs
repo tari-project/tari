@@ -260,3 +260,12 @@ pub fn make_hash<T: AsRef<[u8]>>(preimage: T) -> [u8; 32] {
         .finalize()
         .into()
 }
+
+pub fn make_hash2<T: AsRef<[u8]>, U: AsRef<[u8]>>(preimage1: T, preimage2: U) -> [u8; 32] {
+    use digest::Digest;
+    Blake2b::<U32>::default()
+        .chain_update(preimage1.as_ref())
+        .chain_update(preimage2.as_ref())
+        .finalize()
+        .into()
+}

@@ -19,14 +19,12 @@
 //   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![feature(internal_output_capture)]
 
 use std::{
     fs,
     io,
     path::PathBuf,
     str::{self},
-    sync::{Arc, Mutex},
 };
 
 use cucumber::{event::ScenarioFinished, writer, writer::Verbosity, World as _};
@@ -40,16 +38,6 @@ pub mod steps;
 pub const LOG_TARGET: &str = "cucumber";
 pub const LOG_TARGET_STDOUT: &str = "stdout";
 
-fn flush_stdout(buffer: &Arc<Mutex<Vec<u8>>>) {
-    // After each test we flush the stdout to the logs.
-    info!(
-        target: LOG_TARGET_STDOUT,
-        "{}",
-        str::from_utf8(&buffer.lock().unwrap()).unwrap()
-    );
-    buffer.lock().unwrap().clear();
-}
-
 fn main() {
     initialize_logging(
         &PathBuf::from("log4rs/cucumber.yml"),
@@ -57,12 +45,8 @@ fn main() {
         include_str!("../log4rs/cucumber.yml"),
     )
     .expect("logging not configured");
-    let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
-    #[cfg(test)]
-    std::io::set_output_capture(Some(stdout_buffer.clone()));
     // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
     // not be affected by the output capture.
-    let stdout_buffer_clone = stdout_buffer.clone();
     let runtime = Runtime::new().unwrap();
     runtime.block_on(async {
         let world = TariWorld::cucumber()
@@ -70,9 +54,7 @@ fn main() {
         // following config needed to use eprint statements in the tests
         .max_concurrent_scenarios(5)
         .after(move |_feature, _rule, scenario, ev, maybe_world| {
-            let stdout_buffer = stdout_buffer_clone.clone();
             Box::pin(async move {
-                flush_stdout(&stdout_buffer);
                 match ev {
                     ScenarioFinished::StepFailed(_capture_locations, _location, _error) => {
                         error!(target: LOG_TARGET, "Scenario failed");
@@ -109,7 +91,4 @@ fn main() {
             .run("tests/features/")
             .await;
     });
-
-    // If by any chance we have anything in the stdout buffer just log it.
-    flush_stdout(&stdout_buffer);
 }

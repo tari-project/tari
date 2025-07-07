@@ -113,7 +113,7 @@ service Wallet {
   //
   // Example usage (JavaScript):
   // ```javascript
- // // Call the Identify RPC method
+  // // Call the Identify RPC method
   // client.Identify({}, (error, response) => {
   //   if (error) {
   //     console.error('Error:', error);
@@ -1051,8 +1051,6 @@ service Wallet {
   // ```
   rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
-  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
-
   rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponse);
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
@@ -1107,6 +1105,10 @@ service Wallet {
   rpc GetFeeEstimate(GetFeeEstimateRequest) returns (GetFeeEstimateResponse);
 
   rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
+  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
+
+  rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
+  rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
 }
 
 
@@ -1177,6 +1179,7 @@ message CreateBurnTransactionRequest{
   uint64 fee_per_gram = 2;
   bytes claim_public_key = 4;
   bytes payment_id = 5;
+  bytes sidechain_deployment_key = 6;
 }
 
 // A recipient for a transfer, including address, amount, fee, and optional payment ID.
@@ -1185,7 +1188,7 @@ message PaymentRecipient {
   string address = 1;
   // Amount to send in microTari (1 T = 1_000_000 µT).
   uint64 amount = 2;
-   // Fee rate per gram.
+  // Fee rate per gram.
   uint64 fee_per_gram = 3;
   enum PaymentType {
     // Default Mimblewimble-style transaction.
@@ -1409,8 +1412,14 @@ message ImportUtxosResponse {
 }
 
 message CreateTemplateRegistrationRequest {
-  TemplateRegistration template_registration = 1;
-  uint64 fee_per_gram = 2;
+  uint64 fee_per_gram = 1;
+  string template_name = 2;
+  uint32 template_version = 3;
+  TemplateType template_type = 4;
+  BuildInfo build_info = 5;
+  bytes binary_sha = 6;
+  string binary_url = 7;
+  bytes sidechain_deployment_key = 8;
 }
 
 message CreateTemplateRegistrationResponse {
@@ -1489,11 +1498,40 @@ message TransactionEventResponse {
 message RegisterValidatorNodeRequest {
   bytes validator_node_public_key = 1;
   Signature validator_node_signature = 2;
-  uint64 fee_per_gram = 3;
-  bytes payment_id = 5;
+  bytes validator_node_claim_public_key = 3;
+  uint64 max_epoch = 4;
+  uint64 fee_per_gram = 5;
+  bytes payment_id = 6;
+  bytes sidechain_deployment_key = 7;
 }
 
 message RegisterValidatorNodeResponse {
+  uint64 transaction_id = 1;
+  bool is_success = 2;
+  string failure_message = 3;
+}
+
+message SubmitValidatorEvictionProofRequest {
+  EvictionProof proof = 1;
+  uint64 fee_per_gram = 2;
+  string message = 3;
+  bytes sidechain_deployment_key = 4;
+}
+
+message SubmitValidatorEvictionProofResponse {
+  uint64 tx_id = 1;
+}
+
+message SubmitValidatorNodeExitRequest {
+  bytes validator_node_public_key = 1;
+  Signature validator_node_signature = 2;
+  uint64 max_epoch = 3;
+  uint64 fee_per_gram = 4;
+  bytes message = 5;
+  bytes sidechain_deployment_key = 6;
+}
+
+message SubmitValidatorNodeExitResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
@@ -1504,7 +1542,7 @@ message ImportTransactionsRequest {
 }
 
 message ImportTransactionsResponse {
-    repeated uint64 tx_ids = 1;
+  repeated uint64 tx_ids = 1;
 }
 
 message GetAllCompletedTransactionsRequest {

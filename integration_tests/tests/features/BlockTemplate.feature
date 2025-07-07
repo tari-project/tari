@@ -18,6 +18,13 @@ Scenario: Verify UTXO and kernel MMR size in header
         Then generate a block BLOCK_02 with 2 coinbases as a single request from node SEED_A
 
     @critical
+    Scenario: Verify gprc can create block with zero value coinbase
+        Given I have a seed node SEED_A
+        When I have 1 base nodes connected to all seed nodes
+        Then generate a block BLOCK_02 with zero value coinbase from node SEED_A
+        Then generate a block BLOCK_02 with zero value coinbase as a single request from node SEED_A
+
+    @critical
     Scenario: Verify grpc can create full block with maximum number of coinbases
         Given I have 1 seed nodes
         When I have a base node NODE_01 connected to all seed nodes

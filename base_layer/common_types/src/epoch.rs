@@ -21,15 +21,34 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 
-use std::str::FromStr;
+use std::{fmt::Display, num::ParseIntError, str::FromStr};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Default,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 pub struct VnEpoch(pub u64);
 
 impl VnEpoch {
+    pub const fn zero() -> Self {
+        VnEpoch(0)
+    }
+
     pub fn as_u64(&self) -> u64 {
         self.0
     }
@@ -47,10 +66,22 @@ newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self Self }
 newtype_ops! { [VnEpoch] {add sub mul div} {:=} &Self &Self }
 newtype_ops! { [VnEpoch] {add sub mul div} {:=} Self &Self }
 
+impl From<u64> for VnEpoch {
+    fn from(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 impl FromStr for VnEpoch {
-    type Err = String;
+    type Err = ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(VnEpoch(s.parse::<u64>().map_err(|e| e.to_string())?))
+        Ok(VnEpoch(s.parse::<u64>()?))
+    }
+}
+
+impl Display for VnEpoch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Epoch({})", self.0)
     }
 }

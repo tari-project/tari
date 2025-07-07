@@ -54,7 +54,10 @@ use crate::{
     client::http_client_factory::HttpClientFactory,
     error::WalletError,
     storage::database::WalletBackend,
-    transaction_service::error::{TransactionServiceError, TransactionStorageError},
+    transaction_service::{
+        error::{TransactionServiceError, TransactionStorageError},
+        tasks::check_faux_transaction_status::SAFETY_HEIGHT_MARGIN,
+    },
     utxo_scanner_service::{
         handle::UtxoScannerEvent,
         service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},

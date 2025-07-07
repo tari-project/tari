@@ -298,7 +298,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             let signature = Signature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
             let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
             responses.push(TxQueryBatchResponse {
-                signature: Some(SignatureProto::from(signature)),
+                signature: Some(SignatureProto::from(&signature)),
                 location: response.location,
                 best_block_hash: response.best_block_hash,
                 confirmations: response.confirmations,

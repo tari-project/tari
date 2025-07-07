@@ -19,8 +19,9 @@ base_node = [
     "base_node_proto",
     "monero",
     "randomx-rs",
+    "tari_comms/rpc",
 ]
-base_node_proto = []
+base_node_proto = ["tari_comms/rpc"]
 benches = ["base_node"]
 ledger = ["minotari_ledger_wallet_comms"]
 metrics = ["tari_metrics"]
@@ -46,6 +47,8 @@ tari_utilities = { workspace = true, features = ["borsh"] }
 tari_key_manager = { workspace = true, features = ["key_manager_service"] }
 tari_common_sqlite = { workspace = true }
 tari_hashing = { workspace = true }
+tari_sidechain = { workspace = true }
+
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
 bitflags = { version = "2.4", features = ["serde"] }

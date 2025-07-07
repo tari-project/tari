@@ -96,32 +96,108 @@ where V: DeserializeOwned
     }
 }
 
-pub struct LmdbReadCursor<'a, V> {
+pub struct LmdbReadCursor<'a, K, V> {
     cursor: Cursor<'a, 'a>,
-    value_type: PhantomData<V>,
     access: ConstAccessor<'a>,
+    seek_value: Option<(K, V)>,
 }
 
-impl<'a, V: DeserializeOwned> LmdbReadCursor<'a, V> {
+impl<'a, K: FromKeyBytes, V: DeserializeOwned> LmdbReadCursor<'a, K, V> {
     pub(super) fn new(cursor: Cursor<'a, 'a>, access: ConstAccessor<'a>) -> Self {
         Self {
             cursor,
             access,
-            value_type: PhantomData,
+            seek_value: None,
         }
     }
 
+    pub fn seek_first(&mut self) -> Result<bool, ChainStorageError> {
+        if let Some((k, v)) = convert_result_kv(self.cursor.first(&self.access))? {
+            self.seek_value = Some((k, v));
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     /// Returns the item at the cursor, progressing forwards until there are no more elements
-    pub fn next<K: FromKeyBytes + Clone>(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
-        convert_result(self.cursor.next(&self.access))
+    pub fn next(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
+        if let Some(value) = self.seek_value.take() {
+            return Ok(Some(value));
+        }
+        convert_result_kv(self.cursor.next(&self.access))
     }
 
-    pub fn next_dup<K: FromKeyBytes + Clone>(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
-        convert_result(self.cursor.next_dup(&self.access))
+    /// Returns the key of the item at the cursor, progressing forwards until there are no more elements
+    /// This is useful when the value is not needed, saving on deserialization costs
+    pub fn next_key(&mut self) -> Result<Option<K>, ChainStorageError> {
+        if let Some((key, _)) = self.seek_value.take() {
+            return Ok(Some(key));
+        }
+        let result = self.cursor.next::<_, [u8]>(&self.access);
+        match result.to_opt()? {
+            Some((k, _)) => Ok(Some(K::from_key_bytes(k)?)),
+            None => Ok(None),
+        }
     }
 
-    pub fn seek_range<K: FromKeyBytes + Clone>(&mut self, key: &[u8]) -> Result<Option<(K, V)>, ChainStorageError> {
-        convert_result(self.cursor.seek_range_k(&self.access, key))
+    /// Returns the item of the item at the cursor, progressing backwards until there are no more elements
+    #[allow(dead_code)]
+    pub fn prev(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
+        self.seek_value = None;
+        convert_result_kv(self.cursor.prev(&self.access))
+    }
+
+    /// Returns the key of the item at the cursor, progressing backwards until there are no more elements
+    /// This is useful when the value is not needed, saving on deserialization costs
+    #[allow(dead_code)]
+    pub fn prev_key(&mut self) -> Result<Option<K>, ChainStorageError> {
+        self.seek_value = None;
+        let result = self.cursor.prev::<_, [u8]>(&self.access);
+        match result.to_opt()? {
+            Some((k, _)) => Ok(Some(K::from_key_bytes(k)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Returns the current key/value pair under this cursor.
+    ///
+    /// This corresponds to the `mdb_cursor_get` function with the
+    /// `MDB_CURRENT` operation.
+    pub fn current(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
+        if let Some(value) = self.seek_value.take() {
+            return Ok(Some(value));
+        }
+        convert_result_kv(self.cursor.get_current(&self.access))
+    }
+
+    /// Return count of duplicates for current key.
+    ///
+    /// This call is only valid on `DUPSORT` databases.
+    pub fn count_dups(&mut self) -> Result<usize, ChainStorageError> {
+        let count = self.cursor.count()?;
+        Ok(count)
+    }
+
+    /// Advances the cursor to the next value in the current key.
+    ///
+    /// This only makes sense on `DUPSORT` databases. This call returns None if
+    /// there are no more values in the current key.
+    pub fn next_dup(&mut self) -> Result<Option<(K, V)>, ChainStorageError> {
+        if let Some(value) = self.seek_value.take() {
+            return Ok(Some(value));
+        }
+        convert_result_kv(self.cursor.next_dup(&self.access))
+    }
+
+    /// Positions the cursor at the first item whose key is greater than or equal to key.
+    /// If there is such a key (>= provided key), true is returned and calling [LmdbReadCursor::next] is guaranteed to
+    /// return Some. Conversely, if false is returned, calling [LmdbReadCursor::next] is guaranteed to return None.
+    pub fn seek_range(&mut self, key: &[u8]) -> Result<bool, ChainStorageError> {
+        if let Some((k, v)) = convert_result_kv(self.cursor.seek_range_k(&self.access, key))? {
+            self.seek_value = Some((k, v));
+            return Ok(true);
+        }
+        Ok(false)
     }
 }
 
@@ -147,10 +223,12 @@ impl FromKeyBytes for u64 {
 impl<const SZ: usize> FromKeyBytes for CompositeKey<SZ> {
     fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
     where Self: Sized {
-        if bytes.len() != SZ {
-            return Err(ChainStorageError::FromKeyBytesFailed(
-                "Invalid byte length for CompositeKey".to_string(),
-            ));
+        if bytes.len() > SZ {
+            return Err(ChainStorageError::FromKeyBytesFailed(format!(
+                "Invalid byte length for CompositeKey<{}> key. Byte len: {}",
+                SZ,
+                bytes.len()
+            )));
         }
         let mut key = CompositeKey::<SZ>::new();
         key.push(bytes);
@@ -158,7 +236,14 @@ impl<const SZ: usize> FromKeyBytes for CompositeKey<SZ> {
     }
 }
 
-fn convert_result<K: FromKeyBytes + Clone, V: DeserializeOwned>(
+impl FromKeyBytes for Vec<u8> {
+    fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
+    where Self: Sized {
+        Ok(bytes.to_vec())
+    }
+}
+
+fn convert_result_kv<K: FromKeyBytes, V: DeserializeOwned>(
     result: lmdb_zero::Result<(&[u8], &[u8])>,
 ) -> Result<Option<(K, V)>, ChainStorageError> {
     match result.to_opt()? {
@@ -170,18 +255,19 @@ fn convert_result<K: FromKeyBytes + Clone, V: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
 
+    use super::*;
     use crate::chain_storage::{
         lmdb_db::lmdb::{lmdb_get_prefix_cursor, lmdb_insert},
         tests::temp_db::TempLmdbDatabase,
     };
 
     #[test]
-    fn test_lmdb_get_prefix_cursor() {
+    fn test_lmdb_cursors() {
         let database = TempLmdbDatabase::new();
         let db = database.default_db();
         {
             let txn = database.write_transaction();
-            lmdb_insert(&txn, db, &[0xffu8, 0, 0, 0], &1u64, "test").unwrap();
+            lmdb_insert(&txn, db, &[0xfeu8, 0, 0, 0], &1u64, "test").unwrap();
             lmdb_insert(&txn, db, &[0x2bu8, 0, 0, 1], &2u64, "test").unwrap();
             lmdb_insert(&txn, db, &[0x2bu8, 0, 1, 1], &3u64, "test").unwrap();
             lmdb_insert(&txn, db, &[0x2bu8, 1, 1, 0], &4u64, "test").unwrap();
@@ -190,6 +276,35 @@ mod tests {
             txn.commit().unwrap();
         }
 
+        // Test LmdbReadCursor
+        {
+            let txn = database.read_transaction();
+            let access = txn.access();
+            let cursor = txn.cursor(db.clone()).unwrap();
+            let mut cursor = LmdbReadCursor::<_, u64>::new(cursor, access);
+            assert!(cursor.seek_range(&[0x2bu8]).unwrap());
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 0, 0, 1], 2));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 0, 1, 1], 3));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 1, 1, 0], 4));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 1, 1, 1], 5));
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0xfe, 0, 0, 0], 1));
+            assert_eq!(cursor.next().unwrap(), None);
+            assert_eq!(cursor.next().unwrap(), None);
+            // Test seeking more than once on a cursor
+            cursor.seek_range(&[0x2b, 1, 1]).unwrap();
+            let kv = cursor.next().unwrap().unwrap();
+            assert_eq!(kv, (vec![0x2b, 1, 1, 0], 4));
+
+            assert!(!cursor.seek_range(&[0xffu8]).unwrap());
+            assert_eq!(cursor.next().unwrap(), None);
+        }
+
+        // Test prefix cursor
         {
             let txn = database.read_transaction();
             let mut cursor = lmdb_get_prefix_cursor::<u64>(&txn, db, &[0x2b]).unwrap();

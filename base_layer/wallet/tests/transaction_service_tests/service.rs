@@ -1468,6 +1468,7 @@ async fn single_transaction_burn_tari() {
             20.into(),
             PaymentId::Empty,
             Some(claim_public_key.clone()),
+            None,
         )
         .await
         .expect("Alice sending burn tx");

@@ -54,15 +54,24 @@ pub struct FixedHashSizeError;
     BorshDeserialize,
     ToSchema,
 )]
+#[serde(transparent)]
 pub struct FixedHash([u8; FixedHash::byte_size()]);
 
 impl FixedHash {
+    pub const fn new(hash: [u8; FixedHash::byte_size()]) -> Self {
+        Self(hash)
+    }
+
     pub const fn byte_size() -> usize {
         32
     }
 
     pub const fn zero() -> Self {
         Self(ZERO_HASH)
+    }
+
+    pub const fn into_array(self) -> [u8; 32] {
+        self.0
     }
 
     pub fn as_slice(&self) -> &[u8] {
@@ -161,6 +170,9 @@ impl DerefMut for FixedHash {
 
 impl Display for FixedHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_hex())
+        for b in self.0 {
+            write!(f, "{:02x}", b)?;
+        }
+        Ok(())
     }
 }

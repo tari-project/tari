@@ -21,20 +21,22 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod sidechain_feature;
-pub use sidechain_feature::SideChainFeature;
+pub use sidechain_feature::*;
 
 mod confidential_output;
 mod template_registration;
+mod validator_node_exit;
 mod validator_node_registration;
 mod validator_node_signature;
 
 use blake2::Blake2b;
-pub use confidential_output::ConfidentialOutputData;
+pub use confidential_output::*;
 use digest::consts::U32;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-pub use template_registration::{BuildInfo, CodeTemplateRegistration, TemplateType};
-pub use validator_node_registration::ValidatorNodeRegistration;
-pub use validator_node_signature::{ValidatorNodeHashDomain, ValidatorNodeSignature};
+pub use template_registration::*;
+pub use validator_node_exit::*;
+pub use validator_node_registration::*;
+pub use validator_node_signature::*;
 
 hash_domain!(
     ContractAcceptanceHashDomain,

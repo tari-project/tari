@@ -64,6 +64,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
     emoji::EmojiId,
+    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
@@ -185,6 +186,7 @@ pub async fn burn_tari(
     fee_per_gram: u64,
     amount: MicroMinotari,
     payment_id: PaymentId,
+    sidechain_deployment_key: Option<PrivateKey>,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
         .burn_tari(
@@ -193,6 +195,7 @@ pub async fn burn_tari(
             fee_per_gram * uT,
             payment_id,
             None,
+            sidechain_deployment_key,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -351,6 +354,9 @@ pub async fn register_validator_node(
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: CompressedPublicKey,
     validator_node_signature: Signature,
+    validator_node_claim_public_key: CompressedPublicKey,
+    sidechain_deployment_key: Option<PrivateKey>,
+    epoch: VnEpoch,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
@@ -360,6 +366,9 @@ pub async fn register_validator_node(
             amount,
             validator_node_public_key,
             validator_node_signature,
+            validator_node_claim_public_key,
+            sidechain_deployment_key,
+            epoch,
             selection_criteria,
             fee_per_gram,
             payment_id,
@@ -568,9 +577,11 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, payment_id_clone)
-                            .await
-                            .map(|(tx_id, _)| tx_id),
+                        MakeItRainTransactionType::BurnTari => {
+                            burn_tari(tx_service, fee, amount, payment_id_clone, None)
+                                .await
+                                .map(|(tx_id, _)| tx_id)
+                        },
                     };
                     let submit_time = Instant::now();
 
@@ -788,6 +799,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     PaymentId::open_from_string(&args.payment_id, TxType::Burn),
+                    None,
                 )
                 .await
                 {
@@ -2084,8 +2096,17 @@ pub async fn command_runner(
                     args.validator_node_public_key.into(),
                     Signature::new(
                         args.validator_node_public_nonce.into(),
-                        RistrettoSecretKey::from_vec(&args.validator_node_signature)?,
+                        RistrettoSecretKey::from_vec(&args.validator_node_signature[0])?,
                     ),
+                    args.validator_node_claim_public_key.into(),
+                    if args.sidechain_deployment_key.is_empty() {
+                        None
+                    } else {
+                        Some(RistrettoSecretKey::from_canonical_bytes(
+                            &args.sidechain_deployment_key[0],
+                        )?)
+                    },
+                    args.epoch,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),

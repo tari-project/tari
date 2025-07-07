@@ -31,7 +31,7 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{epoch::VnEpoch, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
 use tari_key_manager::SeedWords;
@@ -491,7 +491,12 @@ pub struct RegisterValidatorNodeArgs {
     pub amount: MicroMinotari,
     pub validator_node_public_key: UniPublicKey,
     pub validator_node_public_nonce: UniPublicKey,
-    pub validator_node_signature: Vec<u8>,
+    #[clap(long, parse(try_from_str = parse_hex), required = true)]
+    pub validator_node_signature: Vec<Vec<u8>>,
+    pub validator_node_claim_public_key: UniPublicKey,
+    pub epoch: VnEpoch,
+    #[clap(long, parse(try_from_str = parse_hex), required = false)]
+    pub sidechain_deployment_key: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Registering VN")]
     pub payment_id: String,
 }

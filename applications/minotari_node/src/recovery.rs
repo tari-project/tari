@@ -30,6 +30,7 @@ use std::{
 
 use anyhow::anyhow;
 use log::*;
+use minotari_app_grpc::tari_rpc::readiness_status::State as ReadinessState;
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
@@ -37,7 +38,7 @@ use tari_common::{
 use tari_core::{
     chain_storage::{
         async_db::AsyncBlockchainDb,
-        create_lmdb_database,
+        create_lmdb_database_with_stats_channel,
         create_recovery_lmdb_database,
         BlockchainBackend,
         BlockchainDatabase,
@@ -55,7 +56,7 @@ use tari_core::{
     },
 };
 
-use crate::{BaseNodeConfig, DatabaseType};
+use crate::{grpc::readiness_grpc_server::ReadinessStatusHandler, BaseNodeConfig, DatabaseType};
 
 pub const LOG_TARGET: &str = "base_node::app";
 
@@ -72,7 +73,10 @@ pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
     Ok(())
 }
 
-pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Error> {
+pub async fn run_recovery(
+    node_config: &BaseNodeConfig,
+    readiness_handler: ReadinessStatusHandler,
+) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
     let rules = ConsensusManager::builder(node_config.network).build().map_err(|e| {
         error!(target: LOG_TARGET, "Error configuring consensus manager: {}", e);
@@ -80,14 +84,26 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone())
-                .map_err(|e| {
-                    error!(target: LOG_TARGET, "Error opening db: {}", e);
-                    anyhow!("Could not open DB: {}", e)
-                })?;
+            readiness_handler.send_readiness_status(ReadinessState::DatabaseInitializing);
+            let backend = create_lmdb_database_with_stats_channel(
+                &node_config.lmdb_path,
+                node_config.lmdb.clone(),
+                rules.clone(),
+                Some(readiness_handler.lmdb_migration_status_tx.clone()),
+            )
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error opening db: {}", e);
+                anyhow!("Could not open DB: {}", e)
+            })?;
             let temp_path = temp_dir().join("temp_recovery");
 
-            let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone(), rules.clone()).map_err(|e| {
+            let temp = create_lmdb_database_with_stats_channel(
+                &temp_path,
+                node_config.lmdb.clone(),
+                rules.clone(),
+                Some(readiness_handler.lmdb_migration_status_tx.clone()),
+            )
+            .map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
                 anyhow!("Could not open recovery DB: {}", e)
             })?;
@@ -116,7 +132,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
         difficulty_calculator,
     )?;
     db.start()?;
-    do_recovery(db.into(), temp_db).await?;
+    do_recovery(db.into(), temp_db, &readiness_handler).await?;
 
     info!(
         target: LOG_TARGET,
@@ -132,6 +148,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
 async fn do_recovery<D: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<D>,
     source_backend: D,
+    readiness_status_handler: &ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
     let rules = ConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
@@ -170,6 +187,9 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         db.add_block(Arc::new(block))
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
+
+        readiness_status_handler.send_readiness_status(ReadinessState::RecoveringRebuildingDatabase);
+
         if counter >= max_height {
             info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter);
             break;
