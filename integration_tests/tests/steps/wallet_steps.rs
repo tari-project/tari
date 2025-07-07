@@ -35,6 +35,7 @@ use grpc::{
     GetTransactionInfoRequest,
     ImportUtxosRequest,
     PaymentRecipient,
+    ReplaceByFeeRequest,
     SendShaAtomicSwapRequest,
     TransferRequest,
     ValidateRequest,
@@ -3185,6 +3186,39 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
         "Unable to cancel transaction with id = {}",
         tx_id
     );
+}
+
+#[when(expr = "I replace the last transaction from wallet {word} with fee per gram {int}")]
+async fn replace_last_transaction_with_higher_fee(world: &mut TariWorld, wallet: String, new_fee_per_gram: u64) {
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
+
+    let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
+
+    // get the last tx id for wallet
+    let tx_id = *wallet_tx_ids.last().unwrap();
+
+    cucumber_steps_log(format!(
+        "Replacing transaction {} from wallet {} with new fee per gram {}",
+        tx_id, wallet, new_fee_per_gram
+    ));
+
+    let replace_by_fee_req = ReplaceByFeeRequest {
+        transaction_id: tx_id,
+        fee_per_gram: new_fee_per_gram,
+    };
+
+    let replace_by_fee_res = client.replace_by_fee(replace_by_fee_req).await.unwrap().into_inner();
+    let new_tx_id = replace_by_fee_res.transaction_id;
+
+    cucumber_steps_log(format!(
+        "Successfully replaced transaction {} with new transaction {} at fee per gram {}",
+        tx_id, new_tx_id, new_fee_per_gram
+    ));
+
+    // Update the wallet transaction IDs to include the new transaction
+    let wallet_tx_ids = world.wallet_tx_ids.get_mut(&wallet_address).unwrap();
+    wallet_tx_ids.push(new_tx_id);
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]

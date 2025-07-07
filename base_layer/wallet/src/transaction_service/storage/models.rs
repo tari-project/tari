@@ -36,7 +36,8 @@ use tari_common_types::{
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{payment_id::PaymentId, Transaction},
-    ReceiverTransactionProtocol, SenderTransactionProtocol,
+    ReceiverTransactionProtocol,
+    SenderTransactionProtocol,
 };
 
 use crate::transaction_service::error::TransactionStorageError;
