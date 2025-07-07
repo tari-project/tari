@@ -111,6 +111,7 @@ use minotari_app_grpc::tari_rpc::{
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
+    error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
@@ -127,7 +128,7 @@ use tari_common_types::{
 };
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
-    consensus::ConsensusBuilderError,
+    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
@@ -171,6 +172,7 @@ async fn send_transaction_event(
 
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
+    rules: ConsensusManager,
     debouncer: Arc<Mutex<WalletDebouncer>>,
 }
 
@@ -183,10 +185,17 @@ impl WalletGrpcServer {
             wallet.utxo_scanner_service.clone(),
             wallet.comms.shutdown_signal(),
         );
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         Ok(Self {
             wallet,
             debouncer: Arc::new(Mutex::new(debouncer)),
+            rules,
         })
+    }
+
+    fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
+        let height = self.wallet.db.get_last_scanned_height()?.unwrap_or_default();
+        Ok(self.rules.consensus_constants(height))
     }
 
     pub async fn start_balance_debouncer_event_monitor(&self) {
@@ -1677,7 +1686,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn register_validator_node(
         &self,
-        _request: Request<RegisterValidatorNodeRequest>,
+        request: Request<RegisterValidatorNodeRequest>,
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
