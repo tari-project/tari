@@ -67,7 +67,13 @@ use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
-use super::{smt_hasher::SmtHasher, MinedInfo, PayrefRebuildStatus, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
+use super::{
+    smt_hasher::SmtHasher,
+    MinedInfo,
+    PayrefRebuildStatus,
+    TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo,
+};
 use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{

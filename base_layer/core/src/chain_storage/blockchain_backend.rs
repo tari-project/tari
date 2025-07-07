@@ -11,9 +11,9 @@ use tari_sidechain::ShardGroup;
 use super::{
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
     MinedInfo,
-    ValidatorNodeRegistrationInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
+    ValidatorNodeRegistrationInfo,
 };
 use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},

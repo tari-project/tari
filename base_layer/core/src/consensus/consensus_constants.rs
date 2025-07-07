@@ -571,7 +571,7 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
-            max_difficulty:  Difficulty::from_u64(60_000_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::from_u64(60_000_000_000).expect("valid difficulty"),
             target_time: 60,
         });
         algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
