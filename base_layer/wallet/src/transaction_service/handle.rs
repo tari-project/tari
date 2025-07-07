@@ -42,7 +42,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::PaymentId, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
-            TransactionOutput,
+            TransactionInput, TransactionOutput,
         },
     },
 };
@@ -215,7 +215,7 @@ pub enum TransactionServiceRequest {
     ReplaceByFee {
         tx_id: TxId,
         new_fee_per_gram: MicroMinotari,
-        // additional_outputs: Vec<TransactionOutput>,
+        // additional_inputs: Vec<TransactionInput>,
     },
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
@@ -426,14 +426,14 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                // additional_outputs,
+                // additional_inputs,
             } => write!(
                 f,
-                // "ReplaceByFee(tx_id: {}, fee_per_gram: {}, additional_outputs: {})",
+                // "ReplaceByFee(tx_id: {}, fee_per_gram: {}, additional_inputs: {})",
                 "ReplaceByFee(tx_id: {}, fee_per_gram: {})",
                 tx_id,
                 new_fee_per_gram,
-                // additional_outputs.len()
+                // additional_inputs.len()
             ),
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
@@ -1412,7 +1412,7 @@ impl TransactionServiceHandle {
     /// # Arguments
     /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
     /// * `fee_per_gram` - New fee per gram (should be higher than original)
-    /// * `additional_outputs` - Additional outputs to include (Note: values cannot be extracted from commitments)
+    /// * `additional_inputs` - Additional inputs to include (Note: values cannot be extracted from commitments)
     ///
     /// # Returns
     /// The new transaction ID or an error
@@ -1420,14 +1420,14 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         new_fee_per_gram: MicroMinotari,
-        // additional_outputs: Vec<TransactionOutput>,
+        // additional_inputs: Vec<TransactionInput>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                // additional_outputs,
+                // additional_inputs,
             })
             .await??
         {

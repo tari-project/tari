@@ -1032,12 +1032,12 @@ where
             TransactionServiceRequest::ReplaceByFee {
                 tx_id,
                 new_fee_per_gram,
-                // additional_outputs,
+                // additional_inputs,
             } => self
                 .replace_by_fee(
                     tx_id,
                     new_fee_per_gram,
-                    // additional_outputs,
+                    // additional_inputs,
                     send_transaction_join_handles,
                 )
                 .await
@@ -3963,7 +3963,7 @@ where
     /// # Arguments
     /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
     /// * `fee_per_gram` - New fee per gram (should be higher than original)
-    /// * `additional_outputs` - Additional outputs to include (Note: values cannot be extracted from commitments)
+    /// * `additional_inputs` - Additional inputs to include (Note: values cannot be extracted from commitments)
     /// * `send_transaction_join_handles` - Join handles for send transaction protocols
     /// * `transaction_broadcast_join_handles` - Join handles for broadcast protocols
     ///
@@ -3973,7 +3973,7 @@ where
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        // additional_outputs: Vec<TransactionOutput>,
+        // additional_inputs: Vec<TransactionOutput>,
         send_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -4007,15 +4007,15 @@ where
             original_amount
         );
 
-        // Handle additional outputs as separate transactions if provided
+        // Handle additional inputs as separate transactions if provided
         // Note: We cannot extract values from TransactionOutput commitments since they are
-        // homomorphically encrypted. Additional outputs would need to be handled separately
+        // homomorphically encrypted. Additional inputs would need to be handled separately
         // or the caller should provide the amounts explicitly.
-        // if !additional_outputs.is_empty() {
+        // if !additional_inputs.is_empty() {
         //     warn!(
         //         target: LOG_TARGET,
-        //         "Replace-by-fee: Additional outputs provided but cannot extract amounts from commitments. \
-        //          Additional outputs will be ignored. Consider using separate transactions for additional outputs."
+        //         "Replace-by-fee: Additional inputs provided but cannot extract amounts from commitments. \
+        //          Additional inputs will be ignored. Consider using separate transactions for additional inputs."
         //     );
         // }
 

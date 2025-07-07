@@ -1414,7 +1414,7 @@ pub async fn command_runner(
             },
             ReplaceByFee(args) => {
                 transaction_service
-                    // .replace_by_fee(tx_id, args.new_fee_per_gram, args.additional_outputs)
+                    // .replace_by_fee(tx_id, args.new_fee_per_gram, args.additional_inputs)
                     .replace_by_fee(args.tx_id.into(), args.new_fee_per_gram)
                     .await
                     .unwrap();

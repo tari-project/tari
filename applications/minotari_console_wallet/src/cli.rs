@@ -35,7 +35,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::{
     tari_amount::{self, MicroMinotari},
-    transaction_components::TransactionOutput,
+    transaction_components::{TransactionInput, TransactionOutput},
 };
 use tari_key_manager::SeedWords;
 use tari_utilities::{
@@ -233,7 +233,7 @@ pub struct ReplaceByFeeArgs {
     pub tx_id: u64,
     #[clap(short, long)]
     pub new_fee_per_gram: MicroMinotari,
-    // pub additional_outputs: Vec<TransactionOutput>,
+    // pub additional_inputs: Vec<TransactionInput>,
 }
 
 #[derive(Debug, Args, Clone)]
