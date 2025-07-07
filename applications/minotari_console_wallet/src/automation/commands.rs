@@ -1420,7 +1420,7 @@ pub async fn command_runner(
             },
             UserPayForFee(args) => {
                 transaction_service
-                    .user_pay_for_fee(args.tx_id.into(), args.amount, args.additional_outputs)
+                    .user_pay_for_fee(args.tx_id.into(), args.destination, args.amount)
                     .await
                     .unwrap();
             },

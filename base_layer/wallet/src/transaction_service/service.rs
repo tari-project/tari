@@ -1038,11 +1038,12 @@ where
                 .map(TransactionServiceResponse::TransactionReplaced),
             TransactionServiceRequest::UserPayForFee {
                 tx_id,
-                additional_outputs,
-            } => {
-                self.user_pay_for_fee(tx_id, additional_outputs);
-                return Ok(());
-            },
+                destination,
+                amount,
+            } => self
+                .user_pay_for_fee(tx_id, destination, amount, send_transaction_join_handles)
+                .await
+                .map(TransactionServiceResponse::TransactionSent),
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -4053,8 +4054,61 @@ where
     async fn user_pay_for_fee(
         &mut self,
         tx_id: TxId,
-        additional_outputs: Vec<TransactionOutput>,
+        destination: TariAddress,
+        amount: MicroMinotari,
+        send_transaction_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
     ) -> Result<TxId, TransactionServiceError> {
+        let original_transaction = self
+            .resources
+            .db
+            .get_pending_outbound_transaction(tx_id)
+            .map_err(TransactionServiceError::TransactionStorageError)?;
+
+        // Check if transaction is already confirmed
+        if original_transaction.status.is_confirmed() {
+            return Err(TransactionServiceError::TransactionAlreadyCompleted(tx_id.to_string()));
+        }
+
+        let new_tx_id = TxId::new_random();
+        let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
+        let (cancellation_sender, cancellation_receiver) = oneshot::channel();
+
+        // Store the senders for the new transaction
+        self.pending_transaction_reply_senders
+            .insert(new_tx_id, tx_reply_sender);
+        self.send_transaction_cancellation_senders
+            .insert(new_tx_id, cancellation_sender);
+
+        // Create new transaction protocol with new outputs
+        let protocol = TransactionSendProtocol::new(
+            new_tx_id,
+            self.resources.clone(),
+            tx_reply_receiver,
+            cancellation_receiver,
+            destination.clone(),
+            amount,
+            original_transaction.fee,
+            PaymentId::Empty,
+            TransactionMetadata::default(),
+            None, // No reply channel for internal call
+            TransactionSendProtocolStage::Initial,
+            None,
+        );
+
+        // Launch the new transaction protocol
+        let join_handle = tokio::spawn(protocol.execute());
+        send_transaction_join_handles.push(join_handle);
+
+        info!(
+            target: LOG_TARGET,
+            "user-pay-for-fee: Created new transaction {} to spend outputs transaction with id: {}",
+            new_tx_id,
+            tx_id,
+        );
+
+        Ok(new_tx_id)
     }
 
     async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {

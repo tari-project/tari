@@ -33,10 +33,7 @@ use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPubli
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{
-    tari_amount::{self, MicroMinotari},
-    transaction_components::{TransactionInput, TransactionOutput},
-};
+use tari_core::transactions::tari_amount::{self, MicroMinotari};
 use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
@@ -238,8 +235,9 @@ pub struct ReplaceByFeeArgs {
 #[derive(Debug, Args, Clone)]
 pub struct UserPayForFeeArgs {
     #[clap(short, long)]
-    pub tx_id: String,
-    pub new_outputs: Vec<MicroMinotari>,
+    pub tx_id: u64,
+    pub destination: TariAddress,
+    pub amount: MicroMinotari,
 }
 
 #[derive(Debug, Args, Clone)]
