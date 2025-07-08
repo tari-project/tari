@@ -22,10 +22,14 @@
 
 use std::{cmp, collections::HashSet, convert::TryInto, time::Duration};
 
-use futures::StreamExt;
+use futures::{future, StreamExt};
 use log::*;
-use rand::seq::IteratorRandom;
-use tari_comms::{peer_manager::NodeId, Minimized, PeerConnection};
+use rand::{prelude::SliceRandom, seq::IteratorRandom};
+use tari_comms::{
+    peer_manager::{NodeId, Peer},
+    Minimized,
+    PeerConnection,
+};
 
 use crate::{
     network_discovery::{
@@ -33,7 +37,7 @@ use crate::{
         state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
     },
     peer_validator::PeerValidator,
-    proto::rpc::GetPeersRequest,
+    proto::rpc::{GetPeersRequest, PeerInfo},
     rpc::{DhtClient, UnvalidatedPeerInfo},
     DhtConfig,
 };
@@ -46,7 +50,7 @@ const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(10);
 
 const LOG_TARGET: &str = "comms::dht::network_discovery::seed_strap";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct SeedStrap {
     context: NetworkDiscoveryContext,
 }
@@ -156,15 +160,14 @@ impl SeedStrap {
             self.context.config.network_discovery.max_seed_peer_sync_count,
         );
 
-        // Update round info with total rounds
-        round_info.total_rounds = Some(num_seeds_to_try.max(1)); // Ensure at least 1, even if num_seeds_to_try is 0 to avoid div by zero display
+        // Update round info with total rounds (Ensure at least 1, even if num_seeds_to_try is 0 to avoid div by zero
+        // display)
+        round_info.total_rounds = Some(num_seeds_to_try.max(1));
 
         let selected_seed_peers_for_sync = {
             // Create the RNG and use it immediately within this scope
             let mut rng = rand::thread_rng();
-            seed_peers_available
-                .into_iter()
-                .choose_multiple(&mut rng, num_seeds_to_try)
+            seed_peers_available.iter().choose_multiple(&mut rng, num_seeds_to_try)
         };
 
         round_info.sync_peers = selected_seed_peers_for_sync.iter().map(|p| p.node_id.clone()).collect();
@@ -175,343 +178,67 @@ impl SeedStrap {
             round_info.sync_peers
         );
 
-        let validator = PeerValidator::new(&self.context.config);
+        let mut seed_peers = seed_peers_available.clone();
+        seed_peers.shuffle(&mut rand::thread_rng());
+        let mut seed_peers_iter = seed_peers.iter();
+        let mut permitted_concurrent = self.context.config.network_discovery.max_seed_peer_sync_count;
+        let mut remaining_seed_peers = seed_peers.len();
 
-        for (idx, seed_peer_candidate) in selected_seed_peers_for_sync.into_iter().enumerate() {
-            attempted_seed_contacts += 1;
-            // Update round info with current round number
-            round_info.round_number = Some(idx + 1); // 1-based round numbers
-            let seed_peer_node_id_str = seed_peer_candidate.node_id.to_string();
-
-            if self.context.node_identity.node_id() == &seed_peer_candidate.node_id {
-                info!(
-                    target: LOG_TARGET,
-                    "SeedStrap: Iteration {}/{}: Skipping self as seed peer candidate (node_id: {}).",
-                    idx + 1,
-                    num_seeds_to_try,
-                    seed_peer_node_id_str
-                );
-                continue;
-            }
-
-            debug!(
-                target: LOG_TARGET,
-                "SeedStrap: Iteration {}/{}: Attempting to connect to seed peer '{}' to get their peer list",
-                idx + 1,
-                num_seeds_to_try,
-                seed_peer_node_id_str
-            );
-
-            let mut conn = match self
-                .context
-                .connectivity
-                .dial_peer(seed_peer_candidate.node_id.clone())
-                .await
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "SeedStrap: Iteration {}/{}: Failed to dial seed peer '{}': {}. Continuing to next seed candidate.",
-                        idx + 1,
-                        num_seeds_to_try,
-                        seed_peer_node_id_str,
-                        e
-                    );
-                    continue;
-                },
-            };
-
-            debug!(
-                target: LOG_TARGET,
-                "SeedStrap: Connected to seed peer '{}'. Requesting peer list.",
-                seed_peer_node_id_str
-            );
-
-            let peers_from_seed = match self.fetch_peers_from_connection(&mut conn).await {
-                Ok(peers) => peers,
-                Err(e) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "SeedStrap: Iteration {}/{}: Failed to fetch peers from seed peer '{}': {}. Disconnecting and continuing.",
-                        idx + 1,
-                        num_seeds_to_try,
-                        seed_peer_node_id_str,
-                        e
-                    );
-                    // Attempt to disconnect, log if it fails but continue
-                    if let Err(disc_err) = conn.disconnect(Minimized::Yes).await {
-                        warn!(target: LOG_TARGET, "SeedStrap: Also failed to disconnect from seed peer '{}' after fetch failure: {}", seed_peer_node_id_str, disc_err);
-                    }
-                    continue;
-                },
-            };
-
-            if peers_from_seed.is_empty() {
-                info!(
-                    target: LOG_TARGET,
-                    "SeedStrap: Iteration {}/{}: Seed peer '{}' returned an empty peer list. Disconnecting.",
-                    idx + 1,
-                    num_seeds_to_try,
-                    seed_peer_node_id_str
-                );
-                if let Err(e) = conn.disconnect(Minimized::Yes).await {
-                    warn!(target: LOG_TARGET, "SeedStrap: Failed to disconnect from seed peer '{}' after receiving empty list: {}", seed_peer_node_id_str, e);
-                }
-                continue;
-            }
-
-            // This seed successfully provided peers
-            round_info.num_succeeded += 1;
-            successful_seed_contacts += 1;
-
-            debug!(
-                target: LOG_TARGET,
-                "SeedStrap: Successfully fetched {} peer entries from seed peer '{}'. Disconnecting before processing.",
-                peers_from_seed.len(),
-                seed_peer_node_id_str
-            );
-
-            if let Err(e) = conn.disconnect(Minimized::Yes).await {
-                warn!(target: LOG_TARGET, "SeedStrap: Failed to disconnect from seed peer '{}': {}", seed_peer_node_id_str, e);
-            } else {
-                debug!(target: LOG_TARGET, "SeedStrap: Successfully disconnected from seed peer '{}'", seed_peer_node_id_str);
-            }
-
-            let mut new_peers_this_seed = 0;
-            let mut duplicates_this_seed = 0;
-            let ban_this_seed_peer = false;
-
-            let peers_count = peers_from_seed.len();
-            debug!(
-                target: LOG_TARGET,
-                "SeedStrap: Iteration {}/{}: Beginning to process {} peers from seed peer '{}'",
-                idx + 1,
-                num_seeds_to_try,
-                peers_count,
-                seed_peer_node_id_str
-            );
-
-            for (peer_idx_loop, peer_info_proto) in peers_from_seed.into_iter().enumerate() {
-                let new_peer_candidate: UnvalidatedPeerInfo = match peer_info_proto.try_into() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data received, skipping: {}",
-                            seed_peer_node_id_str,
-                            peer_idx_loop + 1,
-                            peers_count,
-                            e
-                        );
-                        continue; // Skip this invalid entry
-                    },
-                };
-
-                let candidate_node_id = NodeId::from_public_key(&new_peer_candidate.public_key);
-                trace!(
-                    target: LOG_TARGET,
-                    "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Processing candidate NodeId = {}",
-                    seed_peer_node_id_str,
-                    peer_idx_loop + 1,
-                    peers_count,
-                    candidate_node_id
-                );
-
-                if new_peer_candidate.public_key == *self.context.node_identity.public_key() {
-                    trace!(target: LOG_TARGET, "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Skipping self.", seed_peer_node_id_str, peer_idx_loop+1, peers_count);
-                    continue;
-                }
-
-                if seed_node_ids_set.contains(&candidate_node_id) {
-                    trace!(
-                        target: LOG_TARGET,
-                        "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Skipping known seed peer {}.",
-                        seed_peer_node_id_str,
-                        peer_idx_loop + 1,
-                        peers_count,
-                        candidate_node_id
-                    );
-                    continue;
-                }
-
-                let maybe_existing_peer = match self
-                    .context
-                    .peer_manager
-                    .find_by_public_key(&new_peer_candidate.public_key)
-                    .await
-                {
-                    Ok(peer) => peer,
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "SeedStrap: (Seed '{}', Peer Candidate {}/{}): Error searching for existing peer candidate {} by public key: {}. Skipping.",
-                            seed_peer_node_id_str, peer_idx_loop + 1, peers_count, candidate_node_id, e
-                        );
-                        continue;
-                    },
-                };
-
-                let is_new_peer = maybe_existing_peer.is_none();
-
-                match validator.validate_peer(new_peer_candidate, maybe_existing_peer) {
-                    Ok(valid_peer) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Peer {} from seed '{}' is valid. New: {}. Adding to peer manager.",
-                            seed_peer_node_id_str,
-                            peer_idx_loop + 1,
-                            peers_count,
-                            valid_peer.node_id,
-                            seed_peer_node_id_str,
-                            is_new_peer
-                        );
-
-                        match self.context.peer_manager.add_or_update_peer(valid_peer).await {
-                            Ok(_) => {
-                                if is_new_peer {
-                                    new_peers_this_seed += 1;
-                                } else {
-                                    duplicates_this_seed += 1;
-                                }
-                            },
-                            Err(e) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Failed to add validated peer {}: {}",
-                                    seed_peer_node_id_str,
-                                    peer_idx_loop + 1,
-                                    peers_count,
-                                    candidate_node_id,
-                                    e
-                                );
-                            },
-                        }
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data for {} received from seed peer '{}': {}",
-                            seed_peer_node_id_str,
-                            peer_idx_loop + 1,
-                            peers_count,
-                            candidate_node_id,
-                            seed_peer_node_id_str,
-                            e
-                        );
-                    },
-                }
-            }
-
-            if ban_this_seed_peer {
-                warn!(
-                    target: LOG_TARGET,
-                    "SeedStrap: Banning seed peer '{}' for providing invalid peer data.",
-                    seed_peer_node_id_str
-                );
-
-                // First disconnect to free the connection slot
-                if let Err(e) = conn.disconnect(Minimized::Yes).await {
-                    warn!(
-                        target: LOG_TARGET,
-                        "SeedStrap: Failed to disconnect from seed peer '{}' before banning: {}",
-                        seed_peer_node_id_str,
-                        e
-                    );
-                }
-
-                // Then ban the peer
-                match self
-                    .context
-                    .connectivity
-                    .ban_peer_until(
-                        seed_peer_candidate.node_id.clone(),
-                        self.config().ban_duration_short,
-                        "Sent invalid peer data during seed bootstrap".to_string(),
-                    )
-                    .await
-                {
-                    Ok(_) => {
-                        debug!(target: LOG_TARGET, "SeedStrap: Successfully banned seed peer '{}'", seed_peer_node_id_str)
-                    },
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "SeedStrap: Failed to ban seed peer '{}': {}", seed_peer_node_id_str, e)
-                    },
-                }
-
-                // If we banned the seed, we don't count it as a successful sync
-                if round_info.num_succeeded > 0 {
-                    round_info.num_succeeded -= 1;
-                }
-                successful_seed_contacts = successful_seed_contacts.saturating_sub(1);
-            }
-
-            info!(
-                target: LOG_TARGET,
-                "SeedStrap: Iteration {}/{}: Finished processing peers from seed '{}'. New peers from this seed: {}. Duplicates from this seed: {}.",
-                idx + 1,
-                num_seeds_to_try,
-                seed_peer_node_id_str,
-                new_peers_this_seed,
-                duplicates_this_seed
-            );
-            total_peers_added_this_round += new_peers_this_seed;
-            total_duplicates_this_round += duplicates_this_seed;
-
-            // EARLY EXIT CONDITION: if min_desired_peers AND max_peers_to_sync_per_round are met
-            // after at least one successful contact.
-            if successful_seed_contacts > 0 && // Ensure we've actually talked to at least one seed successfully
-               total_peers_added_this_round >= self.context.config.network_discovery.min_desired_peers &&
-               total_peers_added_this_round >= self.context.config.network_discovery.max_peers_to_sync_per_round.try_into().unwrap_or(usize::MAX)
-            {
-                info!(
-                    target: LOG_TARGET,
-                    "SeedStrap: Early exit: Found sufficient peers. Total new peers ({}) >= min_desired_peers ({}) AND >= max_peers_to_sync_per_round ({}). Exiting seed node loop after {} successful sync(s). Signaling round as complete.",
-                    total_peers_added_this_round,
-                    self.context.config.network_discovery.min_desired_peers,
-                    self.context.config.network_discovery.max_peers_to_sync_per_round,
-                    successful_seed_contacts
-                );
-                // If we early exit because we found enough peers, make the round_number reflect completion
-                // of the seed strap phase.
-                round_info.round_number = round_info.total_rounds;
-                break; // Exit the loop over seed peers
-            }
-
-            // Additional early exit conditions:
-            // 1. The soft limit for total peers needed must be enabled (> 0).
-            // 2. The total number of peers added in this round must meet or exceed this soft limit.
-            // 3. The number of successfully contacted seed peers must meet or exceed the configured minimum.
-            let soft_peer_limit_enabled = self
-                .context
-                .config
-                .network_discovery
-                .seed_peer_min_initial_sync_peers_needed >
-                0;
-            let enough_total_peers_added = total_peers_added_this_round >=
-                self.context
-                    .config
-                    .network_discovery
-                    .seed_peer_min_initial_sync_peers_needed;
-            let enough_successful_seed_contacts = successful_seed_contacts >=
-                self.context
-                    .config
-                    .network_discovery
-                    .min_successful_seed_contacts_for_early_exit;
-
-            if soft_peer_limit_enabled && enough_total_peers_added && enough_successful_seed_contacts {
-                info!(
-                    target: LOG_TARGET,
-                    "SeedStrap: Original early exit conditions met. Total peers added ({}) >= needed ({}). Successful seed contacts ({}) >= min ({}). Exiting seed node loop.",
-                    total_peers_added_this_round,
-                    self.context.config.network_discovery.seed_peer_min_initial_sync_peers_needed,
-                    successful_seed_contacts,
-                    self.context.config.network_discovery.min_successful_seed_contacts_for_early_exit
-                );
-                // If we early exit because we found enough peers, make the round_number reflect completion
-                // of the seed strap phase.
-                round_info.round_number = round_info.total_rounds;
+        let mut exit_loop = false;
+        while !exit_loop && permitted_concurrent > 0 {
+            // Get concurrent number of seed peers to try from seed_peers_iter
+            let candidates: Vec<Peer> = seed_peers_iter.by_ref().take(permitted_concurrent).cloned().collect();
+            if candidates.is_empty() {
+                debug!(target: LOG_TARGET, "SeedStrap: No more seed peer candidates available to try.");
                 break;
+            }
+            remaining_seed_peers = remaining_seed_peers.saturating_sub(candidates.len());
+
+            // Get peers from seeds concurrently
+            let mut join_handles = Vec::new();
+            for (idx, seed_peer_candidate) in candidates.into_iter().enumerate() {
+                attempted_seed_contacts += 1;
+                // Update round info with current round number
+                round_info.round_number = Some(idx + 1); // 1-based round numbers
+
+                let seed_node_ids_set_clone = seed_node_ids_set.clone();
+                let mut self_clone = self.clone();
+
+                let handle = tokio::task::spawn(async move {
+                    self_clone
+                        .get_peers(seed_peer_candidate, num_seeds_to_try, idx, &seed_node_ids_set_clone)
+                        .await
+                });
+
+                join_handles.push(handle);
+            }
+            let results = future::join_all(join_handles).await;
+
+            permitted_concurrent = 0;
+            for result in results {
+                let Ok((peers_from_seed, new_peers_this_seed, duplicates_this_seed)) = result else {
+                    warn!(target: LOG_TARGET, "SeedStrap: get_peers task panicked or was cancelled");
+                    permitted_concurrent += 1;
+                    continue;
+                };
+
+                // This seed successfully provided peers
+                if peers_from_seed.is_empty() {
+                    permitted_concurrent += 1;
+                } else {
+                    round_info.num_succeeded += 1;
+                    successful_seed_contacts += 1;
+                }
+
+                total_peers_added_this_round += new_peers_this_seed;
+                total_duplicates_this_round += duplicates_this_seed;
+            }
+
+            // Exit condition
+            if remaining_seed_peers == 0 ||
+                self.early_exit_conditions_met(total_peers_added_this_round, successful_seed_contacts, round_info)
+            {
+                exit_loop = true;
             }
         }
 
@@ -519,7 +246,8 @@ impl SeedStrap {
 
         info!(
             target: LOG_TARGET,
-            "SeedStrap: discover_peers_via_seeds finished. Attempted to contact: {}/{}. Successfully synced from: {}. Total new peers added in this round: {}. Total duplicates processed in this round: {}.",
+            "SeedStrap: discover_peers_via_seeds finished. Attempted to contact: {}/{}. Successfully synced from: {}. \
+            Total new peers added in this round: {}. Total duplicates processed in this round: {}.",
             attempted_seed_contacts,
             num_seeds_to_try,
             round_info.num_succeeded,
@@ -554,6 +282,314 @@ impl SeedStrap {
         );
 
         Ok(total_peers_added_this_round)
+    }
+
+    fn early_exit_conditions_met(
+        &self,
+        total_peers_added_this_round: usize,
+        successful_seed_contacts: usize,
+        round_info: &mut DhtNetworkDiscoveryRoundInfo,
+    ) -> bool {
+        // EARLY EXIT CONDITION: if min_desired_peers AND max_peers_to_sync_per_round are met
+        // after at least one successful contact.
+        if successful_seed_contacts > 0 && // Ensure we've actually talked to at least one seed successfully
+            total_peers_added_this_round >= self.context.config.network_discovery.min_desired_peers &&
+            total_peers_added_this_round >= self.context.config.network_discovery.max_peers_to_sync_per_round.try_into().unwrap_or(usize::MAX)
+        {
+            info!(
+                target: LOG_TARGET,
+                "SeedStrap: Early exit: Found sufficient peers. Total new peers ({}) >= min_desired_peers ({}) \
+                AND >= max_peers_to_sync_per_round ({}). Exiting seed node loop after {} successful sync(s). \
+                Signaling round as complete.",
+                total_peers_added_this_round,
+                self.context.config.network_discovery.min_desired_peers,
+                self.context.config.network_discovery.max_peers_to_sync_per_round,
+                successful_seed_contacts
+            );
+            // If we early exit because we found enough peers, make the round_number reflect completion
+            // of the seed strap phase.
+            round_info.round_number = round_info.total_rounds;
+            return true; // Exit the loop over seed peers
+        }
+
+        // Additional early exit conditions:
+        // 1. The soft limit for total peers needed must be enabled (> 0).
+        // 2. The total number of peers added in this round must meet or exceed this soft limit.
+        // 3. The number of successfully contacted seed peers must meet or exceed the configured minimum.
+        let soft_peer_limit_enabled = self
+            .context
+            .config
+            .network_discovery
+            .seed_peer_min_initial_sync_peers_needed >
+            0;
+        let enough_total_peers_added = total_peers_added_this_round >=
+            self.context
+                .config
+                .network_discovery
+                .seed_peer_min_initial_sync_peers_needed;
+        let enough_successful_seed_contacts = successful_seed_contacts >=
+            self.context
+                .config
+                .network_discovery
+                .min_successful_seed_contacts_for_early_exit;
+
+        if soft_peer_limit_enabled && enough_total_peers_added && enough_successful_seed_contacts {
+            info!(
+                target: LOG_TARGET,
+                "SeedStrap: Original early exit conditions met. Total peers added ({}) >= needed ({}). Successful \
+                seed contacts ({}) >= min ({}). Exiting seed node loop.",
+                total_peers_added_this_round,
+                self.context.config.network_discovery.seed_peer_min_initial_sync_peers_needed,
+                successful_seed_contacts,
+                self.context.config.network_discovery.min_successful_seed_contacts_for_early_exit
+            );
+            // If we early exit because we found enough peers, make the round_number reflect completion
+            // of the seed strap phase.
+            round_info.round_number = round_info.total_rounds;
+            return true;
+        }
+
+        false
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn get_peers(
+        &mut self,
+        seed_peer_candidate: Peer,
+        num_seeds_to_try: usize,
+        idx: usize,
+        seed_node_ids_set: &HashSet<NodeId>,
+    ) -> (Vec<PeerInfo>, usize, usize) {
+        let seed_peer_node_id_str = seed_peer_candidate.node_id.to_string();
+
+        if self.context.node_identity.node_id() == &seed_peer_candidate.node_id {
+            info!(
+                target: LOG_TARGET,
+                "SeedStrap: Iteration {}/{}: Skipping self as seed peer candidate (node_id: {}).",
+                idx + 1,
+                num_seeds_to_try,
+                seed_peer_node_id_str
+            );
+            return (vec![], 0, 0);
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "SeedStrap: Iteration {}/{}: Attempting to connect to seed peer '{}' to get their peer list",
+            idx + 1,
+            num_seeds_to_try,
+            seed_peer_node_id_str
+        );
+
+        let mut conn = match self
+            .context
+            .connectivity
+            .dial_peer(seed_peer_candidate.node_id.clone())
+            .await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "SeedStrap: Iteration {}/{}: Failed to dial seed peer '{}': {}. Continuing to next seed candidate.",
+                    idx + 1,
+                    num_seeds_to_try,
+                    seed_peer_node_id_str,
+                    e
+                );
+                return (vec![], 0, 0);
+            },
+        };
+
+        debug!(
+            target: LOG_TARGET,
+            "SeedStrap: Connected to seed peer '{}'. Requesting peer list.",
+            seed_peer_node_id_str
+        );
+
+        let peers_from_seed = match self.fetch_peers_from_connection(&mut conn).await {
+            Ok(peers) => peers,
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "SeedStrap: Iteration {}/{}: Failed to fetch peers from seed peer '{}': {}. Disconnecting and continuing.",
+                    idx + 1,
+                    num_seeds_to_try,
+                    seed_peer_node_id_str,
+                    e
+                );
+                // Attempt to disconnect, log if it fails but continue
+                if let Err(disc_err) = conn.disconnect(Minimized::Yes).await {
+                    warn!(target: LOG_TARGET, "SeedStrap: Also failed to disconnect from seed peer '{}' after fetch failure: {}", seed_peer_node_id_str, disc_err);
+                }
+                return (vec![], 0, 0);
+            },
+        };
+
+        if peers_from_seed.is_empty() {
+            info!(
+                target: LOG_TARGET,
+                "SeedStrap: Iteration {}/{}: Seed peer '{}' returned an empty peer list. Disconnecting.",
+                idx + 1,
+                num_seeds_to_try,
+                seed_peer_node_id_str
+            );
+            if let Err(e) = conn.disconnect(Minimized::Yes).await {
+                warn!(target: LOG_TARGET, "SeedStrap: Failed to disconnect from seed peer '{}' after receiving empty list: {}", seed_peer_node_id_str, e);
+            }
+            return (vec![], 0, 0);
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "SeedStrap: Successfully fetched {} peer entries from seed peer '{}'. Disconnecting before processing.",
+            peers_from_seed.len(),
+            seed_peer_node_id_str
+        );
+
+        if let Err(e) = conn.disconnect(Minimized::Yes).await {
+            warn!(target: LOG_TARGET, "SeedStrap: Failed to disconnect from seed peer '{}': {}", seed_peer_node_id_str, e);
+        } else {
+            debug!(target: LOG_TARGET, "SeedStrap: Successfully disconnected from seed peer '{}'", seed_peer_node_id_str);
+        }
+
+        let mut new_peers_this_seed = 0;
+        let mut duplicates_this_seed = 0;
+
+        let peers_count = peers_from_seed.len();
+        debug!(
+            target: LOG_TARGET,
+            "SeedStrap: Iteration {}/{}: Beginning to process {} peers from seed peer '{}'",
+            idx + 1,
+            num_seeds_to_try,
+            peers_count,
+            seed_peer_node_id_str
+        );
+
+        for (peer_idx_loop, peer_info_proto) in peers_from_seed.iter().enumerate() {
+            let new_peer_candidate: UnvalidatedPeerInfo = match peer_info_proto.clone().try_into() {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data received, skipping: {}",
+                        seed_peer_node_id_str,
+                        peer_idx_loop + 1,
+                        peers_count,
+                        e
+                    );
+                    continue; // Skip this invalid entry
+                },
+            };
+
+            let candidate_node_id = NodeId::from_public_key(&new_peer_candidate.public_key);
+            trace!(
+                target: LOG_TARGET,
+                "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Processing candidate NodeId = {}",
+                seed_peer_node_id_str,
+                peer_idx_loop + 1,
+                peers_count,
+                candidate_node_id
+            );
+
+            if new_peer_candidate.public_key == *self.context.node_identity.public_key() {
+                trace!(target: LOG_TARGET, "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Skipping self.", seed_peer_node_id_str, peer_idx_loop+1, peers_count);
+                continue;
+            }
+
+            if seed_node_ids_set.contains(&candidate_node_id) {
+                trace!(
+                    target: LOG_TARGET,
+                    "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Skipping known seed peer {}.",
+                    seed_peer_node_id_str,
+                    peer_idx_loop + 1,
+                    peers_count,
+                    candidate_node_id
+                );
+                continue;
+            }
+
+            let maybe_existing_peer = match self
+                .context
+                .peer_manager
+                .find_by_public_key(&new_peer_candidate.public_key)
+                .await
+            {
+                Ok(peer) => peer,
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "SeedStrap: (Seed '{}', Peer Candidate {}/{}): Error searching for existing peer candidate {} by public key: {}. Skipping.",
+                        seed_peer_node_id_str, peer_idx_loop + 1, peers_count, candidate_node_id, e
+                    );
+                    continue;
+                },
+            };
+
+            let is_new_peer = maybe_existing_peer.is_none();
+
+            let validator = PeerValidator::new(&self.context.config);
+            match validator.validate_peer(new_peer_candidate, maybe_existing_peer) {
+                Ok(valid_peer) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Peer {} from seed '{}' is valid. New: {}. Adding to peer manager.",
+                        seed_peer_node_id_str,
+                        peer_idx_loop + 1,
+                        peers_count,
+                        valid_peer.node_id,
+                        seed_peer_node_id_str,
+                        is_new_peer
+                    );
+
+                    match self.context.peer_manager.add_or_update_peer(valid_peer).await {
+                        Ok(_) => {
+                            if is_new_peer {
+                                new_peers_this_seed += 1;
+                            } else {
+                                duplicates_this_seed += 1;
+                            }
+                        },
+                        Err(e) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Failed to add validated peer {}: {}",
+                                seed_peer_node_id_str,
+                                peer_idx_loop + 1,
+                                peers_count,
+                                candidate_node_id,
+                                e
+                            );
+                        },
+                    }
+                },
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "SeedStrap: (From Seed '{}', Peer Candidate {}/{}): Invalid peer data for {} received from seed peer '{}': {}",
+                        seed_peer_node_id_str,
+                        peer_idx_loop + 1,
+                        peers_count,
+                        candidate_node_id,
+                        seed_peer_node_id_str,
+                        e
+                    );
+                },
+            }
+        }
+
+        info!(
+            target: LOG_TARGET,
+            "SeedStrap: Iteration {}/{}: Finished processing peers from seed '{}'. New peers from this seed: {}. \
+            Duplicates from this seed: {}.",
+            idx + 1,
+            num_seeds_to_try,
+            seed_peer_node_id_str,
+            new_peers_this_seed,
+            duplicates_this_seed
+        );
+
+        (peers_from_seed, new_peers_this_seed, duplicates_this_seed)
     }
 
     async fn fetch_peers_from_connection(
