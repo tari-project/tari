@@ -144,6 +144,7 @@ where
     /// Execute the Transaction Send Protocol as an async task.
     pub async fn execute(
         mut self,
+        utxo_selection_criteria: Option<UtxoSelectionCriteria>,
     ) -> Result<crate::transaction_service::service::TransactionSendResult, TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
@@ -152,7 +153,7 @@ where
 
         let transaction_status = match self.stage {
             TransactionSendProtocolStage::Initial => {
-                let sender_protocol = self.prepare_transaction().await?;
+                let sender_protocol = self.prepare_transaction(utxo_selection_criteria).await?;
                 let status = self.initial_send_transaction(sender_protocol).await?;
                 if status == TransactionStatus::Pending {
                     self.wait_for_reply().await?;
@@ -199,6 +200,7 @@ where
     // Prepare transaction to send and encumber the unspent outputs to use as inputs
     async fn prepare_transaction(
         &mut self,
+        utxo_selection_criteria: Option<UtxoSelectionCriteria>,
     ) -> Result<SenderTransactionProtocol, TransactionServiceProtocolError<TxId>> {
         let service_reply_channel = match self.service_request_reply_channel.take() {
             Some(src) => src,
@@ -220,7 +222,7 @@ where
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
-                UtxoSelectionCriteria::default(),
+                utxo_selection_criteria.unwrap_or_default(),
                 OutputFeatures::default(),
                 self.fee_per_gram,
                 self.tx_meta.clone(),

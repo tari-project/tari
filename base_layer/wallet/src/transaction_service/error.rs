@@ -208,6 +208,8 @@ pub enum TransactionServiceError {
     FileWriteError { file_path: PathBuf, err: io::Error },
     #[error("Transaction already completed")]
     TransactionAlreadyCompleted(String),
+    #[error("Transaction inputs were invalid")]
+    InvalidTransactionInputs,
 }
 
 impl From<RangeProofError> for TransactionServiceError {

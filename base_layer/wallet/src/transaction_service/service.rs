@@ -1328,7 +1328,7 @@ where
             TransactionSendProtocolStage::Initial,
             None,
         );
-        let join_handle = tokio::spawn(protocol.execute());
+        let join_handle = tokio::spawn(protocol.execute(None));
         join_handles.push(join_handle);
 
         Ok(())
@@ -3081,7 +3081,7 @@ where
                     sender_protocol,
                 );
 
-                let join_handle = tokio::spawn(protocol.execute());
+                let join_handle = tokio::spawn(protocol.execute(None));
                 join_handles.push(join_handle);
             }
         }
@@ -4015,10 +4015,16 @@ where
         self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled)
             .await;
 
+        let km = &self.resources.transaction_key_manager_service.clone();
         // Extract original transaction details
         let destination = original_transaction.destination_address.clone();
         let original_amount = original_transaction.amount;
         let payment_id = original_transaction.payment_id.clone();
+        let original_inputs = original_transaction
+            .sender_protocol
+            .get_input_commitments(km)
+            .await
+            .map_err(|_| TransactionServiceError::InvalidTransactionInputs)?;
 
         debug!(
             target: LOG_TARGET,
@@ -4057,7 +4063,7 @@ where
         );
 
         // Launch the new transaction protocol
-        let join_handle = tokio::spawn(protocol.execute());
+        let join_handle = tokio::spawn(protocol.execute(Some(UtxoSelectionCriteria::must_include(original_inputs))));
         send_transaction_join_handles.push(join_handle);
 
         info!(
@@ -4118,7 +4124,7 @@ where
         );
 
         // Launch the new transaction protocol
-        let join_handle = tokio::spawn(protocol.execute());
+        let join_handle = tokio::spawn(protocol.execute(None));
         send_transaction_join_handles.push(join_handle);
 
         info!(
