@@ -3111,6 +3111,130 @@ async fn multi_send_txs_from_wallet(
     }
 }
 
+#[when(
+    expr = "I send {int} transactions with higher fees to fill mempool from wallet {word} to wallet {word} with base \
+            fee {int}"
+)]
+async fn send_mempool_filler_transactions(
+    world: &mut TariWorld,
+    num_txs: u64,
+    sender: String,
+    receiver: String,
+    fee_per_gram: u64,
+) {
+    let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
+
+    // Use a reasonable number of transactions to fill mempool
+    let actual_num_txs = std::cmp::min(num_txs, 25);
+
+    for i in 0..actual_num_txs {
+        // Use much higher fees to ensure they get prioritized over the original transaction
+        let amount = 100_000;
+
+        let payment_recipient = PaymentRecipient {
+            address: receiver_wallet_address.clone(),
+            amount,
+            fee_per_gram,
+            payment_type: 1, // one sided transaction
+            raw_payment_id: PaymentId::open_from_string(
+                &format!(
+                    "Mempool filler transaction {} with amount {} from {} to {} with fee per gram {}",
+                    i,
+                    amount,
+                    sender.as_str(),
+                    receiver.as_str(),
+                    fee_per_gram
+                ),
+                TxType::PaymentToOther,
+            )
+            .to_bytes(),
+            user_payment_id: None,
+        };
+
+        let transfer_req = TransferRequest {
+            recipients: vec![payment_recipient],
+        };
+        let tx_res = sender_wallet_client.transfer(transfer_req).await.unwrap().into_inner();
+        let tx_res = tx_res.results;
+
+        assert_eq!(tx_res.len(), 1usize);
+
+        let tx_res = tx_res.first().unwrap();
+        if !tx_res.is_success {
+            cucumber_steps_log(format!(
+                "Mempool filler transaction {} with amount {} from wallet {} to {} at fee {} failed - continuing",
+                i,
+                amount,
+                sender.as_str(),
+                receiver.as_str(),
+                fee_per_gram
+            ));
+            continue;
+        }
+
+        let tx_id = tx_res.transaction_id;
+        let tx_info_req = GetTransactionInfoRequest {
+            transaction_ids: vec![tx_id],
+        };
+
+        // Wait for broadcast with fewer retries
+        let num_retries = 20;
+        for j in 0..num_retries {
+            let tx_info_res = sender_wallet_client
+                .get_transaction_info(tx_info_req.clone())
+                .await
+                .unwrap()
+                .into_inner();
+            let tx_info = tx_info_res.transactions.first().unwrap();
+
+            // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+            if tx_info.status == 1_i32 {
+                cucumber_steps_log(format!(
+                    "Mempool filler transaction {} from {} to {} with amount {} at fee {} has been broadcast",
+                    i,
+                    sender.clone(),
+                    receiver.clone(),
+                    amount,
+                    fee_per_gram
+                ));
+                break;
+            }
+
+            if j == num_retries - 1 {
+                cucumber_steps_log(format!(
+                    "Mempool filler transaction {} from {} to {} with amount {} at fee {} failed to be broadcast - \
+                     continuing",
+                    i,
+                    sender.clone(),
+                    receiver.clone(),
+                    amount,
+                    fee_per_gram
+                ));
+                continue;
+            }
+
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+
+        // insert tx_id's to the corresponding world mapping
+        let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
+        sender_tx_ids.push(tx_id);
+
+        let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
+        receiver_tx_ids.push(tx_id);
+
+        cucumber_steps_log(format!(
+            "Mempool filler transaction {} with amount {} from {} to {} at fee {} succeeded",
+            i, amount, sender, receiver, fee_per_gram
+        ));
+
+        // Small delay between transactions to avoid overwhelming the system
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 #[then(expr = "I check if last imported transactions are valid in wallet {word}")]
 async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
@@ -3198,11 +3322,6 @@ async fn replace_last_transaction_with_higher_fee(world: &mut TariWorld, wallet:
     // get the last tx id for wallet
     let tx_id = *wallet_tx_ids.last().unwrap();
 
-    cucumber_steps_log(format!(
-        "Replacing transaction {} from wallet {} with new fee per gram {}",
-        tx_id, wallet, new_fee_per_gram
-    ));
-
     let replace_by_fee_req = ReplaceByFeeRequest {
         transaction_id: tx_id,
         fee_per_gram: new_fee_per_gram,
@@ -3210,11 +3329,6 @@ async fn replace_last_transaction_with_higher_fee(world: &mut TariWorld, wallet:
 
     let replace_by_fee_res = client.replace_by_fee(replace_by_fee_req).await.unwrap().into_inner();
     let new_tx_id = replace_by_fee_res.transaction_id;
-
-    cucumber_steps_log(format!(
-        "Successfully replaced transaction {} with new transaction {} at fee per gram {}",
-        tx_id, new_tx_id, new_fee_per_gram
-    ));
 
     // Update the wallet transaction IDs to include the new transaction
     let wallet_tx_ids = world.wallet_tx_ids.get_mut(&wallet_address).unwrap();

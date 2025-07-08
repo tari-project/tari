@@ -4004,13 +4004,14 @@ where
             .resources
             .db
             .get_pending_outbound_transaction(tx_id)
-            .map_err(TransactionServiceError::TransactionStorageError)?;
+            .map_err(|_| TransactionServiceError::TransactionAlreadyCompleted(tx_id.to_string()))?;
 
         // Check if transaction is already confirmed
         if original_transaction.status.is_confirmed() {
             return Err(TransactionServiceError::TransactionAlreadyCompleted(tx_id.to_string()));
         }
 
+        println!("Replacing transaction with higher fee: {}", tx_id);
         // Cancel the existing transaction to free up UTXOs
         self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled)
             .await;
@@ -4025,6 +4026,10 @@ where
             .get_input_commitments(km)
             .await
             .map_err(|_| TransactionServiceError::InvalidTransactionInputs)?;
+
+        original_inputs.iter().for_each(|input| {
+            println!("original UTXO: {:?}", input);
+        });
 
         debug!(
             target: LOG_TARGET,
@@ -4062,6 +4067,7 @@ where
             None,
         );
 
+        println!("Executing transaction send protocol");
         // Launch the new transaction protocol
         let join_handle = tokio::spawn(protocol.execute(Some(UtxoSelectionCriteria::must_include(original_inputs))));
         send_transaction_join_handles.push(join_handle);

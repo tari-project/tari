@@ -430,20 +430,21 @@ Feature: Wallet Transactions
     When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 15 blocks
     Then all nodes are at height 15
+    # 55 million uT
     When I wait for wallet WALLET_A to have at least 55000000000 uT
-    # Send transaction with low fee that will get stuck in mempool
-    When I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+    # Fill mempool with higher fee transactions to ensure the low fee transaction gets stuck
+    When I send 25 transactions with higher fees to fill mempool from wallet WALLET_A to wallet WALLET_B with base fee 200
+    # Send transaction with minimum fee that will get stuck in mempool due to higher fee transactions
+    When I send a one-sided transaction of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     Then wallet WALLET_A detects all transactions as Pending
-    # Wait a bit to ensure transaction is stuck in mempool
-    When I wait 5 seconds
+    When I wait 2 seconds
     # Replace the stuck transaction with higher fee
-    When I replace the last transaction from wallet WALLET_A with fee per gram 100
+    When I replace the last transaction from wallet WALLET_A with fee per gram 300
     Then wallet WALLET_A detects all transactions as Pending
-    # Mine blocks to confirm the replacement transaction
     When mining node MINER mines 5 blocks
     Then all nodes are at height 20
     # Verify the replacement transaction is mined and the original is cancelled
     Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
-    Then I wait for wallet WALLET_B to have at least 1000000 uT
+    Then I wait for wallet WALLET_B to have at least 100000000 uT
     # Verify wallet A has the correct balance (original amount - transfer amount - higher fee)
-    Then I wait for wallet WALLET_A to have less than 54000000000 uT
+    Then I wait for wallet WALLET_A to have less than 54900000000 uT
