@@ -9,7 +9,6 @@ license.workspace = true
 [dependencies]
 tari_core = { workspace = true, default-features = false, features = [
     "transactions",
-    "base_node",
 ] }
 tari_utilities = { workspace = true }
 tari_shutdown = { workspace = true }
