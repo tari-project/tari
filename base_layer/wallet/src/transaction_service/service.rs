@@ -3988,7 +3988,6 @@ where
     /// * `fee_per_gram` - New fee per gram (should be higher than original)
     /// * `additional_inputs` - Additional inputs to include (Note: values cannot be extracted from commitments)
     /// * `send_transaction_join_handles` - Join handles for send transaction protocols
-    /// * `transaction_broadcast_join_handles` - Join handles for broadcast protocols
     ///
     /// # Returns
     /// The new transaction ID or an error

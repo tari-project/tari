@@ -32,6 +32,7 @@ use minotari_wallet::output_manager_service::{
         OutputSource,
         OutputStatus,
     },
+    UtxoSelectionCriteria,
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
@@ -376,6 +377,84 @@ pub async fn test_output_manager_sqlite_db() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
+}
+
+#[tokio::test]
+pub async fn test_must_include_filter() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let db = OutputManagerDatabase::new(backend);
+    let key_manager = create_memory_db_key_manager().unwrap();
+
+    // Create test outputs with specific values
+    let mut outputs = Vec::new();
+    let mut unspent = Vec::new();
+    let values = vec![100, 200, 300, 500, 1000];
+
+    for value in values {
+        let uo = make_input(
+            &mut OsRng,
+            MicroMinotari::from(value),
+            &OutputFeatures::default(),
+            &key_manager,
+        )
+        .await;
+        let output = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
+            .await
+            .unwrap();
+        db.add_unspent_output(output.clone()).unwrap();
+        unspent.push((output.hash, true));
+        outputs.push(output);
+    }
+    db.mark_outputs_as_unspent(unspent).unwrap();
+
+    // Test 1: MustInclude with sufficient amount
+    let must_include_commitments = vec![outputs[3].commitment.clone()]; // 500 value
+    let selection_criteria = UtxoSelectionCriteria::must_include(must_include_commitments.clone());
+    let selected = db
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(400), None)
+        .unwrap();
+
+    // Should return only the must-include output since 500 >= 400
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].commitment, outputs[3].commitment);
+    assert_eq!(selected[0].wallet_output.value, MicroMinotari::from(500));
+
+    // Test 2: MustInclude with insufficient amount
+    let must_include_commitments = vec![outputs[0].commitment.clone()]; // 100 value
+    let selection_criteria = UtxoSelectionCriteria::must_include(must_include_commitments.clone());
+    let selected = db
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(800), None)
+        .unwrap();
+
+    // Should return the must-include output plus additional outputs to meet the requirement
+    assert!(selected.len() > 1);
+    assert!(selected.iter().any(|o| o.commitment == outputs[0].commitment));
+    let total_value: MicroMinotari = selected.iter().map(|o| o.wallet_output.value).sum();
+    assert!(total_value >= MicroMinotari::from(800));
+
+    // Test 3: MustInclude with multiple outputs
+    let must_include_commitments = vec![outputs[0].commitment.clone(), outputs[1].commitment.clone()]; // 100 + 200 = 300
+    let selection_criteria = UtxoSelectionCriteria::must_include(must_include_commitments.clone());
+    let selected = db
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(250), None)
+        .unwrap();
+
+    // Should return both must-include outputs since 300 >= 250
+    assert_eq!(selected.len(), 2);
+    assert!(selected.iter().any(|o| o.commitment == outputs[0].commitment));
+    assert!(selected.iter().any(|o| o.commitment == outputs[1].commitment));
+
+    // Test 4: MustInclude with empty commitments (should behave like Standard)
+    let selection_criteria = UtxoSelectionCriteria::must_include(vec![]);
+    let selected = db
+        .fetch_unspent_outputs_for_spending(&selection_criteria, MicroMinotari::from(500), None)
+        .unwrap();
+
+    // Should return outputs using standard selection logic
+    assert!(!selected.is_empty());
+    let total_value: MicroMinotari = selected.iter().map(|o| o.wallet_output.value).sum();
+    assert!(total_value >= MicroMinotari::from(500));
 }
 
 #[tokio::test]
