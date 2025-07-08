@@ -280,7 +280,6 @@ impl SeedStrap {
 
             let mut new_peers_this_seed = 0;
             let mut duplicates_this_seed = 0;
-            let ban_this_seed_peer = false;
 
             let peers_count = peers_from_seed.len();
             debug!(
@@ -401,49 +400,6 @@ impl SeedStrap {
                         );
                     },
                 }
-            }
-
-            if ban_this_seed_peer {
-                warn!(
-                    target: LOG_TARGET,
-                    "SeedStrap: Banning seed peer '{}' for providing invalid peer data.",
-                    seed_peer_node_id_str
-                );
-
-                // First disconnect to free the connection slot
-                if let Err(e) = conn.disconnect(Minimized::Yes).await {
-                    warn!(
-                        target: LOG_TARGET,
-                        "SeedStrap: Failed to disconnect from seed peer '{}' before banning: {}",
-                        seed_peer_node_id_str,
-                        e
-                    );
-                }
-
-                // Then ban the peer
-                match self
-                    .context
-                    .connectivity
-                    .ban_peer_until(
-                        seed_peer_candidate.node_id.clone(),
-                        self.config().ban_duration_short,
-                        "Sent invalid peer data during seed bootstrap".to_string(),
-                    )
-                    .await
-                {
-                    Ok(_) => {
-                        debug!(target: LOG_TARGET, "SeedStrap: Successfully banned seed peer '{}'", seed_peer_node_id_str)
-                    },
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "SeedStrap: Failed to ban seed peer '{}': {}", seed_peer_node_id_str, e)
-                    },
-                }
-
-                // If we banned the seed, we don't count it as a successful sync
-                if round_info.num_succeeded > 0 {
-                    round_info.num_succeeded -= 1;
-                }
-                successful_seed_contacts = successful_seed_contacts.saturating_sub(1);
             }
 
             info!(
