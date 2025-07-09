@@ -1652,17 +1652,16 @@ message ReplaceByFeeResponse {
 }
 
 message UserPayForFeeRequest {
-  // The transaction id of the transaction to pay for
-  uint64 transaction_id = 1;
-  // Destination address for the payment
-  bytes destination_address = 2;
-  // Amount to pay in microTari
-  uint64 amount = 3;
+    repeated TransferWithTxId recipients = 1;
+}
+
+message TransferWithTxId {
+    uint64 tx_id = 1;
+    PaymentRecipient recipient = 2;
 }
 
 message UserPayForFeeResponse {
-  // Transaction id of the new transaction
-  uint64 transaction_id = 1;
+  repeated TransferResult results = 1;
 }
 
 message FeePerGramStat {

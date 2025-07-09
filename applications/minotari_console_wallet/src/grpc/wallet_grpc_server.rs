@@ -29,87 +29,29 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future,
-    SinkExt,
+    future, SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    BroadcastSignedOneSidedTransactionRequest,
-    BroadcastSignedOneSidedTransactionResponse,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    FeePerGramStat,
-    GetAddressResponse,
-    GetAllCompletedTransactionsRequest,
-    GetAllCompletedTransactionsResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetBlockHeightTransactionsRequest,
-    GetBlockHeightTransactionsResponse,
-    GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetFeeEstimateRequest,
-    GetFeeEstimateResponse,
-    GetFeePerGramStatsRequest,
-    GetFeePerGramStatsResponse,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetPaymentByReferenceRequest,
-    GetPaymentByReferenceResponse,
-    GetPaymentIdAddressRequest,
-    GetStateRequest,
-    GetStateResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetTransactionPayRefsRequest,
-    GetTransactionPayRefsResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportTransactionsRequest,
-    ImportTransactionsResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    PrepareOneSidedTransactionForSigningRequest,
-    PrepareOneSidedTransactionForSigningResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    ReplaceByFeeRequest,
-    ReplaceByFeeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    UserPayForFeeRequest,
-    UserPayForFeeResponse,
-    ValidateRequest,
-    ValidateResponse,
+    self, payment_recipient::PaymentType, wallet_server, BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse, CheckConnectivityResponse, ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
+    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, FeePerGramStat, GetAddressResponse,
+    GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
+    GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse, GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetFeeEstimateRequest,
+    GetFeeEstimateResponse, GetFeePerGramStatsRequest, GetFeePerGramStatsResponse, GetIdentityRequest,
+    GetIdentityResponse, GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest,
+    GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest, GetTransactionPayRefsResponse, GetUnspentAmountsResponse, GetVersionRequest,
+    GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest, PrepareOneSidedTransactionForSigningResponse,
+    RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, ReplaceByFeeRequest, ReplaceByFeeResponse,
+    RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest,
+    SetBaseNodeResponse, TransactionDirection, TransactionEvent, TransactionEventRequest, TransactionEventResponse,
+    TransactionInfo, TransactionStatus, TransferRequest, TransferResponse, TransferResult, UserPayForFeeRequest,
+    UserPayForFeeResponse, ValidateRequest, ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -135,11 +77,7 @@ use tari_core::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CodeTemplateRegistration,
-            OutputFeatures,
-            OutputType,
-            SideChainFeature,
-            UnblindedOutput,
+            CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
@@ -1697,11 +1635,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_name = template_registration.template_name.clone();
 
         let mut output = output_manager
-            .create_output_with_features(1 * T, OutputFeatures {
-                output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                ..Default::default()
-            })
+            .create_output_with_features(
+                1 * T,
+                OutputFeatures {
+                    output_type: OutputType::CodeTemplateRegistration,
+                    sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+                    ..Default::default()
+                },
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -2052,27 +1993,159 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<UserPayForFeeRequest>,
     ) -> Result<Response<UserPayForFeeResponse>, Status> {
-        let request = request.into_inner();
-        let mut transaction_service = self.get_transaction_service();
-        let compressed_public_key = CompressedPublicKey::from_canonical_bytes(&request.destination_address)
-            .map_err(|e| Status::invalid_argument(format!("Invalid public key: {}", e)))?;
-        let destination_address = TariAddress::new_single_address(
-            compressed_public_key,
-            self.wallet.network.as_network(),
-            TariAddressFeatures::default(),
-        )
-        .map_err(|e| Status::invalid_argument(format!("Invalid address: {}", e)))?;
-        let tx_id = transaction_service
-            .user_pay_for_fee(
-                request.transaction_id.into(),
-                destination_address,
-                MicroMinotari::from(request.amount),
-            )
-            .await
-            .map_err(|e| Status::internal(format!("Failed to pay for fee: {}", e)))?;
-        Ok(Response::new(UserPayForFeeResponse {
-            transaction_id: tx_id.into(),
-        }))
+        let message = request.into_inner();
+        let recipients = message
+            .recipients
+            .into_iter()
+            .enumerate()
+            .map(|(idx, transfer_with_id)| -> Result<_, String> {
+                let dest = transfer_with_id.recipient.unwrap();
+                let address = TariAddress::from_str(&dest.address)
+                    .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
+                Ok((
+                    dest.address,
+                    address,
+                    dest.amount,
+                    dest.fee_per_gram,
+                    dest.payment_type,
+                    dest.user_payment_id,
+                    dest.raw_payment_id,
+                    transfer_with_id.tx_id,
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Status::invalid_argument)?;
+
+        let mut transfers = Vec::new();
+        for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id, tx_id) in
+            recipients
+        {
+            let payment_id = if !raw_payment_id.is_empty() {
+                PaymentId::open(raw_payment_id.to_vec(), TxType::PaymentToOther)
+            } else if let Some(user_pay_id) = user_payment_id {
+                let bytes = match (
+                    user_pay_id.u256.is_empty(),
+                    user_pay_id.utf8_string.is_empty(),
+                    user_pay_id.user_bytes.is_empty(),
+                ) {
+                    (false, true, true) => user_pay_id.u256,
+                    (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                    (true, true, false) => user_pay_id.user_bytes,
+                    _ => {
+                        return Err(Status::invalid_argument(
+                            "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                        ));
+                    },
+                };
+                PaymentId::Open {
+                    user_data: bytes,
+                    tx_type: TxType::PaymentToOther,
+                }
+            } else {
+                PaymentId::Empty
+            };
+            let mut transaction_service = self.get_transaction_service();
+            transfers.push(async move {
+                (
+                    hex_address,
+                    if payment_type == PaymentType::StandardMimblewimble as i32 {
+                        transaction_service
+                            .send_transaction(
+                                address,
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                OutputFeatures::default(),
+                                fee_per_gram.into(),
+                                payment_id,
+                            )
+                            .await
+                    } else if payment_type == PaymentType::OneSided as i32 {
+                        transaction_service
+                            .send_one_sided_transaction(
+                                address,
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                OutputFeatures::default(),
+                                fee_per_gram.into(),
+                                payment_id,
+                            )
+                            .await
+                    } else {
+                        transaction_service
+                            .send_one_sided_to_stealth_address_transaction(
+                                address,
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                OutputFeatures::default(),
+                                fee_per_gram.into(),
+                                payment_id,
+                            )
+                            .await
+                    },
+                )
+            });
+        }
+
+        let transfers_results = future::join_all(transfers).await;
+        let mut results = Vec::with_capacity(transfers_results.len());
+        for (address, result) in transfers_results {
+            match result {
+                Ok(tx_id) => {
+                    let wallet_address = self
+                        .wallet
+                        .get_wallet_one_sided_address()
+                        .await
+                        .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                    let wallet_tx = timeout(Duration::from_millis(100), async {
+                        loop {
+                            let tx = self
+                                .get_transaction_service()
+                                .get_any_transaction(tx_id)
+                                .await
+                                .map_err(|e| Status::internal(format!("{:?}", e)));
+
+                            if let Ok(Some(tx)) = tx {
+                                break tx;
+                            }
+                            sleep(Duration::from_millis(10)).await;
+                        }
+                    })
+                    .await
+                    .map_err(|_| {
+                        error!(target: LOG_TARGET, "Transaction {} not found within timeout", tx_id);
+                        Status::not_found(format!("Transaction {} not found within timeout", tx_id))
+                    })?;
+                    let final_tx = convert_wallet_transaction_into_transaction_info(
+                        wallet_tx,
+                        &wallet_address,
+                        &self.wallet.key_manager_service,
+                    )
+                    .await;
+                    results.push(TransferResult {
+                        address,
+                        transaction_id: tx_id.into(),
+                        is_success: true,
+                        failure_message: Default::default(),
+                        transaction_info: Some(final_tx),
+                    });
+                },
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to send transaction for address `{}`: {}", address, err
+                    );
+                    results.push(TransferResult {
+                        address,
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: err.to_string(),
+                        transaction_info: None,
+                    });
+                },
+            }
+        }
+
+        Ok(Response::new(UserPayForFeeResponse { results }))
     }
 
     async fn replace_by_fee(

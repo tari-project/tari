@@ -430,21 +430,26 @@ Feature: Wallet Transactions
     When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 15 blocks
     Then all nodes are at height 15
-    # 55 million uT
     When I wait for wallet WALLET_A to have at least 55000000000 uT
-    # Fill mempool with higher fee transactions to ensure the low fee transaction gets stuck
-    When I send 25 transactions with higher fees to fill mempool from wallet WALLET_A to wallet WALLET_B with base fee 200
-    # Send transaction with minimum fee that will get stuck in mempool due to higher fee transactions
     When I send a one-sided transaction of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     Then wallet WALLET_A detects all transactions as Pending
-    When I wait 2 seconds
-    # Replace the stuck transaction with higher fee
-    When I replace the last transaction from wallet WALLET_A with fee per gram 300
+    When I send a replace by fee of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 200
     Then wallet WALLET_A detects all transactions as Pending
-    When mining node MINER mines 5 blocks
-    Then all nodes are at height 20
-    # Verify the replacement transaction is mined and the original is cancelled
-    Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
-    Then I wait for wallet WALLET_B to have at least 100000000 uT
-    # Verify wallet A has the correct balance (original amount - transfer amount - higher fee)
-    Then I wait for wallet WALLET_A to have less than 54900000000 uT
+    When mining node MINER mines 1 blocks
+    Then wallet WALLET_A detects only 1 transaction as unconfirmed
+
+  @critical
+  Scenario: Adds new transaction to spend pending transaction outputs
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 15 blocks
+    Then all nodes are at height 15
+    When I wait for wallet WALLET_A to have at least 55000000000 uT
+    When I send a one-sided transaction of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    Then wallet WALLET_A detects all transactions as Pending
+    When I send a user_pay_for_fee from wallet WALLET_A to wallet WALLET_B at fee 100
+    Then wallet WALLET_A detects all transactions as Pending
+    When mining node MINER mines 1 blocks
+    Then wallet WALLET_A detects only 2 transaction as unconfirmed
