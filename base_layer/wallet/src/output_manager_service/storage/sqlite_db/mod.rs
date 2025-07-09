@@ -560,6 +560,14 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(last_scanned_height.map(|h| h as u64))
     }
 
+    fn save_last_scanned_height(
+        &self,
+        scanned_block: crate::utxo_scanner_service::service::ScannedBlock,
+    ) -> Result<(), OutputManagerStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        Ok(crate::storage::sqlite_db::scanned_blocks::ScannedBlockSql::from(scanned_block).commit(&mut conn)?)
+    }
+
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;

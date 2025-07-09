@@ -22,6 +22,7 @@
 
 use std::sync::Arc;
 
+use chrono::Utc;
 use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityHandle,
@@ -41,7 +42,7 @@ use minotari_wallet::{
     test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
     util::watch::Watch,
-    utxo_scanner_service::handle::UtxoScannerHandle,
+    utxo_scanner_service::{handle::UtxoScannerHandle, service::ScannedBlock},
 };
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
@@ -49,7 +50,7 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{ComAndPubSignature, CompressedPublicKey, FixedHash},
+    types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput},
 };
 use tari_core::{
     borsh::SerializedSize,
@@ -84,6 +85,7 @@ use crate::support::{
     data::get_temp_sqlite_database_connection,
     utils::{make_input, make_input_with_features},
 };
+
 fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
     Ok(TransactionWeight::latest().round_up_features_and_scripts_size(
         OutputFeatures::default().get_serialized_size()? + TariScript::default().get_serialized_size()?,
@@ -164,7 +166,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
-    _height: Option<u64>,
 ) -> (
     OutputManagerHandle,
     Shutdown,
@@ -195,6 +196,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let recovery_message_watch = Watch::new("unset".to_string());
     let one_sided_message_watch = Watch::new("unset".to_string());
     let scanner_handle = UtxoScannerHandle::new(event_sender.clone(), one_sided_message_watch, recovery_message_watch);
+
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig { ..Default::default() },
         oms_request_receiver,
@@ -362,7 +364,7 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     // no chain metadata
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), None).await;
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // no utxos - not enough funds
@@ -493,8 +495,14 @@ async fn test_utxo_selection_with_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     // setup with chain metadata at a height of 6
-    let backend = OutputManagerSqliteDatabase::new(connection);
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), Some(6)).await;
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let scanned_block = ScannedBlock {
+        header_hash: HashOutput::zero(),
+        height: 6,
+        timestamp: Utc::now().naive_utc(),
+    };
+    backend.save_last_scanned_height(scanned_block).unwrap();
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
 
     // no utxos - not enough funds
@@ -647,7 +655,13 @@ async fn test_utxo_selection_with_tx_priority() {
 
     // setup with chain metadata at a height of 6
     let backend = OutputManagerSqliteDatabase::new(connection);
-    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone(), Some(6)).await;
+    let scanned_block = ScannedBlock {
+        header_hash: HashOutput::zero(),
+        height: 6,
+        timestamp: Utc::now().naive_utc(),
+    };
+    backend.save_last_scanned_height(scanned_block).unwrap();
+    let (mut oms, _shutdown, _, _, _, key_manager) = setup_oms_with_bn_state(backend.clone()).await;
 
     let amount = MicroMinotari::from(2000);
     let fee_per_gram = MicroMinotari::from(2);
@@ -1068,7 +1082,7 @@ async fn test_get_balance() {
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
     assert_eq!(output_val, balance.available_balance);
-    assert_eq!(MicroMinotari::from(0), balance.time_locked_balance.unwrap());
+    assert_eq!(None, balance.time_locked_balance);
     assert_eq!(recv_value + change_val, balance.pending_incoming_balance);
     assert_eq!(output_val, balance.pending_outgoing_balance);
 }
@@ -1105,7 +1119,7 @@ async fn sending_transaction_persisted_while_offline() {
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
-    assert_eq!(balance.time_locked_balance.unwrap(), MicroMinotari::from(0));
+    assert_eq!(balance.time_locked_balance, None);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(0));
 
     // Check that funds are encumbered and stay encumbered if the pending tx is not confirmed before restart
@@ -1129,7 +1143,7 @@ async fn sending_transaction_persisted_while_offline() {
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance / 2);
-    assert_eq!(balance.time_locked_balance.unwrap(), MicroMinotari::from(0));
+    assert_eq!(balance.time_locked_balance, None);
     assert_eq!(balance.pending_outgoing_balance, available_balance / 2);
 
     // This simulates an offline wallet with a  queued transaction that has not been sent to the receiving wallet
@@ -1139,7 +1153,7 @@ async fn sending_transaction_persisted_while_offline() {
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
-    assert_eq!(balance.time_locked_balance.unwrap(), MicroMinotari::from(0));
+    assert_eq!(balance.time_locked_balance, None);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(0));
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
@@ -1171,7 +1185,7 @@ async fn sending_transaction_persisted_while_offline() {
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, MicroMinotari::from(10000));
-    assert_eq!(balance.time_locked_balance.unwrap(), MicroMinotari::from(0));
+    assert_eq!(balance.time_locked_balance, None);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(10000));
 }
 

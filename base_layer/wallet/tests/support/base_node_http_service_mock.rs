@@ -125,7 +125,11 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     }
 
     async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
-        todo!()
+        Ok(TxSubmissionResponse {
+            accepted: true,
+            rejection_reason: models::TxSubmissionRejectionReason::None,
+            is_synced: true,
+        })
     }
 
     async fn transaction_query(

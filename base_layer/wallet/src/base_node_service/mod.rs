@@ -27,6 +27,8 @@ pub mod service;
 
 mod monitor;
 
+use std::marker::PhantomData;
+
 use log::*;
 use tari_service_framework::{
     async_trait,
@@ -39,17 +41,27 @@ use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, service::BaseNodeService},
-    client::http_client_factory::DefaultHttpClientFactory,
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
 };
+
 const BASENODE_SERVICE_HANDLE_CHANNEL_SIZE: usize = 1_000;
 const LOG_TARGET: &str = "wallet::base_node_service";
 
-#[derive(Default)]
-pub struct BaseNodeServiceInitializer {}
+pub struct BaseNodeServiceInitializer<T> {
+    phantom: PhantomData<T>,
+}
+
+impl<T> BaseNodeServiceInitializer<T> {
+    pub fn new() -> Self {
+        Self { phantom: PhantomData }
+    }
+}
 
 #[async_trait]
-impl ServiceInitializer for BaseNodeServiceInitializer {
+impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
+where T: HttpClientFactory + Send + Sync + 'static
+{
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         info!(target: LOG_TARGET, "Wallet base node service initializing.");
 
@@ -63,7 +75,7 @@ impl ServiceInitializer for BaseNodeServiceInitializer {
         context.register_handle(basenode_service_handle);
 
         context.spawn_when_ready(move |handles| async move {
-            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle<DefaultHttpClientFactory>>();
+            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle<T>>();
 
             let result = BaseNodeService::new(
                 request_stream,

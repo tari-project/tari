@@ -54,7 +54,7 @@ use tokio::sync::broadcast;
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
-    client::http_client_factory::DefaultHttpClientFactory,
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -80,11 +80,12 @@ mod utc;
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";
 
-pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface>
+pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend,
     W: WalletBackend,
     TKeyManagerInterface: TransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     config: TransactionServiceConfig,
     subscription_factory: Arc<SubscriptionFactory>,
@@ -95,14 +96,17 @@ where
     factories: CryptoFactories,
     wallet_database: Option<WalletDatabase<W>>,
     wallet_type: Arc<WalletType>,
-    _phantom_data: PhantomData<TKeyManagerInterface>,
+    _phantom_data_key_manager: PhantomData<TKeyManagerInterface>,
+    _phantom_data_http_interface: PhantomData<THttpClientFactory>,
 }
 
-impl<T, W, TKeyManagerInterface> TransactionServiceInitializer<T, W, TKeyManagerInterface>
+impl<T, W, TKeyManagerInterface, THttpClientFactory>
+    TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend,
     W: WalletBackend,
     TKeyManagerInterface: TransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -125,7 +129,8 @@ where
             factories,
             wallet_database: Some(wallet_database),
             wallet_type,
-            _phantom_data: Default::default(),
+            _phantom_data_key_manager: Default::default(),
+            _phantom_data_http_interface: Default::default(),
         }
     }
 
@@ -202,11 +207,13 @@ where
 }
 
 #[async_trait]
-impl<T, W, TKeyManagerInterface> ServiceInitializer for TransactionServiceInitializer<T, W, TKeyManagerInterface>
+impl<T, W, TKeyManagerInterface, THttpClientFactory> ServiceInitializer
+    for TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClientFactory>
 where
     T: TransactionBackend + 'static,
     W: WalletBackend + 'static,
     TKeyManagerInterface: TransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -244,8 +251,7 @@ where
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
             let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
-            let connectivity: WalletConnectivityHandle<DefaultHttpClientFactory> =
-                handles.expect_handle::<WalletConnectivityHandle<_>>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let utxo_scanner_handle = handles.expect_handle::<UtxoScannerHandle>();
 

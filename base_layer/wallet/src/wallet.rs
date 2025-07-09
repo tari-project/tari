@@ -211,7 +211,11 @@ where
                 node_identity.clone(),
                 publisher,
             ))
-            .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
+            .add_initializer(OutputManagerServiceInitializer::<
+                V,
+                TKeyManagerInterface,
+                THttpClientFactory,
+            >::new(
                 config.output_manager_service_config.clone(),
                 output_manager_backend.clone(),
                 factories.clone(),
@@ -223,7 +227,12 @@ where
                 factories.clone(),
                 wallet_type.clone(),
             ))
-            .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
+            .add_initializer(TransactionServiceInitializer::<
+                U,
+                T,
+                TKeyManagerInterface,
+                THttpClientFactory,
+            >::new(
                 config.transaction_service_config.clone(),
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
@@ -249,7 +258,7 @@ where
                 config.contacts_auto_ping_interval,
                 config.contacts_online_ping_window,
             ))
-            .add_initializer(BaseNodeServiceInitializer::default())
+            .add_initializer(BaseNodeServiceInitializer::<THttpClientFactory>::new())
             .add_initializer(WalletConnectivityInitializer::<DefaultHttpClientFactory>::new(
                 config
                     .http_client_url

@@ -1836,6 +1836,7 @@ where
 
         // Finalize
 
+
         stp.finalize(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| {
@@ -1850,6 +1851,7 @@ where
                 let hash = change_output
                     .hash(&self.resources.transaction_key_manager_service)
                     .await?;
+
                 self.resources
                     .output_manager_service
                     .confirm_pending_transaction(tx_id, Some(vec![change_output]))

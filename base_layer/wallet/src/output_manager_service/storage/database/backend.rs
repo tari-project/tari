@@ -88,6 +88,10 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Get the output that was most recently spent, ordered descending by mined height
     fn get_last_spent_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
     fn get_last_scanned_height(&self) -> Result<Option<u64>, OutputManagerStorageError>;
+    fn save_last_scanned_height(
+        &self,
+        scanned_block: crate::utxo_scanner_service::service::ScannedBlock,
+    ) -> Result<(), OutputManagerStorageError>;
     /// Reinstate a cancelled inbound output
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance
