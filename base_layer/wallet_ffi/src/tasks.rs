@@ -23,9 +23,9 @@
 use std::ffi::c_void;
 
 use log::*;
-use minotari_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
+use minotari_wallet::utxo_scanner_service::handle::UtxoScannerEvent;
 use tari_utilities::hex::Hex;
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::sync::broadcast;
 
 use crate::callback_handler::Context;
 
@@ -45,7 +45,6 @@ enum RecoveryEvent {
 #[allow(clippy::too_many_lines)]
 pub async fn recovery_event_monitoring(
     mut event_stream: broadcast::Receiver<UtxoScannerEvent>,
-    recovery_join_handle: JoinHandle<Result<(), WalletError>>,
     recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
     context: Context,
 ) {
@@ -157,22 +156,5 @@ pub async fn recovery_event_monitoring(
                 warn!(target: LOG_TARGET, "{}", e);
             },
         }
-    }
-
-    let recovery_result = recovery_join_handle.await;
-    match recovery_result {
-        Ok(Ok(_)) => {},
-        Ok(Err(e)) => {
-            unsafe {
-                (recovery_progress_callback)(context.0, RecoveryEvent::RecoveryFailed as u8, 0u64, 1u64);
-            }
-            error!(target: LOG_TARGET, "Recovery error: {:?}", e);
-        },
-        Err(e) => {
-            unsafe {
-                (recovery_progress_callback)(context.0, RecoveryEvent::RecoveryFailed as u8, 1u64, 0u64);
-            }
-            error!(target: LOG_TARGET, "Recovery error: {}", e);
-        },
     }
 }

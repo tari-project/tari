@@ -63,8 +63,6 @@ impl Debug for UtxoScannerMode {
 pub struct UtxoScannerServiceBuilder<TWalletClientFactory> {
     retry_limit: usize,
     mode: Option<UtxoScannerMode>,
-    one_sided_message: String,
-    recovery_message: String,
     client_factory: Option<TWalletClientFactory>,
     scanning_interval: u64,
 }
@@ -74,8 +72,6 @@ impl<T> Default for UtxoScannerServiceBuilder<T> {
         Self {
             retry_limit: 0,
             mode: None,
-            one_sided_message: "Detected one-sided payment on blockchain".to_string(),
-            recovery_message: "Output found on blockchain during Wallet Recovery".to_string(),
             client_factory: None,
             scanning_interval: 60, // Default scanning interval in seconds
         }
@@ -92,16 +88,6 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
 
     pub fn with_mode(&mut self, mode: UtxoScannerMode) -> &mut Self {
         self.mode = Some(mode);
-        self
-    }
-
-    pub fn with_one_sided_message(&mut self, message: String) -> &mut Self {
-        self.one_sided_message = message;
-        self
-    }
-
-    pub fn with_recovery_message(&mut self, message: String) -> &mut Self {
-        self.recovery_message = message;
         self
     }
 

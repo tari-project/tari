@@ -81,7 +81,6 @@ use log4rs::{
 };
 use minotari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
-    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     connectivity_service::WalletConnectivityInterface,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -95,7 +94,6 @@ use minotari_wallet::{
     },
     storage::{
         database::WalletDatabase,
-        sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{get_last_network, get_last_version, initialize_sqlite_database_backends},
     },
     transaction_service::{
@@ -106,11 +104,10 @@ use minotari_wallet::{
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
-    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
+    utxo_scanner_service::RECOVERY_KEY,
     wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
     Wallet,
     WalletConfig,
-    WalletKeyManager,
     WalletSqlite,
 };
 use num_traits::FromPrimitive;
@@ -192,7 +189,6 @@ use tari_utilities::{
     SafePassword,
 };
 use tokio::runtime::Runtime;
-use url::Url;
 use zeroize::Zeroize;
 
 use crate::{
@@ -281,7 +277,7 @@ pub struct TariSeedWords(SeedWords);
 pub struct TariPublicKeys(Vec<TariPublicKey>);
 
 pub struct TariWallet {
-    wallet: WalletSqlite,
+    pub wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
     context: Context,
@@ -10064,7 +10060,6 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer.
-/// `base_node_public_keys` - An optional TariPublicKeys pointer of the Base Nodes the recovery process must use
 /// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
 /// progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
 /// ```
@@ -10102,9 +10097,6 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
 ///       a new process.
 ///
-/// `recovered_output_message` - A string that will be used as the message for any recovered outputs. If Null the
-/// default     message will be used
-///
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -10118,9 +10110,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 #[no_mangle]
 pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
-    http_base_node: *const c_char,
     recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
-    recovered_output_message: *const c_char,
     error_out: *mut c_int,
 ) -> bool {
     if error_out.is_null() {
@@ -10133,68 +10123,11 @@ pub unsafe extern "C" fn wallet_start_recovery(
         return false;
     }
 
-    let runtime = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            *error_out = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            return false;
-        },
-    };
-    let shutdown_signal = (*wallet).shutdown.to_signal();
-    let mut recovery_task_builder =
-        UtxoScannerService::<WalletSqliteDatabase, WalletKeyManager, DefaultHttpClientFactory>::builder();
-
-    if !recovered_output_message.is_null() {
-        let message_str = match CStr::from_ptr(recovered_output_message).to_str() {
-            Ok(v) => v.to_owned(),
-            _ => {
-                *error_out =
-                    LibWalletError::from(InterfaceError::PointerError("recovered_output_message".to_string())).code;
-                return false;
-            },
-        };
-        recovery_task_builder.with_recovery_message(message_str);
-    }
-    let http_url = if http_base_node.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("http_base_node".to_string())).code;
-        return false;
-    } else {
-        match CStr::from_ptr(http_base_node).to_str() {
-            Ok(v) => match Url::parse(v) {
-                Ok(url) => url,
-                Err(e) => {
-                    *error_out =
-                        LibWalletError::from(InterfaceError::InvalidArgument(format!("Url is not valid: {}", e))).code;
-                    return false;
-                },
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("http_base_node".to_string())).code;
-                return false;
-            },
-        }
-    };
-    let mut recovery_task = match runtime.block_on(async {
-        recovery_task_builder
-            .with_client_factory(DefaultHttpClientFactory::new(http_url))
-            .with_retry_limit(10)
-            .build_with_wallet(&(*wallet).wallet, shutdown_signal)
-            .await
-    }) {
-        Ok(v) => v,
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::ServiceInitializationError(e)).code;
-            return false;
-        },
-    };
-
-    let event_stream = recovery_task.get_event_receiver();
-    let recovery_join_handle = (*wallet).runtime.spawn(recovery_task.run());
+    let event_stream = (*wallet).wallet.utxo_scanner_service.clone().get_event_receiver();
 
     // Spawn a task to monitor the recovery process events and call the callback appropriately
     (*wallet).runtime.spawn(recovery_event_monitoring(
         event_stream,
-        recovery_join_handle,
         recovery_progress_callback,
         (*wallet).context,
     ));
