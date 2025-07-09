@@ -22,7 +22,8 @@
 
 use std::{cmp, collections::HashSet, convert::TryInto, time::Duration};
 
-use futures::{future, StreamExt};
+use futures::StreamExt;
+use futures_util::stream::FuturesUnordered;
 use log::*;
 use rand::prelude::SliceRandom;
 use tari_comms::{
@@ -161,85 +162,90 @@ impl SeedStrap {
         let mut seed_peers = seed_peers_available.clone();
         seed_peers.shuffle(&mut rand::thread_rng());
         let mut seed_peers_iter = seed_peers.iter();
-        let mut permitted_concurrent = num_seeds_to_try;
-        let mut remaining_seed_peers = seed_peers.len();
 
-        let mut exit_loop = false;
         let max_peers_to_sync_per_round = self.config().network_discovery.max_peers_to_sync_per_round;
         let max_permitted_peer_claims = self.config().max_permitted_peer_claims;
         let max_permitted_peer_addresses_per_claim = self
             .config()
             .peer_validator_config
             .max_permitted_peer_addresses_per_claim;
-        while !exit_loop && permitted_concurrent > 0 {
-            // Select the permitted concurrent number of seed peers to try
-            let candidates: Vec<Peer> = seed_peers_iter.by_ref().take(permitted_concurrent).cloned().collect();
-            let num_seeds_this_round = candidates.len();
-            round_info.sync_peers = candidates.iter().map(|p| p.node_id.clone()).collect();
-            if candidates.is_empty() {
-                debug!(target: LOG_TARGET, "SeedStrap: No more seed peer candidates available to try.");
-                break;
-            } else {
-                debug!(
-                    target: LOG_TARGET,
-                    "SeedStrap: Preparing to sync from up to {} seed peers. Selected peer IDs for this round: {:?}",
+
+        // Select the permitted concurrent number of seed peers to try
+        let candidates: Vec<Peer> = seed_peers_iter.by_ref().take(num_seeds_to_try).cloned().collect();
+        let num_seeds_this_round = candidates.len();
+        round_info.sync_peers = candidates.iter().map(|p| p.node_id.clone()).collect();
+        debug!(
+            target: LOG_TARGET,
+            "SeedStrap: Preparing to sync from up to {} seed peers. Selected peer IDs for this round: {:?}",
+            num_seeds_this_round,
+            round_info.sync_peers,
+        );
+
+        // Get peers from seeds concurrently
+        let mut task_stream = FuturesUnordered::new();
+        for (idx, seed_peer_candidate) in candidates.into_iter().enumerate() {
+            attempted_seed_contacts += 1;
+            let seed_node_ids_set_clone = seed_node_ids_set.clone();
+            let context_clone = self.context.clone();
+            let handle = tokio::task::spawn(async move {
+                get_peers(
+                    context_clone,
+                    seed_peer_candidate,
                     num_seeds_this_round,
-                    round_info.sync_peers,
-                );
-            }
-            remaining_seed_peers = remaining_seed_peers.saturating_sub(candidates.len());
+                    idx,
+                    &seed_node_ids_set_clone,
+                    max_peers_to_sync_per_round,
+                    max_permitted_peer_claims,
+                    max_permitted_peer_addresses_per_claim,
+                )
+                .await
+            });
+            task_stream.push(handle);
+        }
 
-            // Get peers from seeds concurrently
-            let mut join_handles = Vec::new();
-            for (idx, seed_peer_candidate) in candidates.into_iter().enumerate() {
-                attempted_seed_contacts += 1;
+        while let Some(result) = task_stream.next().await {
+            let (peers_from_seed, new_peers_this_seed, duplicates_this_seed, spawn_another_task) = match result {
+                Ok((peers, n_new, n_dup)) => (peers, n_new, n_dup, false),
+                Err(e) => {
+                    debug!(target: LOG_TARGET, "SeedStrap: get_peers task unsuccessful, starting a new one: {}", e);
+                    (Vec::new(), 0, 0, true)
+                },
+            };
 
-                let seed_node_ids_set_clone = seed_node_ids_set.clone();
-                let context_clone = self.context.clone();
-
-                let handle = tokio::task::spawn(async move {
-                    get_peers(
-                        context_clone,
-                        seed_peer_candidate,
-                        num_seeds_this_round,
-                        idx,
-                        &seed_node_ids_set_clone,
-                        max_peers_to_sync_per_round,
-                        max_permitted_peer_claims,
-                        max_permitted_peer_addresses_per_claim,
-                    )
-                    .await
-                });
-
-                join_handles.push(handle);
-            }
-            let results = future::join_all(join_handles).await;
-
-            permitted_concurrent = 0;
-            for result in results {
-                let Ok((peers_from_seed, new_peers_this_seed, duplicates_this_seed)) = result else {
-                    warn!(target: LOG_TARGET, "SeedStrap: get_peers task panicked or was cancelled");
-                    permitted_concurrent += 1;
-                    continue;
-                };
-
-                // This seed successfully provided peers
-                if peers_from_seed.is_empty() {
-                    permitted_concurrent += 1;
-                } else {
-                    round_info.num_succeeded += 1;
-                    successful_seed_contacts += 1;
+            if spawn_another_task || peers_from_seed.is_empty() {
+                // Add a new task to the stream if the previous one failed
+                if let Some(seed_peer_candidate) = seed_peers_iter.next().cloned() {
+                    attempted_seed_contacts += 1;
+                    let seed_node_ids_set_clone = seed_node_ids_set.clone();
+                    let context_clone = self.context.clone();
+                    let handle = tokio::task::spawn(async move {
+                        get_peers(
+                            context_clone,
+                            seed_peer_candidate,
+                            num_seeds_this_round,
+                            1,
+                            &seed_node_ids_set_clone,
+                            max_peers_to_sync_per_round,
+                            max_permitted_peer_claims,
+                            max_permitted_peer_addresses_per_claim,
+                        )
+                        .await
+                    });
+                    task_stream.push(handle);
                 }
-
-                total_peers_added_this_round += new_peers_this_seed;
-                total_duplicates_this_round += duplicates_this_seed;
+                continue;
+            } else {
+                // This seed successfully provided peers
+                round_info.num_succeeded += 1;
+                successful_seed_contacts += 1;
             }
+
+            total_peers_added_this_round += new_peers_this_seed;
+            total_duplicates_this_round += duplicates_this_seed;
 
             // Exit condition
-            if remaining_seed_peers == 0 ||
-                self.early_exit_conditions_met(total_peers_added_this_round, successful_seed_contacts)
-            {
-                exit_loop = true;
+            if self.early_exit_conditions_met(total_peers_added_this_round, successful_seed_contacts) {
+                break;
             }
         }
 
@@ -404,8 +410,8 @@ async fn get_peers(
 
         debug!(
             target: LOG_TARGET,
-            "SeedStrap: Connected to seed peer '{}'. Requesting peer list.",
-            seed_peer_node_id_str
+            "SeedStrap: Connected to seed peer '{}'. Requesting peer list. Try {} of {}.",
+            seed_peer_node_id_str, attempt, NUM_RETRIES,
         );
 
         match fetch_peers_from_connection(
@@ -420,8 +426,8 @@ async fn get_peers(
                 if peers.is_empty() && !conn.is_connected() && attempt < NUM_RETRIES {
                     debug!(
                         target: LOG_TARGET,
-                        "SeedStrap: Connection to seed peer '{}' lost. Retry {} of {}.",
-                        seed_peer_node_id_str, attempt, NUM_RETRIES,
+                        "SeedStrap: Connection to seed peer '{}' lost on try {}. Will retry.",
+                        seed_peer_node_id_str, attempt,
                     );
                     continue;
                 }
