@@ -4411,7 +4411,6 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer.
- * `base_node_public_keys` - An optional TariPublicKeys pointer of the Base Nodes the recovery process must use
  * `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
  * progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
  * ```
@@ -4449,9 +4448,6 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
  *       a new process.
  *
- * `recovered_output_message` - A string that will be used as the message for any recovered outputs. If Null the
- * default     message will be used
- *
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -4464,12 +4460,10 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  * None
  */
 bool wallet_start_recovery(struct TariWallet *wallet,
-                           const char *http_base_node,
                            void (*recovery_progress_callback)(void *context,
                                                               uint8_t,
                                                               uint64_t,
                                                               uint64_t),
-                           const char *recovered_output_message,
                            int *error_out);
 
 /**

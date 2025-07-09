@@ -10768,7 +10768,10 @@ mod test {
     use std::{ffi::c_void, str::from_utf8, sync::Mutex};
 
     use minotari_wallet::{
-        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+        storage::{
+            sqlite_db::wallet::WalletSqliteDatabase,
+            sqlite_utilities::run_migration_and_create_sqlite_connection,
+        },
         transaction_service::handle::TransactionSendStatus,
     };
     use once_cell::sync::Lazy;
@@ -11532,7 +11535,7 @@ mod test {
                 OutputType::from_byte(output_type as u8).unwrap()
             );
             assert_eq!((*output_features).maturity, maturity);
-            assert!((*output_features).coinbase_extra.is_empty());
+            assert!((&(*output_features).coinbase_extra).is_empty());
 
             output_features_destroy(output_features);
             byte_vector_destroy(metadata);

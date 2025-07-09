@@ -360,7 +360,6 @@ uint64_t wallet_start_txo_validation(
 ```c
 bool wallet_start_recovery(
     TariWallet* wallet,
-    TariPublicKey* base_node_public_key,
     void (*callback_recovery_progress)(uint8_t, uint64_t, uint64_t),
     int* error_out
 );
