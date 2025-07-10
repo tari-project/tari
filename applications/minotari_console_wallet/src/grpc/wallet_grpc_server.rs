@@ -122,14 +122,13 @@ use minotari_wallet::{
     },
     WalletSqlite,
 };
+use rand::rngs::OsRng;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_crypto::hash_domain;
-use rand::rngs::OsRng;
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
@@ -144,6 +143,7 @@ use tari_core::{
         transaction_protocol::recipient::RecipientState,
     },
 };
+use tari_crypto::hash_domain;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
@@ -2132,15 +2132,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
 
         let secret = self.wallet.comms.node_identity().secret_key().clone();
-        let message_str = String::from_utf8(message.message)
-            .map_err(|_| Status::invalid_argument("Message must be valid UTF-8"))?;
+        let message_str =
+            String::from_utf8(message.message).map_err(|_| Status::invalid_argument("Message must be valid UTF-8"))?;
 
-        let signature = SignatureWithDomain::<WalletMessageSigningDomain>::sign(
-            &secret,
-            message_str.as_bytes(),
-            &mut OsRng,
-        )
-        .map_err(|e| Status::internal(format!("Failed to sign message: {}", e)))?;
+        let signature =
+            SignatureWithDomain::<WalletMessageSigningDomain>::sign(&secret, message_str.as_bytes(), &mut OsRng)
+                .map_err(|e| Status::internal(format!("Failed to sign message: {}", e)))?;
 
         let hex_sig = signature.get_signature().to_hex();
         let hex_nonce = signature.get_public_nonce().to_hex();
