@@ -20,51 +20,19 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ptr::null, time::Duration};
+use std::{convert::TryFrom, time::Duration};
 
-use cucumber::{given, then, when};
+use cucumber::{then, when};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::transactions::transaction_components::payment_id::{PaymentId, TxType};
 use tari_integration_tests::{
-    wallet_ffi::{create_contact, create_seed_words, get_mnemonic_word_list_for_language, spawn_wallet_ffi},
+    wallet_ffi::{create_contact, get_mnemonic_word_list_for_language},
     TariWorld,
 };
 use tari_utilities::hex::Hex;
 
-use crate::steps::{cucumber_steps_log, get_saved_seed_words};
-
-#[when(expr = "I have a ffi wallet {word} connected to base node {word}")]
-#[then(expr = "I have a ffi wallet {word} connected to base node {word}")]
-#[given(expr = "I have a ffi wallet {word} connected to base node {word}")]
-async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
-    spawn_wallet_ffi(world, wallet.clone(), null());
-    let base_node = world.get_node(&base_node).unwrap();
-    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
-}
-
-#[given(expr = "I have a ffi wallet {word} connected to seed node {word}")]
-async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
-    spawn_wallet_ffi(world, wallet.clone(), null());
-    assert!(world.all_seed_nodes().contains(&seed_node), "Seed node not found.");
-    let seed_node = world.get_node(&seed_node).unwrap();
-    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
-        seed_node.identity.public_key().to_hex(),
-        seed_node.identity.first_public_address().unwrap().to_string(),
-    );
-}
-
-#[given(expr = "I set base node {word} for ffi wallet {word}")]
-async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
-    let base_node = world.get_node(&base_node).unwrap();
-    world.get_ffi_wallet(&wallet).unwrap().add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
-}
+use crate::steps::cucumber_steps_log;
 
 #[then(expr = "I want to get public key of ffi wallet {word}")]
 async fn ffi_get_public_key(world: &mut TariWorld, wallet: String) {
@@ -589,35 +557,6 @@ async fn ffi_wait_for_received_mined(world: &mut TariWorld, wallet: String, coun
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     assert!(found_cnt >= count);
-}
-
-#[then(expr = "I recover wallet {word} into ffi wallet {word} from seed words on node {word}")]
-async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wallet_name: String, base_node: String) {
-    let saved_seed_words = get_saved_seed_words(world, &wallet_name);
-    let saved_seed_words = saved_seed_words.iter().map(|word| word.as_str()).collect();
-    let seed_words = create_seed_words(saved_seed_words);
-
-    spawn_wallet_ffi(world, ffi_wallet_name.clone(), seed_words.get_ptr());
-
-    let base_node = world.get_node(&base_node).unwrap();
-    world.get_ffi_wallet(&ffi_wallet_name).unwrap().add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
-}
-
-#[then(expr = "I restart ffi wallet {word} connected to base node {word}")]
-async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: String) {
-    {
-        let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
-        ffi_wallet.restart(ffi_wallet.port);
-    }
-    let base_node = world.get_node(&base_node).unwrap();
-    let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    ffi_wallet.add_base_node(
-        base_node.identity.public_key().to_hex(),
-        base_node.identity.first_public_address().unwrap().to_string(),
-    );
 }
 
 #[then(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]
