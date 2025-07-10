@@ -993,6 +993,52 @@ service Wallet {
   // Creates a transaction with a template registration output
   rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
   
+  // Signs a message using the wallet's node identity private key.
+  //
+  // The `SignMessage` call creates a Schnorr signature over a message using the wallet's node identity private key.
+  // This signature can be used to prove ownership of the wallet or authenticate messages.
+  // The signature is returned as separate components (signature and public nonce) for verification.
+  //
+  // ### Request Parameters:
+  //
+  // - `message` (required):
+  //   - **Type**: `bytes`
+  //   - **Description**: The message to be signed (arbitrary bytes).
+  //   - **Restrictions**: Can be any byte sequence.
+  //
+  // ### Response Fields:
+  //
+  // - **signature**: The Schnorr signature as hex-encoded bytes.
+  // - **public_nonce**: The public nonce component of the signature as hex-encoded bytes.
+  //
+  // ### Example JavaScript gRPC client usage:
+  //
+  // ```javascript
+  // const request = {
+  //   message: Buffer.from("Hello Tari!", "utf-8")
+  // };
+  // client.signMessage(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Signature:", response.signature, "Nonce:", response.public_nonce);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  //
+  // ```json
+  // {
+  //   "signature": "a1b2c3d4e5f6...",
+  //   "public_nonce": "f6e5d4c3b2a1..."
+  // }
+  // ```
+  //
+  // ### Security Notes:
+  //
+  // - This signs with the wallet's node identity private key.
+  // - The signature can be verified using the wallet's public key.
+  // - Use this for authentication and ownership proofs only.
+  rpc SignMessage (SignMessageRequest) returns (SignMessageResponse);
+
   // Streams real-time wallet transaction events to the client.
   //
   // The `StreamTransactionEvents` RPC provides a continuous stream of transaction events as they occur within the wallet.
@@ -1645,4 +1691,18 @@ message FeePerGramStat {
   uint64 min_fee_per_gram = 2;
   // The maximum fee per gram observed in the recent blocks.
   uint64 max_fee_per_gram = 3;
+}
+
+// Request message for SignMessage RPC
+message SignMessageRequest {
+  // The message to be signed (arbitrary bytes)
+  bytes message = 1;
+}
+
+// Response message for SignMessage RPC
+message SignMessageResponse {
+  // The Schnorr signature as hex-encoded string
+  string signature = 1;
+  // The public nonce component as hex-encoded string
+  string public_nonce = 2;
 }
