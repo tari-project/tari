@@ -206,7 +206,7 @@ pub enum TransactionServiceError {
     FileReadError { file_path: PathBuf, err: io::Error },
     #[error("Failed to write to file {file_path} - {err}.")]
     FileWriteError { file_path: PathBuf, err: io::Error },
-    #[error("Transaction with id {0} already completed")]
+    #[error("Transaction with id {0} has been already mined")]
     TransactionAlreadyMined(String),
     #[error("Transaction inputs were invalid")]
     InvalidTransactionInputs,
