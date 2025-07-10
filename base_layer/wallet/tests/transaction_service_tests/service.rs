@@ -278,11 +278,13 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         .add_initializer(BaseNodeServiceInitializer::<MockHttpClientFactory>::new())
         .add_initializer(WalletConnectivityInitializer::<MockHttpClientFactory>::new(
             "http://localhost:9001".parse().unwrap(),
+            "http://localhost:9001".parse().unwrap(),
         ))
         .add_initializer(UtxoScannerServiceInitializer::<_, MemoryDbKeyManager>::new(
             db,
             Network::LocalNet,
             14,
+            http_node_url.clone(),
             http_node_url,
             1,
         ))

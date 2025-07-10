@@ -47,6 +47,8 @@ pub enum UtxoScannerEvent {
     Progress {
         current_height: u64,
         tip_height: u64,
+        latency: Duration,
+        current_node: String,
     },
     /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
     Completed {
@@ -54,6 +56,8 @@ pub enum UtxoScannerEvent {
         num_recovered: u64,
         value_recovered: MicroMinotari,
         time_taken: Duration,
+        latency: Duration,
+        current_node: String,
     },
     /// Scanning process has failed and scanning process has exited
     ScanningFailed,

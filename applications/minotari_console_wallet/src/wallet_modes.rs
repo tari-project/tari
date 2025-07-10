@@ -331,7 +331,7 @@ pub fn recovery_mode(
         const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
         println!("{}", CUCUMBER_TEST_MARKER_A);
 
-        let url = Url::parse(wallet_config.http_client_url.as_ref())
+        let url = Url::parse(wallet_config.http_server_url.as_ref())
             .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid HTTP client URL: {}", e)))?;
         match handle.block_on(wallet_recovery(&wallet, wallet_config.recovery_retry_limit)) {
             Ok(_) => println!("Wallet recovered!"),

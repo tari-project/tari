@@ -74,6 +74,8 @@ struct SyncResult {
     scanned_blocks: u64,
     value_recovered: MicroMinotari,
     elapsed: Duration,
+    latency: Duration,
+    node: String,
 }
 
 pub struct UtxoScannerTask<
@@ -106,17 +108,9 @@ where
                 return Ok(());
             }
             match self.attempt_sync().await {
-                Ok(SyncResult {
-                    final_height,
-                    num_recovered,
-                    scanned_blocks,
-                    value_recovered,
-                    elapsed,
-                }) => {
-                    debug!(target: LOG_TARGET, "Scanned to height #{}", final_height);
-                    self.finalize(num_recovered, value_recovered, final_height, elapsed)
-                        .await?;
-                    if scanned_blocks > SAFETY_HEIGHT_MARGIN {
+                Ok(sync_result) => {
+                    debug!(target: LOG_TARGET, "Scanned to height #{}", sync_result.final_height);
+                    if sync_result.scanned_blocks > SAFETY_HEIGHT_MARGIN {
                         // if the TMS validates the transactions before the OMS does, it can invalidate some
                         // transactions, so we need to reset them to ensure we can revalidate them
                         let _result = self
@@ -125,6 +119,8 @@ where
                             .revalidate_rejected_transactions()
                             .await;
                     }
+                    self.finalize(sync_result).await?;
+
                     return Ok(());
                 },
                 Err(e) => {
@@ -145,27 +141,33 @@ where
         }
     }
 
-    async fn finalize(
-        &mut self,
-        num_recovered: u64,
-        value_recovered: MicroMinotari,
-        final_height: u64,
-        elapsed: Duration,
-    ) -> Result<(), anyhow::Error> {
+    async fn finalize(&mut self, sync_result: SyncResult) -> Result<(), anyhow::Error> {
         // this is a best effort, if this fails, its very likely that it's already busy with a validation. We have
         // updated the scanned, so we need to update txns
         let _result = self.resources.output_manager_service.validate_txos().await;
         let _result = self.resources.transaction_service.validate_transactions().await;
-
+        let SyncResult {
+            final_height,
+            num_recovered,
+            value_recovered,
+            elapsed,
+            latency,
+            node: current_node,
+            scanned_blocks: _,
+        } = sync_result;
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,
             tip_height: final_height,
+            current_node: current_node.clone(),
+            latency,
         });
         self.publish_event(UtxoScannerEvent::Completed {
             final_height,
             num_recovered,
             value_recovered,
             time_taken: elapsed,
+            latency,
+            current_node,
         });
         debug!(
             target: LOG_TARGET,
@@ -253,12 +255,19 @@ where
                         last_scanned_block.height,
                         timer.elapsed()
                     );
+                    let latency = wallet_service_client
+                        .get_last_request_latency()
+                        .await
+                        .unwrap_or_default();
+                    let node = wallet_service_client.get_address();
                     return Ok(SyncResult {
                         final_height: last_scanned_block.height,
                         num_recovered: total_num_recovered,
                         value_recovered: total_value_recovered,
                         scanned_blocks,
                         elapsed: timer.elapsed(),
+                        latency,
+                        node,
                     });
                 }
             }
@@ -500,9 +509,14 @@ where
                                 target: LOG_TARGET,
                                 "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
                             );
+
+                            let latency = client.get_last_request_latency().await.unwrap_or_default();
+                            let node = client.get_address();
                             self.publish_event(UtxoScannerEvent::Progress {
                                 current_height,
                                 tip_height,
+                                current_node: node,
+                                latency,
                             });
                         }
                     }

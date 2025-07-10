@@ -261,16 +261,22 @@ where
             .add_initializer(BaseNodeServiceInitializer::<THttpClientFactory>::new())
             .add_initializer(WalletConnectivityInitializer::<DefaultHttpClientFactory>::new(
                 config
-                    .http_client_url
+                    .http_server_url
                     .parse()
-                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{}", e)))?,
+                config
+                    .fallback_http_server_url
+                    .parse()
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{}", e)))?,
             ))
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
                 config.network,
                 config.birthday_offset,
-                Url::parse(&config.http_client_url)
-                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("URL is invalid:{}", e)))?,
+                Url::parse(&config.http_server_url)
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{}", e)))?,
+                Url::parse(&config.fallback_http_server_url)
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{}", e)))?,
                 config.scanning_interval,
             ));
 

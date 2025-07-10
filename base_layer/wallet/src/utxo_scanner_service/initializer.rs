@@ -51,6 +51,7 @@ pub struct UtxoScannerServiceInitializer<T, TKeyManagerInterface> {
     network: Network,
     birthday_offset: u16,
     http_node_url: Url,
+    http_fallback_url: Url,
     scanning_interval: u64,
     phantom: PhantomData<TKeyManagerInterface>,
 }
@@ -63,6 +64,7 @@ where T: WalletBackend + 'static
         network: Network,
         birthday_offset: u16,
         http_node_url: Url,
+        http_fallback_url: Url,
         scanning_interval: u64,
     ) -> Self {
         Self {
@@ -71,6 +73,7 @@ where T: WalletBackend + 'static
             phantom: PhantomData,
             birthday_offset,
             http_node_url,
+            http_fallback_url,
             scanning_interval,
         }
     }
@@ -102,6 +105,7 @@ where
         let network = self.network;
         let birthday_offset = self.birthday_offset;
         let node_url = self.http_node_url.clone();
+        let fallback_http_server_url = self.http_fallback_url.clone();
         let scanning_interval = self.scanning_interval;
 
         context.spawn_when_ready(move |handles| async move {
@@ -127,7 +131,7 @@ where
             .expect("Could not create one-sided Tari address");
 
             let scanning_service = UtxoScannerService::<T, TKeyManagerInterface, _>::builder()
-                .with_client_factory(DefaultHttpClientFactory::new(node_url))
+                .with_client_factory(DefaultHttpClientFactory::new(node_url, fallback_http_server_url))
                 .with_retry_limit(2)
                 .with_mode(UtxoScannerMode::Scanning)
                 .with_scanning_interval(scanning_interval)

@@ -46,9 +46,39 @@ impl<B: Backend> Component<B> for BaseNode {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let title = Spans::from(vec![Span::styled(
-            " Base Node Status  -  ",
+            " Base Node Status  -     ",
             Style::default().fg(Color::White),
         )]);
+
+        let scanned_height = app_state.get_wallet_scanned_height();
+        let tip_height = app_state.get_wallet_tip_height();
+        let mut chain_info = vec![
+            Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
+            Span::raw(" "),
+            Span::styled(
+                format!("#{}({})", tip_height, scanned_height),
+                Style::default().fg(Color::Green),
+            ),
+            Span::raw("   "),
+        ];
+
+        let latency = app_state.get_base_node_latency().unwrap_or_default().as_millis();
+        let latency_color = match latency {
+            0 => Color::Gray, // offline? default duration is 0
+            1..=800 => Color::Green,
+            801..=1200 => Color::Yellow,
+            _ => Color::Red,
+        };
+
+        let mut latency_span = vec![
+            Span::styled("Latency", Style::default().fg(Color::White)),
+            Span::raw(" "),
+            Span::styled(latency.to_string(), Style::default().fg(latency_color)),
+            Span::styled(" ms", Style::default().fg(Color::DarkGray)),
+        ];
+        chain_info.append(&mut latency_span);
+
+        let chain_info = Spans::from(chain_info);
 
         let base_node_id = Spans::from(vec![
             Span::styled(" Connected Base Node ID: ", Style::default().fg(Color::Magenta)),
@@ -77,6 +107,9 @@ impl<B: Backend> Component<B> for BaseNode {
 
         let paragraph = Paragraph::new(title).block(Block::default());
         f.render_widget(paragraph, columns[0]);
+        let paragraph = Paragraph::new(chain_info).block(Block::default());
+        f.render_widget(paragraph, columns[1]);
+
         let paragraph = Paragraph::new(base_node_id).block(Block::default());
         f.render_widget(paragraph, columns[2]);
 

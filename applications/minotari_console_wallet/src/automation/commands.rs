@@ -2175,8 +2175,15 @@ pub async fn command_runner(
                             UtxoScannerEvent::Progress {
                                 current_height,
                                 tip_height,
+                                latency,
+                                ..
                             } => {
-                                println!("Progress: {}/{}", current_height, tip_height);
+                                println!(
+                                    "Progress: {}/{} (Latency: {}ms)",
+                                    current_height,
+                                    tip_height,
+                                    latency.as_millis()
+                                );
                                 if current_height >= args.sync_to_height && args.sync_to_height > 0 {
                                     break;
                                 }

@@ -40,7 +40,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
         shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, Error>>, Error>;
 
-    fn get_last_request_latency(&self) -> Option<std::time::Duration>;
+    async fn get_last_request_latency(&self) -> Option<std::time::Duration>;
 
     async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, Error>;
 

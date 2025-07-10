@@ -7062,7 +7062,7 @@ pub unsafe extern "C" fn wallet_create(
         },
         base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
-        http_client_url: http_base_node,
+        http_server_url: http_base_node,
         ..Default::default()
     };
 

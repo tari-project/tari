@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use log::*;
 use minotari_wallet::{
@@ -180,15 +180,19 @@ impl WalletEventMonitor {
                         Ok(event) => {
                             match event {
                                 UtxoScannerEvent::Progress {
-                                    current_height,..
+                                    current_height,tip_height, latency, current_node
                                 }=> {
-                                    self.trigger_wallet_scanned_height_update(current_height).await;
+                                    self.trigger_wallet_scanned_height_update(current_height, tip_height).await;
+                                self.trigger_wallet_latency_node_update(latency, current_node).await;
                                 }
                                 UtxoScannerEvent::Completed {
                                     final_height,
+                                latency, current_node,
                                     ..
                                 }=> {
-                                    self.trigger_wallet_scanned_height_update(final_height).await;
+                                    self.trigger_wallet_scanned_height_update(final_height,final_height).await;
+
+                                self.trigger_wallet_latency_node_update(latency, current_node).await;
                                     if self.should_we_trigger_tx_update_for_payref().await{
                                         self.trigger_full_tx_state_refresh().await;
                                     }
@@ -293,10 +297,18 @@ impl WalletEventMonitor {
         }
     }
 
-    async fn trigger_wallet_scanned_height_update(&mut self, height: u64) {
+    async fn trigger_wallet_scanned_height_update(&mut self, height: u64, tip_height: u64) {
         let mut inner = self.app_state_inner.write().await;
 
-        if let Err(e) = inner.trigger_wallet_scanned_height_update(height).await {
+        if let Err(e) = inner.trigger_wallet_scanned_height_update(height, tip_height).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_wallet_latency_node_update(&mut self, latency: Duration, name: String) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.trigger_wallet_latency_node_update(latency, name).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

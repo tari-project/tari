@@ -62,6 +62,7 @@ impl WalletDebouncer {
         transaction_service: TransactionServiceHandle,
         utxo_scanner_handle: UtxoScannerHandle,
         shutdown_signal: ShutdownSignal,
+        scanned_height: u64,
     ) -> Self {
         Self {
             balance: Arc::new(Mutex::new(Balance {
@@ -71,7 +72,7 @@ impl WalletDebouncer {
                 time_locked_balance: None,
             })),
             refresh_needed: Arc::new(Mutex::new(true)),
-            scanned_height: Arc::new(Mutex::new(0)),
+            scanned_height: Arc::new(Mutex::new(scanned_height)),
             output_manager_service,
             transaction_service,
             utxo_scanner_handle,

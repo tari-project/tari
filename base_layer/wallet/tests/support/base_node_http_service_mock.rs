@@ -104,7 +104,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         todo!()
     }
 
-    fn get_last_request_latency(&self) -> Option<Duration> {
+    async fn get_last_request_latency(&self) -> Option<Duration> {
         todo!()
     }
 
@@ -291,7 +291,7 @@ impl Default for MockHttpClientFactory {
 impl HttpClientFactory for MockHttpClientFactory {
     type Client = HttpBaseNodeMock;
 
-    fn new(_node_url: Url) -> Self {
+    fn new(_node_url: Url, _seed_url: Url) -> Self {
         Self::default()
     }
 

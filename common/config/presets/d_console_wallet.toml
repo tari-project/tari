@@ -102,6 +102,10 @@
 #birthday_offset = 2
 #The scanning interval in secs to poll the base node for new blocks
 #scanning_interval = 60
+# The URL of the HTTP client to use for base node service requests
+#http_server_url="http://127.0.0.1:9000"
+# The fallback url address to use if the base node at http_server_url does not respond
+#fallback_http_server_url = "https://rpc.esmeralda.tari.com"
 
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)

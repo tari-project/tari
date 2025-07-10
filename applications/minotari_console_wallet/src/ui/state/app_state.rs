@@ -389,7 +389,19 @@ impl AppState {
     }
 
     pub fn get_http_node_url(&self) -> String {
-        self.wallet_config.http_client_url.clone()
+        self.cached_data.wallet_current_connected_node.clone()
+    }
+
+    pub fn get_wallet_scanned_height(&self) -> u64 {
+        self.cached_data.wallet_scanned_height
+    }
+
+    pub fn get_base_node_latency(&self) -> Option<Duration> {
+        self.cached_data.base_node_latency
+    }
+
+    pub fn get_wallet_tip_height(&self) -> u64 {
+        self.cached_data.wallet_tip_height
     }
 
     pub fn get_identity(&self) -> &MyIdentity {
@@ -534,8 +546,15 @@ pub struct AppStateInner {
 
 impl AppStateInner {
     pub fn new(wallet_identity: &WalletIdentity, wallet: WalletSqlite) -> Self {
-        let data = AppStateData::new(wallet_identity);
+        let mut data = AppStateData::new(wallet_identity);
+        let last_scanned_height = wallet
+            .db
+            .get_last_scanned_height()
+            .unwrap_or_default()
+            .unwrap_or_default();
 
+        data.wallet_tip_height = last_scanned_height;
+        data.wallet_scanned_height = last_scanned_height;
         AppStateInner {
             updated: false,
             data,
@@ -931,8 +950,16 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn trigger_wallet_scanned_height_update(&mut self, height: u64) -> Result<(), UiError> {
+    pub async fn trigger_wallet_scanned_height_update(&mut self, height: u64, tip_height: u64) -> Result<(), UiError> {
         self.data.wallet_scanned_height = height;
+        self.data.wallet_tip_height = tip_height;
+        self.updated = true;
+        Ok(())
+    }
+
+    pub async fn trigger_wallet_latency_node_update(&mut self, latency: Duration, name: String) -> Result<(), UiError> {
+        self.data.base_node_latency = Some(latency);
+        self.data.wallet_current_connected_node = name;
         self.updated = true;
         Ok(())
     }
@@ -1084,6 +1111,9 @@ struct AppStateData {
     notifications: Vec<(DateTime<Local>, String)>,
     new_notification_count: u32,
     wallet_scanned_height: u64,
+    wallet_tip_height: u64,
+    wallet_current_connected_node: String,
+    base_node_latency: Option<Duration>,
 }
 
 #[derive(Clone)]
@@ -1137,6 +1167,9 @@ impl AppStateData {
             notifications: Vec::new(),
             new_notification_count: 0,
             wallet_scanned_height: 0,
+            wallet_tip_height: 0,
+            wallet_current_connected_node: "".to_string(),
+            base_node_latency: None,
         }
     }
 }

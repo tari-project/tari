@@ -888,6 +888,8 @@ mod test {
             .send(UtxoScannerEvent::Progress {
                 current_height: 500,
                 tip_height: 600,
+                latency: Duration::from_millis(100),
+                current_node: "".to_string(),
             })
             .unwrap();
 
@@ -898,6 +900,8 @@ mod test {
                 num_recovered: 0,
                 value_recovered: 0.into(),
                 time_taken: Duration::from_secs(0),
+                latency: Duration::from_millis(100),
+                current_node: "".to_string(),
             })
             .unwrap();
 

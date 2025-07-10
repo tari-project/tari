@@ -111,7 +111,7 @@ where TWalletConnectivity: WalletConnectivityInterface
                         .metadata
                         .ok_or_else(|| BaseNodeMonitorError::InvalidBaseNodeResponse("Tip info no metadata".to_string()))?;
 
-                    let latency = match client.get_last_request_latency() {
+                    let latency = match client.get_last_request_latency().await {
                         Some(latency) => latency,
                         None => {
                             continue;

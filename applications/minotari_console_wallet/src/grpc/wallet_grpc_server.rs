@@ -190,11 +190,17 @@ pub struct WalletGrpcServer {
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
+        let scanned_height = wallet
+            .db
+            .get_last_scanned_height()
+            .unwrap_or_default()
+            .unwrap_or_default();
         let debouncer = WalletDebouncer::new(
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
             wallet.utxo_scanner_service.clone(),
             wallet.comms.shutdown_signal(),
+            scanned_height,
         );
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         Ok(Self {

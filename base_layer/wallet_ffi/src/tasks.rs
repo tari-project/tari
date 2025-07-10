@@ -94,6 +94,7 @@ pub async fn recovery_event_monitoring(
             Ok(UtxoScannerEvent::Progress {
                 current_height: current,
                 tip_height: total,
+                ..
             }) => {
                 unsafe {
                     (recovery_progress_callback)(context.0, RecoveryEvent::Progress as u8, current, total);
@@ -105,6 +106,7 @@ pub async fn recovery_event_monitoring(
                 time_taken: elapsed,
                 num_recovered,
                 value_recovered,
+                ..
             }) => {
                 let rate = (final_height as f32) * 1000f32 / (elapsed.as_millis() as f32);
                 info!(

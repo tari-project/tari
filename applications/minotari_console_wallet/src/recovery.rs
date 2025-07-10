@@ -107,6 +107,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
             Ok(UtxoScannerEvent::Progress {
                 current_height,
                 tip_height,
+                ..
             }) => {
                 // its going to fail if the tip height is 0, meaning if you scanned up to 0, you are done
                 let percentage_progress = (current_height * 100).checked_div(tip_height).unwrap_or(100);
