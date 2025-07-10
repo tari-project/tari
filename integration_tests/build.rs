@@ -14,7 +14,7 @@ fn main() {
     let out_dirs = env::var("DYLD_FALLBACK_LIBRARY_PATH").unwrap();
     #[cfg(windows)]
     let out_dirs = env::var("PATH").unwrap();
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     let out_dirs = env::var("LD_LIBRARY_PATH").unwrap();
 
     #[cfg(windows)]
