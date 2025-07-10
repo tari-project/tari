@@ -29,35 +29,94 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future, SinkExt,
+    future,
+    SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self, payment_recipient::PaymentType, wallet_server, BroadcastSignedOneSidedTransactionRequest,
-    BroadcastSignedOneSidedTransactionResponse, CheckConnectivityResponse, ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
-    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, FeePerGramStat, GetAddressResponse,
-    GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
-    GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse, GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetFeeEstimateRequest,
-    GetFeeEstimateResponse, GetFeePerGramStatsRequest, GetFeePerGramStatsResponse, GetIdentityRequest,
-    GetIdentityResponse, GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest,
-    GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse,
-    GetTransactionPayRefsRequest, GetTransactionPayRefsResponse, GetUnspentAmountsResponse, GetVersionRequest,
-    GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse,
-    PrepareOneSidedTransactionForSigningRequest, PrepareOneSidedTransactionForSigningResponse,
-    RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, ReplaceByFeeRequest, ReplaceByFeeResponse,
-    RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SetBaseNodeRequest,
-    SetBaseNodeResponse, TransactionDirection, TransactionEvent, TransactionEventRequest, TransactionEventResponse,
-    TransactionInfo, TransactionStatus, TransferRequest, TransferResponse, TransferResult, UserPayForFeeRequest,
-    UserPayForFeeResponse, ValidateRequest, ValidateResponse,
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CommitmentSignature,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    FeePerGramStat,
+    GetAddressResponse,
+    GetAllCompletedTransactionsRequest,
+    GetAllCompletedTransactionsResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetBlockHeightTransactionsRequest,
+    GetBlockHeightTransactionsResponse,
+    GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetFeeEstimateRequest,
+    GetFeeEstimateResponse,
+    GetFeePerGramStatsRequest,
+    GetFeePerGramStatsResponse,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetPaymentByReferenceRequest,
+    GetPaymentByReferenceResponse,
+    GetPaymentIdAddressRequest,
+    GetStateRequest,
+    GetStateResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest,
+    GetTransactionPayRefsResponse,
+    GetUnspentAmountsResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportTransactionsRequest,
+    ImportTransactionsResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest,
+    PrepareOneSidedTransactionForSigningResponse,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    ReplaceByFeeRequest,
+    ReplaceByFeeResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SetBaseNodeRequest,
+    SetBaseNodeResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
+    UserPayForFeeRequest,
+    UserPayForFeeResponse,
+    ValidateRequest,
+    ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
+        error::TransactionServiceError,
         handle::TransactionServiceHandle,
         offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
@@ -66,7 +125,7 @@ use minotari_wallet::{
 };
 use tari_common_types::{
     payment_reference::generate_payment_reference,
-    tari_address::{TariAddress, TariAddressFeatures},
+    tari_address::TariAddress,
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, Signature},
 };
@@ -77,12 +136,15 @@ use tari_core::{
         tari_amount::{MicroMinotari, T},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CodeTemplateRegistration, OutputFeatures, OutputType, SideChainFeature, UnblindedOutput,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            OutputType,
+            SideChainFeature,
+            UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
     },
-    validation::transaction,
 };
 use tari_script::script;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -1636,14 +1698,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let template_name = template_registration.template_name.clone();
 
         let mut output = output_manager
-            .create_output_with_features(
-                1 * T,
-                OutputFeatures {
-                    output_type: OutputType::CodeTemplateRegistration,
-                    sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                    ..Default::default()
-                },
-            )
+            .create_output_with_features(1 * T, OutputFeatures {
+                output_type: OutputType::CodeTemplateRegistration,
+                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+                ..Default::default()
+            })
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -2017,17 +2076,78 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
-        let results = future::join_all(recipients.iter().map(|(address, amount, payment_id)| async {
-            self.get_transaction_service()
-                .user_pay_for_fee(
-                    TxId::from(payment_id.to_owned()),
+        let transfer_results: Vec<(TariAddress, Result<TxId, TransactionServiceError>)> =
+            future::join_all(recipients.iter().map(|(address, amount, payment_id)| async {
+                (
                     address.to_owned(),
-                    MicroMinotari::from(amount.to_owned()),
+                    self.get_transaction_service()
+                        .user_pay_for_fee(
+                            TxId::from(payment_id.to_owned()),
+                            address.to_owned(),
+                            MicroMinotari::from(amount.to_owned()),
+                        )
+                        .await,
                 )
-                .await
-        }))
-        .await;
+            }))
+            .await;
 
+        let mut results = Vec::new();
+        for (address, result) in transfer_results {
+            match result {
+                Ok(tx_id) => {
+                    let wallet_address = self
+                        .wallet
+                        .get_wallet_one_sided_address()
+                        .await
+                        .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                    let wallet_tx = timeout(Duration::from_millis(100), async {
+                        loop {
+                            let tx = self
+                                .get_transaction_service()
+                                .get_any_transaction(tx_id)
+                                .await
+                                .map_err(|e| Status::internal(format!("{:?}", e)));
+
+                            if let Ok(Some(tx)) = tx {
+                                break tx;
+                            }
+                            sleep(Duration::from_millis(10)).await;
+                        }
+                    })
+                    .await
+                    .map_err(|_| {
+                        error!(target: LOG_TARGET, "Transaction {} not found within timeout", tx_id);
+                        Status::not_found(format!("Transaction {} not found within timeout", tx_id))
+                    })?;
+                    let final_tx = convert_wallet_transaction_into_transaction_info(
+                        wallet_tx,
+                        &wallet_address,
+                        &self.wallet.key_manager_service,
+                    )
+                    .await;
+                    results.push(TransferResult {
+                        address: address.to_string(),
+                        transaction_id: tx_id.into(),
+                        is_success: true,
+                        failure_message: Default::default(),
+                        transaction_info: Some(final_tx),
+                    });
+                },
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to send transaction for address `{}`: {}", address, err
+                    );
+                    results.push(TransferResult {
+                        address: address.to_string(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: err.to_string(),
+                        transaction_info: None,
+                    });
+                },
+            }
+        }
         Ok(Response::new(UserPayForFeeResponse { results }))
     }
 

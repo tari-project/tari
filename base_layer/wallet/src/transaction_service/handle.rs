@@ -1464,7 +1464,7 @@ impl TransactionServiceHandle {
             })
             .await??
         {
-            TransactionServiceResponse::TransactionReplaced(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -4004,11 +4004,11 @@ where
             .resources
             .db
             .get_pending_outbound_transaction(tx_id)
-            .map_err(|_| TransactionServiceError::TransactionAlreadyCompleted(tx_id.to_string()))?;
+            .map_err(|_| TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()))?;
 
-        // Check if transaction is already confirmed
-        if original_transaction.status.is_confirmed() {
-            return Err(TransactionServiceError::TransactionAlreadyCompleted(tx_id.to_string()));
+        // Check if transaction is already mined
+        if original_transaction.status.is_mined() {
+            return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
         }
 
         println!("Replacing transaction with higher fee: {}", tx_id);
@@ -4033,7 +4033,7 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "Replace-by-fee: Cancelled transaction {} for destination {} previous fee: {} new fee: {}",
+            "Replace-by-fee: Cancelled transaction {} for destination {} previous fee: {} new fee per gram: {}",
             tx_id,
             destination,
             original_transaction.fee,
@@ -4098,9 +4098,9 @@ where
             .get_pending_outbound_transaction(tx_id)
             .map_err(TransactionServiceError::TransactionStorageError)?;
 
-        // Check if transaction is already confirmed
-        if original_transaction.status.is_confirmed() {
-            return Err(TransactionServiceError::TransactionAlreadyCompleted(tx_id.to_string()));
+        // Check if transaction is already mined
+        if original_transaction.status.is_mined() {
+            return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
         }
 
         let new_tx_id = TxId::new_random();
