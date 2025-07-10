@@ -513,12 +513,6 @@ extern "C" {
         msg: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
-    pub fn wallet_set_base_node_peer(
-        wallet: *mut TariWallet,
-        public_key: *mut TariPublicKey,
-        address: *const c_char,
-        error_out: *mut c_int,
-    ) -> bool;
     pub fn wallet_upsert_contact(wallet: *mut TariWallet, contact: *mut TariContact, error_out: *mut c_int) -> bool;
     pub fn wallet_remove_contact(wallet: *mut TariWallet, contact: *mut TariContact, error_out: *mut c_int) -> bool;
     pub fn balance_get_available(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong;
