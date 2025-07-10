@@ -93,6 +93,8 @@ use minotari_app_grpc::tari_rpc::{
     RevalidateResponse,
     SendShaAtomicSwapRequest,
     SendShaAtomicSwapResponse,
+    SignMessageRequest,
+    SignMessageResponse,
     SubmitValidatorEvictionProofRequest,
     SubmitValidatorEvictionProofResponse,
     SubmitValidatorNodeExitRequest,
@@ -124,8 +126,10 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
+use tari_crypto::hash_domain;
+use rand::rngs::OsRng;
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
@@ -154,6 +158,13 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
+
+// Domain separator for signing arbitrary messages with a wallet secret key
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.base_layer.wallet.message_signing",
+    1
+);
 
 async fn send_transaction_event(
     transaction_event: TransactionEvent,
@@ -2106,6 +2117,37 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }];
         Ok(Response::new(GetFeePerGramStatsResponse {
             fee_per_gram_stats: fee_stats,
+        }))
+    }
+
+    async fn sign_message(
+        &self,
+        request: Request<SignMessageRequest>,
+    ) -> Result<Response<SignMessageResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "sign_message: Incoming GRPC request with message length: {}",
+            message.message.len()
+        );
+
+        let secret = self.wallet.comms.node_identity().secret_key().clone();
+        let message_str = String::from_utf8(message.message)
+            .map_err(|_| Status::invalid_argument("Message must be valid UTF-8"))?;
+
+        let signature = SignatureWithDomain::<WalletMessageSigningDomain>::sign(
+            &secret,
+            message_str.as_bytes(),
+            &mut OsRng,
+        )
+        .map_err(|e| Status::internal(format!("Failed to sign message: {}", e)))?;
+
+        let hex_sig = signature.get_signature().to_hex();
+        let hex_nonce = signature.get_public_nonce().to_hex();
+
+        Ok(Response::new(SignMessageResponse {
+            signature: hex_sig,
+            public_nonce: hex_nonce,
         }))
     }
 }
