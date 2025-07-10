@@ -1635,7 +1635,6 @@ where
         Ok(tx_id)
     }
 
-
     /// broadcasts a SHA-XTR atomic swap transaction
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
