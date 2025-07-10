@@ -50,10 +50,11 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
     tip_height: u64,
 ) {
     debug!(target: LOG_TARGET, "Checking detected (onesided, imported, coinbase unconf) transactions");
+    dbg!("running");
     // Reorged faux transactions cannot be detected by excess signature, thus use last known confirmed transaction
     // height or current tip height with safety margin to determine if these should be returned
     let last_mined_transaction = db.fetch_last_mined_transaction().unwrap_or_default();
-
+    dbg!(tip_height);
     let check_height = if let Some(tx) = last_mined_transaction {
         tx.mined_height
             .unwrap_or(tip_height)

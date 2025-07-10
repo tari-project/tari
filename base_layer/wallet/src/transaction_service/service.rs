@@ -1635,19 +1635,6 @@ where
         Ok(tx_id)
     }
 
-    async fn get_tip_height(&self) -> Result<u64, TransactionServiceError> {
-        self.resources
-            .connectivity
-            .clone()
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .get_tip_info()
-            .await
-            .map_err(|e| TransactionServiceError::Other(e.to_string()))?
-            .metadata
-            .map(|m| m.best_block_height())
-            .ok_or(TransactionServiceError::Other("Tip height not available".to_string()))
-    }
 
     /// broadcasts a SHA-XTR atomic swap transaction
     /// # Arguments
@@ -1674,7 +1661,7 @@ where
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
 
-        let tip_height = self.get_tip_height().await?;
+        let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
 
         let height = tip_height + (24 * 30);
 
@@ -1835,7 +1822,6 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
-
 
         stp.finalize(&self.resources.transaction_key_manager_service)
             .await
