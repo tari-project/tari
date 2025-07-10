@@ -25,9 +25,20 @@ use std::{convert::TryFrom, path::PathBuf, time::Duration};
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use grpc::{
-    CancelTransactionRequest, ClaimHtlcRefundRequest, ClaimShaAtomicSwapRequest, Empty, GetBalanceRequest,
-    GetCompletedTransactionsRequest, GetIdentityRequest, GetTransactionInfoRequest, ImportUtxosRequest,
-    PaymentRecipient, ReplaceByFeeRequest, SendShaAtomicSwapRequest, TransferRequest, ValidateRequest,
+    CancelTransactionRequest,
+    ClaimHtlcRefundRequest,
+    ClaimShaAtomicSwapRequest,
+    Empty,
+    GetBalanceRequest,
+    GetCompletedTransactionsRequest,
+    GetIdentityRequest,
+    GetTransactionInfoRequest,
+    ImportUtxosRequest,
+    PaymentRecipient,
+    ReplaceByFeeRequest,
+    SendShaAtomicSwapRequest,
+    TransferRequest,
+    ValidateRequest,
 };
 use minotari_app_grpc::tari_rpc::{self as grpc, GetBalanceResponse, GetStateRequest, TransactionStatus};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
@@ -39,7 +50,12 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra, EncryptedData, OutputFeatures, OutputType, RangeProofType, TransactionOutputVersion,
+            CoinBaseExtra,
+            EncryptedData,
+            OutputFeatures,
+            OutputType,
+            RangeProofType,
+            TransactionOutputVersion,
             UnblindedOutput,
         },
     },
@@ -47,7 +63,8 @@ use tari_core::{
 use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
     transaction::{
-        build_transaction_with_output, build_transaction_with_output_and_fee_per_gram,
+        build_transaction_with_output,
+        build_transaction_with_output_and_fee_per_gram,
         build_transaction_with_output_and_lockheight,
     },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
@@ -57,7 +74,10 @@ use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hex::Hex;
 
 use crate::steps::{
-    cucumber_steps_log, mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND,
+    cucumber_steps_log,
+    mining_steps::create_miner,
+    CONFIRMATION_PERIOD,
+    HALF_SECOND,
     TWO_MINUTES_WITH_HALF_SECOND_SLEEP,
 };
 
@@ -214,59 +234,59 @@ async fn wallet_detects_all_txs_as_mined_status(world: &mut TariWorld, wallet_na
             }
             match status.as_str() {
                 "Pending" => match tx_info.status() {
-                    grpc::TransactionStatus::Pending
-                    | grpc::TransactionStatus::Completed
-                    | grpc::TransactionStatus::Broadcast
-                    | grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed
-                    | grpc::TransactionStatus::CoinbaseUnconfirmed
-                    | grpc::TransactionStatus::CoinbaseConfirmed => {
+                    grpc::TransactionStatus::Pending |
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Completed" => match tx_info.status() {
-                    grpc::TransactionStatus::Completed
-                    | grpc::TransactionStatus::Broadcast
-                    | grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed
-                    | grpc::TransactionStatus::CoinbaseUnconfirmed
-                    | grpc::TransactionStatus::CoinbaseConfirmed => {
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Broadcast" => match tx_info.status() {
-                    grpc::TransactionStatus::Broadcast
-                    | grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed
-                    | grpc::TransactionStatus::CoinbaseUnconfirmed
-                    | grpc::TransactionStatus::CoinbaseConfirmed => {
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Mined_or_OneSidedUnconfirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed
-                    | grpc::TransactionStatus::CoinbaseUnconfirmed
-                    | grpc::TransactionStatus::CoinbaseConfirmed => {
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Mined_or_OneSidedConfirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed
-                    | grpc::TransactionStatus::CoinbaseConfirmed => {
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
@@ -316,43 +336,43 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
             }
             match status.as_str() {
                 "Pending" => match tx_info.status() {
-                    grpc::TransactionStatus::Pending
-                    | grpc::TransactionStatus::Completed
-                    | grpc::TransactionStatus::Broadcast
-                    | grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::Pending |
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Completed" => match tx_info.status() {
-                    grpc::TransactionStatus::Completed
-                    | grpc::TransactionStatus::Broadcast
-                    | grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::Completed |
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Broadcast" => match tx_info.status() {
-                    grpc::TransactionStatus::Broadcast
-                    | grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::Broadcast |
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Mined_or_OneSidedUnconfirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedUnconfirmed
-                    | grpc::TransactionStatus::MinedConfirmed
-                    | grpc::TransactionStatus::OneSidedUnconfirmed
-                    | grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::MinedUnconfirmed |
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedUnconfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed => {
                         break;
                     },
                     _ => (),
@@ -512,10 +532,10 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
 
     while let Some(tx) = completed_txs.next().await {
         let tx_info = tx.unwrap().transaction.unwrap();
-        let is_coinbase = tx_info.status == TransactionStatus::Coinbase as i32
-            || tx_info.status == TransactionStatus::CoinbaseConfirmed as i32
-            || tx_info.status == TransactionStatus::CoinbaseUnconfirmed as i32
-            || tx_info.status == TransactionStatus::CoinbaseNotInBlockChain as i32;
+        let is_coinbase = tx_info.status == TransactionStatus::Coinbase as i32 ||
+            tx_info.status == TransactionStatus::CoinbaseConfirmed as i32 ||
+            tx_info.status == TransactionStatus::CoinbaseUnconfirmed as i32 ||
+            tx_info.status == TransactionStatus::CoinbaseNotInBlockChain as i32;
         if transaction_type == "COINBASE" && !is_coinbase || transaction_type == "NORMAL" && is_coinbase {
             continue;
         }
@@ -1312,6 +1332,79 @@ async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
     }
 }
 
+#[then(expr = "wallet {word} detects only {int} transaction as unconfirmed")]
+async fn wallet_detects_only_transactions_as_unconfirmed(
+    world: &mut TariWorld,
+    wallet_name: String,
+    expected_count: u64,
+) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let mut completed_tx_res = client
+        .get_completed_transactions(GetCompletedTransactionsRequest {
+            payment_id: None,
+            block_hash: None,
+            block_height: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let num_retries = 40;
+    let mut total_unconfirmed_transactions = 0u64;
+    let mut all_transactions_status = Vec::new();
+
+    'outer: for _ in 0..num_retries {
+        cucumber_steps_log(format!("{}, Detecting unconfirmed transactions", wallet_name));
+        total_unconfirmed_transactions = 0;
+        all_transactions_status.clear();
+
+        'inner: while let Some(tx_info) = completed_tx_res.next().await {
+            let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            all_transactions_status.push((tx_id, tx_info.status()));
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedUnconfirmed => {
+                    total_unconfirmed_transactions += 1;
+                },
+                _ => continue 'inner,
+            }
+        }
+
+        // Debug: Print all transaction statuses
+        cucumber_steps_log(format!(
+            "{}, Found {} completed transactions with statuses: {:?}",
+            wallet_name,
+            all_transactions_status.len(),
+            all_transactions_status
+        ));
+
+        if total_unconfirmed_transactions == expected_count {
+            break 'outer;
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        completed_tx_res = client
+            .get_completed_transactions(GetCompletedTransactionsRequest {
+                payment_id: None,
+                block_hash: None,
+                block_height: None,
+            })
+            .await
+            .unwrap()
+            .into_inner();
+    }
+
+    assert_eq!(
+        total_unconfirmed_transactions, expected_count,
+        "Expected {} unconfirmed transactions, but found {}. All transaction statuses: {:?}",
+        expected_count, total_unconfirmed_transactions, all_transactions_status
+    );
+}
+
 #[then(expr = "wallet {word} detects exactly {int} coinbase transactions as CoinbaseConfirmed")]
 async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
@@ -1433,8 +1526,8 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
                 let res = wallet_client.get_transaction_info(req).await.unwrap().into_inner();
                 let tx_status = res.transactions.first().unwrap().status;
 
-                if tx_status == TransactionStatus::MinedConfirmed as i32
-                    || tx_status == TransactionStatus::OneSidedConfirmed as i32
+                if tx_status == TransactionStatus::MinedConfirmed as i32 ||
+                    tx_status == TransactionStatus::OneSidedConfirmed as i32
                 {
                     cucumber_steps_log(format!(
                         "Wallet {} has detected transaction with id {} as Mined_or_OneSidedConfirmed",
