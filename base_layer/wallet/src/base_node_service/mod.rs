@@ -58,6 +58,12 @@ impl<T> BaseNodeServiceInitializer<T> {
     }
 }
 
+impl<T> Default for BaseNodeServiceInitializer<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
 where T: HttpClientFactory + Send + Sync + 'static
