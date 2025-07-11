@@ -4137,12 +4137,71 @@ where
                 ))
             })?;
 
-        // Allow fee payment for broadcast transactions - only prevent if already mined
-
         // Check if transaction is already mined
         if original_transaction.status.is_mined() {
             return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
         }
+
+        // Filter outputs based on transaction direction
+        let filtered_output_hashes: Vec<FixedHash> = match original_transaction.direction {
+            TransactionDirection::Inbound => {
+                // If we're receiving, include outputs that are sent to us
+                debug!(
+                    target: LOG_TARGET,
+                    "user-pay-for-fee: Inbound transaction - filtering {} received outputs",
+                    original_transaction.received_output_hashes.len()
+                );
+                original_transaction.received_output_hashes.clone()
+            },
+            TransactionDirection::Outbound => {
+                // If we're sending, include change outputs
+                debug!(
+                    target: LOG_TARGET,
+                    "user-pay-for-fee: Outbound transaction - filtering {} change outputs",
+                    original_transaction.change_output_hashes.len()
+                );
+                original_transaction.change_output_hashes.clone()
+            },
+            TransactionDirection::Unknown => {
+                // Fallback to all outputs if direction is unknown
+                let all_outputs: Vec<FixedHash> = original_transaction
+                    .transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|output| output.hash())
+                    .collect();
+                debug!(
+                    target: LOG_TARGET,
+                    "user-pay-for-fee: Unknown transaction direction - using all {} outputs",
+                    all_outputs.len()
+                );
+                all_outputs
+            },
+        };
+
+        // Convert filtered hashes to CompressedCommitments by finding matching outputs
+        let original_outputs: Vec<CompressedCommitment> = original_transaction
+            .transaction
+            .body
+            .outputs()
+            .iter()
+            .filter(|output| filtered_output_hashes.contains(&output.hash()))
+            .map(|output| output.commitment().to_owned())
+            .collect();
+
+        print!("list of original outputs:");
+        original_outputs
+            .iter()
+            .for_each(|output| print!("original output: {:?}", output));
+
+        debug!(
+            target: LOG_TARGET,
+            "user-pay-for-fee: Filtered {} outputs from {} total outputs for transaction {}",
+            original_outputs.len(),
+            original_transaction.transaction.body.outputs().len(),
+            tx_id
+        );
 
         let new_tx_id = TxId::new_random();
         let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
@@ -4163,7 +4222,7 @@ where
             destination.clone(),
             amount,
             original_transaction.fee,
-            PaymentId::Empty,
+            original_transaction.payment_id,
             TransactionMetadata::default(),
             None, // No reply channel for internal call
             TransactionSendProtocolStage::Initial,
@@ -4171,7 +4230,7 @@ where
         );
 
         // Launch the new transaction protocol
-        let join_handle = tokio::spawn(protocol.execute(None));
+        let join_handle = tokio::spawn(protocol.execute(Some(UtxoSelectionCriteria::must_include(original_outputs))));
         send_transaction_join_handles.push(join_handle);
 
         info!(
