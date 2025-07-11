@@ -36,15 +36,15 @@ use crate::client::http_client_factory::HttpClientFactory;
 
 pub struct WalletConnectivityInitializer<TClientFactory: HttpClientFactory> {
     http_node_url: Url,
-    https_seed_url: Url,
+    http_seed_url: Url,
     phantom: std::marker::PhantomData<TClientFactory>,
 }
 
 impl<T: HttpClientFactory> WalletConnectivityInitializer<T> {
-    pub fn new(http_node_url: Url, https_seed_url: Url) -> Self {
+    pub fn new(http_node_url: Url, http_seed_url: Url) -> Self {
         Self {
             http_node_url,
-            https_seed_url,
+            http_seed_url,
             phantom: std::marker::PhantomData,
         }
     }
@@ -53,7 +53,7 @@ impl<T: HttpClientFactory> WalletConnectivityInitializer<T> {
 #[async_trait]
 impl<T: HttpClientFactory> ServiceInitializer for WalletConnectivityInitializer<T> {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let factory = T::new(self.http_node_url.clone(), self.https_seed_url.clone());
+        let factory = T::new(self.http_node_url.clone(), self.http_seed_url.clone());
         context.register_handle(WalletConnectivityHandle::new(factory));
 
         Ok(())

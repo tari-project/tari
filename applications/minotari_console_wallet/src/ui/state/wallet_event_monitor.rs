@@ -183,7 +183,7 @@ impl WalletEventMonitor {
                                     current_height,tip_height, latency, current_node
                                 }=> {
                                     self.trigger_wallet_scanned_height_update(current_height, tip_height).await;
-                                self.trigger_wallet_latency_node_update(latency, current_node).await;
+                                    self.trigger_wallet_latency_node_update(latency, current_node).await;
                                 }
                                 UtxoScannerEvent::Completed {
                                     final_height,
@@ -191,8 +191,7 @@ impl WalletEventMonitor {
                                     ..
                                 }=> {
                                     self.trigger_wallet_scanned_height_update(final_height,final_height).await;
-
-                                self.trigger_wallet_latency_node_update(latency, current_node).await;
+                                    self.trigger_wallet_latency_node_update(latency, current_node).await;
                                     if self.should_we_trigger_tx_update_for_payref().await{
                                         self.trigger_full_tx_state_refresh().await;
                                     }
