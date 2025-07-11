@@ -23,7 +23,7 @@ use crate::client::models::TxSubmissionResponse;
 /// Trait that a base node wallet client must implement.
 #[async_trait::async_trait]
 pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
-    fn get_address(&self) -> String;
+    async fn get_address(&self) -> String;
     fn is_online(&self) -> bool;
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error>;
 

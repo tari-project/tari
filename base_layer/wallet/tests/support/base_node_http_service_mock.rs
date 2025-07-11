@@ -96,7 +96,7 @@ impl HttpBaseNodeMock {
 
 #[async_trait]
 impl BaseNodeWalletClient for HttpBaseNodeMock {
-    fn get_address(&self) -> std::string::String {
+    async fn get_address(&self) -> std::string::String {
         todo!()
     }
 

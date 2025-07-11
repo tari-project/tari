@@ -583,9 +583,6 @@ where
 
     fn handle_utxo_scanner_service_event(&mut self, event: UtxoScannerEvent) {
         match event {
-            UtxoScannerEvent::ConnectingToBaseNode => {},
-            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
-            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
             UtxoScannerEvent::ScanningRoundFailed { .. } => {},
             UtxoScannerEvent::Progress { .. } => {},
             UtxoScannerEvent::Completed { .. } => {
@@ -594,7 +591,6 @@ where
                     e
                 });
             },
-            UtxoScannerEvent::ScanningFailed => {},
         }
     }
 

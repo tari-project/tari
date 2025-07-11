@@ -22,7 +22,6 @@
 
 use std::time::Duration;
 
-use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroMinotari;
 use tokio::sync::broadcast;
 
@@ -30,14 +29,6 @@ use crate::util::watch::Watch;
 
 #[derive(Debug, Clone)]
 pub enum UtxoScannerEvent {
-    ConnectingToBaseNode,
-    ConnectedToBaseNode(NodeId, Duration),
-    ConnectionFailedToBaseNode {
-        peer: NodeId,
-        num_retries: usize,
-        retry_limit: usize,
-        error: String,
-    },
     ScanningRoundFailed {
         num_retries: usize,
         retry_limit: usize,
@@ -59,8 +50,6 @@ pub enum UtxoScannerEvent {
         latency: Duration,
         current_node: String,
     },
-    /// Scanning process has failed and scanning process has exited
-    ScanningFailed,
 }
 
 #[derive(Clone)]

@@ -87,7 +87,7 @@ where
     pub async fn execute(mut self) -> Result<u64, OutputManagerProtocolError> {
         let mut base_node_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
-        let base_node_peer = base_node_client.get_address();
+        let base_node_peer = base_node_client.get_address().await;
         debug!(
             target: LOG_TARGET,
             "Starting TXO validation protocol with peer {} (Id: {})", base_node_peer, self.operation_id,

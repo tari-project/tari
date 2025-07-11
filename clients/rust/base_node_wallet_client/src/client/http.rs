@@ -107,8 +107,11 @@ impl Client {
 
 #[async_trait]
 impl BaseNodeWalletClient for Client {
-    fn get_address(&self) -> String {
-        self.local_api_address.to_string()
+    async fn get_address(&self) -> String {
+        match self.http_server_address().await {
+            Ok(v) => v.to_string(),
+            _ => "".to_string(),
+        }
     }
 
     fn is_online(&self) -> bool {

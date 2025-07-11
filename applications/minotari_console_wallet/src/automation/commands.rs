@@ -35,7 +35,6 @@ use std::{
 use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
-use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
 use minotari_wallet::{
@@ -80,7 +79,6 @@ use tari_common_types::{
     },
     wallet_types::WalletType,
 };
-use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     blocks::pre_mine::get_pre_mine_items,
@@ -416,29 +414,6 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
-    let mut connectivity = connectivity_requester.get_event_subscription();
-    print!("Waiting for connectivity... ");
-    let timeout = sleep(Duration::from_secs(30));
-    tokio::pin!(timeout);
-    let mut timeout = timeout.fuse();
-    loop {
-        tokio::select! {
-            // Wait for the first base node connection
-            Ok(ConnectivityEvent::PeerConnected(conn)) = connectivity.recv() => {
-                if conn.peer_features().is_node() {
-                    println!("✅");
-                    return Ok(());
-                }
-            },
-            () = &mut timeout => {
-                println!("❌");
-                return Err(CommandError::Comms("Timed out".to_string()));
-            }
-        }
-    }
-}
-
 pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
     dest_public_key: CompressedPublicKey,
@@ -753,9 +728,7 @@ pub async fn command_runner(
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
-    let connectivity_requester = wallet.comms.connectivity();
     let key_manager_service = wallet.key_manager_service.clone();
-    let mut online = false;
 
     let mut tx_ids = Vec::new();
 
@@ -778,17 +751,6 @@ pub async fn command_runner(
                 Err(e) => eprintln!("GetBalance error! {}", e),
             },
             DiscoverPeer(args) => {
-                if !online {
-                    match wait_for_comms(&connectivity_requester).await {
-                        Ok(..) => {
-                            online = true;
-                        },
-                        Err(e) => {
-                            eprintln!("DiscoverPeer error! {}", e);
-                            continue;
-                        },
-                    }
-                }
                 if let Err(e) = discover_peer(dht_service.clone(), args.dest_public_key.into()).await {
                     eprintln!("DiscoverPeer error! {}", e);
                 }
@@ -2138,30 +2100,9 @@ pub async fn command_runner(
                 let mut utxo_scanner = wallet.utxo_scanner_service.clone();
                 let mut receiver = utxo_scanner.get_event_receiver();
 
-                if !online {
-                    match wait_for_comms(&connectivity_requester).await {
-                        Ok(..) => {
-                            online = true;
-                        },
-                        Err(e) => {
-                            eprintln!("Sync error! {}", e);
-                            continue;
-                        },
-                    }
-                }
-
                 loop {
                     match receiver.recv().await {
                         Ok(event) => match event {
-                            UtxoScannerEvent::ConnectingToBaseNode => {
-                                println!("Connecting to base node...");
-                            },
-                            UtxoScannerEvent::ConnectedToBaseNode(_, _) => {
-                                println!("Connected to base node");
-                            },
-                            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {
-                                println!("Failed to connect to base node");
-                            },
                             UtxoScannerEvent::ScanningRoundFailed {
                                 num_retries,
                                 retry_limit,
@@ -2199,10 +2140,6 @@ pub async fn command_runner(
                                     time_taken.as_secs()
                                 );
 
-                                break;
-                            },
-                            UtxoScannerEvent::ScanningFailed => {
-                                println!("Scanning failed");
                                 break;
                             },
                         },

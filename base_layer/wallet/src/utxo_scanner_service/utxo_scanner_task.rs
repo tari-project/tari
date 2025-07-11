@@ -259,7 +259,7 @@ where
                         .get_last_request_latency()
                         .await
                         .unwrap_or_default();
-                    let node = wallet_service_client.get_address();
+                    let node = wallet_service_client.get_address().await;
                     return Ok(SyncResult {
                         final_height: last_scanned_block.height,
                         num_recovered: total_num_recovered,
@@ -511,7 +511,7 @@ where
                             );
 
                             let latency = client.get_last_request_latency().await.unwrap_or_default();
-                            let node = client.get_address();
+                            let node = client.get_address().await;
                             self.publish_event(UtxoScannerEvent::Progress {
                                 current_height,
                                 tip_height,

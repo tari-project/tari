@@ -96,14 +96,6 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
             return Err(ExitError::new(ExitCode::RecoveryError, err_msg));
         }
         match event_stream.recv().await {
-            Ok(UtxoScannerEvent::ConnectingToBaseNode) => {
-                println!("Connecting to base node... ");
-            },
-            Ok(UtxoScannerEvent::ConnectedToBaseNode(_, latency)) => {
-                let msg = format!("OK (latency = {:.2?})", latency);
-                println!("{}", msg);
-                debug!(target: LOG_TARGET, "{}", msg);
-            },
             Ok(UtxoScannerEvent::Progress {
                 current_height,
                 tip_height,
@@ -134,20 +126,6 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
                 warn!(target: LOG_TARGET, "{}", s);
                 failed_events += 1;
             },
-            Ok(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                peer,
-                num_retries,
-                retry_limit,
-                error,
-            }) => {
-                let s = format!(
-                    "Base node connection error to {} (retries {} of {}: {})",
-                    peer, num_retries, retry_limit, error
-                );
-                println!("{}", s);
-                warn!(target: LOG_TARGET, "{}", s);
-                failed_events += 1;
-            },
             Ok(UtxoScannerEvent::Completed {
                 final_height,
                 time_taken,
@@ -169,9 +147,6 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
             Err(broadcast::error::RecvError::Closed) => {
                 debug!(target: LOG_TARGET, "Wallet Recovery exiting");
                 break;
-            },
-            Ok(UtxoScannerEvent::ScanningFailed) => {
-                error!(target: LOG_TARGET, "Wallet Recovery process failed and is exiting");
             },
         }
     }

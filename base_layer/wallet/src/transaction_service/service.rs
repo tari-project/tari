@@ -1198,9 +1198,6 @@ where
         >,
     ) {
         match event {
-            UtxoScannerEvent::ConnectingToBaseNode => {},
-            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
-            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
             UtxoScannerEvent::ScanningRoundFailed { .. } => {},
             UtxoScannerEvent::Progress { .. } => {},
             UtxoScannerEvent::Completed { .. } => {
@@ -1212,7 +1209,6 @@ where
                         e
                     });
             },
-            UtxoScannerEvent::ScanningFailed => {},
         }
     }
 

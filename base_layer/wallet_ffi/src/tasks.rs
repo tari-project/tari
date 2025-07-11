@@ -24,7 +24,6 @@ use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::utxo_scanner_service::handle::UtxoScannerEvent;
-use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
 use crate::callback_handler::Context;
@@ -33,13 +32,9 @@ const LOG_TARGET: &str = "wallet_ffi";
 
 /// Events that the recovery process will report via the callback
 enum RecoveryEvent {
-    ConnectingToBaseNode,       // 0
-    ConnectedToBaseNode,        // 1
-    ConnectionToBaseNodeFailed, // 2
-    Progress,                   // 3
-    Completed,                  // 4
-    ScanningRoundFailed,        // 5
-    RecoveryFailed,             // 6
+    Progress,            // 3
+    Completed,           // 4
+    ScanningRoundFailed, // 5
 }
 
 #[allow(clippy::too_many_lines)]
@@ -50,47 +45,6 @@ pub async fn recovery_event_monitoring(
 ) {
     loop {
         match event_stream.recv().await {
-            Ok(UtxoScannerEvent::ConnectingToBaseNode) => {
-                unsafe {
-                    (recovery_progress_callback)(context.0, RecoveryEvent::ConnectingToBaseNode as u8, 0u64, 0u64);
-                }
-                info!(
-                    target: LOG_TARGET,
-                    "Attempting connection to base node",
-                );
-            },
-            Ok(UtxoScannerEvent::ConnectedToBaseNode(pk, elapsed)) => {
-                unsafe {
-                    (recovery_progress_callback)(context.0, RecoveryEvent::ConnectedToBaseNode as u8, 0u64, 1u64);
-                }
-                info!(
-                    target: LOG_TARGET,
-                    "Connected to base node {} in {:.2?}",
-                    pk.to_hex(),
-                    elapsed
-                );
-            },
-            Ok(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                peer,
-                num_retries,
-                retry_limit,
-                error,
-            }) => {
-                unsafe {
-                    (recovery_progress_callback)(
-                        context.0,
-                        RecoveryEvent::ConnectionToBaseNodeFailed as u8,
-                        num_retries as u64,
-                        retry_limit as u64,
-                    );
-                }
-                warn!(
-                    target: LOG_TARGET,
-                    "Failed to connect to base node {} with error {}",
-                    peer.to_hex(),
-                    error
-                );
-            },
             Ok(UtxoScannerEvent::Progress {
                 current_height: current,
                 tip_height: total,
@@ -143,12 +97,6 @@ pub async fn recovery_event_monitoring(
                     target: LOG_TARGET,
                     "UTXO Scanning round failed on retry {} of {}: {}", num_retries, retry_limit, error
                 );
-            },
-            Ok(UtxoScannerEvent::ScanningFailed) => {
-                unsafe {
-                    (recovery_progress_callback)(context.0, RecoveryEvent::RecoveryFailed as u8, 0u64, 0u64);
-                }
-                warn!(target: LOG_TARGET, "UTXO Scanner failed and exited",);
             },
             Err(broadcast::error::RecvError::Closed) => {
                 break;
