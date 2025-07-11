@@ -830,7 +830,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         mined_height: u64,
         mined_in_block: BlockHash,
         mined_timestamp: u64,
-        num_confirmations: u64,
         must_be_confirmed: bool,
         status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError> {
@@ -845,7 +844,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         match CompletedTransactionSql::update_mined_height(
             tx_id,
-            num_confirmations,
             status,
             mined_height,
             mined_in_block,
@@ -2090,7 +2088,6 @@ impl CompletedTransactionSql {
 
     pub fn update_mined_height(
         tx_id: TxId,
-        num_confirmations: u64,
         status: TransactionStatus,
         mined_height: u64,
         mined_in_block: BlockHash,
@@ -2110,18 +2107,16 @@ impl CompletedTransactionSql {
         })?;
         trace!(
             target: LOG_TARGET,
-            "update_mined_height: tx_id '{}', status '{:?}', confirmations '{}', mined height '{}', \
+            "update_mined_height: tx_id '{}', status '{:?}', mined height '{}', \
             mined timestamp '{}', mined block hash '{}'",
             tx_id,
             status,
-            num_confirmations,
             mined_height,
             timestamp,
             mined_in_block.to_hex(),
         );
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
-                confirmations: Some(Some(num_confirmations as i64)),
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),

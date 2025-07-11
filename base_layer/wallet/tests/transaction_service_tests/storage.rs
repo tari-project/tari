@@ -398,7 +398,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         10,
         FixedHash::zero(),
         0,
-        5,
         true,
         &completed_txs[0].status,
     )

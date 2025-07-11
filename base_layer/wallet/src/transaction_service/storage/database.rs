@@ -133,7 +133,6 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_height: u64,
         mined_in_block: BlockHash,
         mined_timestamp: u64,
-        num_confirmations: u64,
         must_be_confirmed: bool,
         status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError>;
@@ -819,7 +818,6 @@ where T: TransactionBackend + 'static
         mined_height: u64,
         mined_in_block: BlockHash,
         mined_timestamp: u64,
-        num_confirmations: u64,
         must_be_confirmed: bool,
         status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError> {
@@ -828,7 +826,6 @@ where T: TransactionBackend + 'static
             mined_height,
             mined_in_block,
             mined_timestamp,
-            num_confirmations,
             must_be_confirmed,
             status,
         )

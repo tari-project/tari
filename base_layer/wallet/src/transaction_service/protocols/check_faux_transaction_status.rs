@@ -161,59 +161,55 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         let previously_confirmed = tx.status.is_confirmed();
         let must_be_confirmed =
             tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
-        let num_confirmations = tip_height.saturating_sub(mined_height);
 
-        let log_msg = format!(
-            "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), num_confirmations({}), \
-             output_status({}), is_valid({})",
-            tx.tx_id, mined_height, must_be_confirmed, num_confirmations, output_status, is_valid
-        );
-        if num_confirmations <= 5 {
-            debug!(target: LOG_TARGET, "{}", log_msg);
-        } else {
-            trace!(target: LOG_TARGET, "{}", log_msg);
-        }
-
-        let result = db.set_transaction_mined_height(
-            tx.tx_id,
-            mined_height,
-            mined_in_block,
-            tx.mined_timestamp
-                .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
-            num_confirmations,
-            must_be_confirmed,
-            &tx.status,
-        );
-        if let Err(e) = result {
-            error!(
-                target: LOG_TARGET,
-                "Error setting faux transaction to mined confirmed: {}", e
+        if !(previously_confirmed && must_be_confirmed) {
+            let log_msg = format!(
+                "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), output_status({}), \
+                 is_valid({})",
+                tx.tx_id, mined_height, must_be_confirmed, output_status, is_valid
             );
-        } else {
-            // Only send an event if the transaction was not previously confirmed OR was previously confirmed and is
-            // now not confirmed (i.e. confirmation changed)
-            if !(previously_confirmed && must_be_confirmed) {
-                let transaction_event = if must_be_confirmed {
-                    TransactionEvent::DetectedTransactionConfirmed {
-                        tx_id: tx.tx_id,
-                        is_valid,
-                    }
-                } else {
-                    TransactionEvent::DetectedTransactionUnconfirmed {
-                        tx_id: tx.tx_id,
-                        num_confirmations: 0,
-                        is_valid,
-                    }
-                };
-                let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event, usually because there are no subscribers: {:?}",
-                        e
-                    );
-                    e
-                });
+            if must_be_confirmed {
+                debug!(target: LOG_TARGET, "{}", log_msg);
+            } else {
+                trace!(target: LOG_TARGET, "{}", log_msg);
             }
+
+            let result = db.set_transaction_mined_height(
+                tx.tx_id,
+                mined_height,
+                mined_in_block,
+                tx.mined_timestamp
+                    .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
+                must_be_confirmed,
+                &tx.status,
+            );
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Error setting faux transaction to mined confirmed: {}", e
+                );
+                continue;
+            }
+            let transaction_event = if must_be_confirmed {
+                TransactionEvent::DetectedTransactionConfirmed {
+                    tx_id: tx.tx_id,
+                    is_valid,
+                }
+            } else {
+                TransactionEvent::DetectedTransactionUnconfirmed {
+                    tx_id: tx.tx_id,
+                    num_confirmations: 0,
+                    is_valid,
+                }
+            };
+            let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event, usually because there are no subscribers: {:?}",
+                    e
+                );
+                e
+            });
         }
     }
     if state_changed {

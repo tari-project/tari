@@ -383,7 +383,6 @@ where
                 mined_height,
                 *mined_in_block,
                 mined_timestamp,
-                num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
                 status,
             )
