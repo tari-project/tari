@@ -340,11 +340,13 @@ impl PeerConnection {
     pub async fn disconnect_if_unused(
         &mut self,
         minimized: Minimized,
+        expected_rpc: usize,
+        expected_substreams: usize,
         requester: &str,
     ) -> Result<(), PeerConnectionError> {
         let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
         let substream_count = self.substream_count();
-        if number_of_rpc_clients >= 1 || substream_count >= 1 {
+        if number_of_rpc_clients > expected_rpc || substream_count > expected_substreams {
             trace!(
                 target: LOG_TARGET,
                 "Soft disconnect - requester: '{}', peer: `{}`, RPC clients: {}, substreams {}, NOT disconnecting",

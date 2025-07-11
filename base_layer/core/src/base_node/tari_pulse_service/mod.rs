@@ -382,7 +382,7 @@ async fn check_health(
     // complete and out of scope, or any seed connections that are not in use anymore.
     for peer in &peers {
         if let Ok(Some(mut conn)) = node_comms.get_connection(peer.node_id.clone()).await {
-            if let Err(err) = conn.disconnect_if_unused(Minimized::No, "Health check").await {
+            if let Err(err) = conn.disconnect_if_unused(Minimized::No, 0, 2, "Health check").await {
                 warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", peer.node_id, err);
             }
         }
