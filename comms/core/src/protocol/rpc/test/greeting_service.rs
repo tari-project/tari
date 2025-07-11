@@ -32,7 +32,7 @@ use std::{
 
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{mpsc, RwLock},
+    sync::{mpsc, Mutex, RwLock},
     task,
     time,
 };
@@ -406,6 +406,7 @@ impl GreetingClient {
             framed,
             Self::PROTOCOL_NAME.into(),
             Default::default(),
+            Some(Arc::new(Mutex::new(true))),
         )
         .await?;
         Ok(Self { inner })

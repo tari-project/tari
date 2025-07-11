@@ -35,7 +35,7 @@ use log::*;
 use multiaddr::Multiaddr;
 use tari_shutdown::oneshot_trigger::OneshotTrigger;
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, Mutex},
     time,
 };
 use tokio_stream::StreamExt;
@@ -144,8 +144,8 @@ pub struct PeerConnection {
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
     drop_notifier: OneshotTrigger<NodeId>,
-    number_of_rpc_clients: Arc<AtomicUsize>,
     force_disconnect_rpc_clients_when_clone_drops: Arc<AtomicBool>,
+    rpc_session_states: Vec<Arc<Mutex<bool>>>,
 }
 
 impl PeerConnection {
@@ -169,8 +169,8 @@ impl PeerConnection {
             substream_counter,
             handle_counter: Arc::new(()),
             drop_notifier: OneshotTrigger::<NodeId>::new(),
-            number_of_rpc_clients: Arc::new(AtomicUsize::new(0)),
             force_disconnect_rpc_clients_when_clone_drops: Arc::new(Default::default()),
+            rpc_session_states: Vec::new(),
         }
     }
 
@@ -276,14 +276,16 @@ impl PeerConnection {
             self.peer_node_id
         );
         let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
+        let rpc_session_state = Arc::new(Mutex::new(true));
 
         let rpc_client = builder
             .with_protocol_id(protocol)
             .with_node_id(self.peer_node_id.clone())
             .with_terminate_signal(self.drop_notifier.to_signal())
+            .with_session_state(rpc_session_state.clone())
             .connect(framed)
             .await?;
-        self.number_of_rpc_clients.fetch_add(1, Ordering::Relaxed);
+        self.rpc_session_states.push(rpc_session_state.clone());
 
         Ok(rpc_client)
     }
@@ -302,6 +304,17 @@ impl PeerConnection {
         RpcClientPool::new(self.clone(), max_sessions, client_config)
     }
 
+    async fn count_rpc_sessions(&self) -> usize {
+        let futures = self
+            .rpc_session_states
+            .iter()
+            .map(|state| async move { *state.lock().await })
+            .collect::<Vec<_>>();
+
+        let results = futures::future::join_all(futures).await;
+        results.into_iter().filter(|&b| b).count()
+    }
+
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker
     /// is shut down (and the peer is already disconnected)
     pub async fn disconnect(&mut self, minimized: Minimized, requester: &str) -> Result<(), PeerConnectionError> {
@@ -310,7 +323,7 @@ impl PeerConnection {
             "Hard disconnect - requester: '{}', peer: `{}`, RPC clients: {}, substreams {}",
             requester,
             self.peer_node_id,
-            self.number_of_rpc_clients.load(Ordering::Relaxed),
+            self.count_rpc_sessions().await,
             self.substream_count()
         );
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -344,7 +357,7 @@ impl PeerConnection {
         expected_substreams: usize,
         requester: &str,
     ) -> Result<(), PeerConnectionError> {
-        let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
+        let number_of_rpc_clients = self.count_rpc_sessions().await;
         let substream_count = self.substream_count();
         if number_of_rpc_clients > expected_rpc || substream_count > expected_substreams {
             trace!(
@@ -403,8 +416,8 @@ impl Drop for PeerConnection {
             self.force_disconnect_rpc_clients_when_clone_drops
                 .load(Ordering::Relaxed)
         {
-            let number_of_rpc_clients = self.number_of_rpc_clients.load(Ordering::Relaxed);
-            if number_of_rpc_clients > 0 {
+            let number_of_rpc_clients = self.rpc_session_states.len();
+            if self.rpc_session_states.len() > 0 {
                 self.drop_notifier.broadcast(self.peer_node_id.clone());
                 trace!(
                     target: LOG_TARGET,
