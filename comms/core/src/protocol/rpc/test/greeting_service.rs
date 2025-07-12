@@ -24,7 +24,7 @@ use std::{
     cmp,
     convert::TryFrom,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::Duration,
@@ -32,7 +32,7 @@ use std::{
 
 use tari_utilities::hex::Hex;
 use tokio::{
-    sync::{mpsc, Mutex, RwLock},
+    sync::{mpsc, RwLock},
     task,
     time,
 };
@@ -406,7 +406,7 @@ impl GreetingClient {
             framed,
             Self::PROTOCOL_NAME.into(),
             Default::default(),
-            Some(Arc::new(Mutex::new(true))),
+            Some(Arc::new(AtomicBool::new(true))),
         )
         .await?;
         Ok(Self { inner })

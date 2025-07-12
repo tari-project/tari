@@ -34,7 +34,10 @@ use std::{
     fmt,
     future::Future,
     marker::PhantomData,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -102,7 +105,7 @@ impl RpcClient {
         framed: CanonicalFraming<TSubstream>,
         protocol_name: ProtocolId,
         terminate_signal: Option<OneshotSignal<NodeId>>,
-        session_state: Option<Arc<Mutex<bool>>>,
+        session_state: Option<Arc<AtomicBool>>,
     ) -> Result<Self, RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
@@ -214,7 +217,7 @@ pub struct RpcClientBuilder<TClient> {
     protocol_id: Option<ProtocolId>,
     node_id: Option<NodeId>,
     terminate_signal: Option<OneshotSignal<NodeId>>,
-    session_state: Option<Arc<Mutex<bool>>>,
+    session_state: Option<Arc<AtomicBool>>,
     _client: PhantomData<TClient>,
 }
 
@@ -284,7 +287,7 @@ impl<TClient> RpcClientBuilder<TClient> {
     }
 
     /// Set a bool that can be set to false when this client terminates
-    pub fn with_session_state(mut self, session_state: Arc<Mutex<bool>>) -> Self {
+    pub fn with_session_state(mut self, session_state: Arc<AtomicBool>) -> Self {
         self.session_state = Some(session_state);
         self
     }
@@ -429,7 +432,7 @@ struct RpcClientWorker<TSubstream> {
     protocol_id: ProtocolId,
     shutdown_signal: ShutdownSignal,
     terminate_signal: Option<OneshotSignal<NodeId>>,
-    session_state: Option<Arc<Mutex<bool>>>,
+    session_state: Option<Arc<AtomicBool>>,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -445,7 +448,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         protocol_id: ProtocolId,
         shutdown_signal: ShutdownSignal,
         terminate_signal: Option<OneshotSignal<NodeId>>,
-        session_state: Option<Arc<Mutex<bool>>>,
+        session_state: Option<Arc<AtomicBool>>,
     ) -> Self {
         Self {
             config,
@@ -559,10 +562,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.protocol_id).dec();
 
-        let lock = self.session_state.as_ref().map(|s| s.lock());
-        if let Some(session_state) = lock {
-            let mut state = session_state.await;
-            *state = false;
+        if let Some(session_state) = self.session_state.as_ref() {
+            session_state.store(false, Ordering::Relaxed);
         }
 
         if let Err(err) = self.framed.close().await {

@@ -35,7 +35,7 @@ use log::*;
 use multiaddr::Multiaddr;
 use tari_shutdown::oneshot_trigger::OneshotTrigger;
 use tokio::{
-    sync::{mpsc, oneshot, Mutex},
+    sync::{mpsc, oneshot},
     time,
 };
 use tokio_stream::StreamExt;
@@ -145,7 +145,7 @@ pub struct PeerConnection {
     handle_counter: Arc<()>,
     drop_notifier: OneshotTrigger<NodeId>,
     force_disconnect_rpc_clients_when_clone_drops: Arc<AtomicBool>,
-    rpc_session_states: Vec<Arc<Mutex<bool>>>,
+    rpc_session_states: Vec<Arc<AtomicBool>>,
 }
 
 impl PeerConnection {
@@ -276,7 +276,7 @@ impl PeerConnection {
             self.peer_node_id
         );
         let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
-        let rpc_session_state = Arc::new(Mutex::new(true));
+        let rpc_session_state = Arc::new(AtomicBool::new(true));
 
         let rpc_client = builder
             .with_protocol_id(protocol)
@@ -304,15 +304,11 @@ impl PeerConnection {
         RpcClientPool::new(self.clone(), max_sessions, client_config)
     }
 
-    async fn count_rpc_sessions(&self) -> usize {
-        let futures = self
-            .rpc_session_states
+    fn rpc_session_count(&self) -> usize {
+        self.rpc_session_states
             .iter()
-            .map(|state| async move { *state.lock().await })
-            .collect::<Vec<_>>();
-
-        let results = futures::future::join_all(futures).await;
-        results.into_iter().filter(|&b| b).count()
+            .filter(|s| s.load(Ordering::Relaxed))
+            .count()
     }
 
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker
@@ -323,7 +319,7 @@ impl PeerConnection {
             "Hard disconnect - requester: '{}', peer: `{}`, RPC clients: {}, substreams {}",
             requester,
             self.peer_node_id,
-            self.count_rpc_sessions().await,
+            self.rpc_session_count(),
             self.substream_count()
         );
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -357,7 +353,7 @@ impl PeerConnection {
         expected_substreams: usize,
         requester: &str,
     ) -> Result<(), PeerConnectionError> {
-        let number_of_rpc_clients = self.count_rpc_sessions().await;
+        let number_of_rpc_clients = self.rpc_session_count();
         let substream_count = self.substream_count();
         if number_of_rpc_clients > expected_rpc || substream_count > expected_substreams {
             trace!(
@@ -416,13 +412,12 @@ impl Drop for PeerConnection {
             self.force_disconnect_rpc_clients_when_clone_drops
                 .load(Ordering::Relaxed)
         {
-            let number_of_rpc_clients = self.rpc_session_states.len();
-            if self.rpc_session_states.len() > 0 {
+            let number_of_rpc_clients = self.rpc_session_count();
+            if number_of_rpc_clients > 0 {
                 self.drop_notifier.broadcast(self.peer_node_id.clone());
                 trace!(
                     target: LOG_TARGET,
-                    "PeerConnection `{}` drop called, open sub-streams: {}, notified {} potential RPC clients to drop \
-                    connection",
+                    "PeerConnection `{}` drop called, open sub-streams: {}, notified {} RPC clients to drop connection",
                     self.peer_node_id.clone(), self.substream_count(), number_of_rpc_clients,
                 );
             } else {
@@ -440,13 +435,15 @@ impl fmt::Display for PeerConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "Id: {}, Node ID: {}, Direction: {}, Peer Address: {}, Age: {:.0?}, #Substreams: {}, #Refs: {}",
+            "Id: {}, Node ID: {}, Direction: {}, Peer Address: {}, Age: {:.0?}, #Substreams: {}, #RPC sessions: {}, \
+             #Refs: {}",
             self.id,
             self.peer_node_id.short_str(),
             self.direction,
             self.address,
             self.age(),
             self.substream_count(),
+            self.rpc_session_count(),
             self.handle_count()
         )
     }
