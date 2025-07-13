@@ -66,6 +66,7 @@ use tari_core::{
         transaction_components::{
             payment_id::{PaymentId, TxType},
             CodeTemplateRegistration,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -1064,10 +1065,13 @@ where
                 tx_id,
                 destination,
                 amount,
-            } => self
-                .user_pay_for_fee(tx_id, destination, amount, send_transaction_join_handles)
-                .await
-                .map(TransactionServiceResponse::TransactionSent),
+            } => {
+                let reply_channel = reply_channel.take().expect("reply_channel is Some");
+                self.user_pay_for_fee(tx_id, destination, amount, send_transaction_join_handles, reply_channel)
+                    .await
+                    .map(TransactionServiceResponse::TransactionSent)?;
+                return Ok(());
+            },
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -4112,14 +4116,16 @@ where
         Ok(new_tx_id)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn user_pay_for_fee(
         &mut self,
         tx_id: TxId,
         destination: TariAddress,
-        amount: MicroMinotari,
+        _amount: MicroMinotari, // Ignored - amount is calculated from original_outputs
         send_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<TxId, TransactionServiceError> {
         // Get the transaction from transactions to be broadcast (includes both Completed and Broadcast status)
         let broadcast_transactions = self
@@ -4190,17 +4196,65 @@ where
             .map(|output| output.commitment().to_owned())
             .collect();
 
-        print!("list of original outputs:");
-        original_outputs
-            .iter()
-            .for_each(|output| print!("original output: {:?}", output));
+        // Calculate total amount from original outputs by decrypting their encrypted data
+        let mut total_amount = MicroMinotari::zero();
+        let view_key = match self
+            .resources
+            .transaction_key_manager_service
+            .get_private_view_key()
+            .await
+        {
+            Ok(key) => key,
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "user-pay-for-fee: Could not get private view key: {}",
+                    e
+                );
+                return Err(TransactionServiceError::KeyManagerServiceError(e));
+            },
+        };
 
+        // Find the actual outputs from the transaction and decrypt their amounts
+        for commitment in &original_outputs {
+            if let Some(output) = original_transaction
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .find(|output| output.commitment() == commitment)
+            {
+                match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
+                    Ok((amount, _, _)) => {
+                        total_amount += amount;
+                    },
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "user-pay-for-fee: Could not decrypt amount for commitment {:?}: {}",
+                            commitment,
+                            e
+                        );
+                    },
+                }
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "user-pay-for-fee: Could not find transaction output for commitment {:?}",
+                    commitment
+                );
+            }
+        }
+
+        // Override the amount parameter with the calculated total
+        let amount = total_amount;
         debug!(
             target: LOG_TARGET,
-            "user-pay-for-fee: Filtered {} outputs from {} total outputs for transaction {}",
+            "user-pay-for-fee: Filtered {} outputs from {} total outputs for transaction {}, total amount: {}",
             original_outputs.len(),
             original_transaction.transaction.body.outputs().len(),
-            tx_id
+            tx_id,
+            amount
         );
 
         let new_tx_id = TxId::new_random();
@@ -4213,6 +4267,11 @@ where
         self.send_transaction_cancellation_senders
             .insert(new_tx_id, cancellation_sender);
 
+        debug!(
+            target: LOG_TARGET,
+            "user-pay-for-fee Amount: {:?} fee per gram: {:?}",
+            amount, original_transaction.fee
+        );
         // Create new transaction protocol with new outputs
         let protocol = TransactionSendProtocol::new(
             new_tx_id,
@@ -4224,7 +4283,7 @@ where
             original_transaction.fee,
             original_transaction.payment_id,
             TransactionMetadata::default(),
-            None, // No reply channel for internal call
+            Some(reply_channel),
             TransactionSendProtocolStage::Initial,
             None,
         );

@@ -2078,6 +2078,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let transfer_results: Vec<(TariAddress, Result<TxId, TransactionServiceError>)> =
             future::join_all(recipients.iter().map(|(address, amount, payment_id)| async {
+                debug!(target: LOG_TARGET, "user-pay-for-fee amount: {:?}", amount.clone());
                 (
                     address.to_owned(),
                     self.get_transaction_service()
@@ -2100,7 +2101,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?;
-                    let wallet_tx = timeout(Duration::from_millis(100), async {
+                    let wallet_tx = timeout(Duration::from_millis(1000), async {
                         loop {
                             let tx = self
                                 .get_transaction_service()

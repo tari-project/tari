@@ -3285,7 +3285,7 @@ async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String
 
     // Create a user_pay_for_fee transaction - this creates a new transaction to pay the fee
     // for the pending transaction outputs. The amount is typically small (just the fee amount)
-    let amount = fee; // Use fee as the amount for simplicity
+    let amount = 0; // Use fee as the amount for simplicity
     let fee_per_gram = fee;
 
     let payment_recipient = PaymentRecipient {
