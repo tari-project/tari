@@ -1330,8 +1330,9 @@ where
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
             None,
+            None,
         );
-        let join_handle = tokio::spawn(protocol.execute(None));
+        let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
 
         Ok(())
@@ -3082,9 +3083,10 @@ where
                     None,
                     stage,
                     sender_protocol,
+                    None,
                 );
 
-                let join_handle = tokio::spawn(protocol.execute(None));
+                let join_handle = tokio::spawn(protocol.execute());
                 join_handles.push(join_handle);
             }
         }
@@ -4088,10 +4090,11 @@ where
             None, // No reply channel for internal call
             TransactionSendProtocolStage::Initial,
             None,
+            Some(UtxoSelectionCriteria::must_include(original_inputs)),
         );
 
         // Launch the new transaction protocol with the same UTXOs (no need to cancel original)
-        let join_handle = tokio::spawn(protocol.execute(Some(UtxoSelectionCriteria::must_include(original_inputs))));
+        let join_handle = tokio::spawn(protocol.execute());
         send_transaction_join_handles.push(join_handle);
 
         info!(
@@ -4379,9 +4382,10 @@ where
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
             None,
+            Some(UtxoSelectionCriteria::must_include(original_outputs)),
         );
 
-        let join_handle = tokio::spawn(protocol.execute(Some(UtxoSelectionCriteria::must_include(original_outputs))));
+        let join_handle = tokio::spawn(protocol.execute());
         send_transaction_join_handles.push(join_handle);
 
         info!(
