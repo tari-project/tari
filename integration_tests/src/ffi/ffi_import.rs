@@ -201,7 +201,12 @@ extern "C" {
     ) -> *mut TariSeedWords;
     pub fn seed_words_get_length(seed_words: *const TariSeedWords, error_out: *mut c_int) -> c_uint;
     pub fn seed_words_get_at(seed_words: *mut TariSeedWords, position: c_uint, error_out: *mut c_int) -> *mut c_char;
-    pub fn seed_words_push_word(seed_words: *mut TariSeedWords, word: *const c_char, error_out: *mut c_int) -> c_uchar;
+    pub fn seed_words_push_word(
+        seed_words: *mut TariSeedWords,
+        word: *const c_char,
+        passphrase: *const c_char,
+        error_out: *mut c_int,
+    ) -> c_uchar;
     pub fn seed_words_destroy(seed_words: *mut TariSeedWords);
     pub fn contact_create(
         alias: *const c_char,
@@ -312,10 +317,7 @@ extern "C" {
         error_out: *mut c_int,
     ) -> c_uint;
     pub fn completed_transaction_is_outbound(tx: *mut TariCompletedTransaction, error_out: *mut c_int) -> bool;
-    pub fn completed_transaction_get_confirmations(
-        tx: *mut TariCompletedTransaction,
-        error_out: *mut c_int,
-    ) -> c_ulonglong;
+
     pub fn completed_transaction_get_cancellation_reason(
         tx: *mut TariCompletedTransaction,
         error_out: *mut c_int,
@@ -412,7 +414,7 @@ extern "C" {
         context: *mut c_void,
         config: *mut TariCommsConfig,
         log_path: *const c_char,
-        log_level: c_int,
+        log_verbosity: c_int,
         num_rolling_log_files: c_uint,
         size_per_log_file_bytes: c_uint,
         passphrase: *const c_char,
@@ -422,6 +424,7 @@ extern "C" {
         dns_seeds_str: *const c_char,
         dns_seed_name_servers_str: *const c_char,
         use_dns_sec: bool,
+
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(
@@ -461,7 +464,7 @@ extern "C" {
         callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
         callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
-        callback_base_node_state_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
+        callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
         recovery_in_progress: *mut bool,
         error_out: *mut c_int,
     ) -> *mut TariWallet;
@@ -508,12 +511,6 @@ extern "C" {
         public_key: *mut TariPublicKey,
         hex_sig_nonce: *const c_char,
         msg: *const c_char,
-        error_out: *mut c_int,
-    ) -> bool;
-    pub fn wallet_set_base_node_peer(
-        wallet: *mut TariWallet,
-        public_key: *mut TariPublicKey,
-        address: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
     pub fn wallet_upsert_contact(wallet: *mut TariWallet, contact: *mut TariContact, error_out: *mut c_int) -> bool;
@@ -608,9 +605,7 @@ extern "C" {
     pub fn wallet_is_recovery_in_progress(wallet: *mut TariWallet, error_out: *mut c_int) -> bool;
     pub fn wallet_start_recovery(
         wallet: *mut TariWallet,
-        base_node_public_keys: *mut TariPublicKeys,
         recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
-        recovered_output_message: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
     pub fn wallet_set_one_sided_payment_message(

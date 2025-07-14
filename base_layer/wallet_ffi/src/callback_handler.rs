@@ -410,9 +410,6 @@ where TBackend: TransactionBackend + 'static
                                     self.base_node_state_changed(state);
                                 },
 
-                                BaseNodeEvent::NewBlockDetected(_hash, _new_block_number) => {
-                                    //
-                                },
                             }
                         },
                         Err(_e) => error!(target: LOG_TARGET, "failed to receive base node state event"),
@@ -551,7 +548,7 @@ where TBackend: TransactionBackend + 'static
         if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id) {
             transaction = Some(tx);
         } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id) {
-            let mut outbound_tx = CompletedTransaction::from(tx);
+            let mut outbound_tx = CompletedTransaction::from_outbound(tx, Vec::new());
             outbound_tx.source_address = self.comms_address.clone();
             transaction = Some(outbound_tx);
         } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id) {
@@ -717,7 +714,6 @@ where TBackend: TransactionBackend + 'static
 
         let state = match state.chain_metadata {
             None => TariBaseNodeState {
-                node_id: state.node_id,
                 best_block_height: 0,
                 best_block_hash: BlockHash::zero(),
                 best_block_timestamp: 0,
@@ -729,7 +725,6 @@ where TBackend: TransactionBackend + 'static
             },
 
             Some(chain_metadata) => TariBaseNodeState {
-                node_id: state.node_id,
                 best_block_height: chain_metadata.best_block_height(),
                 best_block_hash: *chain_metadata.best_block_hash(),
                 best_block_timestamp: chain_metadata.timestamp(),

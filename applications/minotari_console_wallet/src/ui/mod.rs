@@ -22,7 +22,6 @@
 
 use crossterm::terminal::SetTitle;
 use log::error;
-use minotari_app_utilities::consts;
 use tari_common::exit_codes::{ExitCode, ExitError};
 
 use crate::utils::crossterm_events::CrosstermEvents;
@@ -61,10 +60,6 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
             app.app_state.refresh_contacts_state().await?;
             trace!(target: LOG_TARGET, "Refreshing burnt proofs state");
             app.app_state.refresh_burnt_proofs_state().await?;
-            trace!(target: LOG_TARGET, "Refreshing connected peers state");
-            app.app_state.refresh_connected_peers_state().await?;
-            trace!(target: LOG_TARGET, "Checking connectivity");
-            app.app_state.check_connectivity().await;
             trace!(target: LOG_TARGET, "Starting balance enquiry debouncer");
             app.app_state.start_balance_enquiry_debouncer().await?;
             trace!(target: LOG_TARGET, "Starting app state event monitor");
@@ -88,7 +83,7 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
         error!(target: LOG_TARGET, "Error creating stdout context. {}", e);
         ExitCode::InterfaceError
     })?;
-    let terminal_title = format!("Minotari Console Wallet - Version {}", consts::APP_VERSION);
+    let terminal_title = format!("Minotari Console Wallet - Version {}", env!("CARGO_PKG_VERSION"));
     if let Err(e) = execute!(stdout, SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }

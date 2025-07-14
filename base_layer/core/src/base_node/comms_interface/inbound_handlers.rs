@@ -35,6 +35,7 @@ use tokio::sync::RwLock;
 use crate::base_node::metrics;
 use crate::{
     base_node::comms_interface::{
+        comms_response::ValidatorNodeChange,
         error::CommsInterfaceError,
         local_interface::BlockEventSender,
         FetchMempoolTransactionsResponse,
@@ -216,7 +217,7 @@ where B: BlockchainBackend + 'static
                             target: LOG_TARGET,
                             "Could not provide requested block containing kernel with sig {} to peer because: {}",
                             sig_hex,
-                            e.to_string()
+                            e
                         ),
                     }
                 }
@@ -251,7 +252,7 @@ where B: BlockchainBackend + 'static
                             target: LOG_TARGET,
                             "Could not provide requested block with commitment {} to peer because: {}",
                             commitment_hex,
-                            e.to_string()
+                            e
                         ),
                     }
                 }
@@ -386,7 +387,7 @@ where B: BlockchainBackend + 'static
                             target: LOG_TARGET,
                             "Could not provide requested block {} to peer because: {}",
                             block_hex,
-                            e.to_string()
+                            e
                         );
 
                         None
@@ -412,7 +413,7 @@ where B: BlockchainBackend + 'static
                     Ok(Some((kernel, _))) => vec![kernel],
                     Ok(None) => vec![],
                     Err(err) => {
-                        error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
+                        error!(target: LOG_TARGET, "Could not fetch kernel {}", err);
                         return Err(err.into());
                     },
                 };
@@ -428,15 +429,24 @@ where B: BlockchainBackend + 'static
                     },
                 ))
             },
-            NodeCommsRequest::FetchValidatorNodesKeys { height } => {
-                let active_validator_nodes = self.blockchain_db.fetch_active_validator_nodes(height).await?;
+            NodeCommsRequest::FetchValidatorNodesKeys {
+                height,
+                validator_network,
+            } => {
+                let active_validator_nodes = self
+                    .blockchain_db
+                    .fetch_active_validator_nodes(height, validator_network)
+                    .await?;
                 Ok(NodeCommsResponse::FetchValidatorNodesKeysResponse(
                     active_validator_nodes,
                 ))
             },
-            NodeCommsRequest::GetShardKey { height, public_key } => {
-                let shard_key = self.blockchain_db.get_shard_key(height, public_key).await?;
-                Ok(NodeCommsResponse::GetShardKeyResponse(shard_key))
+            NodeCommsRequest::GetValidatorNode {
+                sidechain_id,
+                public_key,
+            } => {
+                let vn = self.blockchain_db.get_validator_node(sidechain_id, public_key).await?;
+                Ok(NodeCommsResponse::GetValidatorNode(vn))
             },
             NodeCommsRequest::FetchTemplateRegistrations {
                 start_height,
@@ -453,6 +463,56 @@ where B: BlockchainBackend + 'static
             NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
+            },
+            NodeCommsRequest::FetchMinedInfoByPayRef(payref) => {
+                let output_info = self.blockchain_db.fetch_mined_info_by_payref(payref).await?;
+                Ok(NodeCommsResponse::MinedInfo(output_info))
+            },
+            NodeCommsRequest::FetchMinedInfoByOutputHash(output_hash) => {
+                let output_info = self.blockchain_db.fetch_mined_info_by_output_hash(output_hash).await?;
+                Ok(NodeCommsResponse::MinedInfo(output_info))
+            },
+            NodeCommsRequest::FetchOutputMinedInfo(output_hash) => {
+                let output_info = self.blockchain_db.fetch_output(output_hash).await?;
+                Ok(NodeCommsResponse::OutputMinedInfo(output_info))
+            },
+            NodeCommsRequest::CheckOutputSpentStatus(output_hash) => {
+                let input_info = self.blockchain_db.fetch_input(output_hash).await?;
+                Ok(NodeCommsResponse::InputMinedInfo(input_info))
+            },
+            NodeCommsRequest::FetchValidatorNodeChanges { epoch, sidechain_id } => {
+                let added_validators = self
+                    .blockchain_db
+                    .fetch_validators_activating_in_epoch(sidechain_id.clone(), epoch)
+                    .await?;
+
+                let exit_validators = self
+                    .blockchain_db
+                    .fetch_validators_exiting_in_epoch(sidechain_id.clone(), epoch)
+                    .await?;
+
+                info!(
+                    target: LOG_TARGET,
+                    "Fetched {} validators activating and {} validators exiting in epoch {}",
+                    added_validators.len(),
+                    exit_validators.len(),
+                    epoch,
+                );
+
+                let mut node_changes = Vec::with_capacity(added_validators.len() + exit_validators.len());
+
+                node_changes.extend(added_validators.into_iter().map(|vn| ValidatorNodeChange::Add {
+                    registration: vn.original_registration.into(),
+                    activation_epoch: vn.activation_epoch,
+                    minimum_value_promise: vn.minimum_value_promise,
+                    shard_key: vn.shard_key,
+                }));
+
+                node_changes.extend(exit_validators.into_iter().map(|vn| ValidatorNodeChange::Remove {
+                    public_key: vn.public_key,
+                }));
+
+                Ok(NodeCommsResponse::FetchValidatorNodeChangesResponse(node_changes))
             },
         }
     }
@@ -932,22 +992,7 @@ where B: BlockchainBackend + 'static
                         details: format!("Output {} to be spent does not exist in db", input.output_hash()),
                     })?;
 
-            let rp_hash = match output_mined_info.output.proof {
-                Some(proof) => proof.hash(),
-                None => FixedHash::zero(),
-            };
-            input.add_output_data(
-                output_mined_info.output.version,
-                output_mined_info.output.features,
-                output_mined_info.output.commitment,
-                output_mined_info.output.script,
-                output_mined_info.output.sender_offset_public_key,
-                output_mined_info.output.covenant,
-                output_mined_info.output.encrypted_data,
-                output_mined_info.output.metadata_signature,
-                rp_hash,
-                output_mined_info.output.minimum_value_promise,
-            );
+            input.add_output_data(output_mined_info.output);
         }
         debug!(
             target: LOG_TARGET,

@@ -39,7 +39,8 @@ use crate::{
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
         transaction_components::{
-            encrypted_data::{PaymentId, STATIC_ENCRYPTED_DATA_SIZE_TOTAL},
+            encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+            payment_id::PaymentId,
             EncryptedData,
             RangeProofType,
             TransactionError,
@@ -604,7 +605,7 @@ mod orphan_validator {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types([
+                    .with_permitted_range_proof_types(&[
                         (OutputType::Standard, &[RangeProofType::RevealedValue]),
                         (OutputType::Coinbase, &[RangeProofType::RevealedValue]),
                         (OutputType::Burn, &[RangeProofType::RevealedValue]),
@@ -638,7 +639,7 @@ mod orphan_validator {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types([
+                    .with_permitted_range_proof_types(&[
                         (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
                         (OutputType::Coinbase, &[RangeProofType::BulletProofPlus]),
                         (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
@@ -672,13 +673,9 @@ mod orphan_validator {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types([
-                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
-                    ])
+                    .with_permitted_range_proof_types(&[(OutputType::CodeTemplateRegistration, &[
+                        RangeProofType::BulletProofPlus,
+                    ])])
                     .with_coinbase_lockheight(0)
                     .build(),
             )

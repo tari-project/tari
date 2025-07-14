@@ -24,6 +24,7 @@ use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use futures::{
@@ -36,6 +37,8 @@ use minotari_app_grpc::tari_rpc::{
     self,
     payment_recipient::PaymentType,
     wallet_server,
+    BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse,
     CheckConnectivityResponse,
     ClaimHtlcRefundRequest,
     ClaimHtlcRefundResponse,
@@ -48,6 +51,7 @@ use minotari_app_grpc::tari_rpc::{
     CreateBurnTransactionResponse,
     CreateTemplateRegistrationRequest,
     CreateTemplateRegistrationResponse,
+    FeePerGramStat,
     GetAddressResponse,
     GetAllCompletedTransactionsRequest,
     GetAllCompletedTransactionsResponse,
@@ -59,13 +63,21 @@ use minotari_app_grpc::tari_rpc::{
     GetCompletedTransactionsRequest,
     GetCompletedTransactionsResponse,
     GetConnectivityRequest,
+    GetFeeEstimateRequest,
+    GetFeeEstimateResponse,
+    GetFeePerGramStatsRequest,
+    GetFeePerGramStatsResponse,
     GetIdentityRequest,
     GetIdentityResponse,
+    GetPaymentByReferenceRequest,
+    GetPaymentByReferenceResponse,
     GetPaymentIdAddressRequest,
     GetStateRequest,
     GetStateResponse,
     GetTransactionInfoRequest,
     GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest,
+    GetTransactionPayRefsResponse,
     GetUnspentAmountsResponse,
     GetVersionRequest,
     GetVersionResponse,
@@ -73,14 +85,20 @@ use minotari_app_grpc::tari_rpc::{
     ImportTransactionsResponse,
     ImportUtxosRequest,
     ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest,
+    PrepareOneSidedTransactionForSigningResponse,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     RevalidateRequest,
     RevalidateResponse,
     SendShaAtomicSwapRequest,
     SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
+    SignMessageRequest,
+    SignMessageResponse,
+    SubmitValidatorEvictionProofRequest,
+    SubmitValidatorEvictionProofResponse,
+    SubmitValidatorNodeExitRequest,
+    SubmitValidatorNodeExitResponse,
     TransactionDirection,
     TransactionEvent,
     TransactionEventRequest,
@@ -99,37 +117,38 @@ use minotari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         handle::TransactionServiceHandle,
+        offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
     },
     WalletSqlite,
 };
+use rand::rngs::OsRng;
 use tari_common_types::{
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
+use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::{MicroMinotari, T},
+        tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
-            CodeTemplateRegistration,
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
-            OutputType,
-            SideChainFeature,
             UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
     },
 };
-use tari_script::script;
+use tari_crypto::hash_domain;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
     task,
+    time::{sleep, timeout},
 };
 use tonic::{Request, Response, Status};
 
@@ -139,6 +158,13 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
+
+// Domain separator for signing arbitrary messages with a wallet secret key
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.base_layer.wallet.message_signing",
+    1
+);
 
 async fn send_transaction_event(
     transaction_event: TransactionEvent,
@@ -164,19 +190,33 @@ pub struct WalletGrpcServer {
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
+        let scanned_height = wallet
+            .db
+            .get_last_scanned_height()
+            .unwrap_or_default()
+            .unwrap_or_default();
         let debouncer = WalletDebouncer::new(
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
-            wallet.wallet_connectivity.clone(),
             wallet.utxo_scanner_service.clone(),
             wallet.comms.shutdown_signal(),
+            scanned_height,
         );
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         Ok(Self {
             wallet,
-            rules,
             debouncer: Arc::new(Mutex::new(debouncer)),
+            rules,
         })
+    }
+
+    fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
+        let height = self.wallet.db.get_last_scanned_height()?.unwrap_or_default();
+        Ok(self.rules.consensus_constants(height))
+    }
+
+    pub async fn start_balance_debouncer_event_monitor(&self) {
+        self.debouncer.lock().await.start_event_monitor_if_needed().await
     }
 
     fn get_transaction_service(&self) -> TransactionServiceHandle {
@@ -189,18 +229,6 @@ impl WalletGrpcServer {
 
     fn comms(&self) -> &CommsNode {
         &self.wallet.comms
-    }
-
-    fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
-        // If we don't have the chain metadata, we hope that VNReg consensus constants did not change - worst case, we
-        // spend more than we need to or the transaction is rejected.
-        let height = self
-            .wallet
-            .db
-            .get_chain_metadata()?
-            .map(|m| m.best_block_height())
-            .unwrap_or_default();
-        Ok(self.rules.consensus_constants(height))
     }
 }
 
@@ -219,7 +247,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
-        let mut connectivity = self.wallet.wallet_connectivity.clone();
+        let connectivity = self.wallet.wallet_connectivity.clone();
         let status = connectivity.get_connectivity_status();
         Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
     }
@@ -323,29 +351,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             interactive_address_emoji: interactive_address.to_emoji_string(),
             one_sided_address_emoji: one_sided_address.to_emoji_string(),
         }))
-    }
-
-    async fn set_base_node(
-        &self,
-        request: Request<SetBaseNodeRequest>,
-    ) -> Result<Response<SetBaseNodeResponse>, Status> {
-        let message = request.into_inner();
-        let public_key = CompressedPublicKey::from_hex(&message.public_key_hex)
-            .map_err(|e| Status::invalid_argument(format!("Base node public key was not a valid pub key: {}", e)))?;
-        let net_address = message
-            .net_address
-            .parse::<Multiaddr>()
-            .map_err(|e| Status::invalid_argument(format!("Base node net address was not valid: {}", e)))?;
-
-        println!("Setting base node peer...");
-        println!("{}::{}", public_key, net_address);
-        let mut wallet = self.wallet.clone();
-        wallet
-            .set_base_node_peer(public_key.clone(), Some(net_address.clone()), None)
-            .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
-
-        Ok(Response::new(SetBaseNodeResponse {}))
     }
 
     async fn get_balance(&self, request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
@@ -453,18 +458,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
-        let start = std::time::Instant::now();
-        let mut output_service = self.get_output_manager_service();
-        output_service
-            .revalidate_all_outputs()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        let mut tx_service = self.get_transaction_service();
-        tx_service
-            .revalidate_all_transactions()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        trace!(target: LOG_TARGET, "'revalidate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(RevalidateResponse {}))
     }
 
@@ -472,18 +465,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<ValidateRequest>,
     ) -> Result<Response<ValidateResponse>, Status> {
-        let start = std::time::Instant::now();
-        let mut output_service = self.get_output_manager_service();
-        output_service
-            .validate_txos()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        let mut tx_service = self.get_transaction_service();
-        tx_service
-            .validate_transactions()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        trace!(target: LOG_TARGET, "'validate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(ValidateResponse {}))
     }
 
@@ -724,6 +705,111 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    async fn prepare_one_sided_transaction_for_signing(
+        &self,
+        request: Request<PrepareOneSidedTransactionForSigningRequest>,
+    ) -> Result<Response<PrepareOneSidedTransactionForSigningResponse>, Status> {
+        let message = request.into_inner();
+
+        let recipient = message.recipient.ok_or(Status::invalid_argument("Missing recipient"))?;
+        let address = TariAddress::from_str(&recipient.address)
+            .map_err(|_| Status::invalid_argument("Destination address is malformed"))?;
+
+        let payment_id = if !recipient.raw_payment_id.is_empty() {
+            PaymentId::from_bytes(&recipient.raw_payment_id)
+        } else if let Some(user_pay_id) = recipient.user_payment_id {
+            let bytes = match (
+                user_pay_id.u256.is_empty(),
+                user_pay_id.utf8_string.is_empty(),
+                user_pay_id.user_bytes.is_empty(),
+            ) {
+                (false, true, true) => user_pay_id.u256,
+                (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                (true, true, false) => user_pay_id.user_bytes,
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                    ));
+                },
+            };
+            PaymentId::Open {
+                user_data: bytes,
+                tx_type: TxType::PaymentToOther,
+            }
+        } else {
+            PaymentId::Empty
+        };
+
+        let mut transaction_service = self.get_transaction_service();
+        let response = match transaction_service
+            .prepare_one_sided_transaction_for_signing(
+                address.clone(),
+                recipient.amount.into(),
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                recipient.fee_per_gram.into(),
+                payment_id,
+            )
+            .await
+        {
+            Ok(data) => {
+                let json_data = data.to_json().map_err(|e| Status::internal(e.to_string()))?;
+                PrepareOneSidedTransactionForSigningResponse {
+                    is_success: true,
+                    result: json_data,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to lock transaction for address `{}`: {}", address, err
+                );
+                PrepareOneSidedTransactionForSigningResponse {
+                    is_success: false,
+                    result: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn broadcast_signed_one_sided_transaction(
+        &self,
+        request: Request<BroadcastSignedOneSidedTransactionRequest>,
+    ) -> Result<Response<BroadcastSignedOneSidedTransactionResponse>, Status> {
+        let message = request.into_inner();
+
+        let mut transaction_service = self.get_transaction_service();
+        let request = SignedOneSidedTransactionResult::from_json(&message.request)
+            .map_err(|err| Status::internal(err.to_string()))?;
+        let response = match transaction_service
+            .broadcast_signed_one_sided_transaction(request)
+            .await
+        {
+            Ok(result) => BroadcastSignedOneSidedTransactionResponse {
+                is_success: true,
+                transaction_id: result.as_u64(),
+                failure_message: Default::default(),
+            },
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to broadcast a signed transaction: {}", err
+                );
+                BroadcastSignedOneSidedTransactionResponse {
+                    is_success: false,
+                    transaction_id: Default::default(),
+                    failure_message: err.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
@@ -825,12 +911,25 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?;
-                    let wallet_tx = self
-                        .get_transaction_service()
-                        .get_any_transaction(tx_id)
-                        .await
-                        .map_err(|e| Status::internal(format!("{:?}", e)))?
-                        .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
+                    let wallet_tx = timeout(Duration::from_millis(100), async {
+                        loop {
+                            let tx = self
+                                .get_transaction_service()
+                                .get_any_transaction(tx_id)
+                                .await
+                                .map_err(|e| Status::internal(format!("{:?}", e)));
+
+                            if let Ok(Some(tx)) = tx {
+                                break tx;
+                            }
+                            sleep(Duration::from_millis(10)).await;
+                        }
+                    })
+                    .await
+                    .map_err(|_| {
+                        error!(target: LOG_TARGET, "Transaction {} not found within timeout", tx_id);
+                        Status::not_found(format!("Transaction {} not found within timeout", tx_id))
+                    })?;
                     let final_tx = convert_wallet_transaction_into_transaction_info(
                         wallet_tx,
                         &wallet_address,
@@ -883,6 +982,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 } else {
                     Some(
                         CompressedPublicKey::from_canonical_bytes(&message.claim_public_key)
+                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                    )
+                },
+                if message.sidechain_deployment_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
@@ -1071,7 +1178,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let transactions = transaction_service
-            .get_completed_transactions(payment_id, block_hash, block_height)
+            .get_completed_transactions(payment_id, block_hash, block_height, 0)
             .await
             .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
         debug!(
@@ -1083,7 +1190,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let (mut sender, receiver) = mpsc::channel(transactions.len());
         task::spawn(async move {
             for (i, txn) in transactions.iter().enumerate() {
-                let output_commitments = txn
+                let output_commitments: Vec<Vec<u8>> = txn
                     .transaction
                     .body
                     .outputs()
@@ -1103,15 +1210,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         },
                     })
                     .collect();
+
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
                         tx_id: txn.tx_id.into(),
                         source_address: txn.source_address.to_vec(),
                         dest_address: txn.destination_address.to_vec(),
-                        status: TransactionStatus::from(txn.status.clone()) as i32,
+                        status: TransactionStatus::from(txn.status) as i32,
                         amount: txn.amount.into(),
                         is_cancelled: txn.cancelled.is_some(),
-                        direction: TransactionDirection::from(txn.direction.clone()) as i32,
+                        direction: TransactionDirection::from(txn.direction) as i32,
                         fee: txn.fee.into(),
                         timestamp: txn.timestamp.timestamp() as u64,
                         excess_sig: txn
@@ -1125,6 +1233,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
+                        payment_references_sent: txn
+                            .calculate_sent_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
+                        payment_references_received: txn
+                            .calculate_received_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
+                        payment_references_change: txn
+                            .calculate_change_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1155,11 +1278,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_all_completed_transactions(
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
     ) -> Result<Response<GetAllCompletedTransactionsResponse>, Status> {
         let start = std::time::Instant::now();
+        let req = request.into_inner();
         trace!(
             target: LOG_TARGET,
             "GetAllCompletedTransactions: Incoming GRPC request"
@@ -1167,7 +1292,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.get_transaction_service();
 
         let mut completed_transactions = transaction_service
-            .get_completed_transactions(None, None, None)
+            .get_completed_transactions(None, None, None, 0)
             .await
             .map_err(|err| {
                 Status::not_found(format!(
@@ -1177,7 +1302,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })?;
         completed_transactions.extend(
             transaction_service
-                .get_cancelled_completed_transactions()
+                .get_cancelled_completed_transactions(0)
                 .await
                 .map_err(|err| {
                     Status::not_found(format!(
@@ -1193,62 +1318,78 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .expect("Should be able to compare timestamps")
         });
 
-        let req = request.into_inner();
         let offset = usize::try_from(req.offset).unwrap_or(0);
         let limit = if req.limit > 0 {
             usize::try_from(req.limit).unwrap_or(usize::MAX)
         } else {
             usize::MAX
         };
-        let transactions = completed_transactions
+        let mut transactions: Vec<TransactionInfo> = Vec::new();
+        for txn in completed_transactions
             .into_iter()
+            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status as u32))) != 0)
             .skip(offset)
             .take(limit)
-            .map(|txn| {
-                let output_commitments = txn
+        {
+            let output_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.commitment().as_bytes().to_vec())
+                .collect();
+            let input_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .inputs()
+                .iter()
+                .map(|i| match i.commitment() {
+                    Ok(c) => c.as_bytes().to_vec(),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                        vec![]
+                    },
+                })
+                .collect();
+
+            transactions.push(TransactionInfo {
+                tx_id: txn.tx_id.into(),
+                source_address: txn.source_address.to_vec(),
+                dest_address: txn.destination_address.to_vec(),
+                status: TransactionStatus::from(txn.status) as i32,
+                amount: txn.amount.into(),
+                is_cancelled: txn.cancelled.is_some(),
+                direction: TransactionDirection::from(txn.direction) as i32,
+                fee: txn.fee.into(),
+                timestamp: txn.timestamp.timestamp() as u64,
+                excess_sig: txn
                     .transaction
-                    .body
-                    .outputs()
-                    .iter()
-                    .map(|o| o.commitment().as_bytes().to_vec())
-                    .collect();
-                let input_commitments = txn
-                    .transaction
-                    .body
-                    .inputs()
-                    .iter()
-                    .map(|i| match i.commitment() {
-                        Ok(c) => c.as_bytes().to_vec(),
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
-                            vec![]
-                        },
-                    })
-                    .collect();
-                TransactionInfo {
-                    tx_id: txn.tx_id.into(),
-                    source_address: txn.source_address.to_vec(),
-                    dest_address: txn.destination_address.to_vec(),
-                    status: TransactionStatus::from(txn.status.clone()) as i32,
-                    amount: txn.amount.into(),
-                    is_cancelled: txn.cancelled.is_some(),
-                    direction: TransactionDirection::from(txn.direction.clone()) as i32,
-                    fee: txn.fee.into(),
-                    timestamp: txn.timestamp.timestamp() as u64,
-                    excess_sig: txn
-                        .transaction
-                        .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
-                        .get_signature()
-                        .to_vec(),
-                    raw_payment_id: txn.payment_id.to_bytes(),
-                    user_payment_id: txn.payment_id.user_data_as_bytes(),
-                    mined_in_block_height: txn.mined_height.unwrap_or(0),
-                    output_commitments,
-                    input_commitments,
-                }
-            })
-            .collect();
+                    .first_kernel_excess_sig()
+                    .unwrap_or(&Signature::default())
+                    .get_signature()
+                    .to_vec(),
+                raw_payment_id: txn.payment_id.to_bytes(),
+                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                mined_in_block_height: txn.mined_height.unwrap_or(0),
+                output_commitments,
+                input_commitments,
+                payment_references_sent: txn
+                    .calculate_sent_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_received: txn
+                    .calculate_received_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_change: txn
+                    .calculate_change_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+            });
+        }
 
         trace!(target: LOG_TARGET, "'GetAllCompletedTransactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(GetAllCompletedTransactionsResponse { transactions }))
@@ -1268,7 +1409,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transaction_service = self.get_transaction_service();
         let transactions = transaction_service
-            .get_completed_transactions(None, None, Some(block_height))
+            .get_completed_transactions(None, None, Some(block_height), 0)
             .await
             .map_err(|err| {
                 Status::not_found(format!(
@@ -1283,57 +1424,73 @@ impl wallet_server::Wallet for WalletGrpcServer {
             block_height
         );
 
-        let transactions = transactions
-            .iter()
-            .map(|txn| {
-                let output_commitments = txn
+        let mut result_transactions = Vec::new();
+        for txn in &transactions {
+            let output_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .map(|o| o.commitment().as_bytes().to_vec())
+                .collect();
+            let input_commitments: Vec<Vec<u8>> = txn
+                .transaction
+                .body
+                .inputs()
+                .iter()
+                .map(|i| match i.commitment() {
+                    Ok(c) => c.as_bytes().to_vec(),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                        vec![]
+                    },
+                })
+                .collect();
+
+            result_transactions.push(TransactionInfo {
+                tx_id: txn.tx_id.into(),
+                source_address: txn.source_address.to_vec(),
+                dest_address: txn.destination_address.to_vec(),
+                status: TransactionStatus::from(txn.status) as i32,
+                amount: txn.amount.into(),
+                is_cancelled: txn.cancelled.is_some(),
+                direction: TransactionDirection::from(txn.direction) as i32,
+                fee: txn.fee.into(),
+                timestamp: txn.timestamp.timestamp() as u64,
+                excess_sig: txn
                     .transaction
-                    .body
-                    .outputs()
-                    .iter()
-                    .map(|o| o.commitment().as_bytes().to_vec())
-                    .collect();
-                let input_commitments = txn
-                    .transaction
-                    .body
-                    .inputs()
-                    .iter()
-                    .map(|i| match i.commitment() {
-                        Ok(c) => c.as_bytes().to_vec(),
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
-                            vec![]
-                        },
-                    })
-                    .collect();
-                TransactionInfo {
-                    tx_id: txn.tx_id.into(),
-                    source_address: txn.source_address.to_vec(),
-                    dest_address: txn.destination_address.to_vec(),
-                    status: TransactionStatus::from(txn.status.clone()) as i32,
-                    amount: txn.amount.into(),
-                    is_cancelled: txn.cancelled.is_some(),
-                    direction: TransactionDirection::from(txn.direction.clone()) as i32,
-                    fee: txn.fee.into(),
-                    timestamp: txn.timestamp.timestamp() as u64,
-                    excess_sig: txn
-                        .transaction
-                        .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
-                        .get_signature()
-                        .to_vec(),
-                    raw_payment_id: txn.payment_id.to_bytes(),
-                    user_payment_id: txn.payment_id.user_data_as_bytes(),
-                    mined_in_block_height: txn.mined_height.unwrap_or(0),
-                    output_commitments,
-                    input_commitments,
-                }
-            })
-            .collect();
+                    .first_kernel_excess_sig()
+                    .unwrap_or(&Signature::default())
+                    .get_signature()
+                    .to_vec(),
+                raw_payment_id: txn.payment_id.to_bytes(),
+                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                mined_in_block_height: txn.mined_height.unwrap_or(0),
+                output_commitments,
+                input_commitments,
+                payment_references_sent: txn
+                    .calculate_sent_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_received: txn
+                    .calculate_received_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_change: txn
+                    .calculate_change_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+            });
+        }
 
         trace!(target: LOG_TARGET, "'get_block_height_transactions' completed in {:.2?}", start.elapsed());
 
-        Ok(Response::new(GetBlockHeightTransactionsResponse { transactions }))
+        Ok(Response::new(GetBlockHeightTransactionsResponse {
+            transactions: result_transactions,
+        }))
     }
 
     async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
@@ -1490,59 +1647,51 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateTemplateRegistrationRequest>,
     ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut output_manager = self.wallet.output_manager_service.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let template_registration = CodeTemplateRegistration::try_from(
-            message
-                .template_registration
-                .ok_or_else(|| Status::invalid_argument("template_registration is empty"))?,
-        )
-        .map_err(|e| Status::invalid_argument(format!("template_registration is invalid: {}", e)))?;
-        let fee_per_gram = message.fee_per_gram;
-        let template_name = template_registration.template_name.clone();
+        let fee_per_gram = message.fee_per_gram.into();
 
-        let mut output = output_manager
-            .create_output_with_features(1 * T, OutputFeatures {
-                output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        output = output.with_script(script![Nop].map_err(|e| Status::invalid_argument(e.to_string()))?);
-        let payment_id = PaymentId::open_from_string(
-            &format!("Template registration '{}'", template_name),
-            TxType::CodeTemplateRegistration,
-        );
-
-        let (tx_id, transaction) = output_manager
-            .create_send_to_self_with_output(
-                vec![output],
-                fee_per_gram.into(),
-                UtxoSelectionCriteria::default(),
-                payment_id.clone(),
+        let (tx_id, template_address) = transaction_service
+            .register_code_template(
+                message
+                    .template_name
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
+                message
+                    .template_version
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
+                if let Some(tt) = message.template_type {
+                    tt.try_into()
+                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("template type is missing"));
+                },
+                if let Some(bi) = message.build_info {
+                    bi.try_into()
+                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("build info is missing"));
+                },
+                message
+                    .binary_sha
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
+                message
+                    .binary_url
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
+                fee_per_gram,
+                if message.sidechain_deployment_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
+                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
+                    )
+                },
             )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Template registration transaction: {:?}", transaction
-        );
-
-        let reg_output = transaction
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
-            .ok_or_else(|| Status::internal("No code template registration output!"))?;
-        let template_address = reg_output.hash();
-
-        transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), payment_id)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1565,6 +1714,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+        let validator_node_claim_public_key =
+            CompressedPublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
+                .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
+
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
+            None
+        } else {
+            Some(
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
+            )
+        };
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
@@ -1576,6 +1737,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 constants.validator_node_registration_min_deposit_amount(),
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_claim_public_key,
+                sidechain_key,
+                request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 PaymentId::from_bytes(&request.payment_id),
@@ -1594,6 +1758,117 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: false,
                     failure_message: e.to_string(),
                 }
+            },
+        };
+        Ok(Response::new(response))
+    }
+
+    async fn submit_validator_node_exit(
+        &self,
+        request: Request<SubmitValidatorNodeExitRequest>,
+    ) -> Result<Response<SubmitValidatorNodeExitResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+        let validator_node_signature = request
+            .validator_node_signature
+            .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
+            .try_into()
+            .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
+            None
+        } else {
+            Some(
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
+            )
+        };
+
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        let response = match transaction_service
+            .submit_validator_node_exit(
+                constants.validator_node_registration_min_deposit_amount(),
+                validator_node_public_key,
+                validator_node_signature,
+                sidechain_key,
+                request.max_epoch.into(),
+                UtxoSelectionCriteria::default(),
+                request.fee_per_gram.into(),
+                PaymentId::Open {
+                    // TODO: should this be its own TxType?
+                    tx_type: TxType::PaymentToSelf,
+                    user_data: request.message,
+                },
+            )
+            .await
+        {
+            Ok(tx) => SubmitValidatorNodeExitResponse {
+                transaction_id: tx.as_u64(),
+                is_success: true,
+                failure_message: Default::default(),
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                SubmitValidatorNodeExitResponse {
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+        Ok(Response::new(response))
+    }
+
+    async fn submit_validator_eviction_proof(
+        &self,
+        request: Request<SubmitValidatorEvictionProofRequest>,
+    ) -> Result<Response<SubmitValidatorEvictionProofResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+
+        let sidechain_key = Some(request.sidechain_deployment_key)
+            .filter(|k| !k.is_empty())
+            .map(|k| PrivateKey::from_canonical_bytes(&k))
+            .transpose()
+            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?;
+
+        let proof = request
+            .proof
+            .map(TryInto::try_into)
+            .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Failed to convert proof: {}", e);
+                Status::invalid_argument(format!("Invalid proof: {e}"))
+            })?;
+
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        let response = match transaction_service
+            .submit_validator_eviction_proof(
+                constants.validator_node_registration_min_deposit_amount(),
+                proof,
+                request.fee_per_gram.into(),
+                sidechain_key,
+                PaymentId::Open {
+                    user_data: request.message.into_bytes(),
+                    tx_type: TxType::PaymentToSelf,
+                },
+            )
+            .await
+        {
+            Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                return Err(Status::unknown(e.to_string()));
             },
         };
         Ok(Response::new(response))
@@ -1619,6 +1894,264 @@ impl wallet_server::Wallet for WalletGrpcServer {
             };
         }
         Ok(Response::new(ImportTransactionsResponse { tx_ids }))
+    }
+
+    async fn get_payment_by_reference(
+        &self,
+        request: Request<GetPaymentByReferenceRequest>,
+    ) -> Result<Response<GetPaymentByReferenceResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_payment_by_reference: Looking up PayRef: {}",
+            message.payment_reference.to_hex()
+        );
+
+        if message.payment_reference.len() != 32 {
+            return Err(Status::invalid_argument(
+                "payment_reference must be exactly 32 bytes".to_string(),
+            ));
+        }
+
+        let payment_ref = message
+            .payment_reference
+            .try_into()
+            .map_err(|_| Status::invalid_argument("payment_reference must be exactly 32 bytes".to_string()))?;
+        let mut tms = self.get_transaction_service();
+
+        match tms.get_transaction_by_payref(payment_ref).await {
+            Ok(txn) => {
+                let output_commitments: Vec<Vec<u8>> = txn
+                    .transaction
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.commitment().as_bytes().to_vec())
+                    .collect();
+                let input_commitments: Vec<Vec<u8>> = txn
+                    .transaction
+                    .body
+                    .inputs()
+                    .iter()
+                    .map(|i| match i.commitment() {
+                        Ok(c) => c.as_bytes().to_vec(),
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            vec![]
+                        },
+                    })
+                    .collect();
+                let transaction_info = TransactionInfo {
+                    tx_id: txn.tx_id.into(),
+                    source_address: txn.source_address.to_vec(),
+                    dest_address: txn.destination_address.to_vec(),
+                    status: TransactionStatus::from(txn.status) as i32,
+                    amount: txn.amount.into(),
+                    is_cancelled: txn.cancelled.is_some(),
+                    direction: TransactionDirection::from(txn.direction) as i32,
+                    fee: txn.fee.into(),
+                    timestamp: txn.timestamp.timestamp() as u64,
+                    excess_sig: txn
+                        .transaction
+                        .first_kernel_excess_sig()
+                        .unwrap_or(&Signature::default())
+                        .get_signature()
+                        .to_vec(),
+                    raw_payment_id: txn.payment_id.to_bytes(),
+                    user_payment_id: txn.payment_id.user_data_as_bytes(),
+                    mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    output_commitments,
+                    input_commitments,
+                    payment_references_sent: txn
+                        .calculate_sent_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                    payment_references_received: txn
+                        .calculate_received_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                    payment_references_change: txn
+                        .calculate_change_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                };
+                Ok(Response::new(GetPaymentByReferenceResponse {
+                    transaction: Some(transaction_info),
+                }))
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "get_transaction_by_payref: Error looking up PayRef {}: {}",
+                    payment_ref.to_hex(),
+                    e
+                );
+                Err(Status::internal(format!("Error looking up payment reference: {}", e)))
+            },
+        }
+    }
+
+    async fn get_transaction_pay_refs(
+        &self,
+        request: Request<GetTransactionPayRefsRequest>,
+    ) -> Result<Response<GetTransactionPayRefsResponse>, Status> {
+        let req = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_transaction_pay_refs: Getting PayRefs for transaction ID: {}",
+            req.transaction_id
+        );
+
+        let mut transaction_service = self.get_transaction_service();
+        let tx_id = TxId::from(req.transaction_id);
+
+        match transaction_service.get_completed_transaction(tx_id).await {
+            Ok(completed_tx) => {
+                // Only return PayRefs if transaction is mined and has block hash
+                if let Some(block_hash) = &completed_tx.mined_in_block {
+                    let mut payment_references = Vec::new();
+
+                    // Generate PayRefs from sent output hashes
+                    for output_hash in &completed_tx.sent_output_hashes {
+                        let payref = generate_payment_reference(block_hash, output_hash);
+                        payment_references.push(payref.to_vec());
+                    }
+
+                    // Generate PayRefs from received output hashes
+                    for output_hash in &completed_tx.received_output_hashes {
+                        let payref = generate_payment_reference(block_hash, output_hash);
+                        payment_references.push(payref.to_vec());
+                    }
+
+                    // Generate PayRefs from change output hashes (per-output approach)
+                    for output_hash in &completed_tx.change_output_hashes {
+                        let payref = generate_payment_reference(block_hash, output_hash);
+                        payment_references.push(payref.to_vec());
+                    }
+
+                    debug!(
+                        target: LOG_TARGET,
+                        "get_transaction_pay_refs: Generated {} PayRefs for transaction {} (including change outputs)",
+                        payment_references.len(),
+                        req.transaction_id
+                    );
+
+                    Ok(Response::new(GetTransactionPayRefsResponse { payment_references }))
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "get_transaction_pay_refs: Transaction {} is not mined yet",
+                        req.transaction_id
+                    );
+                    Ok(Response::new(GetTransactionPayRefsResponse {
+                        payment_references: vec![],
+                    }))
+                }
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "get_transaction_pay_refs: Failed to get transaction {}: {}",
+                    req.transaction_id,
+                    e
+                );
+                Err(Status::not_found(format!(
+                    "Transaction {} not found",
+                    req.transaction_id
+                )))
+            },
+        }
+    }
+
+    async fn get_fee_estimate(
+        &self,
+        request: Request<GetFeeEstimateRequest>,
+    ) -> Result<Response<GetFeeEstimateResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_fee_estimation: Incoming GRPC request with fee_per_gram: {}",
+            message.fee_per_gram
+        );
+
+        let mut oms = self.get_output_manager_service();
+        let fee_per_gram = message.fee_per_gram;
+        let amount = message.amount;
+        let output_count = usize::try_from(message.output_count)
+            .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?;
+        let selection_criteria = UtxoSelectionCriteria::default();
+        let fee = oms
+            .fee_estimate(
+                amount.into(),
+                selection_criteria,
+                fee_per_gram.into(),
+                1, // We assume 1 kernel for simplicity
+                output_count,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(GetFeeEstimateResponse {
+            estimated_fee: fee.as_u64(),
+        }))
+    }
+
+    async fn get_fee_per_gram_stats(
+        &self,
+        request: Request<GetFeePerGramStatsRequest>,
+    ) -> Result<Response<GetFeePerGramStatsResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "get_fee_per_gram_stats: Incoming GRPC request with count: {}",
+            message.block_count
+        );
+        let block_count = message.block_count;
+
+        let mut transaction_service = self.get_transaction_service();
+        let stat = transaction_service
+            .get_fee_per_gram_stats_per_block(block_count)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let fee_stats = vec![FeePerGramStat {
+            average_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
+            min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
+            max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
+        }];
+        Ok(Response::new(GetFeePerGramStatsResponse {
+            fee_per_gram_stats: fee_stats,
+        }))
+    }
+
+    async fn sign_message(
+        &self,
+        request: Request<SignMessageRequest>,
+    ) -> Result<Response<SignMessageResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "sign_message: Incoming GRPC request with message length: {}",
+            message.message.len()
+        );
+
+        let secret = self.wallet.comms.node_identity().secret_key().clone();
+        let message_str =
+            String::from_utf8(message.message).map_err(|_| Status::invalid_argument("Message must be valid UTF-8"))?;
+
+        let signature =
+            SignatureWithDomain::<WalletMessageSigningDomain>::sign(&secret, message_str.as_bytes(), &mut OsRng)
+                .map_err(|e| Status::internal(format!("Failed to sign message: {}", e)))?;
+
+        let hex_sig = signature.get_signature().to_hex();
+        let hex_nonce = signature.get_public_nonce().to_hex();
+
+        Ok(Response::new(SignMessageResponse {
+            signature: hex_sig,
+            public_nonce: hex_nonce,
+        }))
     }
 }
 
@@ -1669,7 +2202,8 @@ fn simple_event(event: &str) -> TransactionEvent {
         status: event.to_string(),
         direction: event.to_string(),
         amount: 0,
-        payment_id: vec![],
+        raw_payment_id: vec![],
+        user_payment_id: vec![],
     }
 }
 
@@ -1702,6 +2236,9 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
+                payment_references_sent: vec![],
+                payment_references_received: vec![],
+                payment_references_change: vec![],
             }
         },
         PendingOutbound(tx) => {
@@ -1735,10 +2272,13 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
+                payment_references_sent: vec![],
+                payment_references_received: vec![],
+                payment_references_change: vec![],
             }
         },
         Completed(tx) => {
-            let output_commitments = tx
+            let output_commitments: Vec<Vec<u8>> = tx
                 .transaction
                 .body
                 .outputs()
@@ -1776,8 +2316,23 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 raw_payment_id: tx.payment_id.to_bytes(),
                 user_payment_id: tx.payment_id.user_data_as_bytes(),
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
-                output_commitments,
+                output_commitments: output_commitments.clone(),
                 input_commitments,
+                payment_references_sent: tx
+                    .calculate_sent_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_received: tx
+                    .calculate_received_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
+                payment_references_change: tx
+                    .calculate_change_payment_references()
+                    .into_iter()
+                    .map(|pr| pr.to_vec())
+                    .collect(),
             }
         },
     }

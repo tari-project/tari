@@ -20,31 +20,39 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Borrow, convert::TryFrom};
+use std::convert::TryFrom;
 
-use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
+use tari_crypto::{hashing::DomainSeparation, signatures::CompressedSchnorrSignature};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-impl TryFrom<grpc::Signature> for Signature {
+impl<H: DomainSeparation> TryFrom<grpc::Signature>
+    for CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>
+{
     type Error = String;
 
     fn try_from(sig: grpc::Signature) -> Result<Self, Self::Error> {
-        let public_nonce = CompressedPublicKey::from_canonical_bytes(&sig.public_nonce)
-            .map_err(|_| "Could not get public nonce".to_string())?;
-        let signature =
-            PrivateKey::from_canonical_bytes(&sig.signature).map_err(|_| "Could not get signature".to_string())?;
+        let public_nonce = CompressedPublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
+        let signature = PrivateKey::from_canonical_bytes(&sig.signature).map_err(|e| e.to_string())?;
 
         Ok(Self::new(public_nonce, signature))
     }
 }
-
-impl<T: Borrow<Signature>> From<T> for grpc::Signature {
-    fn from(sig: T) -> Self {
+impl<H: DomainSeparation> From<&CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>> for grpc::Signature {
+    fn from(sig: &CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>) -> Self {
         Self {
-            public_nonce: sig.borrow().get_compressed_public_nonce().to_vec(),
-            signature: sig.borrow().get_signature().to_vec(),
+            public_nonce: sig.get_compressed_public_nonce().to_vec(),
+            signature: sig.get_signature().to_vec(),
+        }
+    }
+}
+impl<H: DomainSeparation> From<CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>> for grpc::Signature {
+    fn from(sig: CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, H>) -> Self {
+        Self {
+            public_nonce: sig.get_compressed_public_nonce().to_vec(),
+            signature: sig.get_signature().to_vec(),
         }
     }
 }

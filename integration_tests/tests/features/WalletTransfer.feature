@@ -14,7 +14,7 @@ Feature: Wallet Transfer
     When I have wallet WALLET_A with 10T connected to base node NODE_A
     When I have wallet WALLET_B connected to base node NODE_B
     When I wait 5 seconds
-    When I transfer 5T from WALLET_A to WALLET_B
+    When I transfer 5T one-sided from WALLET_A to WALLET_B
     When I mine 4 blocks on SEED_A
     Then wallet WALLET_A has 5T
     When I wait 5 seconds
@@ -25,7 +25,7 @@ Feature: Wallet Transfer
     # Add a 2nd node otherwise initial sync will not succeed
     When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When I have wallet WALLET_B connected to all seed nodes
     When I have wallet WALLET_C connected to all seed nodes
     When mining node MINER mines 2 blocks
@@ -37,7 +37,7 @@ Feature: Wallet Transfer
     When mining node MINER mines 5 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I transfer 50000 uT from WALLET_A to WALLET_B and WALLET_C at fee 20
+    When I transfer 50000 uT one-sided from WALLET_A to WALLET_B and WALLET_C at fee 20
     When mining node MINER mines 10 blocks
     Then all nodes are at height 20
     Then all wallets detect all transactions as Mined_or_OneSidedConfirmed
@@ -48,7 +48,7 @@ Feature: Wallet Transfer
     # Add a 2nd node otherwise initial sync will not succeed
     When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 10 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
@@ -63,7 +63,7 @@ Feature: Wallet Transfer
     When I have 1 base nodes connected to all seed nodes
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 10 blocks
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     When I broadcast HTLC transaction with 5000000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
@@ -79,8 +79,8 @@ Feature: Wallet Transfer
     When I have wallet WALLET_A connected to all seed nodes
     When I have wallet WALLET_B connected to all seed nodes
     When I have wallet WALLET_C connected to all seed nodes
-    When I have mining node MINER connected to base node NODE and wallet WALLET_A
-    When I have mining node MINER_2 connected to base node NODE and wallet WALLET_C
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have SHA3X mining node MINER_2 connected to base node NODE and wallet WALLET_C
     When mining node MINER mines 10 blocks
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     When I broadcast HTLC transaction with 5000000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20

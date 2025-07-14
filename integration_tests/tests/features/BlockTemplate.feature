@@ -18,6 +18,13 @@ Scenario: Verify UTXO and kernel MMR size in header
         Then generate a block BLOCK_02 with 2 coinbases as a single request from node SEED_A
 
     @critical
+    Scenario: Verify gprc can create block with zero value coinbase
+        Given I have a seed node SEED_A
+        When I have 1 base nodes connected to all seed nodes
+        Then generate a block BLOCK_02 with zero value coinbase from node SEED_A
+        Then generate a block BLOCK_02 with zero value coinbase as a single request from node SEED_A
+
+    @critical
     Scenario: Verify grpc can create full block with maximum number of coinbases
         Given I have 1 seed nodes
         When I have a base node NODE_01 connected to all seed nodes
@@ -34,7 +41,7 @@ Scenario: Verify UTXO and kernel MMR size in header
         When I have wallet WALLET_10 connected to all seed nodes
         When I have wallet WALLET_11 connected to all seed nodes
         When I have wallet WALLET_12 connected to all seed nodes
-        When I have mining node MINER connected to base node NODE_01 and wallet WALLET_DEFAULT
+        When I have SHA3X mining node MINER connected to base node NODE_01 and wallet WALLET_DEFAULT
         When mining node MINER mines 1 blocks
         Then all nodes are at height 1
 
@@ -85,18 +92,18 @@ Scenario: Verify UTXO and kernel MMR size in header
         When I wait for wallet WALLET_11 to have at least 18462050000 uT
         When I wait for wallet WALLET_12 to have at least 18462050000 uT
 
-        Then I send 18462000000 uT from wallet WALLET_01 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_02 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_03 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_04 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_05 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_06 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_07 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_08 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_09 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_10 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_11 to wallet WALLET_DEFAULT at fee 1
-        Then I send 18462000000 uT from wallet WALLET_12 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_01 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_02 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_03 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_04 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_05 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_06 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_07 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_08 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_09 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_10 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_11 to wallet WALLET_DEFAULT at fee 1
+        Then I send a one-sided transaction of 18462000000 uT from wallet WALLET_12 to wallet WALLET_DEFAULT at fee 1
 
         # Mempool now has 12 transactions, each with 1000 coinbases as inputs, so we can create a big block
         Then I generate a block BLOCK_18 with 1000 coinbases from node NODE_01 for wallet WALLET_DEFAULT

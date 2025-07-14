@@ -2,6 +2,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 mod client;
-pub mod error;
 
 pub use client::*;

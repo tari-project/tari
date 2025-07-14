@@ -368,12 +368,14 @@ impl DhtNetworkDiscovery {
                     return State::Waiting(config.on_failure_idle_period.into());
                 }
                 self.context.increment_num_rounds();
+                self.context.set_bootstrap_method(BootstrapMethod::SeedStrap).await;
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
                 State::Discovering(Discovering::new(params, self.context.clone()))
             },
             (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
+            (State::Ready(_), StateEvent::Idle) => State::Waiting(config.idle_period.into()),
             (State::OnConnect(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (_, StateEvent::Shutdown) => State::Shutdown,
             (_state, StateEvent::Errored(err)) => {
@@ -511,8 +513,6 @@ pub struct DhtNetworkDiscoveryRoundInfo {
     pub sync_peers: Vec<NodeId>,
     // New fields:
     pub phase: DiscoveryPhase,
-    pub round_number: Option<usize>, // Current round/iteration number if applicable
-    pub total_rounds: Option<usize>, // Total rounds/iterations planned for this phase, if applicable
 }
 
 impl DhtNetworkDiscoveryRoundInfo {

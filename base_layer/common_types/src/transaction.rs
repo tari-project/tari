@@ -12,7 +12,7 @@ use thiserror::Error;
 
 pub use crate::tx_id::TxId;
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransactionStatus {
     /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
     Completed = 0,
@@ -224,7 +224,7 @@ impl fmt::Display for ImportStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransactionDirection {
     Inbound,
     Outbound,

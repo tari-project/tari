@@ -24,6 +24,7 @@ use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -50,12 +51,11 @@ use tari_core::{
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
     },
-    proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -118,7 +118,6 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
 };
-
 const LOG_TARGET: &str = "wallet::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
@@ -130,7 +129,6 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_service: BaseNodeServiceHandle,
-    last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
 }
 
@@ -195,7 +193,6 @@ where
             resources,
             request_stream: Some(request_stream),
             base_node_service,
-            last_seen_tip_height: None,
             validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
@@ -331,18 +328,12 @@ where
                 .update_output_metadata_signature(*uo)
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
             OutputManagerRequest::GetBalance => {
-                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
-                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
-                    Err(_) => None,
-                };
+                let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance(current_tip_for_time_lock_calculation)
                     .map(OutputManagerResponse::Balance)
             },
             OutputManagerRequest::GetBalancePaymentId(payment_id) => {
-                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
-                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
-                    Err(_) => None,
-                };
+                let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
                     .map(OutputManagerResponse::Balance)
             },
@@ -408,9 +399,12 @@ where
                 .fee_estimate(amount, selection_criteria, fee_per_gram, num_kernels, num_outputs)
                 .await
                 .map(OutputManagerResponse::FeeEstimate),
-            OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
-                .confirm_encumberance(tx_id)
-                .map(|_| OutputManagerResponse::PendingTransactionConfirmed),
+            OutputManagerRequest::ConfirmPendingTransaction(tx_id, change) => {
+                let change_outputs = change.unwrap_or(Vec::new());
+                self.confirm_encumberance(tx_id, change_outputs)
+                    .await
+                    .map(|_| OutputManagerResponse::PendingTransactionConfirmed)
+            },
             OutputManagerRequest::CancelTransaction(tx_id) => self
                 .cancel_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
@@ -571,10 +565,16 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
+            .resources
+            .connectivity
+            .obtain_base_node_wallet_rpc_client()
+            .await
+            .fetch_utxo(output_hash.to_vec())
+            .await
+            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))?
+            .ok_or_else(|| {
+                OutputManagerError::BaseNodeClientError(format!("No output found for hash {}", output_hash.to_hex()))
+            })?;
 
         self.create_claim_sha_atomic_swap_transaction(output, pre_image, fee_per_gram)
             .await
@@ -583,9 +583,6 @@ where
 
     fn handle_utxo_scanner_service_event(&mut self, event: UtxoScannerEvent) {
         match event {
-            UtxoScannerEvent::ConnectingToBaseNode(_node_id) => {},
-            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
-            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
             UtxoScannerEvent::ScanningRoundFailed { .. } => {},
             UtxoScannerEvent::Progress { .. } => {},
             UtxoScannerEvent::Completed { .. } => {
@@ -594,7 +591,6 @@ where
                     e
                 });
             },
-            UtxoScannerEvent::ScanningFailed => {},
         }
     }
 
@@ -606,19 +602,11 @@ where
                     "Received Base Node State Change but no block changes"
                 );
             },
-            BaseNodeEvent::NewBlockDetected(_hash, height) => {
-                self.last_seen_tip_height = Some(height);
-            },
         }
     }
 
     #[allow(clippy::too_many_lines)]
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
-        let current_base_node = self
-            .resources
-            .connectivity
-            .get_current_base_node_peer_node_id()
-            .ok_or(OutputManagerError::NoBaseNodeKeysProvided)?;
         let id = OsRng.next_u64();
         let txo_validation = TxoValidationTask::new(
             id,
@@ -629,7 +617,6 @@ where
         );
 
         let mut shutdown = self.resources.shutdown_signal.clone();
-        let mut base_node_watch = self.resources.connectivity.get_current_base_node_watcher();
         let event_publisher = self.resources.event_publisher.clone();
         let validation_in_progress = self.validation_in_progress.clone();
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
@@ -699,17 +686,6 @@ where
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
                                 continue 'outer;
-                            }
-                        }
-                        _ = base_node_watch.changed() => {
-                            if let Some(peer) = base_node_watch.borrow().as_ref() {
-                                if peer.get_current_peer().node_id != current_base_node {
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "TXO Validation Protocol (Id: {}) resetting to run again because base node changed", id
-                                    );
-                                    continue 'outer;
-                                }
                             }
                         }
                     }
@@ -876,7 +852,6 @@ where
         };
         let payment_id = PaymentId::AddressAndData {
             sender_address: single_round_sender_data.sender_address.clone(),
-            amount: single_round_sender_data.amount,
             fee: single_round_sender_data.metadata.fee,
             sender_one_sided: false,
             tx_type: TxType::PaymentToOther,
@@ -1140,7 +1115,7 @@ where
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbWalletOutput>::new();
         if input_selection.requires_change_output() {
-            let wallet_output = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output = stp.get_pre_finalized_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
@@ -1277,7 +1252,9 @@ where
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         let tx_id = stp.get_tx_id()?;
-        if let Some(wallet_output) = stp.get_change_output()? {
+
+        stp.finalize(&self.resources.key_manager).await?;
+        if let Some(wallet_output) = stp.get_finalized_change_output()? {
             db_outputs.push(
                 DbWalletOutput::from_wallet_output(
                     wallet_output,
@@ -1294,8 +1271,6 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize(&self.resources.key_manager).await?;
-
         Ok((tx_id, stp.into_transaction()?))
     }
 
@@ -1367,16 +1342,14 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
         // Fetch the output from the blockchain or use provided
         let output = match use_output {
-            UseOutput::FromBlockchain(output_hash) => self
-                .fetch_unspent_outputs_from_node(vec![output_hash])
-                .await?
-                .pop()
-                .ok_or_else(|| {
+            UseOutput::FromBlockchain(output_hash) => {
+                self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
                     OutputManagerError::ServiceError(format!(
                         "Output with hash {} not found in blockchain (TxId: {})",
                         output_hash, tx_id
                     ))
-                })?,
+                })?
+            },
             UseOutput::AsProvided(ref val) => *val.clone(),
         };
         if output.commitment != expected_commitment {
@@ -1541,7 +1514,7 @@ where
         // but the returned value is not used
         let _single_round_sender_data = stp.build_single_round_message(&self.resources.key_manager).await?;
 
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         // Prepare receiver part of the transaction
 
@@ -1744,16 +1717,12 @@ where
         minimum_value_promise: MicroMinotari,
     ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
         // Fetch the output from the blockchain
-        let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| {
-                OutputManagerError::ServiceError(format!(
-                    "Output with hash {} not found in blockchain (TxId: {})",
-                    output_hash, tx_id
-                ))
-            })?;
+        let output = self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
+            OutputManagerError::ServiceError(format!(
+                "Output with hash {} not found in blockchain (TxId: {})",
+                output_hash, tx_id
+            ))
+        })?;
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
                 "Output commitment does not match expected commitment (TxId: {})",
@@ -1884,7 +1853,7 @@ where
         // but the returned value is not used
         let _single_round_sender_data = stp.build_single_round_message(&self.resources.key_manager).await?;
 
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         // Prepare receiver part of the transaction
 
@@ -1935,11 +1904,9 @@ where
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())
             .await?;
         let script = push_pubkey_script(&script_spending_key);
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.one_sided_tari_address.clone(),
             true,
-            amount,
             fee,
             Some(TxType::PaymentToOther),
         );
@@ -2094,8 +2061,11 @@ where
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
+        let fee = stp.get_fee_amount()?;
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+        stp.finalize(&self.resources.key_manager).await?;
         if input_selection.requires_change_output() {
-            let wallet_output = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output = stp.get_finalized_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
@@ -2120,10 +2090,8 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
-        self.confirm_encumberance(tx_id)?;
-        let fee = stp.get_fee_amount()?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(&self.resources.key_manager).await?;
         let tx = stp.into_transaction()?;
 
         Ok((fee, tx))
@@ -2131,9 +2099,26 @@ where
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
     /// made official
-    fn confirm_encumberance(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
-        self.resources.db.confirm_encumbered_outputs(tx_id)?;
-
+    async fn confirm_encumberance(
+        &mut self,
+        tx_id: TxId,
+        change_outputs: Vec<WalletOutput>,
+    ) -> Result<(), OutputManagerError> {
+        let mut change = Vec::new();
+        for output in change_outputs {
+            change.push(
+                DbWalletOutput::from_wallet_output(
+                    output,
+                    &self.resources.key_manager,
+                    None,
+                    OutputSource::default(),
+                    Some(tx_id),
+                    None,
+                )
+                .await?,
+            );
+        }
+        self.resources.db.confirm_encumbered_outputs(tx_id, change)?;
         Ok(())
     }
 
@@ -2181,7 +2166,7 @@ where
         let fee_calc = self.get_fee_calc();
 
         // Attempt to get the chain tip height
-        let chain_metadata = self.base_node_service.get_chain_metadata().await?;
+        let tip_height = self.resources.db.get_last_scanned_height()?;
 
         // Respecting the setting to not choose outputs that reveal the address
         if self.resources.config.autoignore_onesided_utxos {
@@ -2192,7 +2177,6 @@ where
             target: LOG_TARGET,
             "select_utxos selection criteria: {}", selection_criteria
         );
-        let tip_height = chain_metadata.as_ref().map(|m| m.best_block_height());
         let start_new = Instant::now();
         let uo = self
             .resources
@@ -2284,7 +2268,7 @@ where
                     TRANSACTION_INPUTS_LIMIT
                 )));
             }
-            let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.best_block_height());
+            let current_tip_for_time_lock_calculation = tip_height;
             let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
             let pending_incoming = balance.pending_incoming_balance;
             if utxos_total_value + pending_incoming >= amount + fee_with_change {
@@ -2583,7 +2567,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         trace!(
             target: LOG_TARGET,
@@ -2764,10 +2748,19 @@ where
             tx_id
         );
 
+        trace!(
+            target: LOG_TARGET,
+            "finalizing coin split transaction (tx_id={}).",
+            tx_id
+        );
+
+        // finalizing transaction
+        stp.finalize(&self.resources.key_manager).await?;
+
         // again, to obtain output for leftover change
         if has_leftover_change {
             // obtaining output for the `change`
-            let wallet_output_for_change = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output_for_change = stp.get_finalized_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a `change` output metadata signature available".to_string(),
                 )
@@ -2791,16 +2784,13 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), dest_outputs)?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         trace!(
             target: LOG_TARGET,
             "finalizing coin split transaction (tx_id={}).",
             tx_id
         );
-
-        // finalizing transaction
-        stp.finalize(&self.resources.key_manager).await?;
 
         let value = if has_leftover_change {
             total_split_amount
@@ -2825,11 +2815,9 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
-        let payment_id = PaymentId::add_sender_address(
-            payment_id,
+        let payment_id = payment_id.add_sender_address(
             self.resources.interactive_tari_address.clone(),
             false,
-            amount,
             fee,
             Some(TxType::PaymentToSelf),
         );
@@ -2991,7 +2979,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, src_outputs.clone(), vec![output])?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
 
         trace!(
             target: LOG_TARGET,
@@ -3080,32 +3068,17 @@ where
         Ok(stp)
     }
 
-    async fn fetch_unspent_outputs_from_node(
+    async fn fetch_utxo_from_node(
         &mut self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionOutput>, OutputManagerError> {
-        // lets get the output from the blockchain
-        let req = FetchMatchingUtxos {
-            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
-        };
-        let results: Vec<TransactionOutput> = self
-            .resources
+        hash: HashOutput,
+    ) -> Result<Option<TransactionOutput>, OutputManagerError> {
+        self.resources
             .connectivity
             .obtain_base_node_wallet_rpc_client()
             .await
-            .ok_or_else(|| {
-                OutputManagerError::InvalidResponseError("Could not connect to base node rpc client".to_string())
-            })?
-            .fetch_matching_utxos(req)
-            .await?
-            .outputs
-            .into_iter()
-            .filter_map(|o| match o.try_into() {
-                Ok(output) => Some(output),
-                _ => None,
-            })
-            .collect();
-        Ok(results)
+            .fetch_utxo(hash.to_vec())
+            .await
+            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -3189,28 +3162,25 @@ where
 
                 let tx_id = stp.get_tx_id()?;
 
-                let wallet_output = stp.get_change_output()?.ok_or_else(|| {
-                    OutputManagerError::BuildError(
-                        "There should be a change output metadata signature available".to_string(),
-                    )
-                })?;
-                let change_output = DbWalletOutput::from_wallet_output(
-                    wallet_output,
-                    &self.resources.key_manager,
-                    None,
-                    OutputSource::AtomicSwap,
-                    Some(tx_id),
-                    None,
-                )
-                .await?;
-                outputs.push(change_output);
-
                 trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
-                self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
-                self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
                 stp.finalize(&self.resources.key_manager).await?;
+                if let Some(wallet_output) = stp.get_finalized_change_output()? {
+                    let change_output = DbWalletOutput::from_wallet_output(
+                        wallet_output,
+                        &self.resources.key_manager,
+                        None,
+                        OutputSource::AtomicSwap,
+                        Some(tx_id),
+                        None,
+                    )
+                    .await?;
+                    outputs.push(change_output);
+                }
+
+                self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
+                self.confirm_encumberance(tx_id, Vec::new()).await?;
                 let tx = stp.into_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -3275,31 +3245,27 @@ where
 
         let tx_id = stp.get_tx_id()?;
 
-        let wallet_output = stp.get_change_output()?.ok_or_else(|| {
-            OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
-        })?;
-
-        let change_output = DbWalletOutput::from_wallet_output(
-            wallet_output,
-            &self.resources.key_manager,
-            None,
-            OutputSource::HtlcRefund,
-            Some(tx_id),
-            None,
-        )
-        .await?;
-        outputs.push(change_output);
-
         trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({}).", tx_id);
 
         let fee = stp.get_fee_amount()?;
 
         stp.finalize(&self.resources.key_manager).await?;
-
+        if let Some(wallet_output) = stp.get_finalized_change_output()? {
+            let change_output = DbWalletOutput::from_wallet_output(
+                wallet_output,
+                &self.resources.key_manager,
+                None,
+                OutputSource::HtlcRefund,
+                Some(tx_id),
+                None,
+            )
+            .await?;
+            outputs.push(change_output);
+        }
         let tx = stp.into_transaction()?;
 
         self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
-        self.confirm_encumberance(tx_id)?;
+        self.confirm_encumberance(tx_id, Vec::new()).await?;
         Ok((tx_id, fee, amount - fee, tx))
     }
 

@@ -118,6 +118,8 @@ struct TariCompletedTransactions;
 
 struct TariContacts;
 
+struct TariPaymentRecords;
+
 struct TariPendingInboundTransactions;
 
 struct TariPendingOutboundTransactions;
@@ -241,9 +243,20 @@ typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
 
+typedef struct FeePerGramStat TariFeePerGramStat;
+
 typedef struct FeePerGramStatsResponse TariFeePerGramStats;
 
-typedef struct FeePerGramStat TariFeePerGramStat;
+/**
+ * Payment Record FFI Types
+ */
+struct TariPaymentRecord {
+  unsigned char payment_reference[32];
+  unsigned long long amount;
+  unsigned long long block_height;
+  unsigned long long mined_timestamp;
+  unsigned int direction;
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -1019,6 +1032,43 @@ TariPublicKey *tari_address_view_key(TariWalletAddress *address,
  */
 TariPublicKey *tari_address_spend_key(TariWalletAddress *address,
                                       int *error_out);
+
+/**
+ * Gets the user payment ID of a TariAddress in string format
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariAddress
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*const c_char` - Returns the pointer to the char array, note that it will return a pointer
+ * to an empty char array if address is null
+ *
+ * # Safety
+ * The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
+ */
+char *tari_address_get_user_payment_id(TariWalletAddress *address,
+                                       int *error_out);
+
+/**
+ * Gets the user payment ID of a TariAddress as bytes
+ *
+ * ## Arguments
+ * `address` - The pointer to a TariAddress
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut ByteVector` - Pointer to the created ByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created or the address does not have a user payment ID.
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ByteVector to prevent a memory leak
+ */
+struct ByteVector *tari_address_get_user_payment_id_as_bytes(TariWalletAddress *address,
+                                                             int *error_out);
 
 /**
  * Creates a TariWalletAddress from a char array in emoji format
@@ -2509,23 +2559,6 @@ bool completed_transaction_is_outbound(TariCompletedTransaction *tx,
                                        int *error_out);
 
 /**
- * Gets the number of confirmations of a TariCompletedTransaction
- *
- * ## Arguments
- * `tx` - The TariCompletedTransaction
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a 0 if any pointer argument is null.
- *
- * ## Returns
- * `c_ulonglong` - Returns the number of confirmations of a Completed Transaction
- *
- * # Safety
- * None
- */
-unsigned long long completed_transaction_get_confirmations(TariCompletedTransaction *tx,
-                                                           int *error_out);
-
-/**
  * Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
  *
  * ## Arguments
@@ -3322,6 +3355,7 @@ struct TariWallet *wallet_create(void *context,
                                  const char *dns_seeds_str,
                                  const char *dns_seed_name_servers_str,
                                  bool use_dns_sec,
+                                 const char *http_base_node,
                                  void (*callback_received_transaction)(void *context,
                                                                        TariPendingInboundTransaction*),
                                  void (*callback_received_transaction_reply)(void *context,
@@ -3615,29 +3649,6 @@ bool wallet_verify_message_signature(struct TariWallet *wallet,
                                      int *error_out);
 
 /**
- * Adds a base node peer to the TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `public_key` - The TariPublicKey pointer
- * `address` - The pointer to a char array
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns false if any pointer argument is null.
- *
- * ## Returns
- * `bool` - Returns if successful or not
- *
- * # Safety
- * None
- */
-bool wallet_set_base_node_peer(struct TariWallet *wallet,
-                               TariPublicKey *public_key,
-                               const char *address,
-                               int *error_out);
-
-/**
- * Gets all seed peers known by the wallet
- *
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -3944,6 +3955,7 @@ struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3956,6 +3968,7 @@ struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,
  * prevent a memory leak
  */
 struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariWallet *wallet,
+                                                                    unsigned long long max_search_limit,
                                                                     int *error_out);
 
 /**
@@ -3965,6 +3978,7 @@ struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariW
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3977,6 +3991,7 @@ struct TariCompletedTransactions *wallet_get_completed_transactions(struct TariW
  * TariPendingInboundTransactions to prevent a memory leak
  */
 struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(struct TariWallet *wallet,
+                                                                               unsigned long long max_search_limit,
                                                                                int *error_out);
 
 /**
@@ -3986,6 +4001,7 @@ struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(s
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3998,6 +4014,7 @@ struct TariPendingInboundTransactions *wallet_get_pending_inbound_transactions(s
  * TariPendingOutboundTransactions to prevent a memory leak
  */
 struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions(struct TariWallet *wallet,
+                                                                                 unsigned long long max_search_limit,
                                                                                  int *error_out);
 
 /**
@@ -4006,6 +4023,7 @@ struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -4018,6 +4036,7 @@ struct TariPendingOutboundTransactions *wallet_get_pending_outbound_transactions
  * prevent a memory leak
  */
 struct TariCompletedTransactions *wallet_get_cancelled_transactions(struct TariWallet *wallet,
+                                                                    unsigned long long max_search_limit,
                                                                     int *error_out);
 
 /**
@@ -4047,6 +4066,7 @@ TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWall
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -4060,6 +4080,7 @@ TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWall
  */
 TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(struct TariWallet *wallet,
                                                                             unsigned long long transaction_id,
+                                                                            unsigned long long max_search_limit,
                                                                             int *error_out);
 
 /**
@@ -4068,6 +4089,7 @@ TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(stru
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
+ * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -4081,6 +4103,7 @@ TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(stru
  */
 TariPendingOutboundTransaction *wallet_get_pending_outbound_transaction_by_id(struct TariWallet *wallet,
                                                                               unsigned long long transaction_id,
+                                                                              unsigned long long max_search_limit,
                                                                               int *error_out);
 
 /**
@@ -4159,6 +4182,49 @@ TariWalletAddress *wallet_get_tari_one_sided_address(struct TariWallet *wallet,
 bool wallet_cancel_pending_transaction(struct TariWallet *wallet,
                                        unsigned long long transaction_id,
                                        int *error_out);
+
+/**
+ * Get all PayRefs (payment references) for a specific transaction
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `transaction_id` - The transaction ID to get PayRefs for
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut TariPaymentRecords` - returns a vector of TariPaymentRecords containing the PayRefs for the transaction,
+ *
+ * # Safety
+ * The ```payment_records_destroy``` method must be called when finished with a TariPaymentRecords to prevent a memory
+ * leak
+ */
+struct TariPaymentRecords *wallet_get_transaction_payrefs(struct TariWallet *wallet,
+                                                          unsigned long long transaction_id,
+                                                          int *error_out);
+
+/**
+ * Get payment details for a specific PayRef (payment reference)
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `payref` - The 32-byte ByteVector of the payment reference
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `*mut TariCompletedTransaction` - returns the transaction details for the PayRef,
+ * note that ptr::null_mut() is returned if wallet is null, an error occurs, or PayRef not found
+ *
+ * # Safety
+ * The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+ * prevent a memory leak
+ * The ```byte_vector_destroy``` method must be called when finished with a ByteVector to
+ * prevent a memory leak
+ */
+TariCompletedTransaction *wallet_get_transaction_by_payref(struct TariWallet *wallet,
+                                                           struct ByteVector *payref,
+                                                           int *error_out);
 
 /**
  * This function will tell the wallet to query the set base node to confirm the status of transaction outputs
@@ -4345,7 +4411,6 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer.
- * `base_node_public_keys` - An optional TariPublicKeys pointer of the Base Nodes the recovery process must use
  * `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
  * progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
  * ```
@@ -4383,9 +4448,6 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
  *       a new process.
  *
- * `recovered_output_message` - A string that will be used as the message for any recovered outputs. If Null the
- * default     message will be used
- *
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -4398,12 +4460,10 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  * None
  */
 bool wallet_start_recovery(struct TariWallet *wallet,
-                           struct TariPublicKeys *base_node_public_keys,
                            void (*recovery_progress_callback)(void *context,
                                                               uint8_t,
                                                               uint64_t,
                                                               uint64_t),
-                           const char *recovered_output_message,
                            int *error_out);
 
 /**
@@ -4539,9 +4599,9 @@ void log_debug_message(const char *msg,
  * The ```fee_per_gram_stats_destroy``` method must be called when finished with a TariFeePerGramStats to prevent
  * a memory leak.
  */
-TariFeePerGramStats *wallet_get_fee_per_gram_stats(struct TariWallet *wallet,
-                                                   unsigned int count,
-                                                   int *error_out);
+TariFeePerGramStat *wallet_get_fee_per_gram_stats(struct TariWallet *wallet,
+                                                  unsigned int count,
+                                                  int *error_out);
 
 /**
  * Get length of stats from the TariFeePerGramStats.
@@ -4710,21 +4770,40 @@ struct ContactsServiceHandle *contacts_handle(struct TariWallet *wallet,
 void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
 
 /**
- * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
+ * Destroy TariPaymentRecords
+ * # Safety
+ * None
+ */
+void payment_records_destroy(struct TariPaymentRecords *records);
+
+/**
+ * Get length of TariPaymentRecords
  * ## Returns
- * `*mut ByteVector` - Returns a ByteVector or null if the NodeId is None.
+ * `c_uint` - length of stats in TariFeePerGramStats
  *
  * # Safety
  * None
  */
-struct ByteVector *basenode_state_get_node_id(struct TariBaseNodeState *ptr,
-                                              int *error_out);
+unsigned int payment_records_get_length(const struct TariPaymentRecords *records, int *error_out);
+
+/**
+ * Get TariPaymentRecord at index
+ * ## Returns
+ * `c_uint` - length of stats in TariFeePerGramStats
+ *
+ * # Safety
+ * None
+ */
+struct TariPaymentRecord *payment_records_get_at(const struct TariPaymentRecords *records,
+                                                 unsigned int index,
+                                                 int *error_out);
+
+/**
+ * Destroy TariPaymentRecord
+ * # Safety
+ * None
+ */
+void payment_record_destroy(struct TariPaymentRecord *record);
 
 /**
  * Extracts height of th elongest chain from the `TariBaseNodeState`

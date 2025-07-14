@@ -34,7 +34,10 @@ use std::{
     fmt,
     future::Future,
     marker::PhantomData,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -102,6 +105,7 @@ impl RpcClient {
         framed: CanonicalFraming<TSubstream>,
         protocol_name: ProtocolId,
         terminate_signal: Option<OneshotSignal<NodeId>>,
+        session_state: Arc<AtomicBool>,
     ) -> Result<Self, RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
@@ -129,6 +133,7 @@ impl RpcClient {
                 protocol_name,
                 shutdown_signal,
                 terminate_signal,
+                session_state,
             )
             .run()
             .instrument(span)
@@ -212,6 +217,7 @@ pub struct RpcClientBuilder<TClient> {
     protocol_id: Option<ProtocolId>,
     node_id: Option<NodeId>,
     terminate_signal: Option<OneshotSignal<NodeId>>,
+    session_state: Option<Arc<AtomicBool>>,
     _client: PhantomData<TClient>,
 }
 
@@ -222,6 +228,7 @@ impl<TClient> Default for RpcClientBuilder<TClient> {
             protocol_id: None,
             node_id: None,
             terminate_signal: None,
+            session_state: None,
             _client: PhantomData,
         }
     }
@@ -278,6 +285,12 @@ impl<TClient> RpcClientBuilder<TClient> {
         self.terminate_signal = Some(terminate_signal);
         self
     }
+
+    /// Set a bool that can be set to false when this client terminates
+    pub fn with_session_state(mut self, session_state: Arc<AtomicBool>) -> Self {
+        self.session_state = Some(session_state);
+        self
+    }
 }
 
 impl<TClient> RpcClientBuilder<TClient>
@@ -295,6 +308,7 @@ where TClient: From<RpcClient> + NamedProtocolService
                 .cloned()
                 .unwrap_or_else(|| ProtocolId::from_static(TClient::PROTOCOL_NAME)),
             self.terminate_signal,
+            self.session_state.unwrap_or(Arc::new(AtomicBool::new(true))),
         )
         .await
         .map(Into::into)
@@ -418,6 +432,7 @@ struct RpcClientWorker<TSubstream> {
     protocol_id: ProtocolId,
     shutdown_signal: ShutdownSignal,
     terminate_signal: Option<OneshotSignal<NodeId>>,
+    session_state: Arc<AtomicBool>,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -433,6 +448,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         protocol_id: ProtocolId,
         shutdown_signal: ShutdownSignal,
         terminate_signal: Option<OneshotSignal<NodeId>>,
+        session_state: Arc<AtomicBool>,
     ) -> Self {
         Self {
             config,
@@ -445,6 +461,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             protocol_id,
             shutdown_signal,
             terminate_signal,
+            session_state,
         }
     }
 
@@ -456,6 +473,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         self.framed.stream_id()
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn run(mut self) {
         debug!(
             target: LOG_TARGET,
@@ -521,7 +539,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                             if let Err(err) = self.handle_request(req).await {
                                 #[cfg(feature = "metrics")]
                                 metrics::client_errors(&self.protocol_id).inc();
-                                error!(
+                                info!(
                                     target: LOG_TARGET,
                                     "(stream={}) Unexpected error: {}. Worker is terminating.",
                                     self.stream_id(), err
@@ -543,6 +561,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         }
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.protocol_id).dec();
+
+        let session_state = self.session_state.as_ref();
+        session_state.store(false, Ordering::Relaxed);
 
         if let Err(err) = self.framed.close().await {
             debug!(
@@ -816,7 +837,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     }
 
     async fn premature_close(&mut self, request_id: u16, method: u32) -> Result<(), RpcError> {
-        warn!(
+        info!(
             target: LOG_TARGET,
             "(stream={}) Response receiver was dropped before the response/stream could complete for protocol {}, \
              interrupting the stream. ",

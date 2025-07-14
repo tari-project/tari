@@ -43,7 +43,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,

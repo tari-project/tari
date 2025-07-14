@@ -40,6 +40,7 @@ pub enum TransactionKeyManagerBranch {
     Spend = Branch::Spend as u8,
     RandomKey = Branch::RandomKey as u8,
     PreMine = Branch::PreMine as u8,
+    CodeTemplateAuthor = Branch::CodeTemplateAuthor as u8,
 }
 
 pub const DATA_ENCRYPTION: &str = "data encryption";
@@ -51,6 +52,7 @@ pub const SENDER_OFFSET: &str = "sender offset";
 pub const ONE_SIDED_SENDER_OFFSET: &str = "one sided sender offset";
 pub const RANDOM_KEY: &str = "random key";
 pub const PRE_MINE: &str = "pre-mine";
+pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 
 impl TransactionKeyManagerBranch {
     /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
@@ -67,6 +69,7 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::RandomKey => RANDOM_KEY.to_string(),
             TransactionKeyManagerBranch::Spend => WALLET_COMMS_AND_SPEND_KEY_BRANCH.to_string(),
             TransactionKeyManagerBranch::PreMine => PRE_MINE.to_string(),
+            TransactionKeyManagerBranch::CodeTemplateAuthor => CODE_TEMPLATE_AUTHOR.to_string(),
         }
     }
 
@@ -82,6 +85,7 @@ impl TransactionKeyManagerBranch {
             RANDOM_KEY => TransactionKeyManagerBranch::RandomKey,
             WALLET_COMMS_AND_SPEND_KEY_BRANCH => TransactionKeyManagerBranch::Spend,
             PRE_MINE => TransactionKeyManagerBranch::PreMine,
+            CODE_TEMPLATE_AUTHOR => TransactionKeyManagerBranch::CodeTemplateAuthor,
             _ => TransactionKeyManagerBranch::Nonce,
         }
     }
@@ -102,6 +106,7 @@ impl TransactionKeyManagerBranch {
             Some(Branch::Spend) => Some(TransactionKeyManagerBranch::Spend),
             Some(Branch::RandomKey) => Some(TransactionKeyManagerBranch::RandomKey),
             Some(Branch::PreMine) => Some(TransactionKeyManagerBranch::PreMine),
+            Some(Branch::CodeTemplateAuthor) => Some(TransactionKeyManagerBranch::CodeTemplateAuthor),
             None => None,
         }
     }
@@ -188,68 +193,10 @@ mod test {
         ];
 
         for (expected_byte, branch, key) in &mappings {
-            match branch {
-                TransactionKeyManagerBranch::DataEncryption => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::MetadataEphemeralNonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::CommitmentMask => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::Nonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::KernelNonce => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::SenderOffset => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::OneSidedSenderOffset => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::Spend => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::RandomKey => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-                TransactionKeyManagerBranch::PreMine => {
-                    assert_eq!(branch.as_byte(), *expected_byte);
-                    assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
-                    assert_eq!(&branch.get_branch_key(), *key);
-                    assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
-                },
-            }
+            assert_eq!(branch.as_byte(), *expected_byte);
+            assert_eq!(TransactionKeyManagerBranch::from_byte(*expected_byte), Some(*branch));
+            assert_eq!(&branch.get_branch_key(), *key);
+            assert_eq!(TransactionKeyManagerBranch::from_key(key), *branch);
         }
     }
 }

@@ -1,0 +1,511 @@
+{
+  "proof": {
+    "V1": {
+      "command": {
+        "public_key": "30eb54ee0d290e0fd9f8a6c6cbc84e3a516645fe1be77429987375498aee8641"
+      },
+      "commit_proof": {
+        "header": {
+          "network": 16,
+          "parent_id": "5c97838994cedcf79d07bfd31575c386820463ae00f3fb48e7934384f69e5e0a",
+          "justify_id": "6e10b8bfe84958380e82162420aacc59f9b638b76cc5923a133ebc41dd3f87f7",
+          "height": 19,
+          "epoch": 1,
+          "shard_group": {
+            "start": 1,
+            "end_inclusive": 256
+          },
+          "proposed_by": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+          "state_merkle_root": "f6cfde784b395c393c3265ee5825ac992618e9e624eb6f9fd1e14cb9ffc03d3a",
+          "command_merkle_root": "7128d8196a5c45b21c4a2ce2f19a88c11260b0e98553acd73108d80dd415d36d",
+          "signature": {
+            "public_nonce": "887872101917b147523ce0cf5e5261cc3ba1760a455afe17faea8b380bc8af32",
+            "signature": "28f75af99fc363a7c15a2f7d0a68fbfa19b87a305b6277bd63e22d6a73a6c10d"
+          },
+          "metadata_hash": "f9e9e2976492e5539dc645b5dbf0738814c5b88d405f4a4451fca40e7b093154"
+        },
+        "proof_elements": [
+          {
+            "QuorumCertificate": {
+              "header_hash": "ab5898197c7a8fcb60dc03f5b25e3620fef0d6675520366c51d5a27a584b1afc",
+              "parent_id": "598e84f226ce23666ef2ebde47458b539053720a4bf111d0d5df5e4f17e1ced7",
+              "signatures": [
+                {
+                  "public_key": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+                  "signature": {
+                    "public_nonce": "c0c4047f973bc482fc2dd72de242da6a8bc562018a361f91390331f66ff4177e",
+                    "signature": "068aa65a75a3f9dfddcfc024af45ffb4a6f1fa37b86c682c97d38a90cbb56004"
+                  }
+                },
+                {
+                  "public_key": "cec1426a33965eb2a7d82b281964ad39f06d6fba7d8e57f8da4fcfefd946d855",
+                  "signature": {
+                    "public_nonce": "40f85fcc9780c9e85fa742af6f1ee268194c259f61b845f0ff89473740a0205c",
+                    "signature": "0601c111ab15d6bd430469e4d0b50bb95d6ff4fb9a204022b99d7bd6ace3750f"
+                  }
+                },
+                {
+                  "public_key": "9e504f9b10c40230ec4e1570dcf295d5da01aa0daeced57316b160c80bc57e0c",
+                  "signature": {
+                    "public_nonce": "809bdbd402c7050d0f9ae3d39bd1b44bc58a6cd1b712b59aad9a4c977460b062",
+                    "signature": "cf77c7831a79ea62adac473576d4ba0c94e3498536216ed84e14b4e006d64c05"
+                  }
+                },
+                {
+                  "public_key": "a45af5c5eeb3db9687fe9edae95387f91ff5a90c442159204c3f97514dddad7c",
+                  "signature": {
+                    "public_nonce": "2a69943d4ad6caf2f92fcc73679e259462e53f7c5f044e83eae6c7de903b0536",
+                    "signature": "42ca99695bb648e279ad43a2cb5cd2af0f285eb22406f082224a933cfc51dd0b"
+                  }
+                }
+              ],
+              "decision": "Accept"
+            }
+          },
+          {
+            "QuorumCertificate": {
+              "header_hash": "7d232010ce0cf68ae6dd0507fd8a9dc7bae5b69398eb52e51ff1e35644f89be3",
+              "parent_id": "cbef1b910ce8470e0cefa43ce668d1492e58c064698c31d0b7690de9f1dec20a",
+              "signatures": [
+                {
+                  "public_key": "cec1426a33965eb2a7d82b281964ad39f06d6fba7d8e57f8da4fcfefd946d855",
+                  "signature": {
+                    "public_nonce": "c2fadc392c8010e667936474c56ab61d8bad4f7f053d05caa814207766557a0c",
+                    "signature": "1561efb74a2e0cdbc6795504e957ee7205583f3fedc27dd275577cbe80738605"
+                  }
+                },
+                {
+                  "public_key": "9e504f9b10c40230ec4e1570dcf295d5da01aa0daeced57316b160c80bc57e0c",
+                  "signature": {
+                    "public_nonce": "34e72cc12615da07410a3ea24859e87798f6566f517969d4aa556ac3a560ef59",
+                    "signature": "365de451aa2c2ca8650f6d17ec41da4dd29dd84dccd40bdabf35f7ad9505020b"
+                  }
+                },
+                {
+                  "public_key": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+                  "signature": {
+                    "public_nonce": "38a65ff2e1ec1d43fb876159f3f691d6eec9a38e3e45d93e31dc8feb3f295034",
+                    "signature": "7f50811b9e4898a1991bedc88f1e9171ca692ba8480f6177fd5441bbfbed1400"
+                  }
+                },
+                {
+                  "public_key": "a45af5c5eeb3db9687fe9edae95387f91ff5a90c442159204c3f97514dddad7c",
+                  "signature": {
+                    "public_nonce": "9affd60ac2ab14254c4cd4ea8552f79125067e9f01b751e56a36bd936873a444",
+                    "signature": "b0871f592c45e6db5c2be5c7f8e42c3d0628b0949abfa56690efc07414febb0d"
+                  }
+                }
+              ],
+              "decision": "Accept"
+            }
+          },
+          {
+            "QuorumCertificate": {
+              "header_hash": "5ff39c544f27458e30fef9d47b99d8e73098fb2027897d94bb3efba42ca561a3",
+              "parent_id": "5c97838994cedcf79d07bfd31575c386820463ae00f3fb48e7934384f69e5e0a",
+              "signatures": [
+                {
+                  "public_key": "a45af5c5eeb3db9687fe9edae95387f91ff5a90c442159204c3f97514dddad7c",
+                  "signature": {
+                    "public_nonce": "d288490abe52aa2758d2bcc34b913b072699a3fb2c6f2dd90b67703a6164a95d",
+                    "signature": "b056e1c32d60535bf6579c780cce54dccf598737c007d71e27d2103efe8c3d07"
+                  }
+                },
+                {
+                  "public_key": "cec1426a33965eb2a7d82b281964ad39f06d6fba7d8e57f8da4fcfefd946d855",
+                  "signature": {
+                    "public_nonce": "8cb29a58337e63bae28824495cb7c058885d2d8d015490c4ef3f7ee6936cc92b",
+                    "signature": "29f99a4c6520e9379c3a15c8cf0409c0ee8d496363902fb3a45dd564bcf8950c"
+                  }
+                },
+                {
+                  "public_key": "6efb3b5ede2c8abba5280b58cd5e3bd1887101f7ffb973cf46cb2542bdbd202f",
+                  "signature": {
+                    "public_nonce": "ec396712c9f37fdece3b755085e714a175e3fb0eb9446e480ef299598543a655",
+                    "signature": "4f8e9c918b9ef4a1564c9d4feff56416e360ba4b110f00ed470876f7a94eea03"
+                  }
+                },
+                {
+                  "public_key": "9e504f9b10c40230ec4e1570dcf295d5da01aa0daeced57316b160c80bc57e0c",
+                  "signature": {
+                    "public_nonce": "32b9cbf5979126c8f3b41ffe66cf5155f55bc4be53a04494d211c758ecfd9659",
+                    "signature": "af0e5006cf9cad48c3a2b7b066d45df530cc4924fda86804b37e830174e0f50f"
+                  }
+                }
+              ],
+              "decision": "Accept"
+            }
+          }
+        ]
+      },
+      "inclusion_proof": {
+        "leaf": {
+          "key": {
+            "bytes": [
+              14,
+              6,
+              80,
+              66,
+              252,
+              230,
+              128,
+              227,
+              177,
+              121,
+              72,
+              73,
+              217,
+              223,
+              177,
+              59,
+              86,
+              13,
+              202,
+              186,
+              73,
+              41,
+              142,
+              216,
+              134,
+              224,
+              68,
+              165,
+              137,
+              254,
+              161,
+              206
+            ]
+          },
+          "value_hash": [
+            14,
+            6,
+            80,
+            66,
+            252,
+            230,
+            128,
+            227,
+            177,
+            121,
+            72,
+            73,
+            217,
+            223,
+            177,
+            59,
+            86,
+            13,
+            202,
+            186,
+            73,
+            41,
+            142,
+            216,
+            134,
+            224,
+            68,
+            165,
+            137,
+            254,
+            161,
+            206
+          ]
+        },
+        "siblings": [
+          {
+            "Leaf": {
+              "key": {
+                "bytes": [
+                  10,
+                  8,
+                  183,
+                  20,
+                  62,
+                  220,
+                  212,
+                  188,
+                  222,
+                  251,
+                  122,
+                  125,
+                  223,
+                  68,
+                  86,
+                  98,
+                  68,
+                  114,
+                  36,
+                  168,
+                  164,
+                  107,
+                  67,
+                  70,
+                  14,
+                  122,
+                  41,
+                  186,
+                  60,
+                  235,
+                  153,
+                  137
+                ]
+              },
+              "value_hash": [
+                10,
+                8,
+                183,
+                20,
+                62,
+                220,
+                212,
+                188,
+                222,
+                251,
+                122,
+                125,
+                223,
+                68,
+                86,
+                98,
+                68,
+                114,
+                36,
+                168,
+                164,
+                107,
+                67,
+                70,
+                14,
+                122,
+                41,
+                186,
+                60,
+                235,
+                153,
+                137
+              ]
+            }
+          },
+          {
+            "Other": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "Other": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "Other": [
+              218,
+              99,
+              180,
+              253,
+              35,
+              94,
+              231,
+              69,
+              79,
+              126,
+              247,
+              110,
+              79,
+              219,
+              221,
+              231,
+              112,
+              48,
+              183,
+              185,
+              91,
+              112,
+              181,
+              160,
+              115,
+              89,
+              188,
+              178,
+              43,
+              241,
+              249,
+              64
+            ]
+          },
+          {
+            "Leaf": {
+              "key": {
+                "bytes": [
+                  91,
+                  88,
+                  116,
+                  176,
+                  114,
+                  248,
+                  246,
+                  152,
+                  222,
+                  90,
+                  88,
+                  99,
+                  20,
+                  213,
+                  49,
+                  13,
+                  210,
+                  8,
+                  222,
+                  0,
+                  189,
+                  151,
+                  14,
+                  57,
+                  210,
+                  80,
+                  145,
+                  206,
+                  116,
+                  88,
+                  154,
+                  178
+                ]
+              },
+              "value_hash": [
+                91,
+                88,
+                116,
+                176,
+                114,
+                248,
+                246,
+                152,
+                222,
+                90,
+                88,
+                99,
+                20,
+                213,
+                49,
+                13,
+                210,
+                8,
+                222,
+                0,
+                189,
+                151,
+                14,
+                57,
+                210,
+                80,
+                145,
+                206,
+                116,
+                88,
+                154,
+                178
+              ]
+            }
+          },
+          {
+            "Other": [
+              127,
+              136,
+              47,
+              186,
+              233,
+              0,
+              37,
+              253,
+              91,
+              44,
+              170,
+              115,
+              199,
+              251,
+              120,
+              89,
+              107,
+              25,
+              118,
+              240,
+              5,
+              29,
+              194,
+              79,
+              21,
+              93,
+              210,
+              206,
+              45,
+              118,
+              221,
+              33
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

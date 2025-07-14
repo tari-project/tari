@@ -21,11 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod chain_metadata;
-pub mod wallet_rpc;
-
 #[cfg(feature = "base_node")]
 mod request;
 #[cfg(feature = "base_node")]
 mod response;
 #[cfg(feature = "base_node")]
 mod rpc;
+pub mod wallet_rpc;

@@ -26,7 +26,7 @@ use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_comms_dht::event::DhtEventReceiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -91,6 +91,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
+    pub(super) peer_manager: Arc<PeerManager>,
     pub(super) dht_event_stream: DhtEventReceiver,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
@@ -112,6 +113,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         local_node_interface: LocalNodeCommsInterface,
         connectivity: ConnectivityRequester,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
+        peer_manager: Arc<PeerManager>,
         dht_event_stream: DhtEventReceiver, // New parameter
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators<B>,
@@ -126,7 +128,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             local_node_interface,
             connectivity,
             metadata_event_stream,
-            dht_event_stream, // Initialize new field
+            peer_manager,
+            dht_event_stream,
             config,
             info: StateInfo::StartUp,
             event_publisher,
@@ -310,7 +313,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 had_bootstrap_phase
             );
         } else {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "[BN SM UPDATE] Not in Listening state ({}), bootstrap_complete flag updated but UI unchanged",
                 self.info.short_desc()

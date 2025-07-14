@@ -1,6 +1,6 @@
 # Tari Vulnerability Disclosure Policy
 
-_Last Updated: January 10, 2024_
+_Last Updated: June 5, 2025_
 
 ## Introduction
 
@@ -124,13 +124,6 @@ submit a report through one of our [Disclosure Channels](#disclosure) before goi
   participating in this policy, and that the policy does not bind independent third parties.
 
 ## Bounty Rewards
-
-Tari Labs facilitates the bounty rewards programme with the help of [HackerOne](https://hackerone.com/tari_labs). If
-you are not part of the Tari HackerOne Bounty programme, you may request an invitation to participate by _first_
-1. signing up as a security researcher on HackerOne,
-2. providing us with your email and/or HackerOne username, along with a short justification via the Tari Labs 
-   [security mailing list](mailto:security@tari.com),
-3. accepting the invitation when it lands in your inbox.
 
 **Note:** Multiple vulnerabilities caused by one underlying issue will be awarded one bounty.
 

@@ -51,6 +51,7 @@ impl CommandContext {
             "Direction",
             "Age",
             "User Agent",
+            "Seed",
             "Info",
         ]);
         let peer_manager = self.comms.peer_manager();
@@ -80,6 +81,7 @@ impl CommandContext {
                 .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
                 .map(|metadata| format!("height: {}", metadata.metadata.best_block_height()));
 
+            let is_seed = peer.is_seed();
             let ua = peer.user_agent;
             let rpc_sessions = self
                 .rpc_server
@@ -99,6 +101,7 @@ impl CommandContext {
                         ua.as_ref()
                     }
                 },
+                if is_seed { "SEED" } else { "    " },
                 format!(
                     "{}hnd: {}, ss: {}, rpc: {}",
                     chain_height.map(|s| format!("{}, ", s)).unwrap_or_default(),

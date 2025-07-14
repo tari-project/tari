@@ -92,12 +92,6 @@ impl PeerManager {
         Ok(())
     }
 
-    /// Delete all stale peers, removing them from the database and returning their node_ids
-    pub async fn hard_delete_all_stale_peers(&self) -> Result<Vec<NodeId>, PeerManagerError> {
-        let deleted_peers = self.peer_storage_sql.hard_delete_all_stale_peers()?;
-        Ok(deleted_peers)
-    }
-
     /// Get all peers based on a list of their node_ids
     pub async fn get_peers_by_node_ids(&self, node_ids: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.get_peers_by_node_ids(node_ids)
@@ -149,6 +143,17 @@ impl PeerManager {
     /// Returns all peers
     pub async fn all(&self, features: Option<PeerFeatures>) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.all(features)
+    }
+
+    /// Get available dial candidates that are communication nodes, not banned, not deleted,
+    /// and not in the excluded node IDs list
+    pub async fn get_available_dial_candidates(
+        &self,
+        exclude_node_ids: &[NodeId],
+        limit: Option<usize>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql
+            .get_available_dial_candidates(exclude_node_ids, limit)
     }
 
     /// Return "good" peers for syncing

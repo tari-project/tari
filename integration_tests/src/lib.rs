@@ -36,14 +36,20 @@ pub mod world;
 
 pub use world::TariWorld;
 
-pub fn get_port(range: Range<u16>) -> Option<u64> {
+pub fn get_port(world: &mut TariWorld, range: Range<u16>) -> Option<u64> {
     let min = range.clone().min().expect("A minimum possible port number");
     let max = range.max().expect("A maximum possible port number");
 
     loop {
-        let port = rand::thread_rng().gen_range(min..max);
+        let port = loop {
+            let port = rand::thread_rng().gen_range(min..max);
+            if !world.assigned_ports.contains_key(&u64::from(port)) {
+                break port;
+            }
+        };
 
         if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            world.assigned_ports.insert(u64::from(port), u64::from(port));
             return Some(u64::from(port));
         }
     }

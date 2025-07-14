@@ -332,7 +332,8 @@ async fn check_health(
     let results = Arc::new(RwLock::new(Vec::new()));
     let peers = node_comms.get_seeds().await.unwrap_or_else(|_| vec![]);
     let mut handles = vec![];
-    for peer in peers {
+    trace!(target: LOG_TARGET, "check_health started contacting {} seed peers", peers.len());
+    for peer in &peers {
         let result_clone = results.clone();
         let mut result = LivenessCheckResult {
             peer: peer.node_id.clone(),
@@ -373,7 +374,7 @@ async fn check_health(
                 }
             }
             if let Ok(Some(mut conn)) = comms.get_connection(result.peer.clone()).await {
-                if let Err(err) = conn.disconnect(Minimized::No).await {
+                if let Err(err) = conn.disconnect_if_unused(Minimized::No, 0, 2, "Health check").await {
                     warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", result.peer, err);
                 }
             }
@@ -383,4 +384,5 @@ async fn check_health(
     futures::future::join_all(handles).await;
     let inner_result = (*(*results).read().await).clone();
     notify_comms_health.send(inner_result).expect("Channel should be open");
+    trace!(target: LOG_TARGET, "check_health ended");
 }

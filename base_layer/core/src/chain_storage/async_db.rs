@@ -26,11 +26,12 @@ use primitive_types::U512;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, Signature},
+    epoch::VnEpoch,
+    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
-use super::TemplateRegistrationEntry;
+use super::{MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
 use crate::{
     blocks::{
         Block,
@@ -268,13 +269,23 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
 
-    make_async_fn!(fetch_active_validator_nodes(height: u64) -> Vec<(CompressedPublicKey, [u8;32])>, "fetch_active_validator_nodes");
+    make_async_fn!(fetch_all_active_validator_nodes(height: u64) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_all_active_validator_nodes");
 
-    make_async_fn!(get_shard_key(height:u64, public_key: CompressedPublicKey) -> Option<[u8;32]>, "get_shard_key");
+    make_async_fn!(fetch_active_validator_nodes(height: u64, validator_network: Option<CompressedPublicKey>) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_active_validator_nodes");
+
+    make_async_fn!(fetch_validators_activating_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_activating_in_epoch");
+
+    make_async_fn!(fetch_validators_exiting_in_epoch(sidechain_pk: Option<CompressedPublicKey>, epoch: VnEpoch) -> Vec<ValidatorNodeRegistrationInfo>, "fetch_validators_exiting_in_epoch");
+
+    make_async_fn!(get_validator_node(sidechain_id: Option<CompressedPublicKey>, public_key: CompressedPublicKey) -> Option<ValidatorNodeRegistrationInfo>, "get_validator_node");
 
     make_async_fn!(fetch_template_registrations<T: RangeBounds<u64>>(range: T) -> Vec<TemplateRegistrationEntry>, "fetch_template_registrations");
 
     make_async_fn!(swap_to_highest_pow_chain() -> (), "swap to highest proof-of-work chain");
+
+    make_async_fn!(fetch_mined_info_by_payref(payref: FixedHash) -> MinedInfo, "fetch_mined_info_by_payref");
+
+    make_async_fn!(fetch_mined_info_by_output_hash(output_hash: HashOutput) -> MinedInfo, "fetch_mined_info_by_output_hash");
 }
 
 impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {

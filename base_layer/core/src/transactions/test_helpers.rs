@@ -43,7 +43,7 @@ use crate::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -162,10 +162,7 @@ impl TestParams {
         params: UtxoTestParams,
         key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     ) -> Result<WalletOutput, String> {
-        let version = match params.output_version {
-            Some(v) => v,
-            None => TransactionOutputVersion::get_current_version(),
-        };
+        let version = params.output_version.unwrap_or_default();
         let input_data = params.input_data.unwrap_or_else(|| inputs!(self.script_key_pk.clone()));
 
         let output = WalletOutputBuilder::new(params.value, self.commitment_mask_key_id.clone())
@@ -681,9 +678,11 @@ pub async fn spend_utxos(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
 ) -> (Transaction, Vec<WalletOutput>) {
-    let (mut stx_protocol, outputs) = create_stx_protocol(schema, key_manager).await;
+    let (mut stx_protocol, mut outputs) = create_stx_protocol(schema, key_manager).await;
     stx_protocol.finalize(key_manager).await.unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
+    let change_output = stx_protocol.get_finalized_change_output().unwrap().unwrap();
+    outputs.push(change_output);
     (txn, outputs)
 }
 
@@ -696,9 +695,6 @@ pub async fn create_stx_protocol(
     let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
 
     let stx_protocol = stx_builder.build().await.unwrap();
-    let change_output = stx_protocol.get_change_output().unwrap().unwrap();
-
-    outputs.push(change_output);
     (stx_protocol, outputs)
 }
 
@@ -751,10 +747,7 @@ pub async fn create_stx_protocol_internal(
             Some(data) => data.clone(),
             None => inputs!(script_public_key),
         };
-        let version = match schema.output_version {
-            Some(data) => data,
-            None => TransactionOutputVersion::get_current_version(),
-        };
+        let version = schema.output_version.unwrap_or_default();
         let output = WalletOutputBuilder::new(val, commitment_mask.key_id)
             .with_features(schema.features.clone())
             .with_script(schema.script.clone())

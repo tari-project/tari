@@ -44,14 +44,13 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        encrypted_data::PaymentId,
+        payment_id::PaymentId,
         EncryptedData,
         KernelFeatures,
         RangeProofType,
         TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
-        TransactionOutput,
         TransactionOutputVersion,
     },
     transaction_key_manager::error::KeyManagerServiceError,
@@ -387,7 +386,8 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     async fn try_output_key_recovery(
         &self,
-        output: &TransactionOutput,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError>;
 
@@ -476,6 +476,18 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, TransactionError>;
+
+    async fn encrypted_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError>;
+
+    async fn import_encrypted_key(
+        &self,
+        encrypted: Vec<u8>,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError>;
 }
 
 #[async_trait::async_trait]

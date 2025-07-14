@@ -27,25 +27,51 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, FixedHash, Signature},
+    types::{CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
 use tari_hashing::TransactionHashDomain;
 use tari_utilities::ByteArray;
 
 use crate::{consensus::DomainSeparatedConsensusHasher, transactions::transaction_components::ValidatorNodeSignature};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeRegistration {
     signature: ValidatorNodeSignature,
+    claim_public_key: CompressedPublicKey,
+    /// The maximum epoch for which this registration is valid.
+    max_epoch: VnEpoch,
 }
 
 impl ValidatorNodeRegistration {
-    pub fn new(signature: ValidatorNodeSignature) -> Self {
-        Self { signature }
+    pub fn new(signature: ValidatorNodeSignature, claim_public_key: CompressedPublicKey, max_epoch: VnEpoch) -> Self {
+        Self {
+            signature,
+            claim_public_key,
+            max_epoch,
+        }
     }
 
-    pub fn is_valid_signature_for(&self, msg: &[u8]) -> bool {
-        self.signature.is_valid_signature_for(msg)
+    pub fn signed(
+        secret_key: &PrivateKey,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        claim_public_key: CompressedPublicKey,
+        max_epoch: VnEpoch,
+    ) -> Self {
+        Self {
+            signature: ValidatorNodeSignature::sign_for_registration(
+                secret_key,
+                sidechain_pk,
+                &claim_public_key,
+                max_epoch,
+            ),
+            claim_public_key,
+            max_epoch,
+        }
+    }
+
+    pub fn is_valid_signature_for(&self, sidechain_pk: Option<&CompressedPublicKey>) -> bool {
+        self.signature
+            .is_valid_registration_signature_for(sidechain_pk, &self.claim_public_key, self.max_epoch)
     }
 
     pub fn derive_shard_key(
@@ -71,8 +97,20 @@ impl ValidatorNodeRegistration {
         self.signature.public_key()
     }
 
+    pub fn claim_public_key(&self) -> &CompressedPublicKey {
+        &self.claim_public_key
+    }
+
     pub fn signature(&self) -> &Signature {
         self.signature.signature()
+    }
+
+    pub fn max_epoch(&self) -> VnEpoch {
+        self.max_epoch
+    }
+
+    pub fn sidechain_id_message(&self) -> &[u8] {
+        self.public_key().as_bytes()
     }
 }
 
@@ -102,7 +140,10 @@ mod test {
 
     fn create_instance() -> ValidatorNodeRegistration {
         let sk = PrivateKey::random(&mut OsRng);
-        ValidatorNodeRegistration::new(ValidatorNodeSignature::sign(&sk, b"valid"))
+        let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
+        let epoch = VnEpoch(1);
+
+        ValidatorNodeRegistration::signed(&sk, None, claim_public_key, epoch)
     }
 
     mod is_valid_signature_for {
@@ -111,23 +152,31 @@ mod test {
         #[test]
         fn it_returns_true_for_valid_signature() {
             let reg = create_instance();
-            assert!(reg.is_valid_signature_for(b"valid"));
+            assert!(reg.is_valid_signature_for(None));
         }
 
         #[test]
         fn it_returns_false_for_invalid_challenge() {
-            let reg = create_instance();
-            assert!(!reg.is_valid_signature_for(b"there's wally"));
+            let sk = PrivateKey::random(&mut OsRng);
+            let claim_public_key = CompressedPublicKey::from_secret_key(&sk);
+
+            let reg = ValidatorNodeRegistration::new(
+                ValidatorNodeSignature::sign_for_registration(&sk, None, &claim_public_key, VnEpoch(2)),
+                claim_public_key,
+                VnEpoch(1),
+            );
+            assert!(!reg.is_valid_signature_for(None));
         }
 
         #[test]
         fn it_returns_false_for_invalid_signature() {
             let mut reg = create_instance();
-            reg = ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
-                reg.public_key().clone(),
-                Signature::default(),
-            ));
-            assert!(!reg.is_valid_signature_for(b"valid"));
+            reg = ValidatorNodeRegistration::new(
+                ValidatorNodeSignature::new(reg.public_key().clone(), Signature::default()),
+                Default::default(),
+                reg.max_epoch,
+            );
+            assert!(!reg.is_valid_signature_for(None));
         }
     }
 

@@ -23,7 +23,6 @@
 use log::trace;
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_comms::peer_manager::Peer;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -41,7 +40,6 @@ use crate::{
             events_component::EventsComponent,
             log_tab::LogTab,
             menu::Menu,
-            network_tab::NetworkTab,
             notification_tab::NotificationTab,
             receive_tab::ReceiveTab,
             register_template_tab::RegisterTemplateTab,
@@ -53,7 +51,6 @@ use crate::{
         state::AppState,
         MAX_WIDTH,
     },
-    wallet_modes::PeerConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
@@ -76,8 +73,6 @@ impl<B: Backend> App<B> {
         title: String,
         wallet: WalletSqlite,
         wallet_config: WalletConfig,
-        base_node_selected: Peer,
-        base_node_config: PeerConfig,
         notifier: Notifier,
     ) -> Result<Self, ExitError> {
         let wallet_address_interactive = wallet
@@ -93,13 +88,7 @@ impl<B: Backend> App<B> {
             wallet_address_interactive,
             wallet_address_one_sided,
         );
-        let app_state = AppState::new(
-            &wallet_id,
-            wallet,
-            base_node_selected.clone(),
-            base_node_config,
-            wallet_config,
-        );
+        let app_state = AppState::new(&wallet_id, wallet, wallet_config);
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
@@ -117,7 +106,6 @@ impl<B: Backend> App<B> {
             .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
             .add("Templates".into(), Box::new(RegisterTemplateTab::new(&app_state)))
             .add("Contacts".into(), Box::new(ContactsTab::new()))
-            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));

@@ -11,6 +11,7 @@ target
 *.userprefs
 .vscode/
 *.code-workspace
+.zed/
 tags
 null
 

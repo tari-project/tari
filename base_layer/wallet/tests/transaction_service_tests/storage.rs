@@ -53,7 +53,7 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             RangeProofType,
             Transaction,
@@ -147,6 +147,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            sent_output_hashes: vec![],
         });
         assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
 
@@ -260,6 +261,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
+            received_output_hashes: vec![],
         });
         assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
         db.add_pending_inbound_transaction(tx_id, inbound_txs[i].clone())
@@ -343,11 +345,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             last_send_timestamp: None,
 
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
             payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            sent_output_hashes: vec![],
+            change_output_hashes: vec![],
+            received_output_hashes: vec![],
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
@@ -358,7 +362,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     }
 
-    let retrieved_completed_txs = db.get_completed_transactions(None, None, None).unwrap();
+    let retrieved_completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
 
     for i in 0..messages.len() {
@@ -386,7 +390,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_completed_tx = db.get_completed_transaction(completed_txs[0].tx_id).unwrap();
     assert_eq!(retrieved_completed_tx.send_count, 2);
     assert!(retrieved_completed_tx.last_send_timestamp.is_some());
-    assert!(retrieved_completed_tx.confirmations.is_none());
 
     assert!(db.fetch_last_mined_transaction().unwrap().is_none());
 
@@ -395,7 +398,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         10,
         FixedHash::zero(),
         0,
-        5,
         true,
         &completed_txs[0].status,
     )
@@ -407,7 +409,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
 
     let retrieved_completed_tx = db.get_completed_transaction(completed_txs[0].tx_id).unwrap();
-    assert_eq!(retrieved_completed_tx.confirmations, Some(5));
 
     let any_completed_tx = db.get_any_transaction(completed_txs[0].tx_id).unwrap().unwrap();
     if let WalletTransaction::Completed(tx) = any_completed_tx {
@@ -416,21 +417,21 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found completed tx");
     }
 
-    let completed_txs = db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     let num_completed_txs = completed_txs.len();
-    assert_eq!(db.get_cancelled_completed_transactions().unwrap().len(), 0);
+    assert_eq!(db.get_cancelled_completed_transactions(0).unwrap().len(), 0);
 
     let cancelled_tx_id = completed_txs[1].tx_id;
     assert!(db.get_cancelled_completed_transaction(cancelled_tx_id).is_err());
     db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown)
         .unwrap();
-    let completed_txs = db.get_completed_transactions(None, None, None).unwrap();
+    let completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     assert_eq!(completed_txs.len(), num_completed_txs - 1);
 
     db.get_cancelled_completed_transaction(cancelled_tx_id)
         .expect("Should find cancelled transaction");
 
-    let cancelled_txs = db.get_cancelled_completed_transactions().unwrap();
+    let cancelled_txs = db.get_cancelled_completed_transactions(0).unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.iter().any(|c_tx| c_tx.tx_id == cancelled_tx_id));
 

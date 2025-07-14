@@ -9,10 +9,10 @@
   },
   {
     "name": "linux-arm64",
-    "runs-on": "ubuntu-latest",
+    "runs-on": "ubuntu-22.04-arm",
     "rust": "stable",
     "target": "aarch64-unknown-linux-gnu",
-    "cross": true,
+    "cross": false,
     "flags": "--features libtor --workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
     "build_metric": true
   },
@@ -44,7 +44,7 @@
   },
   {
     "name": "windows-x64",
-    "runs-on": "windows-2019",
+    "runs-on": "windows-2022",
     "rust": "stable",
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
@@ -60,7 +60,7 @@
     "features": "safe",
     "target_bins": "minotari_node, minotari_console_wallet, minotari_merge_mining_proxy, minotari_miner",
     "flags": "--workspace --exclude tari_libtor",
-    "build_enabled": true,
+    "build_enabled": false,
     "best_effort": true
   }
 ]

@@ -6,28 +6,101 @@ author: stringhandler
 subtitle:
 class: subpage
 ---
-In this guide, we will cover the basics of getting a Minotari node operational and explain the process of setting up the associated wallets required to run Minotari on your exchange securely:
 
-* We will set up your own Minotari node
-* We will cover the creation of a Minotari wallet as the store of funds, as well as a corresponding read-only wallet for use by the exchange for monitoring transactions
-* We will discuss how to monitor the blockchain for transactions
-* We will cover both the depositing and withdrawal of funds to the wallet
+- [Introduction](#introduction)
+- [Proposed Integration Structure](#proposed-integration-structure)
+- [MinoTari Versions & Release Methodology](#minotari-versions--release-methodology)
+- [Setting up Minotari](#setting-up-minotari)
+  - [Download the Minotari Binaries and Set Up Your Base Node](#section-1-download-the-minotari-binaries-and-set-up-your-base-node)
+- [Create and Configure your Wallets](#create-and-configure-your-wallets)
+  - [Creating the Deposit/Main Wallet](#section-2-creating-the-depositmain-wallet)
+  - [Obtain the addresses of the Deposit/Main wallet](#section-3-obtain-the-addresses-of-the-depositmain-wallet)
+  - [Setting Up a Read-Only Wallet to Monitor for Transactions and Receive Deposits](#section-4-setting-up-a-read-only-wallet-to-monitor-for-transactions-and-receive-deposits)
+  - [Configuring the read-only wallet](#section-5-configuring-the-read-only-wallet)
+  - [Listening for incoming transactions](#section-6-listening-for-incoming-transactions)
+- [Descriptions of Common Activities](#descriptions-of-common-activities)
+  - [Receiving funds / User Deposits](#receiving-funds--user-deposits)
+  - [Performing withdrawals](#performing-withdrawals)
+  - [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)
+- [Payment Reference (PayRef) Integration](#payment-reference-payref-integration)
+  - [What are Payment References?](#what-are-payment-references)
+  - [How PayRefs Work](#how-payrefs-work)
+  - [PayRef Integration Examples](#payref-integration-examples)
+    - [Section 9: Verifying Customer Deposits with PayRefs](#section-9-verifying-customer-deposits-with-payrefs)
+    - [Implementation Example](#implementation-example)
+    - [Customer Support Workflow](#customer-support-workflow)
+    - [Section 10: Automated PayRef Processing](#section-10-automated-payref-processing)
+  - [Best Practices for Exchanges](#best-practices-for-exchanges)
+    - [Security Considerations](#security-considerations)
+    - [Customer Experience](#customer-experience)
+    - [Integration Checklist](#integration-checklist)
+    - [PayRef Customer Support Templates](#payref-customer-support-templates)
+      - [Email Templates](#email-templates)
+    - [Error Handling and Edge Cases](#error-handling-and-edge-cases)
+
+# Introduction
+In this guide, we will cover the details of exchange integration, including:
+
+- The proposed configuration, transaction flow and structure of the integration.
+- The release methodology and the distinction between our production, testing and development chains. 
+- Setting up a MinoTari node and the wallets required to operate an exchange.
+- Configuring the node and wallets for exchange use in common scenarios.
+- The Tari Address structure and validating Tari Addresses
+- How to create unique addresses for your customers to deposit funds without requiring individual user wallets.
+- How to monitor for blockchain for transactions.
+- How to use Payment Reference for deposit and transaction confirmation
+- An explanation of transaction information returned by the available gRPC methods
+
+> Note: while references to GRPC methods and code examples will be provided here, readers should refer to the [API GRPC Explanation](./API_GRPC_Explanation.md) guide for a full breakdown of the available gRPC methods and their implementation.
 
 This guide assumes that the node will not be used for mining.
 
-## Node Setup
-In order to accept Tari, you will need to have a Minotari node. While it is possible to use a public node with the correct gRPC methods exposed to the internet, it is recommended that you run your own node. 
+# Proposed Integration Structure
+Below is the proposed structure of the integration.
 
-It may also be worth running multiple nodes as backups to ensure availability.
+![image_of_flow](/docs/src/img/exchange_integration_guide/structure.png)
+
+* A cold wallet that is the primary wallet for storage of deposit funds. This wallet should be airgapped to be kept entirely separate of the online infrastructure. This is the **Main Wallet** 
+* A read-only hot wallet that is used to monitor for incoming transactions to the exchange. This uses the private view key and public spend key from the cold wallet. This is the **Monitoring Wallet** that scans for incoming transactions.
+* A **MinoTari base node**. This provides access to the full blockchain on the exchange and removes the reliance on third-parties or public nodes.
+* A third, optional hot wallet used for withdrawals. This would be filled periodically with funds transferred from the main wallet, removing the need for the **Main Wallet** to be used for user withdrawals. 
+
+This provides a reasonable environment for monitoring for user deposits and withdrawals.
+
+# MinoTari Versions & Release Methodology
+
+MinoTari has three different networks:
+- **Mainnet**: This is the main network.
+- **NextNet**: This is the test network, and should be used for testing and development.
+- **Esmeralda**: A development network with a deliberately low difficulty target for mining. However, due to frequent resets, should only be used for localised, rapid testing scenarios that don't rely on a large amount of historical data.
+
+MinoTari releases follow the below methodology, and you should use the version appropriate to the network that you are interested in.
+ 
+- **Mainnet (Stable)**: no suffix, e.g. v2.0.1 (example; always verify the latest) 
+- **Nextnet (Release Candidate)**: suffix -rc.#, e.g. v2.0.1-rc.0 
+- **Esmeralda (Pre-Release)**: suffix -pre.#, e.g. v2.0.1-pre.0 
+
+Example Convention: 
+- 4.2.0 → Mainnet
+- 4.2.0-rc.0 → Nextnet
+- 4.2.0-pre.0 → Esmeralda 
+
+Official binary releases can be found on the GitHub project release page at [github.com/tari-project/tari/releases](github.com/tari-project/tari/releases)
+
+# Setting up Minotari
+You will require the following CLI tools from the release to set up MinoTari:
+- `minotari_node`
+- `minotari_console_wallet`
+
+You will need a Minotari node with gRPC methods enabled. While it is possible to use a public node with the correct gRPC methods exposed, it is recommended that you run your own node for full control and auditability.
 
 > Note: For all servers connected to the internet, they must either be running a Tor client or configure their public IP information. Documentation on this is available [here](https://github.com/tari-project/tari#README) and [here](https://github.com/tari-project/tari/discussions/6366). If you are running on Linux, the Tari applications have built-in Tor support, so this can be ignored.
 
-### Section 1: Create a Minotari Node and run it
-The Minotari node is the base layer node required to receive and monitor transcations. 
+# Section 1: Download the Minotari Binaries and Set Up Your Base Node 
 
 > NOTE: If you are using a public Minotari node, you can skip this section. Note that you will need the `public key` and the `public address` of the public node in question in order to correctly proceed with this exchange guide.
 
-1. Download the compiled binaries [here](https://tari.com/downloads/). If you would prefer to compile from source, you will need to follow the instructions located [here.](https://github.com/tari-project/tari#building-from-source)
+The latest version of Minotari can be found here: [https://github.com/tari-project/tari/releases](https://github.com/tari-project/tari/releases). Exchanges interested in the build process can review the associated GitHub Actions for the `Build Matrix of Binaries`.
 
 2. Use the instructions here to [install the binaries](https://github.com/tari-project/tari?tab=readme-ov-file#installing-using-binaries).
 
@@ -35,10 +108,10 @@ The Minotari node is the base layer node required to receive and monitor transca
 
 The following binaries will be available.
 
-* minotari_console_wallet
+* **minotari_console_wallet**
 * minotari_merge_mining_proxy
 * minotari_miner
-* minotari_node
+* **minotari_node**
 * randomx-benchmark
 * randomx-codegen
 * randomx-tests
@@ -47,8 +120,10 @@ The two required for the exchange are the **minotari_node** and **minotari_conso
 
 3. Start the node (consecutive runs): 
 ```
-minotari_node
+./minotari_node
 ```
+
+This can be run with a number of different arguments. The most notable are `--help` and `-b ./path`, where you specify the location of a custom base path. This command is particular useful if you want to create wallets with distinct configuration folders. 
 
 If a node has not yet been created, it will inform you that a node config file does not exist. You will also be asked if you wish to mine. Select `n` in this case.
 
@@ -73,7 +148,7 @@ Features: PeerFeatures(MESSAGE_PROPAGATION | DHT_STORE_FORWARD)
 
 6. Restart the node (Ctrl+C twice to quit, then typing `minotari_node` again).
 
-### Section 2: Creating a wallet
+# Section 2: Creating the Deposit/Main Wallet
 In this section we'll create a wallet address for receiving funds. This wallet will serve as the main repository of your Tari coins.
 
 > NB: This is a crucial step in the process. Creating the wallet in secure environment and following the instructions is important to secure this wallet and prevent malicious actors being able to transfer Tari. Read the instructions carefully. If there is any doubt regarding ANY part of the process, please contact the Tari Community for clarification and assistance.
@@ -147,7 +222,7 @@ Type the word "confirm" to continue.
 
 > Note: The following sections deal with configuration of the wallet. While not necessary, an extra safety precaution would be to confirm that the seed words you copied can actually recover the wallet.
 
-### Section 3: Obtain the addresses of the main wallet
+# Section 3: Obtain the Addresses of the Deposit/Main Wallet
 
 Now that we have the wallet created, we will require the addresses - specifically, the `Tari Address one-sided` - to create the second wallet, which will be used to monitor transactions.
 
@@ -187,7 +262,7 @@ Press Enter to continue to the wallet, or type q (or quit) followed by Enter.
 
 > Note: Now is a good time to check your noted keys, seed words and addresses before remove the configuration data in the folder and/or destroying/wiping the device.
 
-### Section 4: Setting up a read-only wallet to receive deposits
+# Section 4: Setting Up a Read-Only Wallet to Monitor for Transactions and Receive Deposits
 In this section, we will create a second, read-only wallet that will watch for funds received at the address saved in the previous section. If you are integrating an exchange, this is how you can watch for received funds. This wallet will need to be able to access the Internet in some capacity.
 
 > NOTE: This second wallet will not have the ability to spend any funds. While this limits the security risk, it is good practice to maintain security best practices when configuring any system that has access to the chain and has some association with the the main wallet.
@@ -231,7 +306,7 @@ Enter the public spend key:  (hex or base58)
 
 6. You should now see the familiar console wallet. We'll need to configure it further in its accompanying configuration file, so close it for now by pressing `f10` or `Ctrl+Q` and move onto the next section.
 
-### Section 5: Configuring the read-only wallet
+## Section 5: Configuring the read-only wallet
 1. Browse to the config file under `~/.tari/mainnet/config/config.toml` (or the folder where you specified the wallet configuration should be stored) and open it in your favourite text editor.
 
 2. Find the section `Wallet Configuration Options (WalletConfig)`. Below is a typical example of the beginning of the wallet configuration section within the `config.toml` file.
@@ -281,7 +356,7 @@ minotari_console_wallet
 
 You are now ready to receive deposits. In the next section we'll explain how to listen for incoming transactions.
 
-### Section 6: Listening for incoming transactions
+## Section 6: Listening for incoming transactions
 How you listen for incoming transactions (and what you do with them) will depend on your process. For our example, we'll use the gRPC server that is hosted in the read-only wallet we just created to listen for incoming deposits. 
 
 Reach out to us if you would like an example in your favourite language. You can find more information about the methods available in [wallet.proto here](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
@@ -382,8 +457,8 @@ call.on('status', (status) => {
 });
 ```
 
-## Descriptions of Common Activities
-### Section 7: An example for receiving funds
+# Descriptions of Common Activities
+## Receiving funds / User Deposits
 Each exchange will have their own processes, but here is an example of receiving funds from a KYC'ed client. 
 
 1. The client begins the deposit process. For example, clicking on a "Deposit" button.
@@ -402,8 +477,7 @@ Each exchange will have their own processes, but here is an example of receiving
 
 6. For new transactions, compare against the list of expected references in their internal database and if there is a match, call the internal system to allocate funds to the client's account.
 
-### Section 8: Performing withdrawals
-
+## Performing withdrawals
 In this section we'll perform a withdrawal from the same address we used in **Section 3**. It is also possible to have a number of different wallets and send funds between them. The process is mostly the same, but is out of scope for this document.
 
 > NOTE: The wallet used to spend funds should not be online for more time than is necessary. It is recommended that the machine running this wallet is secured.
@@ -455,3 +529,647 @@ To break it down:
 * The value is 01 (hexadecimal)
 * In binary, this is 00000001
 * The least significant bit (rightmost bit) is 1, indicating support for interactive transactions
+
+## Confirming Deposits and Withdrawals
+
+There are three elements of confirming transactions: block confirmations, transaction status and the use of the Payment Reference (PayRef) system. The combination of these three methods can help ensure not only that a transaction has occurred, but provides auditability and the ability to check transactions on-chain with an identifier that is the same for both the sender and receiver without requiring the reveal of specific transaction values.
+
+The gRPC methods here are described in more detail in the [API GRPC Explanation Document](/docs/src/API_GRPC_Explanation.md)
+
+## Transaction Status
+
+Using the gRPC method `GetTransactionInfo`, a status value will be returned. Below is a list of the transaction statuses. For the purposes of transaction confirmation, statuses `6` and `9` can be considered effectively confirmed:
+
+Talking about this table:
+| Status Code | Enum Name | Description | Valid/Confirmed? |
+| --- | --- | --- | --- |
+| 0 | `TRANSACTION_STATUS_COMPLETED` | Completed between parties, not broadcast | ❌ No |
+| 1 | `TRANSACTION_STATUS_BROADCAST` | Broadcast to mempool, not mined | ❌ No |
+| 2 | `TRANSACTION_STATUS_MINED_UNCONFIRMED` | Mined but not confirmed | ⚠️ Not Yet |
+| 3 | `TRANSACTION_STATUS_IMPORTED` | Imported spendable UTXO, may not be confirmed | ❌ No |
+| 4 | `TRANSACTION_STATUS_PENDING` | Still being negotiated | ❌ No |
+| 5 | `TRANSACTION_STATUS_COINBASE` | Created coinbase transaction, not mined | ❌ No |
+| 6 | `TRANSACTION_STATUS_MINED_CONFIRMED` | Mined and confirmed | ✅ Yes |
+| 7 | `TRANSACTION_STATUS_REJECTED` | Rejected by mempool | ❌ No |
+| 8 | `TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED` | One-sided/faux transaction, not confirmed | ⚠️ Not Yet |
+| 9 | `TRANSACTION_STATUS_ONE_SIDED_CONFIRMED` | One-sided or imported transaction confirmed | ✅ Yes |
+| 10 | `TRANSACTION_STATUS_QUEUED` | Still queued for sending | ❌ No |
+| 11 | `TRANSACTION_STATUS_NOT_FOUND` | Not found in wallet DB | ❌ No |
+| 12 | `TRANSACTION_STATUS_COINBASE_UNCONFIRMED` | Detected coinbase, not yet confirmed | ⚠️ Not Yet |
+| 13 | `TRANSACTION_STATUS_COINBASE_CONFIRMED` | Detected and confirmed coinbase transaction | ✅ Yes |
+| 14 | `TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN` | Coinbase not yet mined | ❌ No |
+
+## Block Confirmations
+Once you have confirmed that the transaction has been mined, it is recommended that you wait a certain number of block confirmations to ensure that the transaction is not lost as the result of a reorganisation. We recommend a minimum of 6 block confirmations.
+
+When retrieving the transaction info, you will be provided with a mined height. This can be combined with the base node gRPC method `GetTipInfo` to get the chain's most current height.
+
+> Note: Because you will likely be communicating with your own base node, it is also important to ensure that your MinoTari Node is synced with chain. `GetSyncInfo` and `GetSyncProgress` are good indicators of the health of your node.
+
+## Payment Reference (PayRef)
+Lastly, the exchange can use the Payment Reference (PayRef). A PayRef is a 32-byte cryptographic identifier derived from an individual transaction output:
+
+`PayRef = Blake2b_256(block_hash || output_hash)`
+
+It enables privacy-preserving, output-level tracking of deposits and withdrawals without exposing sensitive transaction internals.
+
+### Get PayRefs for a Known Transaction
+If you know the transaction ID (e.g., from getCompletedTransactions), use:
+
+```javascript
+const request = {
+  transaction_id: 12345
+};
+const response = await client.getTransactionPayRefs(request);
+console.log("PayRefs:", response.payment_references.map(ref => Buffer.from(ref).toString('hex')));
+```
+
+Use this when:
+- You want to store PayRefs after sending a transaction.
+- You want to allow users to refer to their deposits via PayRef instead of wallet-local tx_id.
+
+Sample Response:
+```json
+{
+    "payment_references": [
+        "JdVIrY5P6hFJcxm4QkVGnPwPw4mMlMIQfuTEdedvHMI="
+    ]
+}
+```
+
+### Get Transaction Details from a PayRef
+If a user gives you a PayRef (e.g., as proof of deposit), use:
+
+```javascript
+const payref = Buffer.from('a1b2c3...7890', 'hex');
+const request = { payment_reference: payref };
+client.getPaymentByReference(request, (err, response) => {
+  if (err) console.error(err);
+  else console.log('Transaction found:', response.transaction);
+});
+```
+
+Use this when:
+- A customer provides a PayRef to confirm a deposit.
+- You want to audit a specific output in your records.
+
+Sample response:
+```json
+{
+    "transaction": {
+        "input_commitments": [],
+        "output_commitments": [
+            "igTiN+vtpok6DA72aTJdrQ6lzTcYMoUSKlgc9ozt2To=" //base64 encoded byte array
+        ],
+        "payment_references_sent": [],
+        "payment_references_received": [
+            "26o3eqs/lWhaBWGbYEIF9PgKc0sDs4+v7Dp0h42CAXk=" //base64 encoded byte array
+        ],
+        "payment_references_change": [],
+        "tx_id": "14414927044058609657",
+        "source_address": "JgEaRCXRjdYUHDK3kwYkPjsNcwTtmWEY6lH1Nx1uGPNpI2go95RHW7ZKcJ49nIBS7Qxpuy1bnk+HdfyZWWiLA8hurQ==",
+        "dest_address": "JgHIxgRgLmHE/X0dSd5puCd0d4vzP5gLO1qdyb+zKFX7IqRynEKAG4yESxHJuGg09hgQ0A2sZpeUQGVJQR3Mjv5CPw==",
+        "status": "TRANSACTION_STATUS_ONE_SIDED_CONFIRMED",
+        "direction": "TRANSACTION_DIRECTION_INBOUND",
+        "amount": "123000000",
+        "fee": "0",
+        "is_cancelled": false,
+        "excess_sig": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "timestamp": "1749565352",
+        "raw_payment_id": "A8DUVAcAAAAAAAAAAYAmARpEJdGN1hQcMreTBiQ+Ow1zBO2ZYRjqUfU3HW4Y82kjaCj3lEdbtkpwnj2cgFLtDGm7LVueT4d1/JlZaIsDyG6taGFsbG8=",
+        "mined_in_block_height": "30137",
+        "user_payment_id": "aGFsbG8="
+    }
+}
+```
+
+# Payment Reference (PayRef) Integration
+## What are Payment References?
+
+Payment References (PayRefs) are globally unique identifiers for individual transaction outputs that enable payment verification without compromising privacy. They solve the common problem of users claiming they sent payments that exchanges cannot verify.
+
+**Key Benefits for Exchanges:**
+* Instant payment verification (no manual blockchain searching)
+* Reduced customer support workload
+* Automated dispute resolution capability
+* Better audit trails for compliance
+
+## How PayRefs Work
+
+PayRefs are generated using the formula:
+```
+PayRef = Blake2b_256(block_hash || output_hash)
+```
+
+This ensures:
+- Global uniqueness across blockchain history
+- Privacy preservation (no additional information revealed)
+- Verifiability by any party with blockchain access
+- Stability after sufficient confirmations
+
+## PayRef Integration Examples
+
+### Section 9: Verifying Customer Deposits with PayRefs
+
+When a customer claims they sent a deposit but you don't see it in your systems:
+
+**Traditional workflow (problematic):**
+1. Customer: "I sent 100 XTR 2 hours ago but don't see it credited"
+2. Support: "Can you provide your transaction details?"
+3. Customer: "I don't know what details to provide"
+4. Support: Manually searches blockchain, often unsuccessfully
+5. Result: Frustrated customer, high support workload
+
+**PayRef workflow (streamlined):**
+1. Customer: "I sent 100 XTR, PayRef: a1b2c3d4e5f6..."
+2. Support: Enters PayRef into verification system
+3. System: "Payment verified: 100 XTR received in block 150,000"
+4. Support: Credits customer account
+5. Result: Fast resolution, happy customer
+
+### Implementation Example
+
+Here's how to implement PayRef verification in your exchange backend:
+
+```javascript
+const grpc = require('@grpc/grpc-js');
+const protoLoader = require('@grpc/proto-loader');
+
+// PayRef verification service
+class PayRefVerificationService {
+    constructor(walletGrpcEndpoint) {
+        // Load the protobuf
+        const PROTO_PATH = './proto/wallet.proto';
+        const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+            keepCase: true,
+            longs: String,
+            enums: String,
+            defaults: true,
+            oneofs: true
+        });
+        const walletProto = grpc.loadPackageDefinition(packageDefinition).tari.rpc;
+        
+        // Create secure gRPC client
+        this.client = new walletProto.Wallet(walletGrpcEndpoint, grpc.credentials.createInsecure());
+    }
+
+    /**
+     * Verify a PayRef provided by a customer
+     * @param {string} payrefHex - 64-character hex PayRef from customer
+     * @param {number} requiredConfirmations - Minimum confirmations needed (default: 10)
+     * @returns {Promise<VerificationResult>}
+     */
+    async verifyPayRef(payrefHex, requiredConfirmations = 10) {
+        // Validate PayRef format
+        if (!this.isValidPayRefFormat(payrefHex)) {
+            return {
+                status: 'INVALID_FORMAT',
+                message: 'PayRef must be 64-character hexadecimal string'
+            };
+        }
+
+        try {
+            // Call wallet gRPC to verify PayRef
+            const response = await this.callGrpcMethod('GetPaymentByReference', {
+                payment_reference_hex: payrefHex
+            });
+
+            if (!response.payment_details) {
+                return {
+                    status: 'NOT_FOUND',
+                    message: 'PayRef not found in received payments'
+                };
+            }
+
+            const payment = response.payment_details;
+            const confirmations = parseInt(payment.confirmations);
+            
+            if (confirmations >= requiredConfirmations) {
+                return {
+                    status: 'VERIFIED',
+                    paymentReference: payrefHex,
+                    amount: parseFloat(payment.amount),
+                    blockHeight: parseInt(payment.block_height),
+                    confirmations: confirmations,
+                    receivedTimestamp: new Date(parseInt(payment.mined_timestamp) * 1000),
+                    sufficientConfirmations: true
+                };
+            } else {
+                const blocksRemaining = requiredConfirmations - confirmations;
+                return {
+                    status: 'INSUFFICIENT_CONFIRMATIONS',
+                    paymentReference: payrefHex,
+                    amount: parseFloat(payment.amount),
+                    confirmations: confirmations,
+                    requiredConfirmations: requiredConfirmations,
+                    blocksRemaining: blocksRemaining,
+                    message: `Payment found but needs ${blocksRemaining} more confirmations`
+                };
+            }
+        } catch (error) {
+            console.error('PayRef verification error:', error);
+            return {
+                status: 'ERROR',
+                message: 'Internal verification error'
+            };
+        }
+    }
+
+    /**
+     * Validate PayRef format
+     */
+    isValidPayRefFormat(payrefHex) {
+        return /^[0-9a-fA-F]{64}$/.test(payrefHex);
+    }
+
+    /**
+     * Helper to call gRPC methods with promises
+     */
+    callGrpcMethod(methodName, request) {
+        return new Promise((resolve, reject) => {
+            this.client[methodName](request, (error, response) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(response);
+                }
+            });
+        });
+    }
+}
+
+// Usage example
+async function handleCustomerPayRefInquiry(customerId, payrefHex) {
+    const verifier = new PayRefVerificationService('localhost:18143');
+    
+    try {
+        const result = await verifier.verifyPayRef(payrefHex);
+        
+        switch (result.status) {
+            case 'VERIFIED':
+                // Credit customer account
+                await creditCustomerAccount(customerId, result.amount, payrefHex);
+                console.log(`Payment verified: ${result.amount} XTR credited to customer ${customerId}`);
+                return {
+                    success: true,
+                    message: 'Payment verified and account credited',
+                    details: result
+                };
+                
+            case 'INSUFFICIENT_CONFIRMATIONS':
+                console.log(`Payment found but needs ${result.blocksRemaining} more confirmations`);
+                return {
+                    success: false,
+                    message: `Payment found but needs ${result.blocksRemaining} more confirmations`,
+                    details: result
+                };
+                
+            case 'NOT_FOUND':
+                console.log(`PayRef not found: ${payrefHex}`);
+                return {
+                    success: false,
+                    message: 'Payment not found. Please verify PayRef is correct and transaction has sufficient confirmations.'
+                };
+                
+            default:
+                console.error(`PayRef verification failed: ${result.message}`);
+                return {
+                    success: false,
+                    message: result.message
+                };
+        }
+    } catch (error) {
+        console.error('PayRef verification error:', error);
+        return {
+            success: false,
+            message: 'Internal verification error'
+        };
+    }
+}
+
+// Customer support integration
+async function creditCustomerAccount(customerId, amount, payrefHex) {
+    // Check if already credited to prevent double-spending
+    const existingCredit = await checkExistingPayRefCredit(payrefHex);
+    if (existingCredit) {
+        throw new Error(`PayRef ${payrefHex} already credited`);
+    }
+    
+    // Credit the account
+    await updateCustomerBalance(customerId, amount);
+    
+    // Log the PayRef for audit trail
+    await logPayRefCredit({
+        customerId,
+        payrefHex,
+        amount,
+        timestamp: new Date(),
+        verifiedBy: 'automated-system'
+    });
+    
+    console.log(`Credited ${amount} XTR to customer ${customerId} using PayRef ${payrefHex}`);
+}
+```
+
+### Customer Support Workflow
+
+Integrate PayRef verification into your customer support system:
+
+```javascript
+// Customer support dashboard integration
+class CustomerSupportDashboard {
+    
+    async handlePaymentInquiry(ticketId, customerId, payrefHex) {
+        const verifier = new PayRefVerificationService('localhost:18143');
+        const verification = await verifier.verifyPayRef(payrefHex);
+        
+        // Log the support inquiry
+        await this.logSupportInquiry({
+            ticketId,
+            customerId,
+            payrefHex,
+            timestamp: new Date(),
+            verificationResult: verification
+        });
+        
+        // Generate appropriate response
+        const response = this.generateSupportResponse(verification);
+        
+        // Update ticket with resolution
+        await this.updateSupportTicket(ticketId, {
+            status: verification.status === 'VERIFIED' ? 'resolved' : 'pending',
+            response: response,
+            payrefVerification: verification
+        });
+        
+        return response;
+    }
+    
+    generateSupportResponse(verification) {
+        switch (verification.status) {
+            case 'VERIFIED':
+                return {
+                    template: 'payment_confirmed',
+                    message: `Your payment has been verified and your account has been credited with ${verification.amount} XTR. 
+                             Transaction was confirmed in block ${verification.blockHeight} with ${verification.confirmations} confirmations.`,
+                    actionTaken: 'account_credited',
+                    nextSteps: 'Your balance should now reflect the deposit.'
+                };
+                
+            case 'INSUFFICIENT_CONFIRMATIONS':
+                return {
+                    template: 'waiting_confirmations',
+                    message: `Your payment has been found but is waiting for more confirmations. 
+                             Currently has ${verification.confirmations}/${verification.requiredConfirmations} confirmations. 
+                             Estimated time: ${verification.blocksRemaining * 2} minutes.`,
+                    actionTaken: 'monitoring',
+                    nextSteps: 'We will automatically credit your account once sufficient confirmations are reached.'
+                };
+                
+            case 'NOT_FOUND':
+                return {
+                    template: 'payment_not_found',
+                    message: `We could not find a payment matching your PayRef. Please check:
+                             1. PayRef was copied correctly from your wallet
+                             2. Payment has at least 5 confirmations  
+                             3. You sent to the correct exchange address`,
+                    actionTaken: 'investigation_needed',
+                    nextSteps: 'Please provide additional transaction details or contact advanced support.'
+                };
+                
+            default:
+                return {
+                    template: 'technical_error',
+                    message: 'There was a technical error verifying your payment. Our technical team has been notified.',
+                    actionTaken: 'escalated',
+                    nextSteps: 'A specialist will review your case within 24 hours.'
+                };
+        }
+    }
+}
+```
+
+### Section 10: Automated PayRef Processing
+
+For high-volume exchanges, implement automated PayRef processing:
+
+```javascript
+// Automated PayRef monitoring system
+class AutomatedPayRefProcessor {
+    constructor(walletGrpcEndpoint, databaseConnection) {
+        this.verifier = new PayRefVerificationService(walletGrpcEndpoint);
+        this.db = databaseConnection;
+        this.processingQueue = [];
+        this.isProcessing = false;
+    }
+    
+    /**
+     * Start automated monitoring for pending PayRef verifications
+     */
+    async startAutomatedProcessing() {
+        // Check for pending PayRef verifications every 30 seconds
+        setInterval(async () => {
+            await this.processPendingPayRefs();
+        }, 30000);
+        
+        console.log('Automated PayRef processing started');
+    }
+    
+    /**
+     * Process all pending PayRef verifications
+     */
+    async processPendingPayRefs() {
+        if (this.isProcessing) return;
+        
+        this.isProcessing = true;
+        try {
+            const pendingPayRefs = await this.db.getPendingPayRefVerifications();
+            
+            for (const pending of pendingPayRefs) {
+                await this.processSinglePayRef(pending);
+            }
+        } catch (error) {
+            console.error('Error processing pending PayRefs:', error);
+        } finally {
+            this.isProcessing = false;
+        }
+    }
+    
+    /**
+     * Process a single PayRef verification
+     */
+    async processSinglePayRef(pendingPayRef) {
+        try {
+            const verification = await this.verifier.verifyPayRef(
+                pendingPayRef.payrefHex, 
+                pendingPayRef.requiredConfirmations
+            );
+            
+            switch (verification.status) {
+                case 'VERIFIED':
+                    await this.handleVerifiedPayRef(pendingPayRef, verification);
+                    break;
+                    
+                case 'INSUFFICIENT_CONFIRMATIONS':
+                    await this.updatePendingPayRef(pendingPayRef, verification);
+                    break;
+                    
+                case 'NOT_FOUND':
+                    await this.handleNotFoundPayRef(pendingPayRef);
+                    break;
+                    
+                default:
+                    console.error(`Unexpected verification status: ${verification.status}`);
+            }
+        } catch (error) {
+            console.error(`Error processing PayRef ${pendingPayRef.payrefHex}:`, error);
+        }
+    }
+    
+    async handleVerifiedPayRef(pendingPayRef, verification) {
+        // Credit customer account
+        await this.creditCustomerAccount(
+            pendingPayRef.customerId, 
+            verification.amount, 
+            pendingPayRef.payrefHex
+        );
+        
+        // Remove from pending queue
+        await this.db.removePendingPayRef(pendingPayRef.id);
+        
+        // Notify customer
+        await this.notifyCustomer(pendingPayRef.customerId, {
+            type: 'deposit_confirmed',
+            amount: verification.amount,
+            payref: pendingPayRef.payrefHex,
+            confirmations: verification.confirmations
+        });
+        
+        console.log(`Auto-processed PayRef: ${pendingPayRef.payrefHex} - ${verification.amount} XTR`);
+    }
+}
+```
+
+## Best Practices for Exchanges
+
+### Security Considerations
+
+1. **Higher confirmation requirements**: Use 10+ confirmations for deposits vs. 5 for general use
+2. **Rate limiting**: Limit PayRef verification requests to prevent abuse
+3. **Audit logging**: Log all PayRef verifications with timestamps
+4. **Double-spend prevention**: Check for duplicate PayRef credits
+
+### Customer Experience
+
+1. **Clear instructions**: Provide step-by-step guides for finding PayRefs
+2. **Support training**: Train support staff on PayRef verification process
+3. **Automated notifications**: Alert customers when deposits are confirmed
+4. **Self-service options**: Allow customers to check PayRef status themselves
+
+### Integration Checklist
+
+- [ ] Implement PayRef verification gRPC client
+- [ ] Set up automated PayRef monitoring
+- [ ] Configure appropriate confirmation requirements
+- [ ] Train customer support staff
+- [ ] Test with small amounts first
+- [ ] Set up audit logging
+- [ ] Implement duplicate prevention
+- [ ] Create customer documentation
+
+## PayRef Customer Support Templates
+
+### Email Templates
+
+**PayRef Request Template:**
+```
+Subject: Tari Deposit Verification Required
+
+Dear [Customer Name],
+
+We see you have contacted us about a Tari deposit. To quickly verify your payment, please provide:
+
+1. Your Payment Reference (PayRef) from your wallet's transaction history
+2. The approximate amount sent
+3. The time/date of the transaction
+
+Your PayRef is a 64-character code that looks like this:
+a1b2c3d4e5f67890123456789012345678901234567890123456789012345678
+
+To find your PayRef:
+1. Open your Tari wallet
+2. Go to the Transactions tab
+3. Find your transaction to our exchange
+4. Copy the PayRef from the transaction details
+
+Once you provide this information, we can verify your deposit within minutes.
+
+Best regards,
+[Exchange Name] Support Team
+```
+
+**PayRef Confirmed Template:**
+```
+Subject: Tari Deposit Confirmed - Account Credited
+
+Dear [Customer Name],
+
+Your Tari deposit has been verified and your account has been credited!
+
+Payment Details:
+- Amount: [X] XTR
+- PayRef: [PayRef]
+- Block Height: [Block Height]
+- Confirmations: [Confirmations]
+- Account Credited: [Timestamp]
+
+Your new balance: [New Balance] XTR
+
+Thank you for using [Exchange Name]!
+
+Best regards,
+[Exchange Name] Support Team
+```
+
+## Error Handling and Edge Cases
+
+```javascript
+// Comprehensive error handling for PayRef verification
+class PayRefErrorHandler {
+    
+    static handleVerificationError(error, payrefHex) {
+        if (error.code === 'UNAVAILABLE') {
+            return {
+                userMessage: 'Our verification system is temporarily unavailable. Please try again in a few minutes.',
+                internalAction: 'retry_later',
+                severity: 'warning'
+            };
+        }
+        
+        if (error.message.includes('invalid hex')) {
+            return {
+                userMessage: 'Invalid PayRef format. Please ensure you copied the full 64-character code from your wallet.',
+                internalAction: 'user_education',
+                severity: 'info'
+            };
+        }
+        
+        if (error.code === 'DEADLINE_EXCEEDED') {
+            return {
+                userMessage: 'Verification timed out. This may indicate network issues. Please try again.',
+                internalAction: 'check_network',
+                severity: 'warning'
+            };
+        }
+        
+        // Default error handling
+        return {
+            userMessage: 'An unexpected error occurred during verification. Our technical team has been notified.',
+            internalAction: 'escalate_to_technical',
+            severity: 'error'
+        };
+    }
+}
+```
+
+This comprehensive PayRef integration will significantly improve your exchange's customer experience and reduce support workload while maintaining security and compliance requirements.

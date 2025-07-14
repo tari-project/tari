@@ -20,18 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Debug;
+
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::{
-    transaction_key_manager::{error::KeyManagerServiceError, TransactionKeyManagerInterface},
-    CryptoFactories,
-};
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 
 use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
+    client::http_client_factory::HttpClientFactory,
     output_manager_service::handle::OutputManagerHandle,
     storage::{
         database::{WalletBackend, WalletDatabase},
@@ -42,47 +39,50 @@ use crate::{
         handle::UtxoScannerEvent,
         service::{UtxoScannerResources, UtxoScannerService},
     },
+    WalletKeyManager,
     WalletSqlite,
 };
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
 pub enum UtxoScannerMode {
     #[default]
     Recovery,
     Scanning,
 }
 
-#[derive(Debug, Clone)]
-pub struct UtxoScannerServiceBuilder {
-    retry_limit: usize,
-    peers: Vec<CommsPublicKey>,
-    mode: Option<UtxoScannerMode>,
-    one_sided_message: String,
-    recovery_message: String,
-}
-
-impl Default for UtxoScannerServiceBuilder {
-    fn default() -> Self {
-        Self {
-            retry_limit: 0,
-            peers: vec![],
-            mode: None,
-            one_sided_message: "Detected one-sided payment on blockchain".to_string(),
-            recovery_message: "Output found on blockchain during Wallet Recovery".to_string(),
+impl Debug for UtxoScannerMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UtxoScannerMode::Recovery => write!(f, "UtxoRecoveryMode"),
+            UtxoScannerMode::Scanning => write!(f, "UtxoScanningMode"),
         }
     }
 }
 
-impl UtxoScannerServiceBuilder {
+#[derive(Debug, Clone)]
+pub struct UtxoScannerServiceBuilder<TWalletClientFactory> {
+    retry_limit: usize,
+    mode: Option<UtxoScannerMode>,
+    client_factory: Option<TWalletClientFactory>,
+    scanning_interval: u64,
+}
+
+impl<T> Default for UtxoScannerServiceBuilder<T> {
+    fn default() -> Self {
+        Self {
+            retry_limit: 0,
+            mode: None,
+            client_factory: None,
+            scanning_interval: 60, // Default scanning interval in seconds
+        }
+    }
+}
+
+impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBuilder<T> {
     /// Set the maximum number of times we retry recovery. A failed recovery is counted as _all_ peers have failed.
     /// i.e. worst-case number of recovery attempts = number of sync peers * retry limit
     pub fn with_retry_limit(&mut self, limit: usize) -> &mut Self {
         self.retry_limit = limit;
-        self
-    }
-
-    pub fn with_peers(&mut self, peer_public_keys: Vec<CommsPublicKey>) -> &mut Self {
-        self.peers = peer_public_keys;
         self
     }
 
@@ -91,13 +91,13 @@ impl UtxoScannerServiceBuilder {
         self
     }
 
-    pub fn with_one_sided_message(&mut self, message: String) -> &mut Self {
-        self.one_sided_message = message;
+    pub fn with_client_factory(&mut self, factory: T) -> &mut Self {
+        self.client_factory = Some(factory);
         self
     }
 
-    pub fn with_recovery_message(&mut self, message: String) -> &mut Self {
-        self.recovery_message = message;
+    pub fn with_scanning_interval(&mut self, interval: u64) -> &mut Self {
+        self.scanning_interval = interval;
         self
     }
 
@@ -105,81 +105,78 @@ impl UtxoScannerServiceBuilder {
         &mut self,
         wallet: &WalletSqlite,
         shutdown_signal: ShutdownSignal,
-    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletConnectivityHandle>, KeyManagerServiceError> {
+    ) -> Result<UtxoScannerService<WalletSqliteDatabase, WalletKeyManager, T>, anyhow::Error> {
         let one_sided_tari_address = wallet.get_wallet_one_sided_address().await?;
+        let client_factory = match &self.client_factory {
+            Some(t) => t.clone(),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Node URL must be set before building the UTXO scanner service."
+                ))
+            },
+        };
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
-            comms_connectivity: wallet.comms.connectivity(),
-            wallet_connectivity: wallet.wallet_connectivity.clone(),
-            current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
             output_manager_service: wallet.output_manager_service.clone(),
             transaction_service: wallet.transaction_service.clone(),
             one_sided_tari_address,
-            factories: wallet.factories.clone(),
-            recovery_message: self.recovery_message.clone(),
-            one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset: wallet.config.birthday_offset,
+            client_factory: client_factory.clone(),
         };
 
-        let (event_sender, _) = broadcast::channel(200);
+        let (event_sender, _) = broadcast::channel(2000);
 
         Ok(UtxoScannerService::new(
-            self.peers.drain(..).collect(),
             self.retry_limit,
             self.mode.clone().unwrap_or_default(),
             resources,
             shutdown_signal,
+            wallet.config.scanning_interval,
             event_sender,
-            wallet.base_node_service.clone(),
-            wallet.utxo_scanner_service.get_one_sided_payment_message_watcher(),
-            wallet.utxo_scanner_service.get_recovery_message_watcher(),
+            wallet.key_manager_service.clone(),
         ))
     }
 
     pub async fn build_with_resources<
         TBackend: WalletBackend + 'static,
-        TWalletConnectivity: WalletConnectivityInterface,
-        TKeyManagerInterface: TransactionKeyManagerInterface,
+        TKeyManager: TransactionKeyManagerInterface + 'static,
     >(
         &mut self,
         db: WalletDatabase<TBackend>,
-        comms_connectivity: ConnectivityRequester,
-        wallet_connectivity: TWalletConnectivity,
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
         one_sided_tari_address: TariAddress,
-        factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
-        base_node_service: BaseNodeServiceHandle,
-        one_sided_message_watch: watch::Receiver<String>,
-        recovery_message_watch: watch::Receiver<String>,
         birthday_offset: u16,
-    ) -> UtxoScannerService<TBackend, TWalletConnectivity> {
+        key_manager: TKeyManager,
+    ) -> Result<UtxoScannerService<TBackend, TKeyManager, T>, anyhow::Error> {
+        let client_factory = match &self.client_factory {
+            Some(factory) => factory.clone(),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "No client factory was set before building the UTXO scanner service."
+                ))
+            },
+        };
+
         let resources = UtxoScannerResources {
             db,
-            comms_connectivity,
-            current_base_node_watcher: wallet_connectivity.get_current_base_node_watcher(),
-            wallet_connectivity,
             output_manager_service,
             transaction_service,
             one_sided_tari_address,
-            factories,
-            recovery_message: self.recovery_message.clone(),
-            one_sided_payment_message: self.one_sided_message.clone(),
             birthday_offset,
+            client_factory,
         };
 
-        UtxoScannerService::new(
-            self.peers.drain(..).collect(),
+        Ok(UtxoScannerService::new(
             self.retry_limit,
             self.mode.clone().unwrap_or_default(),
             resources,
             shutdown_signal,
+            self.scanning_interval,
             event_sender,
-            base_node_service,
-            one_sided_message_watch,
-            recovery_message_watch,
-        )
+            key_manager,
+        ))
     }
 }

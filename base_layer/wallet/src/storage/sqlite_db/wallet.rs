@@ -548,6 +548,14 @@ impl WalletBackend for WalletSqliteDatabase {
         }
     }
 
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, WalletStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        match ScannedBlockSql::last_height(&mut conn)? {
+            Some(height) => Ok(Some(height as u64)),
+            None => Ok(None),
+        }
+    }
+
     fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let sql_blocks = ScannedBlockSql::index(&mut conn)?;
@@ -671,7 +679,7 @@ impl WalletBackend for WalletSqliteDatabase {
                         target: LOG_TARGET,
                         "Failed to decrypt burnt proof: id={}: {}",
                         id,
-                        e.to_string()
+                        e
                     );
                     Err(WalletStorageError::AeadError(e.to_string()))
                 },
@@ -682,7 +690,7 @@ impl WalletBackend for WalletSqliteDatabase {
                     target: LOG_TARGET,
                     "Failed to fetch burnt proof: id={}: {}",
                     id,
-                    e.to_string()
+                    e
                 );
 
                 Err(WalletStorageError::BurntProofNotFound(id))
@@ -711,7 +719,7 @@ impl WalletBackend for WalletSqliteDatabase {
                             target: LOG_TARGET,
                             "Failed to decrypt burnt proof: id={}: {}",
                             entry_id,
-                            e.to_string()
+                            e
                         );
 
                         None

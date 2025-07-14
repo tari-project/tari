@@ -30,7 +30,7 @@ use tari_core::transactions::transaction_components::Transaction;
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::ByteArray;
 
-use crate::tari_rpc as grpc;
+use crate::{conversions::aggregate_body::grpc_aggregate_body_with_payrefs, tari_rpc as grpc};
 
 impl TryFrom<Transaction> for grpc::Transaction {
     type Error = String;
@@ -38,7 +38,7 @@ impl TryFrom<Transaction> for grpc::Transaction {
     fn try_from(source: Transaction) -> Result<Self, Self::Error> {
         Ok(Self {
             offset: Vec::from(source.offset.as_bytes()),
-            body: Some(source.body.try_into()?),
+            body: Some(grpc_aggregate_body_with_payrefs(source.body, None)?),
             script_offset: Vec::from(source.script_offset.as_bytes()),
         })
     }
@@ -52,7 +52,7 @@ impl TryFrom<Arc<Transaction>> for grpc::Transaction {
             Ok(tx) => tx.try_into(),
             Err(tx) => Ok(Self {
                 offset: Vec::from(tx.offset.as_bytes()),
-                body: Some(tx.body.clone().try_into()?),
+                body: Some(grpc_aggregate_body_with_payrefs(tx.body.clone(), None)?),
                 script_offset: Vec::from(tx.script_offset.as_bytes()),
             }),
         }

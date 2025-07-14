@@ -25,11 +25,10 @@ use std::convert::TryFrom;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 use tari_common_types::types::FixedHash;
-use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_utilities::ByteArray;
 
 use crate::{
-    diesel::BoolExpressionMethods,
+    diesel::{BoolExpressionMethods, OptionalExtension},
     error::WalletStorageError,
     schema::scanned_blocks,
     utxo_scanner_service::service::ScannedBlock,
@@ -52,22 +51,21 @@ impl ScannedBlockSql {
             .load::<ScannedBlockSql>(conn)?)
     }
 
+    pub fn last_height(conn: &mut SqliteConnection) -> Result<Option<i64>, WalletStorageError> {
+        let result = scanned_blocks::table
+            .select(scanned_blocks::height)
+            .order(scanned_blocks::height.desc())
+            .first::<i64>(conn)
+            .optional()?;
+        Ok(result)
+    }
+
     pub fn new(header_hash: Vec<u8>, height: i64) -> Self {
         Self {
             header_hash,
             height,
-            num_outputs: None,
             amount: None,
-            timestamp: Utc::now().naive_utc(),
-        }
-    }
-
-    pub fn new_with_amount(header_hash: Vec<u8>, height: i64, num_outputs: i64, amount: i64) -> Self {
-        Self {
-            header_hash,
-            height,
-            num_outputs: Some(num_outputs),
-            amount: Some(amount),
+            num_outputs: None,
             timestamp: Utc::now().naive_utc(),
         }
     }
@@ -116,8 +114,8 @@ impl From<ScannedBlock> for ScannedBlockSql {
         Self {
             header_hash: sb.header_hash.to_vec(),
             height: sb.height as i64,
-            num_outputs: sb.num_outputs.map(|n| n as i64),
-            amount: sb.amount.map(|a| a.as_u64() as i64),
+            amount: None,
+            num_outputs: None,
             timestamp: sb.timestamp,
         }
     }
@@ -130,8 +128,6 @@ impl TryFrom<ScannedBlockSql> for ScannedBlock {
         Ok(Self {
             header_hash: FixedHash::try_from(sb.header_hash).map_err(|err| err.to_string())?,
             height: sb.height as u64,
-            num_outputs: sb.num_outputs.map(|n| n as u64),
-            amount: sb.amount.map(|a| MicroMinotari::from(a as u64)),
             timestamp: sb.timestamp,
         })
     }

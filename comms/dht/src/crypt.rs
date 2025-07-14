@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, iter, mem::size_of};
+use std::{convert::TryFrom, mem::size_of};
 
 use chacha20poly1305::{aead::AeadInPlace, ChaCha20Poly1305, KeyInit, Nonce, Tag};
 use digest::{generic_array::GenericArray, Digest, FixedOutput};
@@ -211,7 +211,7 @@ fn encode_with_prepended_length<T: prost::Message>(
 ) -> Result<BytesMut, DhtEncryptError> {
     let len = msg.encoded_len();
     let mut buf = BytesMut::with_capacity(size_of::<u32>() + additional_prefix_space + len);
-    buf.extend(iter::repeat(0).take(additional_prefix_space));
+    buf.extend(std::iter::repeat_n(0, additional_prefix_space));
     let len_u32 = u32::try_from(len).map_err(|_| DhtEncryptError::InvalidMessageBody)?;
     buf.put_u32_le(len_u32);
     msg.encode(&mut buf).expect(
@@ -367,9 +367,7 @@ mod test {
     fn pad_message_correctness() {
         // test for small message
         let message = [0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59].as_slice();
-        let pad = iter::repeat(0u8)
-            .take(MESSAGE_BASE_LENGTH - message.len())
-            .collect::<Vec<_>>();
+        let pad = std::iter::repeat_n(0u8, MESSAGE_BASE_LENGTH - message.len()).collect::<Vec<_>>();
 
         let mut pad_message = BytesMut::from(message);
         let pad_len = pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
@@ -387,9 +385,7 @@ mod test {
         let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 8 - 100], 0).unwrap();
         let mut pad_message = message.clone();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
-        let pad = iter::repeat(0u8)
-            .take((8 * MESSAGE_BASE_LENGTH) - message.len())
-            .collect::<Vec<_>>();
+        let pad = std::iter::repeat_n(0u8, (8 * MESSAGE_BASE_LENGTH) - message.len()).collect::<Vec<_>>();
 
         // padded message is of correct length
         assert_eq!(pad_message.len(), 8 * MESSAGE_BASE_LENGTH);
@@ -400,9 +396,7 @@ mod test {
 
         // test for base message of multiple base length
         let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 9 - 123], 0).unwrap();
-        let pad = std::iter::repeat(0u8)
-            .take((9 * MESSAGE_BASE_LENGTH) - message.len())
-            .collect::<Vec<_>>();
+        let pad = std::iter::repeat_n(0u8, (9 * MESSAGE_BASE_LENGTH) - message.len()).collect::<Vec<_>>();
 
         let mut pad_message = message.clone();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();

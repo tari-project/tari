@@ -14,11 +14,13 @@ hash_domain!(
     "com.tari.base_layer.core.transactions.secure_nonce_kdf",
     0
 );
+
 hash_domain!(
-    ValidatorNodeBmtHashDomain,
+    ValidatorNodeMerkleHashDomain,
     "com.tari.base_layer.core.validator_node_mmr",
     1
 );
+
 hash_domain!(
     WalletOutputEncryptionKeysDomain,
     "com.tari.base_layer.wallet.output_encryption_keys",
@@ -35,4 +37,17 @@ hash_domain!(
     KeyManagerTransactionsHashDomain,
     "com.tari.base_layer.core.transactions.key_manager",
     1
+);
+
+// Hash domain for Payment Reference (PayRef) generation
+hash_domain!(
+    PaymentReferenceHashDomain,
+    "com.tari.base_layer.wallet.payment_reference",
+    1
+);
+
+hash_domain!(
+    ValidatorNodeHashDomain,
+    "com.tari.base_layer.core.transactions.side_chain.validator_node",
+    0
 );

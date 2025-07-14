@@ -59,12 +59,6 @@ impl From<u64> for grpc::IntegerValue {
     }
 }
 
-impl From<String> for grpc::StringValue {
-    fn from(value: String) -> Self {
-        Self { value }
-    }
-}
-
 impl From<grpc::BlockGroupRequest> for grpc::HeightRequest {
     fn from(b: BlockGroupRequest) -> Self {
         Self {

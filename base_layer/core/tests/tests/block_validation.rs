@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, iter, sync::Arc};
+use std::{convert::TryFrom, sync::Arc};
 
 use borsh::BorshSerialize;
 use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
@@ -262,7 +262,7 @@ fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
 
 #[tokio::test]
 async fn inputs_are_not_malleable() {
-    let _ = env_logger::try_init();
+    // let _ = env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let mut blockchain = TestBlockchain::with_genesis("GB").await;
     let blocks = blockchain.builder();
 
@@ -876,7 +876,7 @@ async fn test_block_sync_body_validator() {
     ).await;
 
     // Coinbase extra field is too large
-    let extra = CoinBaseExtra::try_from(iter::repeat(1u8).take(257).collect::<Vec<_>>()).unwrap();
+    let extra = CoinBaseExtra::try_from(std::iter::repeat_n(1u8, 257).collect::<Vec<_>>()).unwrap();
     let (template, _) = chain_block_with_new_coinbase(
         &genesis,
         vec![tx01.clone(), tx02.clone()],
@@ -940,7 +940,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::BlockTooLarge { actual_weight, max_weight } if
-            actual_weight == 405 && max_weight == 400
+            actual_weight == 414 && max_weight == 400
         ),
         "{}",
         err

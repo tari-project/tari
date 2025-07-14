@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use core::convert::TryFrom;
 
+use serde::{Deserialize, Serialize};
 use strum_macros::Display;
 
 use crate::output_manager_service::error::OutputManagerStorageError;
 
 /// The status of a given output
-#[derive(Copy, Clone, Debug, PartialEq, Display)]
+#[derive(Copy, Clone, Debug, PartialEq, Display, Serialize, Deserialize)]
 pub enum OutputStatus {
     Unspent,
     Spent,

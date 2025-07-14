@@ -171,23 +171,28 @@ loggers:
       - base_layer_wallet
   # miner
   minotari::application:
-    level: debug
+    level: trace
     appenders:
       - miner
     additive: false
   minotari::miner:
-    level: debug
+    level: trace
+    appenders:
+      - miner
+    additive: false
+  minotari::logging::miner:
+    level: trace
     appenders:
       - miner
     additive: false
   minotari_miner:
-    level: debug
+    level: trace
     appenders:
       - miner
     additive: false
   # merge mining proxy
   minotari_mm_proxy::proxy:
-    level: debug
+    level: trace
     appenders:
       - proxy
     additive: false

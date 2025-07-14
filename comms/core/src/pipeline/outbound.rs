@@ -90,7 +90,7 @@ where
                             );
                         },
                         Err(err) => {
-                            error!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Outbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
                                  deadlock or excessive delay in processing this pipeline. {}",

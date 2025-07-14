@@ -36,9 +36,11 @@ use jmt::{
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    epoch::VnEpoch,
     tari_address::TariAddress,
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
+use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 use tari_utilities::ByteArray;
@@ -61,12 +63,15 @@ use crate::{
         HorizonData,
         InputMinedInfo,
         LMDBDatabase,
+        MinedInfo,
         MmrTree,
         OutputMinedInfo,
         OwnedLmdbTreeReader,
+        PayrefRebuildStatus,
         Reorg,
         SmtHasher,
         TemplateRegistrationEntry,
+        ValidatorNodeRegistrationInfo,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -314,6 +319,14 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
+    fn fetch_mined_info_by_payref(&self, payref: &FixedHash) -> Result<MinedInfo, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_mined_info_by_payref(payref)
+    }
+
+    fn fetch_mined_info_by_output_hash(&self, output_hash: &HashOutput) -> Result<MinedInfo, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_mined_info_by_output_hash(output_hash)
+    }
+
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_outputs_in_block(header_hash)
     }
@@ -348,6 +361,23 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_chain_metadata()
+    }
+
+    fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_payref_rebuild_status()
+    }
+
+    fn build_payref_indexes_for_height(
+        &self,
+        height: u64,
+        metadata_at_start: ChainMetadata,
+        initialize_stats: Option<u64>,
+        finalize: bool,
+    ) -> Result<PayrefRebuildStatus, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .build_payref_indexes_for_height(height, metadata_at_start, initialize_stats, finalize)
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {
@@ -409,19 +439,103 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 
-    fn fetch_active_validator_nodes(
+    fn fetch_all_active_validator_nodes(
         &self,
         height: u64,
-    ) -> Result<Vec<(CompressedPublicKey, [u8; 32])>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_active_validator_nodes(height)
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_all_active_validator_nodes(height)
     }
 
-    fn get_shard_key(
+    fn fetch_active_validator_nodes(
         &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
         height: u64,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_active_validator_nodes(sidechain_pk, height)
+    }
+
+    fn fetch_validators_activating_in_epoch(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_validators_activating_in_epoch(sidechain_pk, epoch)
+    }
+
+    fn fetch_validators_exiting_in_epoch(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        epoch: VnEpoch,
+    ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_validators_exiting_in_epoch(sidechain_pk, epoch)
+    }
+
+    fn validator_node_exists(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &CompressedPublicKey,
+    ) -> Result<bool, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .validator_node_exists(sidechain_pk, end_epoch, validator_node_pk)
+    }
+
+    fn validator_node_is_active(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &CompressedPublicKey,
+    ) -> Result<bool, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
+    }
+
+    fn validator_node_is_active_for_shard_group(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        end_epoch: VnEpoch,
+        validator_node_pk: &CompressedPublicKey,
+        shard_group: ShardGroup,
+    ) -> Result<bool, ChainStorageError> {
+        self.db.as_ref().unwrap().validator_node_is_active_for_shard_group(
+            sidechain_pk,
+            end_epoch,
+            validator_node_pk,
+            shard_group,
+        )
+    }
+
+    fn validator_nodes_count_for_shard_group(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
+        end_epoch: VnEpoch,
+        shard_group: ShardGroup,
+    ) -> Result<usize, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .validator_nodes_count_for_shard_group(sidechain_pk, end_epoch, shard_group)
+    }
+
+    fn get_validator_node(
+        &self,
+        sidechain_pk: Option<&CompressedPublicKey>,
         public_key: CompressedPublicKey,
-    ) -> Result<Option<[u8; 32]>, ChainStorageError> {
-        self.db.as_ref().unwrap().get_shard_key(height, public_key)
+    ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().get_validator_node(sidechain_pk, public_key)
     }
 
     fn fetch_template_registrations(
@@ -438,6 +552,10 @@ impl BlockchainBackend for TempDatabase {
     fn create_smt_reader(&self) -> Result<OwnedLmdbTreeReader<'_>, ChainStorageError> {
         self.db.as_ref().unwrap().create_smt_reader()
     }
+
+    fn set_stats_total_height(&self, _total: u64) {}
+
+    fn update_stats_progress(&self, _current: u64) {}
 }
 
 pub async fn create_chained_blocks<T: Into<BlockSpecs>, TDB: BlockchainBackend>(

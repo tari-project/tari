@@ -644,7 +644,7 @@ where
                     .upgrade_socket(socket, ConnectionDirection::Outbound)
                     .await
                     .map_err(|err| {
-                        warn!(
+                        debug!(
                             target: LOG_TARGET,
                             "Dial - failed to upgrade noise: {} on address: {} ({})",
                             node_id,

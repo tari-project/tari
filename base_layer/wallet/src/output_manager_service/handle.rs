@@ -32,7 +32,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             OutputFeatures,
             Transaction,
             TransactionOutput,
@@ -56,7 +56,6 @@ use crate::output_manager_service::{
     storage::models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     UtxoSelectionCriteria,
 };
-
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
@@ -67,7 +66,7 @@ pub enum OutputManagerRequest {
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
-    ConfirmPendingTransaction(TxId),
+    ConfirmPendingTransaction(TxId, Option<Vec<WalletOutput>>),
     EncumberAggregateUtxo {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
@@ -225,7 +224,7 @@ impl fmt::Display for OutputManagerRequest {
                 output_hash
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
-            ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
+            ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction { payment_id, .. } => write!(f, "PrepareToSendTransaction ({})", payment_id),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
@@ -613,10 +612,14 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn confirm_pending_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+    pub async fn confirm_pending_transaction(
+        &mut self,
+        tx_id: TxId,
+        change_outputs: Option<Vec<WalletOutput>>,
+    ) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ConfirmPendingTransaction(tx_id))
+            .call(OutputManagerRequest::ConfirmPendingTransaction(tx_id, change_outputs))
             .await??
         {
             OutputManagerResponse::PendingTransactionConfirmed => Ok(()),
