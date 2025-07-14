@@ -308,7 +308,7 @@ where TClient: From<RpcClient> + NamedProtocolService
                 .cloned()
                 .unwrap_or_else(|| ProtocolId::from_static(TClient::PROTOCOL_NAME)),
             self.terminate_signal,
-            self.session_state.unwrap_or_default(),
+            self.session_state.unwrap_or(Arc::new(AtomicBool::new(true))),
         )
         .await
         .map(Into::into)
