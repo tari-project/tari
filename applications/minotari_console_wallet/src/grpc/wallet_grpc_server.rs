@@ -2131,7 +2131,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
-
     async fn user_pay_for_fee(
         &self,
         request: Request<UserPayForFeeRequest>,
@@ -2237,6 +2236,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(format!("Failed to replace by fee: {}", e)))?;
         Ok(Response::new(ReplaceByFeeResponse {
             transaction_id: tx_id.into(),
+        }))
+    }
 
     async fn sign_message(
         &self,
@@ -2263,7 +2264,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(SignMessageResponse {
             signature: hex_sig,
             public_nonce: hex_nonce,
-
         }))
     }
 }

@@ -247,15 +247,14 @@ impl OutputSql {
             UtxoSelectionFilter::MustInclude { commitments } => {
                 if commitments.is_empty() {
                     // If no commitments specified, fall back to standard behavior
-                    query = query.filter(
-                        outputs::output_type
-                            .eq(i32::from(OutputType::Standard.as_byte()))
-                            .or(outputs::output_type.eq(i32::from(OutputType::Coinbase.as_byte()))),
+                    let mut selection_criteria = selection_criteria.clone();
+                    selection_criteria.filter = UtxoSelectionFilter::Standard;
+                    return OutputSql::fetch_unspent_outputs_for_spending(
+                        &selection_criteria,
+                        amount,
+                        tip_height,
+                        conn,
                     );
-
-                    if selection_criteria.excluding_onesided {
-                        query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
-                    }
                 } else {
                     query = query.filter(
                         outputs::output_type
@@ -322,12 +321,9 @@ impl OutputSql {
                 }
 
                 // Filter for the specific commitments
-                must_include_query = match commitments.len() {
-                    1 => must_include_query.filter(outputs::commitment.eq(commitments[0].to_vec())),
-                    _ => must_include_query.filter(
-                        outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
-                    ),
-                };
+                must_include_query = must_include_query.filter(
+                    outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
+                );
 
                 // Apply excluding filters
                 for exclude in &selection_criteria.excluding {
