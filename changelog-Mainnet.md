@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [4.9.0](https://github.com/tari-project/tari/compare/v4.8.0...v4.9.0) (2025-07-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* full http wallet refactor (#7215)
+
+### Features
+
+* add concurrency when contacting seed peers while performing seed strap ([#7294](https://github.com/tari-project/tari/issues/7294)) ([453ebb6](https://github.com/tari-project/tari/commit/453ebb691c9b64877c1325d049e628cb6517f11d))
+* add minotari_utils ([#7157](https://github.com/tari-project/tari/issues/7157)) ([1ffeef7](https://github.com/tari-project/tari/commit/1ffeef769c41c5f73cdc8b7ce0ca8a5cea3d4f72))
+* message signing exposed via gRPC ([#7299](https://github.com/tari-project/tari/issues/7299)) ([2493ee3](https://github.com/tari-project/tari/commit/2493ee36ff7b3577901ff81d0e52d66e1369edb9))
+* modify soft disconnect criteria ([#7307](https://github.com/tari-project/tari/issues/7307)) ([35b5db7](https://github.com/tari-project/tari/commit/35b5db767c893f860a8ebc661526227c8299b9b1))
+* full http wallet refactor ([#7215](https://github.com/tari-project/tari/issues/7215)) ([482a70e](https://github.com/tari-project/tari/commit/482a70e41cf06d7c2e09014a90f9f39510c0d807))
+
+
+### Bug Fixes
+
+* dont start second utxo scanner for recovery ([#7298](https://github.com/tari-project/tari/issues/7298)) ([32dbe08](https://github.com/tari-project/tari/commit/32dbe082b2c23d50b48886f89ec03508d1a5385e))
+* freebsd build process failure ([#7302](https://github.com/tari-project/tari/issues/7302)) ([e3891f1](https://github.com/tari-project/tari/commit/e3891f1c1b5226b8f9b8d81991031f55b5aef21d))
+* increase http server limit ([#7314](https://github.com/tari-project/tari/issues/7314)) ([433942a](https://github.com/tari-project/tari/commit/433942ae40b22adfe5b7381bc2debf2020495479))
+* scanned height tracking ([#7301](https://github.com/tari-project/tari/issues/7301)) ([e0cc004](https://github.com/tari-project/tari/commit/e0cc004acc24ad58706bf5ad89b6f2b1460e3374))
+* seed peers being disconnected while seedstrap is in progress ([#7303](https://github.com/tari-project/tari/issues/7303)) ([ea52f7f](https://github.com/tari-project/tari/commit/ea52f7f97309e6206e09d9eecee460f07de030aa))
+* view wallet scan height ([#7313](https://github.com/tari-project/tari/issues/7313)) ([adbfcef](https://github.com/tari-project/tari/commit/adbfcef2858ad7e1d21001ecf7ae75331ef3c3a2))
+* wallet sync command ([#7305](https://github.com/tari-project/tari/issues/7305)) ([081969a](https://github.com/tari-project/tari/commit/081969a339cb2b79695f094eae38baf6fc320910))
+
+
 ## [4.8.0](https://github.com/tari-project/tari/compare/v4.7.0...v4.8.0) (2025-07-07)
 
 

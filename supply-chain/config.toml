@@ -1605,63 +1605,63 @@ version = "0.8.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_app_grpc]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_app_grpc]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_app_utilities]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_app_utilities]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_console_wallet]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_console_wallet]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_merge_mining_proxy]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_merge_mining_proxy]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_miner]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_mining_helper_ffi]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_mining_helper_ffi]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_wallet]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_wallet]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_wallet_ffi]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.minotari_wallet_ffi]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.mintex]]
@@ -2757,163 +2757,163 @@ version = "2.0.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_bulletproofs_plus]]
-version = "0.4.0"
+version = "0.4.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common_sqlite]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common_sqlite]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common_types]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_common_types]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms_dht]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms_dht]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_comms_rpc_macros]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_contacts]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_contacts]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_core]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_core]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_crypto]]
-version = "0.22.0"
+version = "0.22.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_features]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_features]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_hashing]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_hashing]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_key_manager]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_key_manager]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_libtor]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_libtor]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_metrics]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_metrics]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_mmr]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_mmr]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_p2p]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_p2p]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_script]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_script]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_service_framework]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_service_framework]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_shutdown]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_shutdown]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_storage]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_storage]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_test_utils]]
-version = "4.9.0-pre.1"
+version = "4.9.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.tari_utilities]]

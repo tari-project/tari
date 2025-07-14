@@ -1,5 +1,5 @@
 [package]
-name = "minotari_util"
+name = "minotari_utils"
 authors = { workspace = true }
 description = "Utility tool for Tari base node operations"
 repository = { workspace = true }
@@ -8,7 +8,7 @@ version = { workspace = true }
 edition = { workspace = true }
 
 [[bin]]
-name = "minotari_util"
+name = "minotari_utils"
 path = "src/main.rs"
 
 [dependencies]

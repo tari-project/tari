@@ -7,7 +7,7 @@ A command-line utility tool for Tari base node operations.
 Build from source:
 
 ```bash
-cargo build --package minotari_util
+cargo build --package minotari_utils
 ```
 
 ## Usage
