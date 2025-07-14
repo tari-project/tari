@@ -210,6 +210,8 @@ pub enum TransactionServiceError {
     TransactionAlreadyMined(String),
     #[error("Transaction inputs were invalid")]
     InvalidTransactionInputs,
+    #[error("Fee increase is zero")]
+    ZeroFeeIncrease,
 }
 
 impl From<RangeProofError> for TransactionServiceError {

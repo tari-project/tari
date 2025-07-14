@@ -3209,13 +3209,15 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
     );
 }
 
-#[when(expr = "I send a replace by fee of {int} uT from wallet {word} to wallet {word} at fee {int}")]
+#[when(
+    expr = "I send a replace by fee of {int} uT from wallet {word} to wallet {word} at fee higher by {int} then before"
+)]
 async fn send_replace_by_fee_transaction(
     world: &mut TariWorld,
     _amount: u64,
     sender: String,
     _receiver: String,
-    fee: u64,
+    fee_increase: u64,
 ) {
     let mut client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
@@ -3225,7 +3227,7 @@ async fn send_replace_by_fee_transaction(
 
     let replace_by_fee_req = ReplaceByFeeRequest {
         transaction_id: tx_id,
-        fee,
+        fee_increase,
     };
 
     let replace_by_fee_res = client.replace_by_fee(replace_by_fee_req).await.unwrap().into_inner();

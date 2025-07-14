@@ -2149,7 +2149,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let tx_id = transaction_service
-            .replace_by_fee(request.transaction_id.into(), MicroMinotari::from(request.fee))
+            .replace_by_fee(request.transaction_id.into(), MicroMinotari::from(request.fee_increase))
             .await
             .map_err(|e| Status::internal(format!("Failed to replace by fee: {}", e)))?;
         Ok(Response::new(ReplaceByFeeResponse {

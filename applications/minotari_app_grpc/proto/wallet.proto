@@ -1642,7 +1642,8 @@ message GetFeePerGramStatsResponse {
 message ReplaceByFeeRequest {
   // The transaction id of the transaction to replace
   uint64 transaction_id = 1;
-  uint64 fee = 2;
+  // The amount to increase the fee by in microTari. It cannot be zero.
+  uint64 fee_increase = 2;
 }
 
 message ReplaceByFeeResponse {
@@ -1655,8 +1656,11 @@ message UserPayForFeeRequest {
 }
 
 message TxOutputsToSpendTransfer {
+    // Id of the transaction to spend outputs from.
     uint64 tx_id = 1;
+    // Fee to pay for the transaction in microTari.
     uint64 fee = 2;
+    // Amount and fee_per_gram are ignored. These values will be calculated automatically.
     PaymentRecipient recipient = 3;
 }
 

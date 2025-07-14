@@ -1056,8 +1056,8 @@ where
                 .start_rejected_transaction_revalidation(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
-            TransactionServiceRequest::ReplaceByFee { tx_id, fee } => self
-                .replace_by_fee(tx_id, fee, send_transaction_join_handles)
+            TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => self
+                .replace_by_fee(tx_id, fee_increase, send_transaction_join_handles)
                 .await
                 .map(TransactionServiceResponse::TransactionReplaced),
             TransactionServiceRequest::UserPayForFee {
@@ -4024,7 +4024,7 @@ where
     ///
     /// # Arguments
     /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
-    /// * `fee` - Fee (should be higher than original)
+    /// * `fee_increase` - Fee increase for replaced transaction. It cannot be zero
     /// * `send_transaction_join_handles` - Join handles for send transaction protocols
     ///
     /// # Returns
@@ -4032,11 +4032,15 @@ where
     pub async fn replace_by_fee(
         &mut self,
         tx_id: TxId,
-        fee: MicroMinotari,
+        fee_increase: MicroMinotari,
         send_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
+        if fee_increase == MicroMinotari::zero() {
+            return Err(TransactionServiceError::ZeroFeeIncrease);
+        }
+
         let original_transaction = self.resources.db.get_transaction_to_be_broadcast(tx_id).map_err(|_| {
             TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
                 DbKey::CompletedTransaction(tx_id),
@@ -4052,6 +4056,7 @@ where
         let payment_id = original_transaction.payment_id.clone();
 
         let original_inputs = self.get_input_commitments_from_completed_transaction(&original_transaction)?;
+        let fee = original_transaction.fee + fee_increase;
 
         // Calculate transaction weight and fee_per_gram from total fee using original transaction
         let num_inputs = original_inputs.len();

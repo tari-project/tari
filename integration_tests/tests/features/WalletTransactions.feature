@@ -433,7 +433,7 @@ Feature: Wallet Transactions
     When I wait for wallet WALLET_A to have at least 55000000000 uT
     When I send a one-sided transaction of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     Then wallet WALLET_A detects all transactions as Pending
-    When I send a replace by fee of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 200
+    When I send a replace by fee of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee higher by 100 then before
     Then wallet WALLET_A detects all transactions as Pending
     When mining node MINER mines 1 blocks
     Then wallet WALLET_A detects only 1 transaction as unconfirmed

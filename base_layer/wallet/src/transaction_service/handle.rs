@@ -223,7 +223,7 @@ pub enum TransactionServiceRequest {
     ReValidateRejectedTransactions,
     ReplaceByFee {
         tx_id: TxId,
-        fee: MicroMinotari,
+        fee_increase: MicroMinotari,
     },
     UserPayForFee {
         tx_id: TxId,
@@ -436,7 +436,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
-            Self::ReplaceByFee { tx_id, fee } => write!(f, "ReplaceByFee(tx_id: {}, fee: {})", tx_id, fee,),
+            Self::ReplaceByFee { tx_id, fee_increase } => {
+                write!(f, "ReplaceByFee(tx_id: {}, fee_increase: {})", tx_id, fee_increase)
+            },
             Self::UserPayForFee {
                 tx_id,
                 destination,
@@ -1424,14 +1426,18 @@ impl TransactionServiceHandle {
     ///
     /// # Arguments
     /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
-    /// * `fee` - Fee (should be higher than original)
+    /// * `fee_increase` - Fee increase
     ///
     /// # Returns
     /// The new transaction ID or an error
-    pub async fn replace_by_fee(&mut self, tx_id: TxId, fee: MicroMinotari) -> Result<TxId, TransactionServiceError> {
+    pub async fn replace_by_fee(
+        &mut self,
+        tx_id: TxId,
+        fee_increase: MicroMinotari,
+    ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::ReplaceByFee { tx_id, fee })
+            .call(TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase })
             .await??
         {
             TransactionServiceResponse::TransactionReplaced(new_tx_id) => Ok(new_tx_id),
