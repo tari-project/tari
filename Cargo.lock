@@ -4476,7 +4476,6 @@ dependencies = [
  "csv",
  "env_logger 0.10.2",
  "lmdb-zero",
- "minotari_app_utilities",
  "rusqlite",
  "serde",
  "serde_json",

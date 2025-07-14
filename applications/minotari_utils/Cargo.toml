@@ -12,7 +12,6 @@ name = "minotari_util"
 path = "src/main.rs"
 
 [dependencies]
-minotari_app_utilities = { workspace = true }
 tari_core = { workspace = true, features = ["base_node"] }
 
 lmdb-zero = "0.4.4"
