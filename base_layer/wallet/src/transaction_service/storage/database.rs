@@ -527,6 +527,20 @@ where T: TransactionBackend + 'static
         self.db.get_transactions_to_be_broadcast()
     }
 
+    pub fn get_transaction_to_be_broadcast(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionStorageError> {
+        let key = DbKey::CompletedTransaction(tx_id);
+        let t = match self.db.fetch(&DbKey::CompletedTransaction(tx_id)) {
+            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
+            Ok(Some(DbValue::CompletedTransaction(pt))) => Ok(pt),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        }?;
+        Ok(*t)
+    }
+
     pub fn get_completed_transaction_cancelled_or_not(
         &self,
         tx_id: TxId,

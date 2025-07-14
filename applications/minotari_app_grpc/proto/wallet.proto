@@ -1642,8 +1642,7 @@ message GetFeePerGramStatsResponse {
 message ReplaceByFeeRequest {
   // The transaction id of the transaction to replace
   uint64 transaction_id = 1;
-  // fee per gram to use for the estimate
-  uint64 fee_per_gram = 2;
+  uint64 fee = 2;
 }
 
 message ReplaceByFeeResponse {
@@ -1652,12 +1651,13 @@ message ReplaceByFeeResponse {
 }
 
 message UserPayForFeeRequest {
-    repeated TransferWithTxId recipients = 1;
+    repeated TxOutputsToSpendTransfer recipients = 1;
 }
 
-message TransferWithTxId {
+message TxOutputsToSpendTransfer {
     uint64 tx_id = 1;
-    PaymentRecipient recipient = 2;
+    uint64 fee = 2;
+    PaymentRecipient recipient = 3;
 }
 
 message UserPayForFeeResponse {

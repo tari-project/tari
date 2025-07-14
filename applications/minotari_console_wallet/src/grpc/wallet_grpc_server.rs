@@ -2058,34 +2058,24 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .recipients
             .into_iter()
             .enumerate()
-            .map(|(idx, transfer_with_id)| -> Result<_, String> {
+            .map(|(index, transfer_with_id)| -> Result<_, String> {
                 let dest = transfer_with_id.recipient.unwrap();
                 let address = TariAddress::from_str(&dest.address)
-                    .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
-                Ok((
-                    // dest.address,
-                    address,
-                    dest.amount,
-                    // dest.fee_per_gram,
-                    // dest.payment_type,
-                    // dest.user_payment_id,
-                    // dest.raw_payment_id,
-                    transfer_with_id.tx_id,
-                ))
+                    .map_err(|_| format!("Destination address at index {} is malformed", index))?;
+                Ok((address, transfer_with_id.fee, transfer_with_id.tx_id))
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(Status::invalid_argument)?;
 
         let transfer_results: Vec<(TariAddress, Result<TxId, TransactionServiceError>)> =
-            future::join_all(recipients.iter().map(|(address, amount, payment_id)| async {
-                debug!(target: LOG_TARGET, "user-pay-for-fee amount: {:?}", amount.clone());
+            future::join_all(recipients.iter().map(|(address, fee, tx_id)| async {
                 (
                     address.to_owned(),
                     self.get_transaction_service()
                         .user_pay_for_fee(
-                            TxId::from(payment_id.to_owned()),
+                            TxId::from(tx_id.to_owned()),
                             address.to_owned(),
-                            MicroMinotari::from(amount.to_owned()),
+                            MicroMinotari::from(fee.to_owned()),
                         )
                         .await,
                 )
@@ -2159,7 +2149,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let tx_id = transaction_service
-            .replace_by_fee(request.transaction_id.into(), MicroMinotari::from(request.fee_per_gram))
+            .replace_by_fee(request.transaction_id.into(), MicroMinotari::from(request.fee))
             .await
             .map_err(|e| Status::internal(format!("Failed to replace by fee: {}", e)))?;
         Ok(Response::new(ReplaceByFeeResponse {

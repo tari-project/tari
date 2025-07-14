@@ -223,12 +223,12 @@ pub enum TransactionServiceRequest {
     ReValidateRejectedTransactions,
     ReplaceByFee {
         tx_id: TxId,
-        new_fee_per_gram: MicroMinotari,
+        fee: MicroMinotari,
     },
     UserPayForFee {
         tx_id: TxId,
         destination: TariAddress,
-        amount: MicroMinotari,
+        fee: MicroMinotari,
     },
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
@@ -436,19 +436,16 @@ impl fmt::Display for TransactionServiceRequest {
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
-            Self::ReplaceByFee {
-                tx_id,
-                new_fee_per_gram,
-            } => write!(f, "ReplaceByFee(tx_id: {}, fee_per_gram: {})", tx_id, new_fee_per_gram,),
+            Self::ReplaceByFee { tx_id, fee } => write!(f, "ReplaceByFee(tx_id: {}, fee: {})", tx_id, fee,),
             Self::UserPayForFee {
                 tx_id,
                 destination,
-                amount,
+                fee,
             } => {
                 write!(
                     f,
-                    "UserPayForFee(tx_id: {}, destination: {}, amount: {})",
-                    tx_id, destination, amount
+                    "UserPayForFee(tx_id: {}, destination: {}, fee: {})",
+                    tx_id, destination, fee
                 )
             },
             Self::GetFeePerGramStatsPerBlock { count } => {
@@ -1427,21 +1424,14 @@ impl TransactionServiceHandle {
     ///
     /// # Arguments
     /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
-    /// * `fee_per_gram` - New fee per gram (should be higher than original)
+    /// * `fee` - Fee (should be higher than original)
     ///
     /// # Returns
     /// The new transaction ID or an error
-    pub async fn replace_by_fee(
-        &mut self,
-        tx_id: TxId,
-        new_fee_per_gram: MicroMinotari,
-    ) -> Result<TxId, TransactionServiceError> {
+    pub async fn replace_by_fee(&mut self, tx_id: TxId, fee: MicroMinotari) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::ReplaceByFee {
-                tx_id,
-                new_fee_per_gram,
-            })
+            .call(TransactionServiceRequest::ReplaceByFee { tx_id, fee })
             .await??
         {
             TransactionServiceResponse::TransactionReplaced(new_tx_id) => Ok(new_tx_id),
@@ -1453,14 +1443,14 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         destination: TariAddress,
-        amount: MicroMinotari,
+        fee: MicroMinotari,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::UserPayForFee {
                 tx_id,
                 destination,
-                amount,
+                fee,
             })
             .await??
         {
