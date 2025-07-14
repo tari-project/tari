@@ -31,11 +31,13 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
+    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     payment_reference::generate_payment_reference,
     tari_address::{TariAddress, TariAddressFeatures},
@@ -59,20 +61,22 @@ use tari_core::{
     borsh::SerializedSize,
     consensus::ConsensusManager,
     covenants::Covenant,
-    mempool::FeePerGramStat,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-    proto::{base_node as base_node_proto, base_node::FetchMatchingUtxos},
+    proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
+            BuildInfo,
             CodeTemplateRegistration,
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
+            TemplateType,
             Transaction,
             TransactionOutput,
+            ValidatorNodeSignature,
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
@@ -90,6 +94,7 @@ use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
+use tari_max_size::MaxSizeString;
 use tari_p2p::domain_message::DomainMessage;
 use tari_script::{
     push_pubkey_script,
@@ -101,6 +106,7 @@ use tari_script::{
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_sidechain::EvictionProof;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -120,7 +126,6 @@ use crate::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{
-            FeePerGramStatsResponse,
             PaymentDetails,
             TransactionEvent,
             TransactionEventSender,
@@ -129,6 +134,7 @@ use crate::{
         },
         offline_signing::{models::SignedOneSidedTransactionResult, offline_signer::OfflineSigner},
         protocols::{
+            check_faux_transaction_status::check_detected_transactions,
             check_transaction_size,
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
@@ -144,7 +150,6 @@ use crate::{
             },
         },
         tasks::{
-            check_faux_transaction_status::check_detected_transactions,
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
@@ -206,7 +211,6 @@ pub struct TransactionService<
     timeout_update_watch: Watch<Duration>,
     wallet_db: WalletDatabase<TWalletBackend>,
     base_node_service: BaseNodeServiceHandle,
-    last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
     consensus_manager: ConsensusManager,
 }
@@ -335,7 +339,6 @@ where
             timeout_update_watch,
             base_node_service,
             wallet_db,
-            last_seen_tip_height: None,
             validation_in_progress: Arc::new(Mutex::new(())),
             consensus_manager,
         })
@@ -399,8 +402,8 @@ where
         > = FuturesUnordered::new();
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
-        let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
         let mut utxo_scanner_events = self.resources.utxo_scanner_handle.get_event_receiver();
+        let mut output_manager_event_stream = self.resources.output_manager_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
@@ -410,8 +413,8 @@ where
                         Ok(msg) => self.handle_output_manager_service_event(msg).await,
                         Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
                     };
-                },
-                // Base Node Monitoring Service event
+                }
+               // Base Node Monitoring Service event
                 event = base_node_service_event_stream.recv() => {
                     match event {
                         Ok(msg) => self.handle_base_node_service_event(msg).await,
@@ -749,6 +752,7 @@ where
                 fee_per_gram,
                 payment_id,
                 claim_public_key,
+                sidechain_deployment_key,
             } => self
                 .burn_tari(
                     amount,
@@ -756,6 +760,7 @@ where
                     fee_per_gram,
                     payment_id,
                     claim_public_key,
+                    sidechain_deployment_key,
                     transaction_broadcast_join_handles,
                 )
                 .await
@@ -848,6 +853,9 @@ where
                 amount,
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_claim_public_key,
+                sidechain_deployment_key,
+                max_epoch,
                 selection_criteria,
                 fee_per_gram,
                 payment_id,
@@ -857,6 +865,9 @@ where
                     amount,
                     validator_node_public_key,
                     validator_node_signature,
+                    validator_node_claim_public_key,
+                    sidechain_deployment_key,
+                    max_epoch,
                     selection_criteria,
                     fee_per_gram,
                     payment_id,
@@ -867,9 +878,34 @@ where
                 .await?;
                 return Ok(());
             },
+            TransactionServiceRequest::SubmitValidatorNodeExit {
+                amount,
+                validator_node_public_key,
+                validator_node_signature,
+                sidechain_deployment_key,
+                max_epoch,
+                selection_criteria,
+                fee_per_gram,
+                payment_id,
+            } => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.submit_validator_exit(
+                    amount,
+                    validator_node_public_key,
+                    validator_node_signature,
+                    sidechain_deployment_key,
+                    selection_criteria,
+                    max_epoch,
+                    fee_per_gram,
+                    payment_id,
+                    send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
+                    rp,
+                )
+                .await?;
+                return Ok(());
+            },
             TransactionServiceRequest::RegisterCodeTemplate {
-                author_public_key,
-                author_signature,
                 template_name,
                 template_version,
                 template_type,
@@ -877,27 +913,50 @@ where
                 binary_sha,
                 binary_url,
                 fee_per_gram,
+                sidechain_deployment_key,
             } => {
-                self.register_code_template(
-                    fee_per_gram,
-                    CodeTemplateRegistration {
-                        author_public_key,
-                        author_signature,
-                        template_name: template_name.clone(),
+                let payment_id = PaymentId::Open {
+                    user_data: format!("Template Registration: {}", template_name).into_bytes(),
+                    tx_type: TxType::CodeTemplateRegistration,
+                };
+                let (tx_id, template_address) = self
+                    .register_code_template(
+                        fee_per_gram,
+                        template_name,
                         template_version,
                         template_type,
                         build_info,
                         binary_sha,
                         binary_url,
-                    },
+                        sidechain_deployment_key,
+                        UtxoSelectionCriteria::default(),
+                        payment_id,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?;
+                Ok(TransactionServiceResponse::CodeRegistrationTransactionSent {
+                    tx_id,
+                    template_address,
+                })
+            },
+            TransactionServiceRequest::SubmitValidatorEvictionProof {
+                amount,
+                proof,
+                fee_per_gram,
+                payment_id,
+                sidechain_deployment_key,
+            } => {
+                let rp = reply_channel.take().expect("Cannot be missing");
+                self.submit_validator_eviction_proof(
+                    amount,
+                    proof,
+                    sidechain_deployment_key,
                     UtxoSelectionCriteria::default(),
-                    PaymentId::open_from_string(
-                        &format!("Template Registration: {}", template_name),
-                        TxType::CodeTemplateRegistration,
-                    ),
+                    fee_per_gram,
+                    payment_id,
                     send_transaction_join_handles,
                     transaction_broadcast_join_handles,
-                    reply_channel.take().expect("Reply channel is not set"),
+                    rp,
                 )
                 .await?;
 
@@ -1048,10 +1107,6 @@ where
                 .start_transaction_validation_protocol(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
-            TransactionServiceRequest::ReValidateTransactions => self
-                .start_transaction_revalidation(transaction_validation_join_handles)
-                .await
-                .map(TransactionServiceResponse::ValidationStarted),
             TransactionServiceRequest::ReValidateRejectedTransactions => self
                 .start_rejected_transaction_revalidation(transaction_validation_join_handles)
                 .await
@@ -1076,7 +1131,7 @@ where
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
                 return Ok(());
             },
-            TransactionServiceRequest::GetPaymentByReference(payref) => self
+            TransactionServiceRequest::GetPaymentByReference { payref } => self
                 .get_payment_by_reference(payref)
                 .map(TransactionServiceResponse::PaymentDetails),
             TransactionServiceRequest::GetTransactionByPaymentReference(payref) => {
@@ -1100,32 +1155,18 @@ where
 
     fn handle_get_fee_per_gram_stats_per_block_request(
         &self,
-        count: usize,
+        count: u64,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) {
         let mut connectivity = self.resources.connectivity.clone();
 
         let query_base_node_fut = async move {
-            let mut client = connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .ok_or(TransactionServiceError::Shutdown)?;
+            let client = connectivity.obtain_base_node_wallet_rpc_client().await;
 
             let resp = client
-                .get_mempool_fee_per_gram_stats(base_node_proto::GetMempoolFeePerGramStatsRequest {
-                    count: count as u64,
-                })
-                .await?;
-            let mut resp = FeePerGramStatsResponse::from(resp);
-            // If there are no transactions in the mempool, populate with a minimal fee per gram.
-            if resp.stats.is_empty() {
-                resp.stats = vec![FeePerGramStat {
-                    order: 0,
-                    min_fee_per_gram: 1.into(),
-                    avg_fee_per_gram: 1.into(),
-                    max_fee_per_gram: 1.into(),
-                }]
-            }
+                .get_mempool_fee_per_gram_stats(count)
+                .await
+                .map_err(|e| TransactionServiceError::Other(e.to_string()))?;
             Ok(TransactionServiceResponse::FeePerGramStatsPerBlock(resp))
         };
 
@@ -1145,9 +1186,25 @@ where
             BaseNodeEvent::BaseNodeStateChanged(_state) => {
                 trace!(target: LOG_TARGET, "Received BaseNodeStateChanged event, but igoring",);
             },
-            BaseNodeEvent::NewBlockDetected(_hash, height) => {
-                self.last_seen_tip_height = Some(height);
-            },
+        }
+    }
+
+    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
+        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
+            let db = self.db.clone();
+            let output_manager_handle = self.resources.output_manager_service.clone();
+            let tip_height = self
+                .wallet_db
+                .get_last_scanned_height()
+                .unwrap_or_default()
+                .unwrap_or_default();
+            let event_publisher = self.event_publisher.clone();
+            tokio::spawn(check_detected_transactions(
+                output_manager_handle,
+                db,
+                event_publisher,
+                tip_height,
+            ));
         }
     }
 
@@ -1159,9 +1216,6 @@ where
         >,
     ) {
         match event {
-            UtxoScannerEvent::ConnectingToBaseNode(_node_id) => {},
-            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
-            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
             UtxoScannerEvent::ScanningRoundFailed { .. } => {},
             UtxoScannerEvent::Progress { .. } => {},
             UtxoScannerEvent::Completed { .. } => {
@@ -1173,26 +1227,6 @@ where
                         e
                     });
             },
-            UtxoScannerEvent::ScanningFailed => {},
-        }
-    }
-
-    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
-        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
-            let db = self.db.clone();
-            let output_manager_handle = self.resources.output_manager_service.clone();
-            let metadata = self.wallet_db.get_chain_metadata().unwrap_or_default();
-            let tip_height = match metadata {
-                Some(val) => val.best_block_height(),
-                None => 0u64,
-            };
-            let event_publisher = self.event_publisher.clone();
-            tokio::spawn(check_detected_transactions(
-                output_manager_handle,
-                db,
-                event_publisher,
-                tip_height,
-            ));
         }
     }
 
@@ -1342,25 +1376,23 @@ where
         &mut self,
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<TransactionOutput>, TransactionServiceError> {
-        // lets get the output from the blockchain
-        let req = FetchMatchingUtxos {
-            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
-        };
-        let results: Vec<TransactionOutput> = self
-            .resources
-            .connectivity
-            .obtain_base_node_wallet_rpc_client()
-            .await
-            .ok_or_else(|| {
-                TransactionServiceError::ServiceError("Could not connect to base node rpc client".to_string())
-            })?
-            .fetch_matching_utxos(req)
-            .await?
-            .outputs
-            .into_iter()
-            .filter_map(|o| o.try_into().ok())
-            .collect();
-        Ok(results)
+        let mut res = vec![];
+        for hash in hashes {
+            match self
+                .resources
+                .connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .fetch_utxo(hash.to_vec())
+                .await
+                .map_err(|e| TransactionServiceError::Other(e.to_string()))?
+            {
+                Some(output) => res.push(output),
+                None => warn!(target: LOG_TARGET, "UTXO not found for hash: {}", hash),
+            }
+        }
+
+        Ok(res)
     }
 
     /// Creates an encumbered uninitialized transaction
@@ -1554,9 +1586,10 @@ where
         // Validate the aggregate signatures and script offset
         let factory = CommitmentFactory::default();
         let mut input_keys = UncompressedPublicKey::default();
+        let last_seen_tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         for input in transaction.transaction.body.inputs() {
             let context = ScriptContext::new(
-                self.last_seen_tip_height.unwrap_or(0),
+                last_seen_tip_height,
                 &[0; 32],
                 input
                     .commitment()
@@ -1641,7 +1674,9 @@ where
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+
+        let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+
         let height = tip_height + (24 * 30);
 
         // lets create the HTLC script
@@ -1816,6 +1851,7 @@ where
                 let hash = change_output
                     .hash(&self.resources.transaction_key_manager_service)
                     .await?;
+
                 self.resources
                     .output_manager_service
                     .confirm_pending_transaction(tx_id, Some(vec![change_output]))
@@ -2052,7 +2088,7 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
 
@@ -2284,7 +2320,7 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let received_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
 
@@ -2414,6 +2450,7 @@ where
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
         claim_public_key: Option<CompressedPublicKey>,
+        sidechain_deployment_key: Option<PrivateKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -2431,10 +2468,15 @@ where
             selection: {}",
             tx_id, amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
         );
+        if claim_public_key.is_none() && sidechain_deployment_key.is_some() {
+            return Err(TransactionServiceError::InvalidBurnTransaction(
+                "A sidechain deployment key was provided without a claim public key".to_string(),
+            ));
+        }
         let output_features = claim_public_key
             .as_ref()
             .cloned()
-            .map(OutputFeatures::create_burn_confidential_output)
+            .map(|c| OutputFeatures::create_burn_confidential_output(c, sidechain_deployment_key.as_ref()))
             .unwrap_or_else(OutputFeatures::create_burn_output);
 
         // Prepare sender part of the transaction
@@ -2557,7 +2599,7 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let sent_hashes = vec![output.hash(&self.resources.transaction_key_manager_service).await?];
         let rtp = ReceiverTransactionProtocol::new(
@@ -2659,11 +2701,14 @@ where
         }))
     }
 
-    pub async fn register_validator_node(
+    async fn register_validator_node(
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
+        validator_node_claim_public_key: CompressedPublicKey,
+        sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
@@ -2675,8 +2720,24 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        let output_features =
-            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
+        let signature = ValidatorNodeSignature::new(validator_node_public_key, validator_node_signature);
+        let sidechain_pk = sidechain_deployment_key
+            .as_ref()
+            .map(CompressedPublicKey::from_secret_key);
+        if !signature.is_valid_registration_signature_for(
+            sidechain_pk.as_ref(),
+            &validator_node_claim_public_key,
+            max_epoch,
+        ) {
+            return Err(TransactionServiceError::InvalidValidatorNodeSignature);
+        }
+
+        let output_features = OutputFeatures::for_validator_node_registration(
+            signature,
+            validator_node_claim_public_key,
+            sidechain_deployment_key.as_ref(),
+            max_epoch,
+        );
         self.send_transaction(
             self.resources.interactive_tari_address.clone(),
             amount,
@@ -2689,14 +2750,19 @@ where
             transaction_broadcast_join_handles,
             reply_channel,
         )
-        .await
+        .await?;
+        Ok(())
     }
 
-    pub async fn register_code_template(
+    async fn submit_validator_exit(
         &mut self,
-        fee_per_gram: MicroMinotari,
-        template_registration: CodeTemplateRegistration,
+        amount: MicroMinotari,
+        validator_node_public_key: CommsPublicKey,
+        validator_node_signature: Signature,
+        sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
+        max_epoch: VnEpoch,
+        fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
@@ -2706,11 +2772,21 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
+        let signature = ValidatorNodeSignature::new(validator_node_public_key, validator_node_signature);
+        let sidechain_pk = sidechain_deployment_key
+            .as_ref()
+            .map(CompressedPublicKey::from_secret_key);
+        if !signature.is_valid_exit_signature_for(sidechain_pk.as_ref(), max_epoch) {
+            return Err(TransactionServiceError::InvalidValidatorNodeSignature);
+        }
+
+        let output_features =
+            OutputFeatures::for_validator_node_exit(signature, sidechain_deployment_key.as_ref(), max_epoch);
         self.send_transaction(
             self.resources.interactive_tari_address.clone(),
-            0.into(),
+            amount,
             selection_criteria,
-            OutputFeatures::for_template_registration(template_registration),
+            output_features,
             fee_per_gram,
             payment_id,
             TransactionMetadata::default(),
@@ -2718,7 +2794,137 @@ where
             transaction_broadcast_join_handles,
             reply_channel,
         )
-        .await
+        .await?;
+        Ok(())
+    }
+
+    async fn submit_validator_eviction_proof(
+        &mut self,
+        amount: MicroMinotari,
+        eviction_proof: EvictionProof,
+        sidechain_deployment_key: Option<PrivateKey>,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        let output_features =
+            OutputFeatures::for_validator_node_eviction(eviction_proof, sidechain_deployment_key.as_ref());
+        self.send_transaction(
+            self.resources.interactive_tari_address.clone(),
+            amount,
+            selection_criteria,
+            output_features,
+            fee_per_gram,
+            payment_id,
+            TransactionMetadata::default(),
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel,
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn register_code_template(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: FixedHash,
+        binary_url: MaxSizeString<255>,
+        sidechain_deployment_key: Option<PrivateKey>,
+        selection_criteria: UtxoSelectionCriteria,
+        payment_id: PaymentId,
+
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
+        let author_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .get_static_key(TransactionKeyManagerBranch::CodeTemplateAuthor.get_branch_key())
+            .await?;
+        let author_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_public_key_at_key_id(&author_key_id)
+            .await?;
+        let (nonce_secret, nonce_pub) = CompressedPublicKey::random_keypair(&mut OsRng);
+        let nonce_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(nonce_secret)
+            .await?;
+        let mut template_registration = CodeTemplateRegistration {
+            author_public_key: author_key.clone(),
+            author_signature: Signature::default(),
+            template_name,
+            template_version,
+            template_type,
+            build_info,
+            binary_sha,
+            binary_url,
+        };
+
+        let signature_message = template_registration.create_signature_message(&nonce_pub);
+
+        let author_sig = self
+            .resources
+            .transaction_key_manager_service
+            .sign_with_nonce_and_challenge(&author_key_id, &nonce_id, &signature_message)
+            .await
+            .map_err(|e| TransactionServiceError::SidechainSigningError(e.to_string()))?;
+
+        template_registration.author_signature = author_sig;
+
+        let output_features =
+            OutputFeatures::for_template_registration(template_registration, sidechain_deployment_key.as_ref());
+        let tx_id = TxId::new_random();
+        let (fee, transaction) = self
+            .resources
+            .output_manager_service
+            .create_pay_to_self_transaction(
+                tx_id,
+                0.into(),
+                selection_criteria,
+                output_features,
+                fee_per_gram,
+                None,
+                payment_id.clone(),
+            )
+            .await?;
+        let template_output = transaction
+            .body
+            .outputs()
+            .iter()
+            .find(|o| o.features.output_type.is_template_registration())
+            .ok_or_else(|| {
+                TransactionServiceError::ServiceError(format!(
+                    "Transaction {tx_id} did not contain a template registration utxo"
+                ))
+            })?;
+        let template_address = template_output.hash();
+
+        self.submit_transaction_to_self(
+            transaction_broadcast_join_handles,
+            tx_id,
+            transaction,
+            fee,
+            0.into(),
+            payment_id,
+        )
+        .await?;
+        Ok((tx_id, template_address))
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -3579,16 +3785,6 @@ where
         Ok(())
     }
 
-    async fn start_transaction_revalidation(
-        &mut self,
-        join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        >,
-    ) -> Result<OperationId, TransactionServiceError> {
-        self.resources.db.mark_all_non_coinbases_transactions_as_unvalidated()?;
-        self.start_transaction_validation_protocol(join_handles).await
-    }
-
     async fn start_rejected_transaction_revalidation(
         &mut self,
         join_handles: &mut FuturesUnordered<
@@ -3605,12 +3801,6 @@ where
             JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
         >,
     ) -> Result<OperationId, TransactionServiceError> {
-        let current_base_node = self
-            .resources
-            .connectivity
-            .get_current_base_node_peer_node_id()
-            .ok_or(TransactionServiceError::NoBaseNodeKeysProvided)?;
-
         trace!(target: LOG_TARGET, "Starting transaction validation protocol");
         let id = OperationId::new_random();
 
@@ -3623,7 +3813,6 @@ where
             self.resources.output_manager_service.clone(),
         );
 
-        let mut base_node_watch = self.connectivity().get_current_base_node_watcher();
         let validation_in_progress = self.validation_in_progress.clone();
 
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
@@ -3649,14 +3838,6 @@ where
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
                                 continue 'outer;
-                            }
-                        }
-                        _ = base_node_watch.changed() => {
-                             if let Some(selected_peer) = base_node_watch.borrow().as_ref() {
-                                if selected_peer.get_current_peer().node_id != current_base_node {
-                                    debug!(target: LOG_TARGET, "Base node changed, restarting transaction validation protocol");
-                                  continue 'outer;
-                                }
                             }
                         }
                     }
@@ -3714,10 +3895,6 @@ where
         &mut self,
         broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
-        if !self.connectivity().is_base_node_set() {
-            return Err(TransactionServiceError::NoBaseNodeKeysProvided);
-        }
-
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
         self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
             .map_err(|resp| {
@@ -3746,10 +3923,6 @@ where
             completed_tx.transaction.body.kernels().is_empty()
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
-        }
-
-        if !self.resources.connectivity.is_base_node_set() {
-            return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
 
         // Check if the protocol has already been started
@@ -4467,10 +4640,6 @@ where
         }
     }
 
-    fn connectivity(&self) -> &TWalletConnectivity {
-        &self.resources.connectivity
-    }
-
     fn verify_send(
         &self,
         address: &TariAddress,
@@ -4497,6 +4666,7 @@ where
 
     /// Get payment details by PayRef
     fn get_payment_by_reference(&self, payref: FixedHash) -> Result<Option<PaymentDetails>, TransactionServiceError> {
+        let current_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let txn = match self.db.get_transaction_with_payref(&payref)? {
             Some(txn) => txn,
             None => return Ok(None), // No transaction found with the given PayRef
@@ -4512,11 +4682,6 @@ where
             None => return Ok(None), // This should not happen, but just in case
         };
 
-        let confirmations = match txn.confirmations {
-            Some(confirmations) => confirmations,
-            None => return Ok(None), // This should not happen, but just in case
-        };
-
         let payment_id_bytes = txn.payment_id.user_data_as_bytes();
 
         // Check if PayRef matches any sent output by generating proper PayRef
@@ -4529,7 +4694,7 @@ where
                     amount: txn.amount,
                     direction: txn.direction,
                     block_height: mined_height,
-                    confirmations,
+                    confirmations: current_height.saturating_sub(mined_height),
                     timestamp: Some(txn.timestamp),
                     payment_id: Some(payment_id_bytes),
                 }));
@@ -4546,7 +4711,7 @@ where
                     amount: txn.amount,
                     direction: txn.direction,
                     block_height: mined_height,
-                    confirmations,
+                    confirmations: current_height.saturating_sub(mined_height),
                     timestamp: Some(txn.timestamp),
                     payment_id: Some(payment_id_bytes),
                 }));
@@ -4563,7 +4728,7 @@ where
                     amount: txn.amount,
                     direction: txn.direction,
                     block_height: mined_height,
-                    confirmations,
+                    confirmations: current_height.saturating_sub(mined_height),
                     timestamp: Some(txn.timestamp),
                     payment_id: Some(payment_id_bytes),
                 }));

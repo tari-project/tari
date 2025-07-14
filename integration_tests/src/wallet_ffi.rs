@@ -98,11 +98,6 @@ impl WalletFFI {
         emoji_id.as_string()
     }
 
-    pub fn add_base_node(&self, public_key: String, address: String) {
-        let node_public_key = ffi::PublicKey::from_hex(public_key);
-        self.wallet.lock().unwrap().add_base_node_peer(node_public_key, address);
-    }
-
     pub fn destroy(&mut self) {
         self.wallet.lock().unwrap().destroy();
     }

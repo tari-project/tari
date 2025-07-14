@@ -171,7 +171,7 @@ mod lazy_pool {
         let (mut peer_conn, _, _shutdown) = setup(2).await;
         let mut pool = LazyPool::<GreetingClient>::new(peer_conn.clone(), 2, Default::default());
         let mut _conn1 = pool.get_least_used_or_connect().await.unwrap();
-        peer_conn.disconnect(Minimized::No).await.unwrap();
+        peer_conn.disconnect(Minimized::No, "unit test").await.unwrap();
         let err = pool.get_least_used_or_connect().await.unwrap_err();
         unpack_enum!(RpcClientPoolError::PeerConnectionDropped { .. } = err);
     }

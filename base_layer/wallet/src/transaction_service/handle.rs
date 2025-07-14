@@ -30,6 +30,7 @@ use std::{
 use chrono::{DateTime, Utc};
 use tari_common_types::{
     burnt_proof::BurntProof,
+    epoch::VnEpoch,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
@@ -51,9 +52,10 @@ use tari_core::{
         },
     },
 };
-use tari_max_size::{MaxSizeBytes, MaxSizeString};
+use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
+use tari_sidechain::EvictionProof;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -110,6 +112,7 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
         claim_public_key: Option<CompressedPublicKey>,
+        sidechain_deployment_key: Option<PrivateKey>,
     },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
@@ -144,20 +147,39 @@ pub enum TransactionServiceRequest {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
+        validator_node_claim_public_key: CommsPublicKey,
+        sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    },
+    SubmitValidatorNodeExit {
+        amount: MicroMinotari,
+        validator_node_public_key: CommsPublicKey,
+        validator_node_signature: Signature,
+        sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
     },
     RegisterCodeTemplate {
-        author_public_key: CompressedPublicKey,
-        author_signature: Signature,
         template_name: MaxSizeString<32>,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
+        binary_sha: FixedHash,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
+        sidechain_deployment_key: Option<PrivateKey>,
+    },
+    SubmitValidatorEvictionProof {
+        amount: MicroMinotari,
+        proof: EvictionProof,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+        sidechain_deployment_key: Option<PrivateKey>,
     },
     PrepareOneSidedTransactionForSigning {
         destination: TariAddress,
@@ -219,7 +241,6 @@ pub enum TransactionServiceRequest {
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
-    ReValidateTransactions,
     ReValidateRejectedTransactions,
     ReplaceByFee {
         tx_id: TxId,
@@ -232,10 +253,12 @@ pub enum TransactionServiceRequest {
     },
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
-        count: usize,
+        count: u64,
     },
     /// Get transaction details for a PayRef (enhanced with multiple recipients)
-    GetPaymentByReference(FixedHash),
+    GetPaymentByReference {
+        payref: FixedHash,
+    },
     /// Get all transactions with their PayRefs (for listing/filtering)
     GetTransactionByPaymentReference(FixedHash),
 }
@@ -370,8 +393,23 @@ impl fmt::Display for TransactionServiceRequest {
             Self::RegisterValidatorNode {
                 validator_node_public_key,
                 payment_id,
+                max_epoch,
                 ..
-            } => write!(f, "Registering VN ({}, {})", validator_node_public_key, payment_id),
+            } => write!(
+                f,
+                "Registering VN ({}, {}, {})",
+                validator_node_public_key, payment_id, max_epoch
+            ),
+            Self::SubmitValidatorNodeExit {
+                validator_node_public_key,
+                payment_id,
+                max_epoch,
+                ..
+            } => write!(
+                f,
+                "Submit VN Exit ({}, {}, {})",
+                validator_node_public_key, payment_id, max_epoch
+            ),
             Self::PrepareOneSidedTransactionForSigning {
                 destination,
                 amount,
@@ -434,7 +472,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
-            Self::ReValidateTransactions => write!(f, "ReValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
             Self::ReplaceByFee { tx_id, fee_increase } => {
                 write!(f, "ReplaceByFee(tx_id: {}, fee_increase: {})", tx_id, fee_increase)
@@ -453,14 +490,30 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
-            TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
+            Self::RegisterCodeTemplate { template_name, .. } => {
                 write!(f, "RegisterCodeTemplate: {}", template_name)
             },
-            Self::GetPaymentByReference(payref) => {
+            Self::GetPaymentByReference { payref } => {
                 write!(f, "GetPaymentByReference({})", payref)
             },
             Self::GetTransactionByPaymentReference(payref) => {
                 write!(f, "GetTransactionByPaymentReference({})", payref)
+            },
+            Self::SubmitValidatorEvictionProof {
+                amount,
+                proof,
+                fee_per_gram,
+                payment_id,
+                ..
+            } => {
+                write!(
+                    f,
+                    "SubmitValidatorEvictionProof (amount: {}, evicts: {}, fee_per_gram: {}, message: {})",
+                    amount,
+                    proof.node_to_evict(),
+                    fee_per_gram,
+                    payment_id
+                )
             },
         }
     }
@@ -506,7 +559,7 @@ pub enum TransactionServiceResponse {
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, CompressedPublicKey, TransactionOutput)>),
-    FeePerGramStatsPerBlock(FeePerGramStatsResponse),
+    FeePerGramStatsPerBlock(FeePerGramStat),
     /// Response containing PayRefs for a transaction
     TransactionPayRefs(Vec<FixedHash>),
     /// Response containing payment details for a PayRef
@@ -514,6 +567,13 @@ pub enum TransactionServiceResponse {
     OneSidedTransactionPreparedForSigning(Box<PrepareOneSidedTransactionForSigningResult>),
     SignedOneSidedTransaction(Box<SignedOneSidedTransactionResult>),
     TransactionReplaced(TxId),
+    CodeRegistrationTransactionSent {
+        tx_id: TxId,
+        template_address: FixedHash,
+    },
+    ValidatorEvictionProofSent {
+        tx_id: TxId,
+    },
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
@@ -744,6 +804,9 @@ impl TransactionServiceHandle {
         amount: MicroMinotari,
         validator_node_public_key: CompressedPublicKey,
         validator_node_signature: Signature,
+        validator_node_claim_public_key: CompressedPublicKey,
+        sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
@@ -754,6 +817,39 @@ impl TransactionServiceHandle {
                 amount,
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_claim_public_key,
+                sidechain_deployment_key,
+                max_epoch,
+                selection_criteria,
+                fee_per_gram,
+                payment_id,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn submit_validator_node_exit(
+        &mut self,
+        amount: MicroMinotari,
+        validator_node_public_key: CompressedPublicKey,
+        validator_node_signature: Signature,
+        sidechain_deployment_key: Option<PrivateKey>,
+        max_epoch: VnEpoch,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        payment_id: PaymentId,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SubmitValidatorNodeExit {
+                amount,
+                validator_node_public_key,
+                validator_node_signature,
+                sidechain_deployment_key,
+                max_epoch,
                 selection_criteria,
                 fee_per_gram,
                 payment_id,
@@ -767,21 +863,18 @@ impl TransactionServiceHandle {
 
     pub async fn register_code_template(
         &mut self,
-        author_public_key: CompressedPublicKey,
-        author_signature: Signature,
         template_name: MaxSizeString<32>,
         template_version: u16,
         template_type: TemplateType,
         build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
+        binary_sha: FixedHash,
         binary_url: MaxSizeString<255>,
         fee_per_gram: MicroMinotari,
-    ) -> Result<TxId, TransactionServiceError> {
+        sidechain_deployment_key: Option<PrivateKey>,
+    ) -> Result<(TxId, FixedHash), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::RegisterCodeTemplate {
-                author_public_key,
-                author_signature,
                 template_name,
                 template_version,
                 template_type,
@@ -789,6 +882,34 @@ impl TransactionServiceHandle {
                 binary_sha,
                 binary_url,
                 fee_per_gram,
+                sidechain_deployment_key,
+            })
+            .await??
+        {
+            TransactionServiceResponse::CodeRegistrationTransactionSent {
+                tx_id,
+                template_address,
+            } => Ok((tx_id, template_address)),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn submit_validator_eviction_proof(
+        &mut self,
+        amount: MicroMinotari,
+        proof: EvictionProof,
+        fee_per_gram: MicroMinotari,
+        sidechain_deployment_key: Option<PrivateKey>,
+        payment_id: PaymentId,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SubmitValidatorEvictionProof {
+                amount,
+                proof,
+                fee_per_gram,
+                payment_id,
+                sidechain_deployment_key,
             })
             .await??
         {
@@ -885,6 +1006,7 @@ impl TransactionServiceHandle {
         fee_per_gram: MicroMinotari,
         payment_id: PaymentId,
         claim_public_key: Option<CompressedPublicKey>,
+        sidechain_deployment_key: Option<PrivateKey>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
@@ -894,6 +1016,7 @@ impl TransactionServiceHandle {
                 fee_per_gram,
                 payment_id,
                 claim_public_key,
+                sidechain_deployment_key,
             })
             .await??
         {
@@ -1262,17 +1385,6 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn revalidate_all_transactions(&mut self) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::ReValidateTransactions)
-            .await??
-        {
-            TransactionServiceResponse::ValidationStarted(_) => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn revalidate_rejected_transactions(&mut self) -> Result<(), TransactionServiceError> {
         match self
             .handle
@@ -1380,8 +1492,8 @@ impl TransactionServiceHandle {
     /// Query the base node for the fee per gram stats of the next {count} blocks.
     pub async fn get_fee_per_gram_stats_per_block(
         &mut self,
-        count: usize,
-    ) -> Result<FeePerGramStatsResponse, TransactionServiceError> {
+        count: u64,
+    ) -> Result<FeePerGramStat, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetFeePerGramStatsPerBlock { count })
@@ -1399,7 +1511,7 @@ impl TransactionServiceHandle {
     ) -> Result<Option<PaymentDetails>, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::GetPaymentByReference(payref))
+            .call(TransactionServiceRequest::GetPaymentByReference { payref })
             .await??
         {
             TransactionServiceResponse::PaymentDetails(details) => Ok(details),

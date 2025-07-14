@@ -70,6 +70,7 @@ pub use lmdb_db::{
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
     DatabaseStats,
     LMDBDatabase,
+    PayrefRebuildStatus,
 };
 mod stats;
 pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};
@@ -79,14 +80,30 @@ pub use target_difficulties::TargetDifficulties;
 pub use utxo_mined_info::*;
 mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
-use tari_common_types::types::HashOutput;
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, HashOutput},
+};
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
 mod smt_hasher;
+
 pub use smt_hasher::SmtHasher;
+
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {
     pub hash: HashOutput,
     pub total_accumulated_difficulty: U512,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidatorNodeRegistrationInfo {
+    pub public_key: CompressedPublicKey,
+    pub sidechain_id: Option<CompressedPublicKey>,
+    pub shard_key: [u8; 32],
+    pub activation_epoch: VnEpoch,
+    pub original_registration: ValidatorNodeRegistration,
+    pub minimum_value_promise: MicroMinotari,
 }

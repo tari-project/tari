@@ -53,7 +53,6 @@ use super::{
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKey,
     PublicKeys,
     WalletAddress,
 };
@@ -269,24 +268,6 @@ impl Wallet {
     pub fn destroy(&mut self) {
         unsafe { ffi_import::wallet_destroy(self.ptr) };
         self.ptr = null_mut();
-    }
-
-    pub fn add_base_node_peer(&self, base_node: PublicKey, address: String) -> bool {
-        let mut error = 0;
-        let success;
-        unsafe {
-            success = ffi_import::wallet_set_base_node_peer(
-                self.ptr,
-                base_node.get_ptr(),
-                CString::new(address).unwrap().into_raw(),
-                &mut error,
-            );
-            if error > 0 {
-                println!("wallet_set_base_node_peer error {}", error);
-                panic!("wallet_set_base_node_peer error");
-            }
-        }
-        success
     }
 
     pub fn get_address(&self) -> WalletAddress {

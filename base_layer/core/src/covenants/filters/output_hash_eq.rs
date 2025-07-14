@@ -32,14 +32,13 @@ impl Filter for OutputHashEqFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let hash = context.next_arg()?.require_hash()?;
         // An output's hash is unique so the output set is either 1 or 0 outputs will match
-        output_set.find_inplace(|output| *output.hash().as_slice() == hash);
+        output_set.find_inplace(|output| output.hash() == hash);
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-
     use super::*;
     use crate::{
         covenant,
@@ -55,9 +54,7 @@ mod test {
         let key_manager = create_memory_db_key_manager().unwrap();
         let output = create_outputs(1, Default::default(), &key_manager).await.remove(0);
         let output_hash = output.hash();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(output_hash.as_slice());
-        let covenant = covenant!(output_hash_eq(@hash(hash.into()))).unwrap();
+        let covenant = covenant!(output_hash_eq(@hash(output_hash))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,

@@ -158,253 +158,263 @@ impl tari_rpc::base_node_server::BaseNode for ReadinessGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_network_difficulty(
         &self,
         _request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn list_headers(
         &self,
         _request: Request<tari_rpc::ListHeadersRequest>,
     ) -> Result<Response<Self::ListHeadersStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_header_by_hash(
         &self,
         _request: Request<tari_rpc::GetHeaderByHashRequest>,
     ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_blocks(
         &self,
         _request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetBlocksStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_block_timing(
         &self,
         _request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<tari_rpc::BlockTimingResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_constants(
         &self,
         _request: Request<tari_rpc::BlockHeight>,
     ) -> Result<Response<tari_rpc::ConsensusConstants>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_block_size(
         &self,
         _request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_block_fees(
         &self,
         _request: Request<tari_rpc::BlockGroupRequest>,
     ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
-    async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
-        return Err(self.get_not_available_status());
+    async fn get_version(
+        &self,
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::BaseNodeGetVersionResponse>, Status> {
+        Err(self.get_not_available_status())
     }
 
     async fn check_for_updates(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_tokens_in_circulation(
         &self,
         _request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_new_block_template(
         &self,
         _request: Request<tari_rpc::NewBlockTemplateRequest>,
     ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_new_block(
         &self,
         _request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_new_block_with_coinbases(
         &self,
         _request: Request<tari_rpc::GetNewBlockWithCoinbasesRequest>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_new_block_template_with_coinbases(
         &self,
         _request: Request<tari_rpc::GetNewBlockTemplateWithCoinbasesRequest>,
     ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_new_block_blob(
         &self,
         _request: Request<tari_rpc::NewBlockTemplate>,
     ) -> Result<Response<tari_rpc::GetNewBlockBlobResult>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn submit_block(
         &self,
         _request: Request<tari_rpc::Block>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn submit_block_blob(
         &self,
         _request: Request<tari_rpc::BlockBlobRequest>,
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn submit_transaction(
         &self,
         _request: Request<tari_rpc::SubmitTransactionRequest>,
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_sync_info(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_sync_progress(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncProgressResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_tip_info(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::TipInfoResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn search_kernels(
         &self,
         _request: Request<tari_rpc::SearchKernelsRequest>,
     ) -> Result<Response<Self::SearchKernelsStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn search_utxos(
         &self,
         _request: Request<tari_rpc::SearchUtxosRequest>,
     ) -> Result<Response<Self::SearchUtxosStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn fetch_matching_utxos(
         &self,
         _request: Request<tari_rpc::FetchMatchingUtxosRequest>,
     ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_peers(
         &self,
         _request: Request<tari_rpc::GetPeersRequest>,
     ) -> Result<Response<Self::GetPeersStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_mempool_transactions(
         &self,
         _request: Request<tari_rpc::GetMempoolTransactionsRequest>,
     ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn transaction_state(
         &self,
         _request: Request<tari_rpc::TransactionStateRequest>,
     ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn identify(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::NodeIdentity>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn list_connected_peers(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_mempool_stats(
         &self,
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::MempoolStatsResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_active_validator_nodes(
         &self,
         _request: Request<tari_rpc::GetActiveValidatorNodesRequest>,
     ) -> Result<Response<Self::GetActiveValidatorNodesStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_shard_key(
         &self,
         _request: Request<tari_rpc::GetShardKeyRequest>,
     ) -> Result<Response<tari_rpc::GetShardKeyResponse>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_template_registrations(
         &self,
         _request: Request<tari_rpc::GetTemplateRegistrationsRequest>,
     ) -> Result<Response<Self::GetTemplateRegistrationsStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn get_side_chain_utxos(
         &self,
         _request: Request<tari_rpc::GetSideChainUtxosRequest>,
     ) -> Result<Response<Self::GetSideChainUtxosStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
     }
 
     async fn search_payment_references(
         &self,
         _request: Request<tari_rpc::SearchPaymentReferencesRequest>,
     ) -> Result<Response<Self::SearchPaymentReferencesStream>, Status> {
-        return Err(self.get_not_available_status());
+        Err(self.get_not_available_status())
+    }
+
+    async fn get_validator_node_changes(
+        &self,
+        _request: Request<tari_rpc::GetValidatorNodeChangesRequest>,
+    ) -> Result<Response<tari_rpc::GetValidatorNodeChangesResponse>, Status> {
+        Err(self.get_not_available_status())
     }
 
     async fn search_payment_references_via_output_hash(

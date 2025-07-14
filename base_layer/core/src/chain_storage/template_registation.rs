@@ -32,3 +32,9 @@ pub struct TemplateRegistrationEntry {
     pub block_height: u64,
     pub block_hash: FixedHash,
 }
+
+impl TemplateRegistrationEntry {
+    pub fn registration_data(&self) -> &CodeTemplateRegistration {
+        &self.registration_data
+    }
+}

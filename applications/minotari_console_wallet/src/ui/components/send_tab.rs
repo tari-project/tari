@@ -115,16 +115,9 @@ impl SendTab {
         ])];
 
         let mut send_instructions = vec![];
-        if let WalletType::DerivedKeys | WalletType::ProvidedKeys(_) = self.wallet_type {
-            send_instructions.append(&mut vec![
-                Span::raw("Press "),
-                Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send a normal transaction, "),
-            ]);
-        }
         send_instructions.append(&mut vec![
-            Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to send a one-sided transaction"),
+            Span::styled("S/O", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to send a transaction"),
         ]);
         instructions.push(Spans::from(send_instructions));
 
@@ -255,7 +248,7 @@ impl SendTab {
             } else if 'y' == c {
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::Normal) | Some(ConfirmationDialogType::StealthAddress) => {
+                    Some(ConfirmationDialogType::Normal) => {
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroMinotari>() {
                                 v
@@ -279,47 +272,25 @@ impl SendTab {
                             let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
 
                             let mut reset_fields = false;
-                            match self.confirmation_dialog {
-                                Some(ConfirmationDialogType::StealthAddress) => {
-                                    match Handle::current().block_on(
-                                        app_state.send_one_sided_to_stealth_address_transaction(
-                                            self.to_field.clone(),
-                                            amount.into(),
-                                            UtxoSelectionCriteria::default(),
-                                            fee_per_gram,
-                                            PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
-                                            tx,
-                                        ),
-                                    ) {
-                                        Err(e) => {
-                                            self.error_message = Some(format!(
-                                                "Error sending one-sided transaction to stealth address:\n{}\nPress \
-                                                 Enter to continue.",
-                                                e
-                                            ))
-                                        },
-                                        Ok(_) => reset_fields = true,
-                                    }
+
+                            match Handle::current().block_on(app_state.send_one_sided_to_stealth_address_transaction(
+                                self.to_field.clone(),
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                fee_per_gram,
+                                PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
+                                tx,
+                            )) {
+                                Err(e) => {
+                                    self.error_message = Some(format!(
+                                        "Error sending one-sided transaction to stealth address:\n{}\nPress Enter to \
+                                         continue.",
+                                        e
+                                    ))
                                 },
-                                _ => {
-                                    match Handle::current().block_on(app_state.send_transaction(
-                                        self.to_field.clone(),
-                                        amount.into(),
-                                        UtxoSelectionCriteria::default(),
-                                        fee_per_gram,
-                                        PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
-                                        tx,
-                                    )) {
-                                        Err(e) => {
-                                            self.error_message = Some(format!(
-                                                "Error sending normal transaction:\n{}\nPress Enter to continue.",
-                                                e
-                                            ))
-                                        },
-                                        Ok(_) => reset_fields = true,
-                                    }
-                                },
+                                Ok(_) => reset_fields = true,
                             }
+
                             if reset_fields {
                                 self.to_field = "".to_string();
                                 self.amount_field = "".to_string();
@@ -439,22 +410,8 @@ impl<B: Backend> Component<B> for SendTab {
             trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
             let status = match (*rx.borrow()).clone() {
                 UiTransactionSendStatus::Initiated => "Initiated",
-                UiTransactionSendStatus::DiscoveryInProgress => "Discovery In Progress",
                 UiTransactionSendStatus::Error(e) => {
                     self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
-                    return;
-                },
-                UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
-                    self.success_message =
-                        Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
-                    return;
-                },
-                UiTransactionSendStatus::Queued => {
-                    self.offline_message = Some(
-                        "This wallet appears to be offline; transaction queued for further retry sending.\n Please \
-                         press Enter to continue"
-                            .to_string(),
-                    );
                     return;
                 },
                 UiTransactionSendStatus::TransactionComplete => {
@@ -494,18 +451,7 @@ impl<B: Backend> Component<B> for SendTab {
                     f,
                     area,
                     "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this normal transaction?\n(Y)es / (N)o".to_string(),
-                    Color::Red,
-                    120,
-                    9,
-                );
-            },
-            Some(ConfirmationDialogType::StealthAddress) => {
-                draw_dialog(
-                    f,
-                    area,
-                    "Confirm Sending Transaction".to_string(),
-                    "Are you sure you want to send this one-sided transaction?\n(Y)es / (N)o".to_string(),
+                    "Are you sure you want to send this transaction?\n(Y)es / (N)o".to_string(),
                     Color::Red,
                     120,
                     9,
@@ -584,10 +530,7 @@ impl<B: Backend> Component<B> for SendTab {
                     return;
                 }
 
-                self.confirmation_dialog = Some(match c {
-                    'o' => ConfirmationDialogType::StealthAddress,
-                    _ => ConfirmationDialogType::Normal,
-                });
+                self.confirmation_dialog = Some(ConfirmationDialogType::Normal);
             },
             _ => {},
         }
@@ -656,5 +599,4 @@ pub enum SendInputMode {
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
     Normal,
-    StealthAddress,
 }

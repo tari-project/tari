@@ -95,8 +95,12 @@ use minotari_app_grpc::tari_rpc::{
     RevalidateResponse,
     SendShaAtomicSwapRequest,
     SendShaAtomicSwapResponse,
-    SetBaseNodeRequest,
-    SetBaseNodeResponse,
+    SignMessageRequest,
+    SignMessageResponse,
+    SubmitValidatorEvictionProofRequest,
+    SubmitValidatorEvictionProofResponse,
+    SubmitValidatorNodeExitRequest,
+    SubmitValidatorNodeExitResponse,
     TransactionDirection,
     TransactionEvent,
     TransactionEventRequest,
@@ -123,30 +127,28 @@ use minotari_wallet::{
     },
     WalletSqlite,
 };
+use rand::rngs::OsRng;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, Signature},
+    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
+use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::{MicroMinotari, T},
+        tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CodeTemplateRegistration,
             OutputFeatures,
-            OutputType,
-            SideChainFeature,
             UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
     },
 };
-use tari_script::script;
+use tari_crypto::hash_domain;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
@@ -161,6 +163,13 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
+
+// Domain separator for signing arbitrary messages with a wallet secret key
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.base_layer.wallet.message_signing",
+    1
+);
 
 async fn send_transaction_event(
     transaction_event: TransactionEvent,
@@ -186,19 +195,29 @@ pub struct WalletGrpcServer {
 impl WalletGrpcServer {
     #[allow(dead_code)]
     pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
+        let scanned_height = wallet
+            .db
+            .get_last_scanned_height()
+            .unwrap_or_default()
+            .unwrap_or_default();
         let debouncer = WalletDebouncer::new(
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
-            wallet.wallet_connectivity.clone(),
             wallet.utxo_scanner_service.clone(),
             wallet.comms.shutdown_signal(),
+            scanned_height,
         );
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         Ok(Self {
             wallet,
-            rules,
             debouncer: Arc::new(Mutex::new(debouncer)),
+            rules,
         })
+    }
+
+    fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
+        let height = self.wallet.db.get_last_scanned_height()?.unwrap_or_default();
+        Ok(self.rules.consensus_constants(height))
     }
 
     pub async fn start_balance_debouncer_event_monitor(&self) {
@@ -215,18 +234,6 @@ impl WalletGrpcServer {
 
     fn comms(&self) -> &CommsNode {
         &self.wallet.comms
-    }
-
-    fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
-        // If we don't have the chain metadata, we hope that VNReg consensus constants did not change - worst case, we
-        // spend more than we need to or the transaction is rejected.
-        let height = self
-            .wallet
-            .db
-            .get_chain_metadata()?
-            .map(|m| m.best_block_height())
-            .unwrap_or_default();
-        Ok(self.rules.consensus_constants(height))
     }
 }
 
@@ -245,7 +252,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
-        let mut connectivity = self.wallet.wallet_connectivity.clone();
+        let connectivity = self.wallet.wallet_connectivity.clone();
         let status = connectivity.get_connectivity_status();
         Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
     }
@@ -349,29 +356,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             interactive_address_emoji: interactive_address.to_emoji_string(),
             one_sided_address_emoji: one_sided_address.to_emoji_string(),
         }))
-    }
-
-    async fn set_base_node(
-        &self,
-        request: Request<SetBaseNodeRequest>,
-    ) -> Result<Response<SetBaseNodeResponse>, Status> {
-        let message = request.into_inner();
-        let public_key = CompressedPublicKey::from_hex(&message.public_key_hex)
-            .map_err(|e| Status::invalid_argument(format!("Base node public key was not a valid pub key: {}", e)))?;
-        let net_address = message
-            .net_address
-            .parse::<Multiaddr>()
-            .map_err(|e| Status::invalid_argument(format!("Base node net address was not valid: {}", e)))?;
-
-        println!("Setting base node peer...");
-        println!("{}::{}", public_key, net_address);
-        let mut wallet = self.wallet.clone();
-        wallet
-            .set_base_node_peer(public_key.clone(), Some(net_address.clone()), None)
-            .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
-
-        Ok(Response::new(SetBaseNodeResponse {}))
     }
 
     async fn get_balance(&self, request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
@@ -479,18 +463,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
-        let start = std::time::Instant::now();
-        let mut output_service = self.get_output_manager_service();
-        output_service
-            .revalidate_all_outputs()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        let mut tx_service = self.get_transaction_service();
-        tx_service
-            .revalidate_all_transactions()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        trace!(target: LOG_TARGET, "'revalidate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(RevalidateResponse {}))
     }
 
@@ -498,18 +470,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<ValidateRequest>,
     ) -> Result<Response<ValidateResponse>, Status> {
-        let start = std::time::Instant::now();
-        let mut output_service = self.get_output_manager_service();
-        output_service
-            .validate_txos()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        let mut tx_service = self.get_transaction_service();
-        tx_service
-            .validate_transactions()
-            .await
-            .map_err(|e| Status::unknown(e.to_string()))?;
-        trace!(target: LOG_TARGET, "'validate_all_transactions' completed in {:.2?}", start.elapsed());
         Ok(Response::new(ValidateResponse {}))
     }
 
@@ -1027,6 +987,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 } else {
                     Some(
                         CompressedPublicKey::from_canonical_bytes(&message.claim_public_key)
+                            .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                    )
+                },
+                if message.sidechain_deployment_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
@@ -1684,59 +1652,51 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateTemplateRegistrationRequest>,
     ) -> Result<Response<CreateTemplateRegistrationResponse>, Status> {
-        let mut output_manager = self.wallet.output_manager_service.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        let template_registration = CodeTemplateRegistration::try_from(
-            message
-                .template_registration
-                .ok_or_else(|| Status::invalid_argument("template_registration is empty"))?,
-        )
-        .map_err(|e| Status::invalid_argument(format!("template_registration is invalid: {}", e)))?;
-        let fee_per_gram = message.fee_per_gram;
-        let template_name = template_registration.template_name.clone();
+        let fee_per_gram = message.fee_per_gram.into();
 
-        let mut output = output_manager
-            .create_output_with_features(1 * T, OutputFeatures {
-                output_type: OutputType::CodeTemplateRegistration,
-                sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        output = output.with_script(script![Nop].map_err(|e| Status::invalid_argument(e.to_string()))?);
-        let payment_id = PaymentId::open_from_string(
-            &format!("Template registration '{}'", template_name),
-            TxType::CodeTemplateRegistration,
-        );
-
-        let (tx_id, transaction) = output_manager
-            .create_send_to_self_with_output(
-                vec![output],
-                fee_per_gram.into(),
-                UtxoSelectionCriteria::default(),
-                payment_id.clone(),
+        let (tx_id, template_address) = transaction_service
+            .register_code_template(
+                message
+                    .template_name
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template name is too long"))?,
+                message
+                    .template_version
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("template version is too large for a u16"))?,
+                if let Some(tt) = message.template_type {
+                    tt.try_into()
+                        .map_err(|_| Status::invalid_argument("template type is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("template type is missing"));
+                },
+                if let Some(bi) = message.build_info {
+                    bi.try_into()
+                        .map_err(|_| Status::invalid_argument("build info is invalid"))?
+                } else {
+                    return Err(Status::invalid_argument("build info is missing"));
+                },
+                message
+                    .binary_sha
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary sha is malformed"))?,
+                message
+                    .binary_url
+                    .try_into()
+                    .map_err(|_| Status::invalid_argument("binary URL is too long"))?,
+                fee_per_gram,
+                if message.sidechain_deployment_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PrivateKey::from_canonical_bytes(&message.sidechain_deployment_key)
+                            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?,
+                    )
+                },
             )
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Template registration transaction: {:?}", transaction
-        );
-
-        let reg_output = transaction
-            .body
-            .outputs()
-            .iter()
-            .find(|o| o.features.output_type == OutputType::CodeTemplateRegistration)
-            .ok_or_else(|| Status::internal("No code template registration output!"))?;
-        let template_address = reg_output.hash();
-
-        transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), payment_id)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -1759,6 +1719,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+        let validator_node_claim_public_key =
+            CompressedPublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
+                .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
+
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
+            None
+        } else {
+            Some(
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
+            )
+        };
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
@@ -1770,6 +1742,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 constants.validator_node_registration_min_deposit_amount(),
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_claim_public_key,
+                sidechain_key,
+                request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 PaymentId::from_bytes(&request.payment_id),
@@ -1788,6 +1763,117 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     is_success: false,
                     failure_message: e.to_string(),
                 }
+            },
+        };
+        Ok(Response::new(response))
+    }
+
+    async fn submit_validator_node_exit(
+        &self,
+        request: Request<SubmitValidatorNodeExitRequest>,
+    ) -> Result<Response<SubmitValidatorNodeExitResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+        let validator_node_signature = request
+            .validator_node_signature
+            .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
+            .try_into()
+            .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
+            None
+        } else {
+            Some(
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
+            )
+        };
+
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        let response = match transaction_service
+            .submit_validator_node_exit(
+                constants.validator_node_registration_min_deposit_amount(),
+                validator_node_public_key,
+                validator_node_signature,
+                sidechain_key,
+                request.max_epoch.into(),
+                UtxoSelectionCriteria::default(),
+                request.fee_per_gram.into(),
+                PaymentId::Open {
+                    // TODO: should this be its own TxType?
+                    tx_type: TxType::PaymentToSelf,
+                    user_data: request.message,
+                },
+            )
+            .await
+        {
+            Ok(tx) => SubmitValidatorNodeExitResponse {
+                transaction_id: tx.as_u64(),
+                is_success: true,
+                failure_message: Default::default(),
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                SubmitValidatorNodeExitResponse {
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+        Ok(Response::new(response))
+    }
+
+    async fn submit_validator_eviction_proof(
+        &self,
+        request: Request<SubmitValidatorEvictionProofRequest>,
+    ) -> Result<Response<SubmitValidatorEvictionProofResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+
+        let sidechain_key = Some(request.sidechain_deployment_key)
+            .filter(|k| !k.is_empty())
+            .map(|k| PrivateKey::from_canonical_bytes(&k))
+            .transpose()
+            .map_err(|_| Status::invalid_argument("sidechain_deployment_key is malformed"))?;
+
+        let proof = request
+            .proof
+            .map(TryInto::try_into)
+            .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Failed to convert proof: {}", e);
+                Status::invalid_argument(format!("Invalid proof: {e}"))
+            })?;
+
+        let constants = self.get_consensus_constants().map_err(|e| {
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            Status::internal("failed to fetch consensus constants")
+        })?;
+
+        let response = match transaction_service
+            .submit_validator_eviction_proof(
+                constants.validator_node_registration_min_deposit_amount(),
+                proof,
+                request.fee_per_gram.into(),
+                sidechain_key,
+                PaymentId::Open {
+                    user_data: request.message.into_bytes(),
+                    tx_type: TxType::PaymentToSelf,
+                },
+            )
+            .await
+        {
+            Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                return Err(Status::unknown(e.to_string()));
             },
         };
         Ok(Response::new(response))
@@ -2028,26 +2114,23 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "get_fee_per_gram_stats: Incoming GRPC request with count: {}",
             message.block_count
         );
-        let block_count = usize::try_from(message.block_count)
-            .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?;
+        let block_count = message.block_count;
 
         let mut transaction_service = self.get_transaction_service();
-        let stats = transaction_service
+        let stat = transaction_service
             .get_fee_per_gram_stats_per_block(block_count)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let mut fee_stats = Vec::new();
-        for stat in stats.stats {
-            fee_stats.push(FeePerGramStat {
-                average_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
-                min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
-                max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
-            });
-        }
+        let fee_stats = vec![FeePerGramStat {
+            average_fee_per_gram: stat.avg_fee_per_gram.as_u64(),
+            min_fee_per_gram: stat.min_fee_per_gram.as_u64(),
+            max_fee_per_gram: stat.max_fee_per_gram.as_u64(),
+        }];
         Ok(Response::new(GetFeePerGramStatsResponse {
             fee_per_gram_stats: fee_stats,
         }))
     }
+
 
     async fn user_pay_for_fee(
         &self,
@@ -2154,6 +2237,33 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(format!("Failed to replace by fee: {}", e)))?;
         Ok(Response::new(ReplaceByFeeResponse {
             transaction_id: tx_id.into(),
+
+    async fn sign_message(
+        &self,
+        request: Request<SignMessageRequest>,
+    ) -> Result<Response<SignMessageResponse>, Status> {
+        let message = request.into_inner();
+        debug!(
+            target: LOG_TARGET,
+            "sign_message: Incoming GRPC request with message length: {}",
+            message.message.len()
+        );
+
+        let secret = self.wallet.comms.node_identity().secret_key().clone();
+        let message_str =
+            String::from_utf8(message.message).map_err(|_| Status::invalid_argument("Message must be valid UTF-8"))?;
+
+        let signature =
+            SignatureWithDomain::<WalletMessageSigningDomain>::sign(&secret, message_str.as_bytes(), &mut OsRng)
+                .map_err(|e| Status::internal(format!("Failed to sign message: {}", e)))?;
+
+        let hex_sig = signature.get_signature().to_hex();
+        let hex_nonce = signature.get_public_nonce().to_hex();
+
+        Ok(Response::new(SignMessageResponse {
+            signature: hex_sig,
+            public_nonce: hex_nonce,
+
         }))
     }
 }

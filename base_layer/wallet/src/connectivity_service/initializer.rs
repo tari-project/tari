@@ -29,45 +29,32 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::mpsc;
+use url::Url;
 
-use super::{handle::WalletConnectivityHandle, service::WalletConnectivityService};
-use crate::{
-    base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::service::OnlineStatus,
-    util::watch::Watch,
-};
+use super::handle::WalletConnectivityHandle;
+use crate::client::http_client_factory::HttpClientFactory;
 
-pub struct WalletConnectivityInitializer {
-    config: BaseNodeServiceConfig,
+pub struct WalletConnectivityInitializer<TClientFactory: HttpClientFactory> {
+    http_node_url: Url,
+    http_seed_url: Url,
+    phantom: std::marker::PhantomData<TClientFactory>,
 }
 
-impl WalletConnectivityInitializer {
-    pub fn new(config: BaseNodeServiceConfig) -> Self {
-        Self { config }
+impl<T: HttpClientFactory> WalletConnectivityInitializer<T> {
+    pub fn new(http_node_url: Url, http_seed_url: Url) -> Self {
+        Self {
+            http_node_url,
+            http_seed_url,
+            phantom: std::marker::PhantomData,
+        }
     }
 }
 
 #[async_trait]
-impl ServiceInitializer for WalletConnectivityInitializer {
+impl<T: HttpClientFactory> ServiceInitializer for WalletConnectivityInitializer<T> {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, receiver) = mpsc::channel(5);
-        let base_node_watch = Watch::new(None);
-        let online_status_watch = Watch::new(OnlineStatus::Offline);
-        context.register_handle(WalletConnectivityHandle::new(
-            sender,
-            base_node_watch.clone(),
-            online_status_watch.get_receiver(),
-        ));
-
-        let config = self.config.clone();
-
-        context.spawn_until_shutdown(move |handles| {
-            let connectivity = handles.expect_handle();
-            let service =
-                WalletConnectivityService::new(config, receiver, base_node_watch, online_status_watch, connectivity);
-            service.start()
-        });
+        let factory = T::new(self.http_node_url.clone(), self.http_seed_url.clone());
+        context.register_handle(WalletConnectivityHandle::new(factory));
 
         Ok(())
     }

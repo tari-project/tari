@@ -46,7 +46,7 @@ service BaseNode {
     // Returns Block Fees
     rpc GetBlockFees (BlockGroupRequest) returns (BlockGroupResponse);
     // Get Version
-    rpc GetVersion(Empty) returns (StringValue);
+    rpc GetVersion(Empty) returns (BaseNodeGetVersionResponse);
     // Check for new updates
     rpc CheckForUpdates(Empty) returns (SoftwareUpdate);
     // Get coins in circulation
@@ -95,6 +95,7 @@ service BaseNode {
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
     // Get VNs
     rpc GetActiveValidatorNodes(GetActiveValidatorNodesRequest) returns (stream GetActiveValidatorNodesResponse);
+    rpc GetValidatorNodeChanges(GetValidatorNodeChangesRequest) returns (GetValidatorNodeChangesResponse);
     rpc GetShardKey(GetShardKeyRequest) returns (GetShardKeyResponse);
     // Get templates
     rpc GetTemplateRegistrations(GetTemplateRegistrationsRequest) returns (stream GetTemplateRegistrationResponse);
@@ -292,9 +293,9 @@ message IntegerValue {
     uint64 value = 1;
 }
 
-// A generic String value
-message StringValue {
-    string value = 1;
+message BaseNodeGetVersionResponse {
+  string version = 1;
+  uint32 network = 2;
 }
 
 /// GetBlockSize / GetBlockFees Request
@@ -537,48 +538,76 @@ message MempoolStatsResponse {
 }
 
 message GetActiveValidatorNodesRequest {
-    uint64 height = 1;
+  uint64 height = 1;
+  bytes sidechain_id = 2;
 }
 
 message GetActiveValidatorNodesResponse {
-    bytes shard_key = 1;
-    bytes public_key = 2;
+  bytes shard_key = 1;
+  bytes public_key = 2;
+  bytes sidechain_id = 3;
+}
+
+message GetValidatorNodeChangesRequest {
+  uint64 epoch = 1;
+  bytes sidechain_id = 2;
+}
+
+message ValidatorNodeChange {
+  oneof change {
+    ValidatorNodeChangeAdd add = 1;
+    ValidatorNodeChangeRemove remove = 2;
+  }
+}
+
+message ValidatorNodeChangeAdd {
+  uint64 activation_epoch = 1;
+  ValidatorNodeRegistration registration = 2;
+  uint64 minimum_value_promise = 3;
+  bytes shard_key = 4;
+}
+
+message ValidatorNodeChangeRemove {
+  bytes public_key = 1;
+}
+
+message GetValidatorNodeChangesResponse {
+  repeated ValidatorNodeChange changes = 1;
 }
 
 message GetShardKeyRequest {
-    uint64 height = 1;
-    bytes public_key = 2;
+  uint64 epoch = 1;
+  bytes public_key = 2;
 }
 
 message GetShardKeyResponse {
-    bytes shard_key = 1;
-    bool found = 2;
+  bytes shard_key = 1;
 }
 
 message GetTemplateRegistrationsRequest {
-    bytes start_hash = 1;
-    uint64 count = 2;
+  bytes start_hash = 1;
+  uint64 count = 2;
 }
 
 message GetTemplateRegistrationResponse {
-    bytes utxo_hash = 1;
-    TemplateRegistration registration = 2;
+  bytes utxo_hash = 1;
+  TemplateRegistration registration = 2;
 }
 
 message BlockInfo {
-    uint64 height = 1;
-    bytes hash = 2;
-    bytes next_block_hash = 3;
+  uint64 height = 1;
+  bytes hash = 2;
+  bytes next_block_hash = 3;
 }
 
 message GetSideChainUtxosRequest {
-    bytes start_hash = 1;
-    uint64 count = 2;
+  bytes start_hash = 1;
+  uint64 count = 2;
 }
 
 message GetSideChainUtxosResponse {
-    BlockInfo block_info = 1;
-    repeated TransactionOutput outputs = 2;
+  BlockInfo block_info = 1;
+  repeated TransactionOutput outputs = 2;
 }
 
 message GetNetworkStateRequest {

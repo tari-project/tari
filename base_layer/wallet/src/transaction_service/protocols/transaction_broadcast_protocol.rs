@@ -19,27 +19,23 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
-    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use futures::FutureExt;
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::Signature,
 };
 use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
-        rpc::BaseNodeWalletRpcClient,
-    },
+    base_node::rpc::models::{TxLocation, TxSubmissionRejectionReason},
     transactions::{transaction_components::Transaction, transaction_key_manager::TransactionKeyManagerInterface},
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
 
 use crate::{
@@ -90,17 +86,11 @@ where
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
         let mut shutdown = self.resources.shutdown_signal.clone();
-        let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
         let mut timeout_update_receiver = self.timeout_update_receiver.clone();
 
         // Main protocol loop
         loop {
-            let mut client = self
-                .resources
-                .connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .ok_or_else(|| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))?;
+            let client = self.resources.connectivity.obtain_base_node_wallet_rpc_client().await;
 
             let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id) {
                 Ok(tx) => tx,
@@ -133,55 +123,39 @@ where
                 return Err(e);
             }
 
-            loop {
-                tokio::select! {
-                    _ = current_base_node_watcher.changed() => {
-                            if let Some(selected_peer) = &*current_base_node_watcher.borrow() {
-                                info!(
-                                    target: LOG_TARGET,
-                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {} (NodeID: {})",
-                                    self.tx_id, selected_peer.get_current_peer().public_key,
-                                    selected_peer.get_current_peer().node_id,
-                                );
+            tokio::select! {
+                result = self.query_or_submit_transaction(completed_tx.clone(), &client).fuse() => {
+                    match self.mode {
+                        TxBroadcastMode::TransactionSubmission => {
+                            if result? {
+                                self.mode = TxBroadcastMode::TransactionQuery;
                             }
-                            self.last_rejection = None;
-                            continue;
-                    },
-                    result = self.query_or_submit_transaction(completed_tx.clone(), &mut client).fuse() => {
-                        match self.mode {
-                            TxBroadcastMode::TransactionSubmission => {
-                                if result? {
-                                    self.mode = TxBroadcastMode::TransactionQuery;
-                                }
-                            },
-                            TxBroadcastMode::TransactionQuery => {
-                                if result? {
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "Transaction broadcast, transaction validation protocol will continue from here"
-                                    );
-                                    return Ok(self.tx_id)
-                                }
-                            },
-                        }
-                        // Wait out the remainder of the delay before proceeding with next loop
-                        drop(client);
-                        let delay = *timeout_update_receiver.borrow();
-                        sleep(delay).await;
-                        break;
-                    },
-                    _ = timeout_update_receiver.changed() => {
-                         info!(
-                            target: LOG_TARGET,
-                            "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, timeout_update_receiver.borrow()
-                        );
-                        break;
-                    },
-                    _ = shutdown.wait() => {
-                        info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
-                        return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
-                    },
-                }
+                        },
+                        TxBroadcastMode::TransactionQuery => {
+                            if result? {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Transaction broadcast, transaction validation protocol will continue from here"
+                                );
+                                return Ok(self.tx_id)
+                            }
+                        },
+                    }
+                    // Wait out the remainder of the delay before proceeding with next loop
+                    drop(client);
+                    let delay = *timeout_update_receiver.borrow();
+                    sleep(delay).await;
+                },
+                _ = timeout_update_receiver.changed() => {
+                     info!(
+                        target: LOG_TARGET,
+                        "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, timeout_update_receiver.borrow()
+                    );
+                },
+                _ = shutdown.wait() => {
+                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
+                    return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
+                },
             }
         }
     }
@@ -195,26 +169,15 @@ where
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-        let response = match client
-            .submit_transaction(tx.clone().try_into().map_err(|e| {
-                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidMessageError(e))
-            })?)
-            .await
-        {
-            Ok(r) => match TxSubmissionResponse::try_from(r) {
-                Ok(r) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Transaction (TxId: {}) submission response from Base Node: {:?}", self.tx_id, r
-                    );
-                    r
-                },
-                Err(_) => {
-                    trace!(target: LOG_TARGET, "Could not convert proto TxSubmission Response");
-                    return Ok(false);
-                },
+        let response = match client.submit_transaction(tx.clone()).await {
+            Ok(r) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) submission response from Base Node: {:?}", self.tx_id, r
+                );
+                r
             },
             Err(e) => {
                 info!(
@@ -321,35 +284,21 @@ where
     async fn transaction_query(
         &mut self,
         signature: Signature,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
-        let response = match client.transaction_query(signature.into()).await {
-            Ok(r) => match TxQueryResponse::try_from(r) {
-                Ok(r) => r,
-                Err(_) => {
-                    trace!(target: LOG_TARGET, "Could not convert proto TxQueryResponse");
-                    return Ok(false);
-                },
-            },
-            Err(e) => {
+        let response = client
+            .transaction_query(
+                signature.get_compressed_public_nonce().as_bytes().to_vec(),
+                signature.get_signature().as_bytes().to_vec(),
+            )
+            .await
+            .map_err(|e| {
                 info!(
                     target: LOG_TARGET,
                     "Transaction Query RPC Call to Base Node failed: {}", e
                 );
-                return Ok(false);
-            },
-        };
-
-        if !(response.is_synced ||
-            (response.location == TxLocation::Mined &&
-                response.confirmations >= self.resources.config.num_confirmations_required))
-        {
-            info!(
-                target: LOG_TARGET,
-                "Base Node reports not being synced, submission will be retried."
-            );
-            return Ok(false);
-        }
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Other(e.to_string()))
+            })?;
 
         // Mined?
         if response.location == TxLocation::Mined {
@@ -411,7 +360,7 @@ where
     async fn query_or_submit_transaction(
         &mut self,
         completed_transaction: CompletedTransaction,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let signature = completed_transaction
             .transaction

@@ -23,6 +23,10 @@
 use std::{iter, sync::Arc, time::Duration};
 
 use futures::future;
+use minotari_wallet::{
+    connectivity_service::{BaseNodePeerManager, OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
+    util::watch::Watch,
+};
 use tari_comms::{
     peer_manager::{NodeId, PeerFeatures},
     protocol::rpc::{
@@ -43,14 +47,10 @@ use tokio::{
     time::{sleep, timeout},
 };
 
-use super::service::{WalletConnectivityService, CONNECTIVITY_WAIT};
-use crate::{
-    connectivity_service::{BaseNodePeerManager, OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
-    util::watch::Watch,
-};
+use crate::support::base_node_http_service_mock::{HttpBaseNodeMock, MockHttpClientFactory};
 
 async fn setup() -> (
-    WalletConnectivityHandle,
+    WalletConnectivityHandle<MockHttpClientFactory>,
     MockRpcServer<MockRpcImpl>,
     ConnectivityManagerMockState,
     Shutdown,
@@ -58,17 +58,11 @@ async fn setup() -> (
     let (tx, rx) = mpsc::channel(1);
     let base_node_watch = Watch::new(None);
     let online_status_watch = Watch::new(OnlineStatus::Offline);
-    let handle = WalletConnectivityHandle::new(tx, base_node_watch.clone(), online_status_watch.get_receiver());
+    let mock_http_client_factory = MockHttpClientFactory::new();
+    let handle = WalletConnectivityHandle::new(tx, base_node_watch.clone(), mock_http_client_factory);
     let (connectivity, mock) = create_connectivity_mock();
     let mock_state = mock.spawn();
-    // let peer_manager = create_peer_manager(tempdir().unwrap());
-    let service = WalletConnectivityService::new(
-        Default::default(),
-        rx,
-        base_node_watch,
-        online_status_watch,
-        connectivity,
-    );
+
     let shutdown = spawn_until_shutdown(service.start());
 
     let mock_svc = MockRpcImpl::new();

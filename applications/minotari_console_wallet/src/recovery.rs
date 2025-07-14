@@ -20,34 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![allow(dead_code, unused)]
-
-use std::ptr;
-
 use chrono::offset::Local;
-use futures::FutureExt;
 use log::*;
-use minotari_wallet::{
-    connectivity_service::WalletConnectivityHandle,
-    error::WalletError,
-    storage::sqlite_db::wallet::WalletSqliteDatabase,
-    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
-    WalletSqlite,
-};
+use minotari_wallet::{utxo_scanner_service::handle::UtxoScannerEvent, WalletSqlite};
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_crypto::tari_utilities::Hidden;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
-use tari_shutdown::Shutdown;
-use tari_utilities::{hex::Hex, SafePassword};
-use tokio::{runtime::Runtime, sync::broadcast};
-use zeroize::{Zeroize, Zeroizing};
-
-use crate::wallet_modes::PeerConfig;
+use tari_utilities::{Hidden, SafePassword};
+use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
 /// Prompt the user to input their seed words in a single line.
+// Sometimes clippy thinks this function is dead code, but it is used in the CLI.
+#[allow(dead_code)]
 pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
     debug!(target: LOG_TARGET, "Prompting for seed words.");
     let mut rl = Editor::<()>::new();
@@ -96,61 +82,24 @@ pub fn get_seed_from_seed_words(
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
 #[allow(clippy::too_many_lines)]
-pub async fn wallet_recovery(
-    wallet: &WalletSqlite,
-    base_node_config: &PeerConfig,
-    retry_limit: usize,
-) -> Result<(), ExitError> {
+pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Result<(), ExitError> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
-    // We dont care about the shutdown signal here, so we just create one
-    let shutdown = Shutdown::new();
-    let shutdown_signal = shutdown.to_signal();
 
-    let peers = base_node_config.get_all_peers();
-
-    let peer_manager = wallet.comms.peer_manager();
-    let mut peer_public_keys = Vec::with_capacity(peers.len());
-    for peer in peers {
-        debug!(
-            target: LOG_TARGET,
-            "Peer added: {} (NodeId: {})",
-            peer.public_key.to_hex(),
-            peer.node_id.to_hex()
-        );
-        peer_public_keys.push(peer.public_key.clone());
-        peer_manager
-            .add_or_update_peer(peer)
-            .await
-            .map_err(|err| ExitError::new(ExitCode::NetworkError, err))?;
-    }
-
-    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder()
-        .with_peers(peer_public_keys)
-        // Do not make this a small number as wallet recovery needs to be resilient
-        .with_retry_limit(retry_limit)
-        .build_with_wallet(wallet, shutdown_signal).await
-        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
-
-    let mut event_stream = recovery_task.get_event_receiver();
-
-    let recovery_join_handle = tokio::spawn(recovery_task.run()).fuse();
+    let mut event_stream = wallet.utxo_scanner_service.clone().get_event_receiver();
 
     // Read recovery task events. The event stream will end once recovery has completed.
+    let mut failed_events = 0;
     loop {
+        if failed_events > retry_limit {
+            let err_msg = format!("Recovery process failed after {} attempts. Exiting.", retry_limit);
+            error!(target: LOG_TARGET, "{}", err_msg);
+            return Err(ExitError::new(ExitCode::RecoveryError, err_msg));
+        }
         match event_stream.recv().await {
-            Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
-                let msg = format!("Connecting to base node {}... ", peer);
-                println!("{}", msg);
-                debug!(target: LOG_TARGET, "{}", msg);
-            },
-            Ok(UtxoScannerEvent::ConnectedToBaseNode(_, latency)) => {
-                let msg = format!("OK (latency = {:.2?})", latency);
-                println!("{}", msg);
-                debug!(target: LOG_TARGET, "{}", msg);
-            },
             Ok(UtxoScannerEvent::Progress {
                 current_height,
                 tip_height,
+                ..
             }) => {
                 // its going to fail if the tip height is 0, meaning if you scanned up to 0, you are done
                 let percentage_progress = (current_height * 100).checked_div(tip_height).unwrap_or(100);
@@ -175,33 +124,21 @@ pub async fn wallet_recovery(
                 );
                 println!("{}", s);
                 warn!(target: LOG_TARGET, "{}", s);
-            },
-            Ok(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                peer,
-                num_retries,
-                retry_limit,
-                error,
-            }) => {
-                let s = format!(
-                    "Base node connection error to {} (retries {} of {}: {})",
-                    peer, num_retries, retry_limit, error
-                );
-                println!("{}", s);
-                warn!(target: LOG_TARGET, "{}", s);
+                failed_events += 1;
             },
             Ok(UtxoScannerEvent::Completed {
                 final_height,
-                num_recovered,
-                value_recovered,
                 time_taken,
+                ..
             }) => {
                 let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
                 let stats = format!(
-                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s), Recovered {} outputs worth {}",
-                    final_height, time_taken, rate, num_recovered, value_recovered
+                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s)",
+                    final_height, time_taken, rate
                 );
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);
+                break;
             },
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
                 debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
@@ -211,14 +148,7 @@ pub async fn wallet_recovery(
                 debug!(target: LOG_TARGET, "Wallet Recovery exiting");
                 break;
             },
-            Ok(UtxoScannerEvent::ScanningFailed) => {
-                error!(target: LOG_TARGET, "Wallet Recovery process failed and is exiting");
-            },
         }
     }
-
-    recovery_join_handle
-        .await
-        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?
-        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))
+    Ok(())
 }

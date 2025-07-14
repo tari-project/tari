@@ -130,7 +130,7 @@ impl BlockTemplateManager<'_> {
                         b
                     },
                     Err(err) => {
-                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
+                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err);
                         return Err(err);
                     },
                 }
@@ -166,7 +166,7 @@ impl BlockTemplateManager<'_> {
                     val
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err.to_string());
+                    error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err);
                     return Err(err);
                 },
             };

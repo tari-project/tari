@@ -20,142 +20,57 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    protocol::rpc::RpcClientLease,
-    types::CommsPublicKey,
-};
-use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
-use tokio::sync::{mpsc, oneshot, watch};
+use minotari_node_wallet_client::BaseNodeWalletClient;
+use tokio::sync::watch;
 
-use super::service::OnlineStatus;
-use crate::{
-    connectivity_service::{BaseNodePeerManager, WalletConnectivityInterface},
-    util::watch::Watch,
-};
-
-pub enum WalletConnectivityRequest {
-    ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
-    ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
-    DisconnectBaseNode(NodeId),
+use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
+/// Connection status of the Base Node
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OnlineStatus {
+    Connecting = 0,
+    Online = 1,
+    Offline = 2,
 }
 
 #[derive(Clone)]
-pub struct WalletConnectivityHandle {
-    sender: mpsc::Sender<WalletConnectivityRequest>,
-    base_node_watch: Watch<Option<BaseNodePeerManager>>,
-    online_status_rx: watch::Receiver<OnlineStatus>,
+pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
+    client_factory: TWalletClientFactory,
+    online_status_watch: watch::Sender<OnlineStatus>,
 }
 
-impl WalletConnectivityHandle {
-    pub(super) fn new(
-        sender: mpsc::Sender<WalletConnectivityRequest>,
-        base_node_watch: Watch<Option<BaseNodePeerManager>>,
-        online_status_rx: watch::Receiver<OnlineStatus>,
-    ) -> Self {
+impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletClientFactory> {
+    pub fn new(client_factory: TWalletClientFactory) -> Self {
+        let (online_status_watch, _) = watch::channel(OnlineStatus::Connecting);
         Self {
-            sender,
-            base_node_watch,
-            online_status_rx,
+            client_factory,
+            online_status_watch,
         }
     }
 }
 
 #[async_trait::async_trait]
-impl WalletConnectivityInterface for WalletConnectivityHandle {
-    fn set_base_node(&mut self, base_node_peer_manager: BaseNodePeerManager) {
-        if let Some(selected_peer) = self.base_node_watch.borrow().as_ref() {
-            if selected_peer.get_current_peer().public_key == base_node_peer_manager.get_current_peer().public_key {
-                return;
-            }
-        }
-        self.base_node_watch.send(Some(base_node_peer_manager));
-    }
+impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
+    for WalletConnectivityHandle<TWalletClientFactory>
+{
+    type BaseNodeClient = TWalletClientFactory::Client;
 
-    fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<BaseNodePeerManager>> {
-        self.base_node_watch.get_receiver()
-    }
-
-    fn get_base_node_peer_manager_state(&self) -> Option<(usize, Vec<Peer>)> {
-        self.base_node_watch.borrow().as_ref().map(|p| p.get_state().clone())
-    }
-
-    /// Obtain a BaseNodeWalletRpcClient.
-    ///
     /// This can be relied on to obtain a pooled BaseNodeWalletRpcClient rpc session from a currently selected base
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
-    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        // Under what conditions do the (1) mpsc channel and (2) oneshot channel error?
-        // (1) when the receiver has been dropped
-        // (2) when the sender has been dropped
-        // When can this happen?
-        // Only when the service is shutdown (or there is a bug in the service that should be fixed)
-        // None is returned in these cases, which we say means that you will never ever get a client connection
-        // because the node is shutting down.
-        self.sender
-            .send(WalletConnectivityRequest::ObtainBaseNodeWalletRpcClient(reply_tx))
-            .await
-            .ok()?;
-
-        reply_rx.await.ok()
+    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Self::BaseNodeClient {
+        self.client_factory.create_http_client()
     }
 
-    /// Obtain a BaseNodeSyncRpcClient.
-    ///
-    /// This can be relied on to obtain a pooled BaseNodeSyncRpcClient rpc session from a currently selected base
-    /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
-    /// shutting down, where it will return None. Use this function whenever no work can be done without a
-    /// BaseNodeSyncRpcClient RPC session.
-    async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(WalletConnectivityRequest::ObtainBaseNodeSyncRpcClient(reply_tx))
-            .await
-            .ok()?;
-
-        reply_rx.await.ok()
-    }
-
-    async fn disconnect_base_node(&mut self, node_id: NodeId) {
-        let _unused = self
-            .sender
-            .send(WalletConnectivityRequest::DisconnectBaseNode(node_id))
-            .await;
-    }
-
-    fn get_connectivity_status(&mut self) -> OnlineStatus {
-        *self.online_status_rx.borrow()
+    fn get_connectivity_status(&self) -> OnlineStatus {
+        if self.client_factory.create_http_client().is_online() {
+            OnlineStatus::Online
+        } else {
+            OnlineStatus::Offline
+        }
     }
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
-        self.online_status_rx.clone()
-    }
-
-    fn get_current_base_node_peer(&self) -> Option<Peer> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().clone())
-    }
-
-    fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().public_key.clone())
-    }
-
-    fn get_current_base_node_peer_node_id(&self) -> Option<NodeId> {
-        self.base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.get_current_peer().node_id.clone())
-    }
-
-    fn is_base_node_set(&self) -> bool {
-        self.base_node_watch.borrow().is_some()
+        self.online_status_watch.subscribe()
     }
 }

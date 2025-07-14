@@ -27,7 +27,6 @@ use std::{
 };
 
 use tari_common_types::types::BlockHash;
-use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -37,9 +36,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct TariBaseNodeState {
-    /// The ID of the base node this wallet is connected to
-    pub node_id: Option<NodeId>,
-
     /// The current chain height, or the block number of the longest valid chain, or zero if there is no chain
     pub best_block_height: u64,
 
@@ -63,38 +59,6 @@ pub struct TariBaseNodeState {
     pub is_node_synced: bool,
     pub updated_at: u64,
     pub latency: u64,
-}
-
-/// Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
-///
-/// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut ByteVector` - Returns a ByteVector or null if the NodeId is None.
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn basenode_state_get_node_id(
-    ptr: *mut TariBaseNodeState,
-    error_out: *mut c_int,
-) -> *mut ByteVector {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if ptr.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("ptr".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-
-    match (*ptr).node_id {
-        None => ptr::null_mut(),
-        Some(ref node_id) => Box::into_raw(Box::new(ByteVector(node_id.to_vec()))),
-    }
 }
 
 /// Extracts height of th elongest chain from the `TariBaseNodeState`
@@ -335,18 +299,13 @@ mod tests {
     use tari_common_types::types::FixedHash;
 
     use super::*;
-    use crate::{TariPublicKey, UncompressedTariPublicKey};
 
     #[test]
     fn test_basenode_state_ffi_accessors() {
         let mut error_code = 0;
-        let original_node_id = NodeId::from_key(&TariPublicKey::new_from_pk(
-            UncompressedTariPublicKey::new_generator("test").unwrap(),
-        ));
         let original_best_block = BlockHash::zero();
 
         let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
-            node_id: Some(original_node_id.clone()),
             best_block_height: 123,
             best_block_hash: original_best_block,
             best_block_timestamp: 12345,
@@ -358,17 +317,6 @@ mod tests {
         }));
 
         unsafe {
-            // ----------------------------------------------------------------------------
-            // node id
-
-            let wrapped_node_id = basenode_state_get_node_id(boxed_state, &mut error_code);
-
-            assert_eq!(
-                original_node_id,
-                NodeId::from_canonical_bytes((*wrapped_node_id).0.as_bytes()).unwrap()
-            );
-            assert_eq!(error_code, 0);
-
             // ----------------------------------------------------------------------------
             // best block
 

@@ -182,7 +182,7 @@ async fn smoke() {
     assert_eq!(buf, *b"HELLO");
 
     // Disconnect conn1
-    conn1.disconnect(Minimized::No).await.unwrap();
+    conn1.disconnect(Minimized::No, "unit test").await.unwrap();
     // conn2.disconnect(Minimized::No).await.unwrap();
 
     shutdown.trigger();

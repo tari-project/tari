@@ -387,7 +387,10 @@ where
                     target: LOG_TARGET,
                     "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
                 );
-                match conn.disconnect(Minimized::No).await {
+                match conn
+                    .disconnect(Minimized::No, "LivenessService disconnect failed peers")
+                    .await
+                {
                     Ok(_) => {
                         node_ids.push(node_id.clone());
                     },

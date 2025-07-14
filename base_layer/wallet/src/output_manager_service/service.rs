@@ -24,6 +24,7 @@ use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -50,7 +51,6 @@ use tari_core::{
         shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
     },
-    proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
         tari_amount::MicroMinotari,
@@ -129,7 +129,6 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_service: BaseNodeServiceHandle,
-    last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
 }
 
@@ -194,7 +193,6 @@ where
             resources,
             request_stream: Some(request_stream),
             base_node_service,
-            last_seen_tip_height: None,
             validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
@@ -330,18 +328,12 @@ where
                 .update_output_metadata_signature(*uo)
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
             OutputManagerRequest::GetBalance => {
-                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
-                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
-                    Err(_) => None,
-                };
+                let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance(current_tip_for_time_lock_calculation)
                     .map(OutputManagerResponse::Balance)
             },
             OutputManagerRequest::GetBalancePaymentId(payment_id) => {
-                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
-                    Ok(metadata) => metadata.map(|m| m.best_block_height()),
-                    Err(_) => None,
-                };
+                let current_tip_for_time_lock_calculation = self.resources.db.get_last_scanned_height()?;
                 self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
                     .map(OutputManagerResponse::Balance)
             },
@@ -573,10 +565,16 @@ where
         fee_per_gram: MicroMinotari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
+            .resources
+            .connectivity
+            .obtain_base_node_wallet_rpc_client()
+            .await
+            .fetch_utxo(output_hash.to_vec())
+            .await
+            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))?
+            .ok_or_else(|| {
+                OutputManagerError::BaseNodeClientError(format!("No output found for hash {}", output_hash.to_hex()))
+            })?;
 
         self.create_claim_sha_atomic_swap_transaction(output, pre_image, fee_per_gram)
             .await
@@ -585,9 +583,6 @@ where
 
     fn handle_utxo_scanner_service_event(&mut self, event: UtxoScannerEvent) {
         match event {
-            UtxoScannerEvent::ConnectingToBaseNode(_node_id) => {},
-            UtxoScannerEvent::ConnectedToBaseNode(_node_id, _duration) => {},
-            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {},
             UtxoScannerEvent::ScanningRoundFailed { .. } => {},
             UtxoScannerEvent::Progress { .. } => {},
             UtxoScannerEvent::Completed { .. } => {
@@ -596,7 +591,6 @@ where
                     e
                 });
             },
-            UtxoScannerEvent::ScanningFailed => {},
         }
     }
 
@@ -608,19 +602,11 @@ where
                     "Received Base Node State Change but no block changes"
                 );
             },
-            BaseNodeEvent::NewBlockDetected(_hash, height) => {
-                self.last_seen_tip_height = Some(height);
-            },
         }
     }
 
     #[allow(clippy::too_many_lines)]
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
-        let current_base_node = self
-            .resources
-            .connectivity
-            .get_current_base_node_peer_node_id()
-            .ok_or(OutputManagerError::NoBaseNodeKeysProvided)?;
         let id = OsRng.next_u64();
         let txo_validation = TxoValidationTask::new(
             id,
@@ -631,7 +617,6 @@ where
         );
 
         let mut shutdown = self.resources.shutdown_signal.clone();
-        let mut base_node_watch = self.resources.connectivity.get_current_base_node_watcher();
         let event_publisher = self.resources.event_publisher.clone();
         let validation_in_progress = self.validation_in_progress.clone();
         let mut utxo_scanner_service_event_stream = self.resources.utxo_scanner_handle.get_event_receiver();
@@ -701,17 +686,6 @@ where
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
                                 debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
                                 continue 'outer;
-                            }
-                        }
-                        _ = base_node_watch.changed() => {
-                            if let Some(peer) = base_node_watch.borrow().as_ref() {
-                                if peer.get_current_peer().node_id != current_base_node {
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "TXO Validation Protocol (Id: {}) resetting to run again because base node changed", id
-                                    );
-                                    continue 'outer;
-                                }
                             }
                         }
                     }
@@ -1368,16 +1342,14 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: start");
         // Fetch the output from the blockchain or use provided
         let output = match use_output {
-            UseOutput::FromBlockchain(output_hash) => self
-                .fetch_unspent_outputs_from_node(vec![output_hash])
-                .await?
-                .pop()
-                .ok_or_else(|| {
+            UseOutput::FromBlockchain(output_hash) => {
+                self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
                     OutputManagerError::ServiceError(format!(
                         "Output with hash {} not found in blockchain (TxId: {})",
                         output_hash, tx_id
                     ))
-                })?,
+                })?
+            },
             UseOutput::AsProvided(ref val) => *val.clone(),
         };
         if output.commitment != expected_commitment {
@@ -1745,16 +1717,12 @@ where
         minimum_value_promise: MicroMinotari,
     ) -> Result<(Transaction, MicroMinotari, MicroMinotari), OutputManagerError> {
         // Fetch the output from the blockchain
-        let output = self
-            .fetch_unspent_outputs_from_node(vec![output_hash])
-            .await?
-            .pop()
-            .ok_or_else(|| {
-                OutputManagerError::ServiceError(format!(
-                    "Output with hash {} not found in blockchain (TxId: {})",
-                    output_hash, tx_id
-                ))
-            })?;
+        let output = self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
+            OutputManagerError::ServiceError(format!(
+                "Output with hash {} not found in blockchain (TxId: {})",
+                output_hash, tx_id
+            ))
+        })?;
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
                 "Output commitment does not match expected commitment (TxId: {})",
@@ -2198,7 +2166,7 @@ where
         let fee_calc = self.get_fee_calc();
 
         // Attempt to get the chain tip height
-        let chain_metadata = self.base_node_service.get_chain_metadata().await?;
+        let tip_height = self.resources.db.get_last_scanned_height()?;
 
         // Respecting the setting to not choose outputs that reveal the address
         if self.resources.config.autoignore_onesided_utxos {
@@ -2209,7 +2177,6 @@ where
             target: LOG_TARGET,
             "select_utxos selection criteria: {}", selection_criteria
         );
-        let tip_height = chain_metadata.as_ref().map(|m| m.best_block_height());
         let start_new = Instant::now();
         let uo = self
             .resources
@@ -2301,7 +2268,7 @@ where
                     TRANSACTION_INPUTS_LIMIT
                 )));
             }
-            let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.best_block_height());
+            let current_tip_for_time_lock_calculation = tip_height;
             let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
             let pending_incoming = balance.pending_incoming_balance;
             if utxos_total_value + pending_incoming >= amount + fee_with_change {
@@ -3101,37 +3068,17 @@ where
         Ok(stp)
     }
 
-    async fn fetch_unspent_outputs_from_node(
+    async fn fetch_utxo_from_node(
         &mut self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionOutput>, OutputManagerError> {
-        // lets get the output from the blockchain
-        let req = FetchMatchingUtxos {
-            output_hashes: hashes.iter().map(|v| v.to_vec()).collect(),
-        };
-        let outputs = self
-            .resources
+        hash: HashOutput,
+    ) -> Result<Option<TransactionOutput>, OutputManagerError> {
+        self.resources
             .connectivity
             .obtain_base_node_wallet_rpc_client()
             .await
-            .ok_or_else(|| {
-                OutputManagerError::InvalidResponseError("Could not connect to base node rpc client".to_string())
-            })?
-            .fetch_matching_utxos(req)
-            .await?
-            .outputs;
-
-        let mut results = Vec::new();
-        for output in outputs {
-            match output.try_into() {
-                Ok(tx_output) => results.push(tx_output),
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "Failed to convert output from base node response: {}", e);
-                    // Continue processing other outputs instead of failing completely
-                },
-            }
-        }
-        Ok(results)
+            .fetch_utxo(hash.to_vec())
+            .await
+            .map_err(|e| OutputManagerError::BaseNodeClientError(e.to_string()))
     }
 
     #[allow(clippy::too_many_lines)]
