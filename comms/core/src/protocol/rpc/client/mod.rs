@@ -105,7 +105,7 @@ impl RpcClient {
         framed: CanonicalFraming<TSubstream>,
         protocol_name: ProtocolId,
         terminate_signal: Option<OneshotSignal<NodeId>>,
-        session_state: Option<Arc<AtomicBool>>,
+        session_state: Arc<AtomicBool>,
     ) -> Result<Self, RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
@@ -308,7 +308,7 @@ where TClient: From<RpcClient> + NamedProtocolService
                 .cloned()
                 .unwrap_or_else(|| ProtocolId::from_static(TClient::PROTOCOL_NAME)),
             self.terminate_signal,
-            self.session_state,
+            self.session_state.unwrap_or_default(),
         )
         .await
         .map(Into::into)
@@ -432,7 +432,7 @@ struct RpcClientWorker<TSubstream> {
     protocol_id: ProtocolId,
     shutdown_signal: ShutdownSignal,
     terminate_signal: Option<OneshotSignal<NodeId>>,
-    session_state: Option<Arc<AtomicBool>>,
+    session_state: Arc<AtomicBool>,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -448,7 +448,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         protocol_id: ProtocolId,
         shutdown_signal: ShutdownSignal,
         terminate_signal: Option<OneshotSignal<NodeId>>,
-        session_state: Option<Arc<AtomicBool>>,
+        session_state: Arc<AtomicBool>,
     ) -> Self {
         Self {
             config,
@@ -562,9 +562,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.protocol_id).dec();
 
-        if let Some(session_state) = self.session_state.as_ref() {
-            session_state.store(false, Ordering::Relaxed);
-        }
+        let session_state = self.session_state.as_ref();
+        session_state.store(false, Ordering::Relaxed);
 
         if let Err(err) = self.framed.close().await {
             debug!(

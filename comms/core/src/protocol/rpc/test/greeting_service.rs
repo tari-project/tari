@@ -406,7 +406,7 @@ impl GreetingClient {
             framed,
             Self::PROTOCOL_NAME.into(),
             Default::default(),
-            Some(Arc::new(AtomicBool::new(true))),
+            Arc::new(AtomicBool::new(true)),
         )
         .await?;
         Ok(Self { inner })
