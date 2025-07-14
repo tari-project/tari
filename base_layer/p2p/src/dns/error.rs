@@ -22,8 +22,6 @@
 
 use std::io;
 
-use hickory_resolver::ResolveError;
-
 #[derive(Debug, thiserror::Error)]
 pub enum DnsClientError {
     #[error("Proto error: {0}")]
@@ -32,8 +30,6 @@ pub enum DnsClientError {
     Timeout,
     #[error("Failed to parse name server string")]
     NameServerParseFailed,
-    #[error("Resolve error: {0}")]
-    ResolveError(#[from] ResolveError),
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
     #[error("System config has no DNS servers configured")]

@@ -1124,6 +1124,14 @@ criteria = "safe-to-deploy"
 version = "0.25.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.hickory-proto]]
+version = "0.26.0-alpha.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.hickory-resolver]]
+version = "0.26.0-alpha.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.hidapi]]
 version = "2.6.3"
 criteria = "safe-to-deploy"

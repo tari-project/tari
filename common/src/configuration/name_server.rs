@@ -35,12 +35,12 @@ pub enum DnsNameServer {
     System,
     Custom {
         addr: SocketAddr,
-        dns_name: Option<String>,
+        dns_name: String,
     },
 }
 
 impl DnsNameServer {
-    pub fn custom(addr: SocketAddr, dns_name: Option<String>) -> Self {
+    pub fn custom(addr: SocketAddr, dns_name: String) -> Self {
         Self::Custom { addr, dns_name }
     }
 }
@@ -49,14 +49,8 @@ impl Display for DnsNameServer {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DnsNameServer::System => write!(f, "system"),
-            DnsNameServer::Custom {
-                addr,
-                dns_name: Some(dns_name),
-            } => {
+            DnsNameServer::Custom { addr, dns_name } => {
                 write!(f, "{}/{}", addr, dns_name)
-            },
-            DnsNameServer::Custom { addr, .. } => {
-                write!(f, "{}", addr)
             },
         }
     }
@@ -79,10 +73,10 @@ impl FromStr for DnsNameServer {
         if addr == "system" {
             return Ok(Self::System);
         }
-        let dns_name = split.next();
+        let dns_name = split.next().unwrap_or("");
         Ok(Self::Custom {
             addr: addr.parse()?,
-            dns_name: dns_name.map(ToString::to_string),
+            dns_name: dns_name.to_string(),
         })
     }
 }
@@ -99,7 +93,7 @@ mod test {
         let ipv4 = Ipv4Addr::new(127, 0, 0, 1);
         let ip = IpAddr::V4(ipv4);
         let socket = SocketAddr::new(ip, 8080);
-        let dns = DnsNameServer::custom(socket, Some(String::from("my_dns")));
+        let dns = DnsNameServer::custom(socket, String::from("my_dns"));
 
         // test formatting
         assert_eq!(format!("{}", dns), "127.0.0.1:8080/my_dns");
@@ -121,7 +115,7 @@ mod test {
         let ipv4 = Ipv4Addr::new(127, 0, 0, 1);
         let ip = IpAddr::V4(ipv4);
         let socket = SocketAddr::new(ip, 8080);
-        let dns = DnsNameServer::custom(socket, Some(String::from("my_dns")));
+        let dns = DnsNameServer::custom(socket, String::from("my_dns"));
         let parsed = dns.to_string().parse::<DnsNameServer>().unwrap();
         assert_eq!(dns, parsed);
 

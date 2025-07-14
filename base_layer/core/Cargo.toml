@@ -98,7 +98,7 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
     "keccak",
 ] }
 dirs-next = "1.0.2"
-hickory-proto = { version = "0.25.2" }
+hickory-proto = { version = "0.26.0-alpha.1" }
 anyhow = "1.0.53"
 jmt = { version = "0.11.0", features = ["mocks"] }
 url = "2.5.4"
