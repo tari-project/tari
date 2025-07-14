@@ -18,25 +18,25 @@ Analyze base node LMDB database usage:
 
 ```bash
 # Basic usage with default table output
-minotari_util nodedbstats
+minotari_utils nodedbstats
 
 # Specify custom database path
-minotari_util nodedbstats --db-path /path/to/tari/data/base_node/db
+minotari_utils nodedbstats --db-path /path/to/tari/data/base_node/db
 
 # JSON output format
-minotari_util nodedbstats --format json
+minotari_utils nodedbstats --format json
 
 # CSV output format
-minotari_util nodedbstats --format csv
+minotari_utils nodedbstats --format csv
 
 # Show only top 10 databases by size
-minotari_util nodedbstats --top 10
+minotari_utils nodedbstats --top 10
 
 # Sort by number of entries
-minotari_util nodedbstats --sort-by entries
+minotari_utils nodedbstats --sort-by entries
 
 # Export to file
-minotari_util nodedbstats --export stats.json --format json
+minotari_utils nodedbstats --export stats.json --format json
 ```
 
 ### Output Information
@@ -86,17 +86,17 @@ The tool is designed to be extensible for additional utilities:
 
 ```bash
 # Get database statistics for mainnet
-minotari_util --network mainnet nodedbstats
+minotari_utils --network mainnet nodedbstats
 
 # Analyze specific database path with custom output
-minotari_util nodedbstats \
+minotari_utils nodedbstats \
   --db-path /custom/path/db \
   --format table \
   --sort-by size \
   --top 15
 
 # Export full stats to JSON for analysis
-minotari_util nodedbstats \
+minotari_utils nodedbstats \
   --format json \
   --export analysis.json \
   --include-detailed

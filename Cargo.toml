@@ -40,7 +40,7 @@ members = [
     "applications/minotari_miner",
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
-    "applications/minotari_util",
+    "applications/minotari_utils",
     "integration_tests",
     "hashing",
 ]

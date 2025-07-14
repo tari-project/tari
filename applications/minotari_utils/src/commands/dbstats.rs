@@ -29,9 +29,8 @@ use anyhow::{anyhow, Result};
 use bytesize::ByteSize;
 use clap::Args;
 use csv;
-use rusqlite::Connection;
-
 use lmdb_zero::{Database, DatabaseOptions, ReadTransaction};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tabled::{settings::Style, Table, Tabled};
 use tari_core::chain_storage::{create_readonly_lmdb_environment, get_all_database_names};
@@ -188,19 +187,23 @@ pub struct AllDatabasesOutput {
     pub sqlite_details: Vec<(String, SqliteStatsOutput)>, // Path and detailed SQLite stats if requested
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn format_size(size: &usize) -> String {
     ByteSize(*size as u64).to_string()
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn format_size_u64(size: &u64) -> String {
     ByteSize(*size).to_string()
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn format_u64(value: &u64) -> String {
     value.to_string()
 }
 
 impl DbStatsArgs {
+    #[allow(clippy::too_many_lines)]
     pub fn execute(self, cli: &Cli) -> Result<()> {
         let _config = AppConfig::from_cli(cli)?;
 
@@ -431,6 +434,8 @@ fn scan_directory(dir: &Path, base_dir: &Path, databases: &mut Vec<ComponentData
                 total_size: size,
                 path: path.to_string_lossy().to_string(),
             });
+        } else {
+            // clippy
         }
     }
 
@@ -465,6 +470,7 @@ fn get_directory_size(dir: &Path) -> Result<u64> {
             total_size += path.metadata()?.len();
         } else if path.is_dir() {
             total_size += get_directory_size(&path)?;
+        } else { // clippy
         }
     }
 
@@ -632,10 +638,10 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
         .map(|t| t.name.clone())
         .unwrap_or_else(|| "N/A".to_string());
 
-    let avg_rows_per_table = if !tables.is_empty() {
-        total_rows / tables.len() as u64
-    } else {
+    let avg_rows_per_table = if tables.is_empty() {
         0
+    } else {
+        total_rows / tables.len() as u64
     };
 
     let summary = SqliteSummary {
