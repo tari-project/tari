@@ -98,7 +98,7 @@ use std::{
 
 use fs2::FileExt;
 use jmt::{storage::TreeWriter, JellyfishMerkleTree, KeyHash};
-use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
+use lmdb_zero::{open, ConstTransaction, Database, EnvBuilder, Environment, ReadTransaction, WriteTransaction};
 use log::*;
 use primitive_types::{U256, U512};
 use serde::{Deserialize, Serialize};
@@ -248,6 +248,46 @@ const LMDB_DB_JMT_VALUE_DATA: &str = "jmt_value_data";
 const LMDB_DB_JMT_NODE_DATA: &str = "jmt_node_data";
 const LMDB_DB_JMT_UNIQUE_KEY_DATA: &str = "jmt_unique_key_data";
 
+/// Returns the list of all LMDB database names used by Tari.
+/// This is the authoritative source for database names to avoid duplication.
+pub fn get_all_database_names() -> Vec<&'static str> {
+    vec![
+        LMDB_DB_METADATA,
+        LMDB_DB_HEADERS,
+        LMDB_DB_HEADER_ACCUMULATED_DATA,
+        LMDB_DB_BLOCK_ACCUMULATED_DATA,
+        LMDB_DB_BLOCK_HASHES,
+        LMDB_DB_UTXOS,
+        LMDB_DB_INPUTS,
+        LMDB_DB_TXOS_HASH_TO_INDEX,
+        LMDB_DB_KERNELS,
+        LMDB_DB_KERNEL_EXCESS_INDEX,
+        LMDB_DB_KERNEL_EXCESS_SIG_INDEX,
+        LMDB_DB_KERNEL_MMR_SIZE_INDEX,
+        LMDB_DB_UTXO_COMMITMENT_INDEX,
+        LMDB_DB_CONTRACT_ID_INDEX,
+        LMDB_DB_UNIQUE_ID_INDEX,
+        LMDB_DB_PAYREF_TO_OUTPUT_INDEX,
+        LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX,
+        LMDB_DB_ORPHANS,
+        LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA,
+        LMDB_DB_MONERO_SEED_HEIGHT,
+        LMDB_DB_MONERO_SEED_HEIGHT_INDEX,
+        LMDB_DB_ORPHAN_CHAIN_TIPS,
+        LMDB_DB_ORPHAN_PARENT_MAP_INDEX,
+        LMDB_DB_BAD_BLOCK_LIST,
+        LMDB_DB_REORGS,
+        LMDB_DB_VALIDATOR_NODES,
+        LMDB_DB_VALIDATOR_NODES_ACTIVATION,
+        LMDB_DB_VALIDATOR_NODES_EXIT,
+        LMDB_DB_TEMPLATE_REGISTRATIONS,
+        LMDB_DB_UTXO_SMT,
+        LMDB_DB_JMT_VALUE_DATA,
+        LMDB_DB_JMT_NODE_DATA,
+        LMDB_DB_JMT_UNIQUE_KEY_DATA,
+    ]
+}
+
 /// HeaderHash(32), mmr_pos(8), hash(32)
 type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
@@ -304,6 +344,46 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
     debug!(target: LOG_TARGET, "LMDB database creation successful");
 
     Ok((lmdb_store, file_lock))
+}
+
+/// Create a simple read-only LMDB environment for basic statistics.
+/// This opens the environment directly without trying to set up databases, avoiding permission issues.
+pub fn create_readonly_lmdb_environment<P: AsRef<Path>>(path: P) -> Result<Arc<Environment>, ChainStorageError> {
+    let path_ref = path.as_ref();
+    debug!(target: LOG_TARGET, "Opening LMDB environment in read-only mode at {:?}", path_ref);
+
+    if !path_ref.exists() {
+        return Err(ChainStorageError::CriticalError(format!(
+            "Database path does not exist: {}",
+            path_ref.display()
+        )));
+    }
+
+    // Open LMDB environment directly in read-only mode (like the original working approach)
+    let path_str = path_ref
+        .to_str()
+        .ok_or_else(|| ChainStorageError::CriticalError("Invalid path".to_string()))?;
+
+    let env = unsafe {
+        let mut builder = EnvBuilder::new()
+            .map_err(|err| ChainStorageError::CriticalError(format!("Failed to create EnvBuilder: {}", err)))?;
+        builder
+            .set_maxdbs(50)
+            .map_err(|err| ChainStorageError::CriticalError(format!("Failed to set maxdbs: {}", err)))?;
+        let flags = open::NOLOCK | open::RDONLY | open::NOTLS;
+        builder.open(path_str, flags, 0o644).map_err(|err| {
+            ChainStorageError::CriticalError(format!(
+                "Could not open LMDB environment in read-only mode: {} (path: {})",
+                err,
+                path_ref.display()
+            ))
+        })?
+    };
+
+    let env = Arc::new(env);
+
+    debug!(target: LOG_TARGET, "LMDB read-only environment access successful");
+    Ok(env)
 }
 
 pub fn create_lmdb_database<P: AsRef<Path>>(

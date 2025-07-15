@@ -114,9 +114,10 @@ impl BaseNodeWalletClient for Client {
         }
     }
 
-    fn is_online(&self) -> bool {
+    async fn is_online(&self) -> bool {
         self.last_latency
-            .blocking_read()
+            .read()
+            .await
             .map(|latency| latency.1.elapsed() < std::time::Duration::from_secs(60))
             .unwrap_or(false)
     }

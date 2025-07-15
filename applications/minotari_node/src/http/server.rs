@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{get, post},
     Extension,
     Router,
@@ -74,7 +75,10 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .route("/transactions", get(handler::transaction_query::handle::<B>))
             .route("/sync_utxos_by_block", get(handler::sync_utxos_by_block::handle::<B>))
             .route("/get_utxos_by_block", get(handler::get_utxos_by_block::handle::<B>))
-            .route("/json_rpc", post(handler::json_rpc::handle::<B>))
+            .route(
+                "/json_rpc",
+                post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::max(4096)),
+            )
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
             .layer(Extension(self.mempool_handle.clone()));

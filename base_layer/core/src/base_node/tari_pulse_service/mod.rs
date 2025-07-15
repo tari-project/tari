@@ -332,6 +332,7 @@ async fn check_health(
     let results = Arc::new(RwLock::new(Vec::new()));
     let peers = node_comms.get_seeds().await.unwrap_or_else(|_| vec![]);
     let mut handles = vec![];
+    trace!(target: LOG_TARGET, "check_health started contacting {} seed peers", peers.len());
     for peer in &peers {
         let result_clone = results.clone();
         let mut result = LivenessCheckResult {
@@ -343,6 +344,7 @@ async fn check_health(
         let mut discovery = node_discovery.clone();
         let mut liveness_events = liveness_handle.get_event_stream();
         let mut liveness = liveness_handle.clone();
+        let mut comms = node_comms.clone();
         handles.push(task::spawn(async move {
             let start = Instant::now();
             if discovery
@@ -371,20 +373,16 @@ async fn check_health(
                     }
                 }
             }
+            if let Ok(Some(mut conn)) = comms.get_connection(result.peer.clone()).await {
+                if let Err(err) = conn.disconnect_if_unused(Minimized::No, 0, 2, "Health check").await {
+                    warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", result.peer, err);
+                }
+            }
             (*result_clone).write().await.push(result);
         }));
     }
     futures::future::join_all(handles).await;
     let inner_result = (*(*results).read().await).clone();
     notify_comms_health.send(inner_result).expect("Channel should be open");
-
-    // Only disconnect seed connections that were created as a result of the health check when the health check is
-    // complete and out of scope, or any seed connections that are not in use anymore.
-    for peer in &peers {
-        if let Ok(Some(mut conn)) = node_comms.get_connection(peer.node_id.clone()).await {
-            if let Err(err) = conn.disconnect_if_unused(Minimized::No, "Health check").await {
-                warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", peer.node_id, err);
-            }
-        }
-    }
+    trace!(target: LOG_TARGET, "check_health ended");
 }

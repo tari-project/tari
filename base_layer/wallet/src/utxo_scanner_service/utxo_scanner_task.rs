@@ -216,7 +216,7 @@ where
             // wallet birthday
             self.resources.db.clear_scanned_blocks()?;
             let wallet_birthday = match self.resources.db.get_wallet_type()? {
-                Some(WalletType::ProvidedKeys(wallet)) => wallet.birthday,
+                Some(WalletType::ProvidedKeys(wallet)) => Some(wallet.birthday.unwrap_or_default()),
                 _ => None,
             };
             let scanning_start_height_hash = self

@@ -1311,7 +1311,7 @@ async fn disconnect_if_unused_with_timeout(
 ) -> Result<(), PeerConnectionError> {
     match tokio::time::timeout(
         PEER_DISCONNECT_TIMEOUT,
-        connection.disconnect_if_unused(minimized, requester),
+        connection.disconnect_if_unused(minimized, 0, 0, requester),
     )
     .await
     {
