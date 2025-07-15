@@ -248,7 +248,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
         let connectivity = self.wallet.wallet_connectivity.clone();
-        let status = connectivity.get_connectivity_status();
+        let status = connectivity.get_connectivity_status().await;
         Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
     }
 
