@@ -334,9 +334,10 @@ impl CompletedTransaction {
 
         let fee_per_gram = if weight_in_grams > 0 {
             let fee_per_gram_f64 = total_fee.0 as f64 / weight_in_grams as f64;
+            // truncation from float to u64 is lossy, but we need to round up to ensure we don't underpay
             #[allow(clippy::cast_possible_truncation)]
-            let fee_per_gram_u64 = fee_per_gram_f64.round() as u64;
-            MicroMinotari::from(fee_per_gram_u64)
+            let fee_per_gram_u64 = fee_per_gram_f64.ceil() as u64;
+            MicroMinotari::from(fee_per_gram_u64.max(1))
         } else {
             MicroMinotari::from(1)
         };
