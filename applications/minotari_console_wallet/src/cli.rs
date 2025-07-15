@@ -225,15 +225,15 @@ pub struct ReplaceByFeeArgs {
     #[clap(short, long)]
     pub tx_id: u64,
     #[clap(short, long)]
-    pub new_fee_per_gram: MicroMinotari,
+    pub fee_increase: MicroMinotari,
 }
 
 #[derive(Debug, Args, Clone)]
 pub struct UserPayForFeeArgs {
     #[clap(short, long)]
     pub tx_id: u64,
+    pub fee: MicroMinotari,
     pub destination: TariAddress,
-    pub amount: MicroMinotari,
 }
 
 #[derive(Debug, Args, Clone)]

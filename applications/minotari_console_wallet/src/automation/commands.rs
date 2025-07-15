@@ -1377,7 +1377,7 @@ pub async fn command_runner(
             },
             ReplaceByFee(args) => {
                 match transaction_service
-                    .replace_by_fee(args.tx_id.into(), args.new_fee_per_gram)
+                    .replace_by_fee(args.tx_id.into(), args.fee_increase)
                     .await
                 {
                     Ok(tx_id) => {
@@ -1393,7 +1393,7 @@ pub async fn command_runner(
             },
             UserPayForFee(args) => {
                 match transaction_service
-                    .user_pay_for_fee(args.tx_id.into(), args.destination, args.amount)
+                    .user_pay_for_fee(args.tx_id.into(), args.destination, args.fee)
                     .await
                 {
                     Ok(tx_id) => {

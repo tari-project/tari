@@ -34,18 +34,15 @@ use tari_common_types::{
     types::{BlockHash, CompressedCommitment, FixedHash, PrivateKey, Signature},
 };
 use tari_core::{
-    borsh::SerializedSize,
     consensus::ConsensusManager,
-    covenants::Covenant,
     transactions::{
         fee::Fee,
         tari_amount::MicroMinotari,
-        transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction},
+        transaction_components::{payment_id::PaymentId, Transaction},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_script::TariScript;
 
 use crate::transaction_service::error::TransactionStorageError;
 
@@ -259,7 +256,16 @@ impl CompletedTransaction {
     ///
     /// # Notes
     /// Calculates actual features and scripts sizes from the original transaction outputs,
-    /// then converts total fee to fee_per_gram using floating point division to avoid truncation
+    /// then converts total fee to fee_per_gram using floating point division to avoid truncation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `TransactionStorageError::FailedToCalculateTransactionFee` if:
+    /// - `total_fee` is zero
+    /// - `num_inputs` is zero
+    /// - `num_outputs` is zero
+    /// - The transaction has no outputs (`self.transaction.body.outputs().len()` is zero)
+    /// - Failed to calculate features and scripts size from the original transaction
     pub fn calculate_fee_per_gram_from_total_fee(
         &self,
         total_fee: MicroMinotari,
@@ -267,11 +273,36 @@ impl CompletedTransaction {
         num_inputs: usize,
         num_outputs: usize,
     ) -> Result<(u64, MicroMinotari), TransactionStorageError> {
+        // Check for zero values that would cause division by zero or invalid calculations
+        if total_fee == MicroMinotari::zero() {
+            return Err(TransactionStorageError::FailedToCalculateTransactionFee(
+                "Total fee cannot be zero".to_string(),
+            ));
+        }
+
+        if num_inputs == 0 {
+            return Err(TransactionStorageError::FailedToCalculateTransactionFee(
+                "Number of inputs cannot be zero".to_string(),
+            ));
+        }
+
+        if num_outputs == 0 {
+            return Err(TransactionStorageError::FailedToCalculateTransactionFee(
+                "Number of outputs cannot be zero".to_string(),
+            ));
+        }
+
+        let original_outputs = self.transaction.body.outputs();
+        if original_outputs.is_empty() {
+            return Err(TransactionStorageError::FailedToCalculateTransactionFee(
+                "Transaction must have at least one output".to_string(),
+            ));
+        }
+
         let consensus_constants = consensus_manager.consensus_constants(0);
         let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
 
         // Calculate average features and scripts size from actual transaction outputs
-        let original_outputs = self.transaction.body.outputs();
         let total_features_and_scripts_size: Result<usize, std::io::Error> = original_outputs
             .iter()
             .map(|output| output.get_features_and_scripts_size())
@@ -285,27 +316,7 @@ impl CompletedTransaction {
         })?;
 
         // Calculate average size per output from original transaction
-        let avg_features_and_scripts_size_per_output = if original_outputs.is_empty() {
-            // Fallback to default if no outputs (shouldn't happen, but just in case)
-            let default_output_features_size = OutputFeatures::default().get_serialized_size().map_err(|e| {
-                TransactionStorageError::FailedToCalculateTransactionFee(format!(
-                    "Failed to serialize OutputFeatures: {}",
-                    e
-                ))
-            })?;
-            let default_script_size = TariScript::default().get_serialized_size().map_err(|e| {
-                TransactionStorageError::FailedToCalculateTransactionFee(format!(
-                    "Failed to serialize TariScript: {}",
-                    e
-                ))
-            })?;
-            let default_covenant_size = Covenant::new().get_serialized_size().map_err(|e| {
-                TransactionStorageError::FailedToCalculateTransactionFee(format!("Failed to serialize Covenant: {}", e))
-            })?;
-            default_output_features_size + default_script_size + default_covenant_size
-        } else {
-            total_features_and_scripts_size / original_outputs.len()
-        };
+        let avg_features_and_scripts_size_per_output = total_features_and_scripts_size / original_outputs.len();
 
         // Apply rounding and multiply by number of outputs for new transaction
         let features_and_scripts_size = fee_calculator
@@ -327,7 +338,7 @@ impl CompletedTransaction {
             let fee_per_gram_u64 = fee_per_gram_f64.round() as u64;
             MicroMinotari::from(fee_per_gram_u64)
         } else {
-            MicroMinotari::zero()
+            MicroMinotari::from(1)
         };
 
         Ok((weight_in_grams, fee_per_gram))

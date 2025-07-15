@@ -2141,10 +2141,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(index, transfer_with_id)| -> Result<_, String> {
-                let dest = transfer_with_id
-                    .recipient
-                    .ok_or(format!("Destination address is missing at index {}", index))?;
-                let address = TariAddress::from_str(&dest.address)
+                let dest = transfer_with_id.destination;
+                let address = TariAddress::from_str(&dest)
                     .map_err(|_| format!("Destination address at index {} is malformed", index))?;
                 Ok((address, transfer_with_id.fee, transfer_with_id.tx_id))
             })

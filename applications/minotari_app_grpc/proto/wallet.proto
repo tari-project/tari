@@ -1710,8 +1710,8 @@ message TxOutputsToSpendTransfer {
     uint64 tx_id = 1;
     // Fee to pay for the transaction in microTari.
     uint64 fee = 2;
-    // Amount and fee_per_gram are ignored. These values will be calculated automatically.
-    PaymentRecipient recipient = 3;
+    // Base58 Tari address of the recipient.
+    string destination = 3;
 }
 
 message UserPayForFeeResponse {

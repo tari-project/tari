@@ -1557,6 +1557,15 @@ impl TransactionServiceHandle {
         }
     }
 
+    /// Create a new transaction to pay for the fees of an existing transaction
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the transaction
+    /// * `destination` - The destination address to receive remaining transaction outputs
+    /// * `fee` - The fee amount to pay for this transaction
+    ///
+    /// # Returns
+    /// The new transaction ID or an error
     pub async fn user_pay_for_fee(
         &mut self,
         tx_id: TxId,

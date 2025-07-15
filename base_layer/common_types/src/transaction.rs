@@ -78,7 +78,8 @@ impl TransactionStatus {
             self,
             TransactionStatus::MinedUnconfirmed |
                 TransactionStatus::MinedConfirmed |
-                TransactionStatus::Coinbase |
+                TransactionStatus::CoinbaseConfirmed |
+                TransactionStatus::CoinbaseUnconfirmed |
                 TransactionStatus::OneSidedConfirmed |
                 TransactionStatus::OneSidedUnconfirmed
         )

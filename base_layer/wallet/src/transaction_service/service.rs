@@ -4271,115 +4271,43 @@ where
             return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
         }
 
-        // Filter outputs based on transaction direction
-        let filtered_output_hashes: Vec<FixedHash> = match original_transaction.direction {
-            TransactionDirection::Inbound => {
-                // If we're receiving, include outputs that are sent to us
-                debug!(
-                    target: LOG_TARGET,
-                    "user-pay-for-fee: Inbound transaction - filtering {} received outputs",
-                    original_transaction.received_output_hashes.len()
-                );
-                original_transaction.received_output_hashes.clone()
-            },
-            TransactionDirection::Outbound => {
-                // If we're sending, include change outputs
-                debug!(
-                    target: LOG_TARGET,
-                    "user-pay-for-fee: Outbound transaction - filtering {} change outputs",
-                    original_transaction.change_output_hashes.len()
-                );
-                original_transaction.change_output_hashes.clone()
-            },
-            TransactionDirection::Unknown => {
-                // Fallback to all outputs if direction is unknown
-                let all_outputs: Vec<FixedHash> = original_transaction
-                    .transaction
-                    .body
-                    .outputs()
-                    .iter()
-                    .map(|output| output.hash())
-                    .collect();
-                debug!(
-                    target: LOG_TARGET,
-                    "user-pay-for-fee: Unknown transaction direction - using all {} outputs",
-                    all_outputs.len()
-                );
-                all_outputs
-            },
-        };
-
-        // Convert filtered hashes to CompressedCommitments by finding matching outputs
-        let original_outputs: Vec<CompressedCommitment> = original_transaction
+        let all_outputs = original_transaction
             .transaction
             .body
             .outputs()
             .iter()
-            .filter(|output| filtered_output_hashes.contains(&output.hash()))
-            .map(|output| output.commitment().to_owned())
-            .collect();
-
-        // Calculate total amount from original outputs by decrypting their encrypted data
+            .collect::<Vec<_>>();
+        let mut spendable_outputs = Vec::new();
         let mut total_amount = MicroMinotari::zero();
-        let view_key = match self
+        let view_key = self
             .resources
             .transaction_key_manager_service
             .get_private_view_key()
-            .await
-        {
-            Ok(key) => key,
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "user-pay-for-fee: Could not get private view key: {}",
-                    e
-                );
-                return Err(TransactionServiceError::KeyManagerServiceError(e));
-            },
-        };
+            .await?;
 
-        // Find the actual outputs from the transaction and decrypt their amounts
-        for commitment in &original_outputs {
-            if let Some(output) = original_transaction
-                .transaction
-                .body
-                .outputs()
-                .iter()
-                .find(|output| output.commitment() == commitment)
-            {
-                match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
-                    Ok((amount, _, _)) => {
-                        total_amount += amount;
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "user-pay-for-fee: Could not decrypt amount for commitment {:?}: {}",
-                            commitment,
-                            e
-                        );
-                    },
-                }
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "user-pay-for-fee: Could not find transaction output for commitment {:?}",
-                    commitment
-                );
+        // only those outputs that can be decoded are spendable and can be used as inputs
+        for output in all_outputs {
+            match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
+                Ok((amount, _, _)) => {
+                    total_amount += amount;
+                    spendable_outputs.push(output.commitment().clone());
+                },
+                Err(_) => {
+                    debug!(target: LOG_TARGET, "Output {:?} not decryptable; skipping.", output.commitment());
+                },
             }
         }
 
-        let calculated_amount = total_amount;
         debug!(
             target: LOG_TARGET,
             "user-pay-for-fee: Filtered {} outputs from {} total outputs for transaction {}, total amount: {}",
-            original_outputs.len(),
+            spendable_outputs.len(),
             original_transaction.transaction.body.outputs().len(),
             tx_id,
-            calculated_amount
+            total_amount
         );
 
-        let num_inputs = original_outputs.len();
+        let num_inputs = spendable_outputs.len();
         let num_outputs = 2; // destination + change
         let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
             fee,
@@ -4400,8 +4328,8 @@ where
         let new_tx_id = self
             .send_one_sided_transaction(
                 destination,
-                calculated_amount,
-                UtxoSelectionCriteria::must_include(original_outputs),
+                total_amount,
+                UtxoSelectionCriteria::must_include(spendable_outputs),
                 OutputFeatures::default(),
                 fee_per_gram,
                 original_transaction.payment_id,

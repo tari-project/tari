@@ -3247,20 +3247,10 @@ async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String
     let wallet_tx_ids = world.wallet_tx_ids.get(&sender_wallet_address).unwrap();
     let tx_id = *wallet_tx_ids.last().unwrap();
 
-    let payment_recipient = PaymentRecipient {
-        address: receiver_wallet_address.clone(),
-        amount: 0,       // this valued will be calculated based on outputs
-        fee_per_gram: 0, // this valued will be calculated based on transaction target fee
-        payment_type: 0, // standard transaction
-        raw_payment_id: PaymentId::open_from_string(&format!("Fee payment for tx {}", tx_id), TxType::PaymentToOther)
-            .to_bytes(),
-        user_payment_id: None,
-    };
-
     let transfer_with_tx_id = TxOutputsToSpendTransfer {
         tx_id,
         fee,
-        recipient: Some(payment_recipient),
+        destination: receiver_wallet_address.clone(),
     };
     let user_pay_for_fee_req = UserPayForFeeRequest {
         recipients: vec![transfer_with_tx_id],
