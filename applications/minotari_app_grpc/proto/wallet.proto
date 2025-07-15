@@ -992,7 +992,7 @@ service Wallet {
 
   // Creates a transaction with a template registration output
   rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
-  
+
   // Signs a message using the wallet's node identity private key.
   //
   // The `SignMessage` call creates a Schnorr signature over a message using the wallet's node identity private key.
@@ -1692,7 +1692,7 @@ message GetFeePerGramStatsResponse {
 message ReplaceByFeeRequest {
   // The transaction id of the transaction to replace
   uint64 transaction_id = 1;
-  // The amount to increase the fee by in microTari. It cannot be zero.
+  // The amount to increase the fee by in microTari. Must be greater than zero.
   uint64 fee_increase = 2;
 }
 
