@@ -58,13 +58,11 @@ use tari_common_types::{
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    borsh::SerializedSize,
     consensus::ConsensusManager,
     covenants::Covenant,
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     proto::base_node as base_node_proto,
     transactions::{
-        fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
@@ -3964,40 +3962,6 @@ where
         Ok(())
     }
 
-    /// Get transactions that have been broadcast but not yet mined
-    /// Returns transactions with status 'Broadcast' that are not cancelled
-    pub fn get_broadcast_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
-        let broadcast_transactions = self.db.get_transactions_to_be_broadcast()?;
-        let filtered_transactions = broadcast_transactions
-            .into_iter()
-            .filter(|tx| tx.status == TransactionStatus::Broadcast)
-            .collect();
-        Ok(filtered_transactions)
-    }
-
-    /// Extract input commitments from a CompletedTransaction
-    /// This is useful when you need to get the input commitments from a broadcast transaction
-    /// Returns only the commitments that have full data (not compact/hash-only inputs)
-    pub fn get_input_commitments_from_completed_transaction(
-        &self,
-        transaction: &CompletedTransaction,
-    ) -> Result<Vec<CompressedCommitment>, TransactionServiceError> {
-        let commitments: Vec<CompressedCommitment> = transaction
-            .transaction
-            .body
-            .inputs()
-            .iter()
-            .filter_map(|input| match input.commitment() {
-                Ok(commitment) => Some(commitment.clone()),
-                Err(_) => {
-                    // Skip compact inputs that don't have commitment data
-                    None
-                },
-            })
-            .collect();
-        Ok(commitments)
-    }
-
     /// Handle the final clean up after a Transaction Broadcast protocol completes
     fn complete_transaction_broadcast_protocol(
         &mut self,
@@ -4228,14 +4192,18 @@ where
         let original_amount = original_transaction.amount;
         let payment_id = original_transaction.payment_id.clone();
 
-        let original_inputs = self.get_input_commitments_from_completed_transaction(&original_transaction)?;
+        let original_inputs = original_transaction.get_input_commitments_from_completed_transaction()?;
         let fee = original_transaction.fee + fee_increase;
 
         // Calculate transaction weight and fee_per_gram from total fee using original transaction
         let num_inputs = original_inputs.len();
         let num_outputs = original_transaction.transaction.body().outputs().len();
-        let (weight_in_grams, fee_per_gram) =
-            self.calculate_fee_per_gram_from_total_fee(fee, &original_transaction, num_inputs, num_outputs)?;
+        let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
+            fee,
+            &self.resources.consensus_manager,
+            num_inputs,
+            num_outputs,
+        )?;
 
         debug!(
             target: LOG_TARGET,
@@ -4285,100 +4253,6 @@ where
         );
 
         Ok(new_tx_id)
-    }
-
-    /// Helper function to calculate fee_per_gram from total fee and original transaction
-    ///
-    /// # Parameters
-    /// - `total_fee`: The target total fee to pay for the transaction
-    /// - `original_transaction`: The original transaction to analyze for actual output sizes
-    /// - `num_inputs`: Number of transaction inputs for the new transaction
-    /// - `num_outputs`: Number of transaction outputs for the new transaction
-    ///
-    /// # Returns
-    /// A tuple of (weight_in_grams, fee_per_gram) where:
-    /// - `weight_in_grams`: The calculated transaction weight in grams
-    /// - `fee_per_gram`: The fee per gram calculated from total_fee / weight_in_grams
-    ///
-    /// # Notes
-    /// Calculates actual features and scripts sizes from the original transaction outputs,
-    /// then converts total fee to fee_per_gram using floating point division to avoid truncation
-    fn calculate_fee_per_gram_from_total_fee(
-        &self,
-        total_fee: MicroMinotari,
-        original_transaction: &CompletedTransaction,
-        num_inputs: usize,
-        num_outputs: usize,
-    ) -> Result<(u64, MicroMinotari), TransactionServiceError> {
-        let consensus_constants = self.resources.consensus_manager.consensus_constants(0);
-        let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
-
-        // Calculate average features and scripts size from actual transaction outputs
-        let original_outputs = original_transaction.transaction.body.outputs();
-        let total_features_and_scripts_size: Result<usize, std::io::Error> = original_outputs
-            .iter()
-            .map(|output| output.get_features_and_scripts_size())
-            .sum();
-
-        let total_features_and_scripts_size = total_features_and_scripts_size.map_err(|e| {
-            TransactionServiceError::InvalidMessageError(format!(
-                "Failed to calculate features and scripts size from original transaction: {}",
-                e
-            ))
-        })?;
-
-        // Calculate average size per output from original transaction
-        let avg_features_and_scripts_size_per_output = if original_outputs.is_empty() {
-            // Fallback to default if no outputs (shouldn't happen, but just in case)
-            let default_output_features_size = OutputFeatures::default().get_serialized_size().map_err(|e| {
-                TransactionServiceError::InvalidMessageError(format!("Failed to serialize OutputFeatures: {}", e))
-            })?;
-            let default_script_size = TariScript::default().get_serialized_size().map_err(|e| {
-                TransactionServiceError::InvalidMessageError(format!("Failed to serialize TariScript: {}", e))
-            })?;
-            let default_covenant_size = Covenant::new().get_serialized_size().map_err(|e| {
-                TransactionServiceError::InvalidMessageError(format!("Failed to serialize Covenant: {}", e))
-            })?;
-            default_output_features_size + default_script_size + default_covenant_size
-        } else {
-            total_features_and_scripts_size / original_outputs.len()
-        };
-
-        // Apply rounding and multiply by number of outputs for new transaction
-        let features_and_scripts_size = fee_calculator
-            .weighting()
-            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output) *
-            num_outputs;
-
-        debug!(
-            target: LOG_TARGET,
-            "Fee calculation: Original transaction had {} outputs with total features+scripts size: {} bytes, \
-            avg per output: {} bytes, estimated for {} new outputs: {} bytes",
-            original_outputs.len(),
-            total_features_and_scripts_size,
-            avg_features_and_scripts_size_per_output,
-            num_outputs,
-            features_and_scripts_size
-        );
-
-        // Use the Fee struct's weighting calculation to get transaction weight in grams
-        let weight_in_grams = fee_calculator.weighting().calculate(
-            1, // num_kernels
-            num_inputs,
-            num_outputs,
-            features_and_scripts_size,
-        );
-
-        let fee_per_gram = if weight_in_grams > 0 {
-            let fee_per_gram_f64 = total_fee.0 as f64 / weight_in_grams as f64;
-            #[allow(clippy::cast_possible_truncation)]
-            let fee_per_gram_u64 = fee_per_gram_f64.round() as u64;
-            MicroMinotari::from(fee_per_gram_u64)
-        } else {
-            MicroMinotari::zero()
-        };
-
-        Ok((weight_in_grams, fee_per_gram))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -4519,24 +4393,14 @@ where
         self.send_transaction_cancellation_senders
             .insert(new_tx_id, cancellation_sender);
 
-        debug!(
-            target: LOG_TARGET,
-            "user-pay-for-fee Amount: {:?} target fee: {:?}",
-            calculated_amount, fee
-        );
-
         let num_inputs = original_outputs.len();
         let num_outputs = 2; // destination + change
-        let (weight_in_grams, fee_per_gram) =
-            self.calculate_fee_per_gram_from_total_fee(fee, &original_transaction, num_inputs, num_outputs)?;
-
-        debug!(
-            target: LOG_TARGET,
-            "user-pay-for-fee: Transaction weight calculated: {} grams (inputs: {}, outputs: {})",
-            weight_in_grams,
+        let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
+            fee,
+            &self.resources.consensus_manager,
             num_inputs,
-            num_outputs
-        );
+            num_outputs,
+        )?;
 
         debug!(
             target: LOG_TARGET,

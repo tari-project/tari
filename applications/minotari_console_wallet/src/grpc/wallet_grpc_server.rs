@@ -2141,7 +2141,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .into_iter()
             .enumerate()
             .map(|(index, transfer_with_id)| -> Result<_, String> {
-                let dest = transfer_with_id.recipient.unwrap();
+                let dest = transfer_with_id
+                    .recipient
+                    .ok_or(format!("Destination address is missing at index {}", index))?;
                 let address = TariAddress::from_str(&dest.address)
                     .map_err(|_| format!("Destination address at index {} is malformed", index))?;
                 Ok((address, transfer_with_id.fee, transfer_with_id.tx_id))
@@ -2173,7 +2175,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?;
-                    let wallet_tx = timeout(Duration::from_millis(1000), async {
+                    let wallet_tx = timeout(Duration::from_millis(100), async {
                         loop {
                             let tx = self
                                 .get_transaction_service()

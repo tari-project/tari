@@ -67,7 +67,6 @@ impl UtxoSelectionCriteria {
         Self {
             filter: UtxoSelectionFilter::SpecificOutputs { commitments },
             ordering: UtxoSelectionOrdering::Default,
-            min_dust: 0,
             ..Default::default()
         }
     }
@@ -76,7 +75,6 @@ impl UtxoSelectionCriteria {
         Self {
             filter: UtxoSelectionFilter::MustInclude { commitments },
             ordering: UtxoSelectionOrdering::Default,
-            min_dust: 0,
             ..Default::default()
         }
     }

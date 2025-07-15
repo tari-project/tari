@@ -76,7 +76,11 @@ impl TransactionStatus {
     pub fn is_mined(&self) -> bool {
         matches!(
             self,
-            TransactionStatus::MinedUnconfirmed | TransactionStatus::MinedConfirmed
+            TransactionStatus::MinedUnconfirmed |
+                TransactionStatus::MinedConfirmed |
+                TransactionStatus::Coinbase |
+                TransactionStatus::OneSidedConfirmed |
+                TransactionStatus::OneSidedUnconfirmed
         )
     }
 

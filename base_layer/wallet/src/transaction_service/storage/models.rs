@@ -31,14 +31,21 @@ use tari_common_types::{
     payment_reference::{generate_payment_reference, PaymentReference},
     tari_address::TariAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, FixedHash, PrivateKey, Signature},
+    types::{BlockHash, CompressedCommitment, FixedHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, Transaction},
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
+use tari_core::{
+    borsh::SerializedSize,
+    consensus::ConsensusManager,
+    covenants::Covenant,
+    transactions::{
+        fee::Fee,
+        tari_amount::MicroMinotari,
+        transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction},
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
 };
+use tari_script::TariScript;
 
 use crate::transaction_service::error::TransactionStorageError;
 
@@ -235,6 +242,117 @@ impl CompletedTransaction {
             received_output_hashes: Vec::new(),
             change_output_hashes: Vec::new(),
         })
+    }
+
+    /// Helper function to calculate fee_per_gram from total fee and original transaction
+    ///
+    /// # Parameters
+    /// - `total_fee`: The target total fee to pay for the transaction
+    /// - `consensus_manager`: The consensus manager to use for calculating the transaction weight
+    /// - `num_inputs`: Number of transaction inputs for the new transaction
+    /// - `num_outputs`: Number of transaction outputs for the new transaction
+    ///
+    /// # Returns
+    /// A tuple of (weight_in_grams, fee_per_gram) where:
+    /// - `weight_in_grams`: The calculated transaction weight in grams
+    /// - `fee_per_gram`: The fee per gram calculated from total_fee / weight_in_grams
+    ///
+    /// # Notes
+    /// Calculates actual features and scripts sizes from the original transaction outputs,
+    /// then converts total fee to fee_per_gram using floating point division to avoid truncation
+    pub fn calculate_fee_per_gram_from_total_fee(
+        &self,
+        total_fee: MicroMinotari,
+        consensus_manager: &ConsensusManager,
+        num_inputs: usize,
+        num_outputs: usize,
+    ) -> Result<(u64, MicroMinotari), TransactionStorageError> {
+        let consensus_constants = consensus_manager.consensus_constants(0);
+        let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
+
+        // Calculate average features and scripts size from actual transaction outputs
+        let original_outputs = self.transaction.body.outputs();
+        let total_features_and_scripts_size: Result<usize, std::io::Error> = original_outputs
+            .iter()
+            .map(|output| output.get_features_and_scripts_size())
+            .sum();
+
+        let total_features_and_scripts_size = total_features_and_scripts_size.map_err(|e| {
+            TransactionStorageError::FailedToCalculateTransactionFee(format!(
+                "Failed to calculate features and scripts size from original transaction: {}",
+                e
+            ))
+        })?;
+
+        // Calculate average size per output from original transaction
+        let avg_features_and_scripts_size_per_output = if original_outputs.is_empty() {
+            // Fallback to default if no outputs (shouldn't happen, but just in case)
+            let default_output_features_size = OutputFeatures::default().get_serialized_size().map_err(|e| {
+                TransactionStorageError::FailedToCalculateTransactionFee(format!(
+                    "Failed to serialize OutputFeatures: {}",
+                    e
+                ))
+            })?;
+            let default_script_size = TariScript::default().get_serialized_size().map_err(|e| {
+                TransactionStorageError::FailedToCalculateTransactionFee(format!(
+                    "Failed to serialize TariScript: {}",
+                    e
+                ))
+            })?;
+            let default_covenant_size = Covenant::new().get_serialized_size().map_err(|e| {
+                TransactionStorageError::FailedToCalculateTransactionFee(format!("Failed to serialize Covenant: {}", e))
+            })?;
+            default_output_features_size + default_script_size + default_covenant_size
+        } else {
+            total_features_and_scripts_size / original_outputs.len()
+        };
+
+        // Apply rounding and multiply by number of outputs for new transaction
+        let features_and_scripts_size = fee_calculator
+            .weighting()
+            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output) *
+            num_outputs;
+
+        // Use the Fee struct's weighting calculation to get transaction weight in grams
+        let weight_in_grams = fee_calculator.weighting().calculate(
+            1, // num_kernels
+            num_inputs,
+            num_outputs,
+            features_and_scripts_size,
+        );
+
+        let fee_per_gram = if weight_in_grams > 0 {
+            let fee_per_gram_f64 = total_fee.0 as f64 / weight_in_grams as f64;
+            #[allow(clippy::cast_possible_truncation)]
+            let fee_per_gram_u64 = fee_per_gram_f64.round() as u64;
+            MicroMinotari::from(fee_per_gram_u64)
+        } else {
+            MicroMinotari::zero()
+        };
+
+        Ok((weight_in_grams, fee_per_gram))
+    }
+
+    /// Extract input commitments from a CompletedTransaction
+    /// This is useful when you need to get the input commitments from a broadcast transaction
+    /// Returns only the commitments that have full data (not compact/hash-only inputs)
+    pub fn get_input_commitments_from_completed_transaction(
+        &self,
+    ) -> Result<Vec<CompressedCommitment>, TransactionStorageError> {
+        let commitments: Vec<CompressedCommitment> = self
+            .transaction
+            .body
+            .inputs()
+            .iter()
+            .filter_map(|input| match input.commitment() {
+                Ok(commitment) => Some(commitment.clone()),
+                Err(_) => {
+                    // Skip compact inputs that don't have commitment data
+                    None
+                },
+            })
+            .collect();
+        Ok(commitments)
     }
 
     /// Create a CompletedTransaction with specified output hashes for PayRef functionality

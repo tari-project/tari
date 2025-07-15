@@ -306,6 +306,8 @@ pub enum TransactionStorageError {
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Coinbase transactions are not supported in the wallet")]
     CoinbaseNotSupported,
+    #[error("Failed to calculate transaction fee: {0}")]
+    FailedToCalculateTransactionFee(String),
 }
 
 impl From<ByteArrayError> for TransactionStorageError {

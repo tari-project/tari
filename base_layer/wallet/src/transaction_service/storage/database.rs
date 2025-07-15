@@ -539,7 +539,13 @@ where T: TransactionBackend + 'static
         let key = DbKey::CompletedTransaction(tx_id);
         let t = match self.db.fetch(&DbKey::CompletedTransaction(tx_id)) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
-            Ok(Some(DbValue::CompletedTransaction(pt))) => Ok(pt),
+            Ok(Some(DbValue::CompletedTransaction(pt))) => {
+                if pt.status == TransactionStatus::Completed && pt.status == TransactionStatus::Broadcast {
+                    Ok(pt)
+                } else {
+                    Err(TransactionStorageError::ValueNotFound(key))
+                }
+            },
             Ok(Some(other)) => unexpected_result(key, other),
             Err(e) => log_error(key, e),
         }?;
