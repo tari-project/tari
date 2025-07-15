@@ -247,7 +247,10 @@ mod test {
         assert_eq!(&commitment, &data.output.commitment);
         data.output.verify_range_proof(&factories.range_proof).unwrap();
 
-        let (mask, value, _) = key_manager.try_output_key_recovery(&data.output, None).await.unwrap();
+        let (mask, value, _) = key_manager
+            .try_output_key_recovery(data.output.commitment(), data.output.encrypted_data(), None)
+            .await
+            .unwrap();
         assert_eq!(output.spending_key_id, mask);
         assert_eq!(output.value, value);
     }

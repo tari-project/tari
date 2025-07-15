@@ -238,8 +238,8 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
     ///
     /// The hash will be stale after a successful call to `upsert`. Do not call `unsafe_hash` directly after updating
     /// the tree.
-    pub fn upsert(&mut self, key: NodeKey, value: ValueHash) -> Result<UpdateResult, SMTError> {
-        let new_leaf = LeafNode::new(key, value);
+    pub fn upsert<K: Into<NodeKey>>(&mut self, key: K, value: ValueHash) -> Result<UpdateResult, SMTError> {
+        let new_leaf = LeafNode::new(key.into(), value);
         if self.is_empty() {
             self.root = Node::Leaf(new_leaf);
             self.size += 1;
@@ -258,12 +258,13 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
     }
 
     /// This will only add new node when it does not exist
-    pub fn insert(&mut self, key: NodeKey, value: ValueHash) -> Result<UpdateResult, SMTError> {
-        if self.get(&key)?.is_some() {
+    pub fn insert<K: Into<NodeKey>>(&mut self, key: K, value: ValueHash) -> Result<UpdateResult, SMTError> {
+        let k = key.into();
+        if self.get(&k)?.is_some() {
             return Err(SMTError::KeyExists);
         }
         // So we no know it does not exist, so lets add it.
-        self.upsert(key, value)
+        self.upsert(k, value)
     }
 
     /// Returns true if the tree contains the key `key`.
@@ -476,7 +477,7 @@ mod test {
     #[test]
     fn zero_key() {
         let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
-        let res = tree.upsert([0u8; 32].into(), [1u8; 32].into());
+        let res = tree.upsert(NodeKey::from([0u8; 32]), [1u8; 32].into());
         assert!(res.is_ok());
     }
 

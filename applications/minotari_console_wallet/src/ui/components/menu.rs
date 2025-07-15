@@ -1,7 +1,6 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use minotari_app_utilities::consts;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -40,7 +39,7 @@ impl<B: Backend> Component<B> for Menu {
 
         let version = Spans::from(vec![
             Span::styled(" Version: ", Style::default().fg(Color::White)),
-            Span::styled(consts::APP_VERSION_NUMBER, Style::default().fg(Color::Magenta)),
+            Span::styled(env!("CARGO_PKG_VERSION"), Style::default().fg(Color::Magenta)),
             Span::raw(" "),
         ]);
 

@@ -43,10 +43,8 @@ use tari_common_types::{
 };
 use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
-    net_address::{MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     tor::TorIdentity,
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsSecretKey,
     CommsNode,
     NodeIdentity,
     UnspawnedCommsNode,
@@ -99,16 +97,13 @@ use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
+use url::Url;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    client::http_client_factory::{DefaultHttpClientFactory, HttpClientFactory},
     config::WalletConfig,
-    connectivity_service::{
-        BaseNodePeerManager,
-        WalletConnectivityHandle,
-        WalletConnectivityInitializer,
-        WalletConnectivityInterface,
-    },
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
     consts,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
@@ -144,14 +139,16 @@ hash_domain!(
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
+pub struct Wallet<T, U, V, W, TKeyManagerInterface, THttpClientFactory>
+where THttpClientFactory: HttpClientFactory
+{
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub output_manager_service: OutputManagerHandle,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
-    pub wallet_connectivity: WalletConnectivityHandle,
+    pub wallet_connectivity: WalletConnectivityHandle<THttpClientFactory>,
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
@@ -166,13 +163,14 @@ pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     _w: PhantomData<W>,
 }
 
-impl<T, U, V, W, TKeyManagerInterface> Wallet<T, U, V, W, TKeyManagerInterface>
+impl<T, U, V, W, TKeyManagerInterface, THttpClientFactory> Wallet<T, U, V, W, TKeyManagerInterface, THttpClientFactory>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
     TKeyManagerInterface: SecretTransactionKeyManagerInterface,
+    THttpClientFactory: HttpClientFactory,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn start<TKeyManagerBackend: TransactionKeyManagerBackend + 'static>(
@@ -213,7 +211,11 @@ where
                 node_identity.clone(),
                 publisher,
             ))
-            .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
+            .add_initializer(OutputManagerServiceInitializer::<
+                V,
+                TKeyManagerInterface,
+                THttpClientFactory,
+            >::new(
                 config.output_manager_service_config.clone(),
                 output_manager_backend.clone(),
                 factories.clone(),
@@ -225,7 +227,12 @@ where
                 factories.clone(),
                 wallet_type.clone(),
             ))
-            .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
+            .add_initializer(TransactionServiceInitializer::<
+                U,
+                T,
+                TKeyManagerInterface,
+                THttpClientFactory,
+            >::new(
                 config.transaction_service_config.clone(),
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
@@ -251,18 +258,26 @@ where
                 config.contacts_auto_ping_interval,
                 config.contacts_online_ping_window,
             ))
-            .add_initializer(BaseNodeServiceInitializer::new(
-                config.base_node_service_config.clone(),
-                wallet_database.clone(),
-            ))
-            .add_initializer(WalletConnectivityInitializer::new(
-                config.base_node_service_config.clone(),
+            .add_initializer(BaseNodeServiceInitializer::<THttpClientFactory>::new())
+            .add_initializer(WalletConnectivityInitializer::<DefaultHttpClientFactory>::new(
+                config
+                    .http_server_url
+                    .parse()
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{}", e)))?,
+                config
+                    .fallback_http_server_url
+                    .parse()
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{}", e)))?,
             ))
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
-                factories.clone(),
                 config.network,
                 config.birthday_offset,
+                Url::parse(&config.http_server_url)
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{}", e)))?,
+                Url::parse(&config.fallback_http_server_url)
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{}", e)))?,
+                config.scanning_interval,
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -332,7 +347,7 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
-        let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+        let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
         let updater_handle = if auto_update.is_update_enabled() {
             Some(handles.expect_handle::<SoftwareUpdaterHandle>())
         } else {
@@ -393,112 +408,12 @@ where
         self.comms.to_owned().wait_until_shutdown().await;
     }
 
-    /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
-    /// monitor the base node state.
-    pub async fn set_base_node_peer(
-        &mut self,
-        public_key: CommsPublicKey,
-        address: Option<Multiaddr>,
-        backup_peers: Option<Vec<Peer>>,
-    ) -> Result<(), WalletError> {
-        info!(
-            "Wallet setting base node peer, public key: {}, net address: {:?}.",
-            public_key, address
-        );
-
-        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_peer_node_id() {
-            self.comms
-                .connectivity()
-                .remove_peer_from_allow_list(current_node)
-                .await?;
-        }
-
-        let peer_manager = self.comms.peer_manager();
-        let mut connectivity = self.comms.connectivity();
-        let mut backup_peers = backup_peers.unwrap_or_default();
-        if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
-            // Only invalidate the identity signature if addresses are different
-            if address.is_some() {
-                let add = address.unwrap();
-                if !current_peer.addresses.contains(&add) {
-                    info!(
-                        target: LOG_TARGET,
-                        "Address for base node differs from storage. Was {}, setting to {}",
-                        current_peer.addresses,
-                        add
-                    );
-
-                    current_peer.addresses.add_address(&add, &PeerAddressSource::Config);
-                    peer_manager.add_or_update_peer(current_peer.clone()).await?;
-                }
-            }
-            let mut peer_list = vec![current_peer];
-            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
-                backup_peers.remove(pos);
-            }
-            peer_list.append(&mut backup_peers);
-            self.update_allow_list(&peer_list).await?;
-            self.wallet_connectivity
-                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
-        } else {
-            let node_id = NodeId::from_key(&public_key);
-            if address.is_none() {
-                debug!(
-                    target: LOG_TARGET,
-                    "Trying to add new peer without an address",
-                );
-                return Err(WalletError::ArgumentError {
-                    argument: "set_base_node_peer, address".to_string(),
-                    value: "{Missing}".to_string(),
-                    message: "New peers need the address filled in".to_string(),
-                });
-            }
-            let peer = Peer::new(
-                public_key.clone(),
-                node_id,
-                MultiaddressesWithStats::from_addresses_with_source(vec![address.unwrap()], &PeerAddressSource::Config),
-                PeerFlags::empty(),
-                PeerFeatures::COMMUNICATION_NODE,
-                Default::default(),
-                String::new(),
-            );
-            peer_manager.add_or_update_peer(peer.clone()).await?;
-            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
-            let mut peer_list = vec![peer];
-            if let Some(pos) = backup_peers.iter().position(|p| p.public_key == public_key) {
-                backup_peers.remove(pos);
-            }
-            peer_list.append(&mut backup_peers);
-            self.update_allow_list(&peer_list).await?;
-            self.wallet_connectivity
-                .set_base_node(BaseNodePeerManager::new(0, peer_list)?);
-        }
-
-        Ok(())
-    }
-
-    async fn update_allow_list(&mut self, peer_list: &[Peer]) -> Result<(), WalletError> {
-        let mut connectivity = self.comms.connectivity();
-        let current_allow_list = connectivity.get_allow_list().await?;
-        for peer in &current_allow_list {
-            connectivity.remove_peer_from_allow_list(peer.clone()).await?;
-        }
-        for peer in peer_list {
-            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
-        }
-        Ok(())
-    }
-
-    pub async fn get_base_node_peer(&mut self) -> Option<Peer> {
-        self.wallet_connectivity.get_current_base_node_peer()
-    }
-
     pub async fn check_for_update(&self) -> Option<String> {
         let mut updater = self.updater_service.clone().unwrap();
         debug!(
             target: LOG_TARGET,
             "Checking for updates (current version: {})...",
-            env!("CARGO_PKG_VERSION").to_string()
+            env!("CARGO_PKG_VERSION")
         );
         match updater.check_for_updates().await {
             Some(update) => {

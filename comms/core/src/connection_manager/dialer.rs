@@ -523,22 +523,49 @@ where
             );
             let delay = time::sleep(backoff_duration).fuse();
             let cancel_signal = current_state.get_cancel_signal();
+
             tokio::select! {
                 _ = delay => {
-                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
-                    match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_wire_byte, config.excluded_dial_addresses.clone()).await {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[Attempt {}] Connecting to peer '{}'",
+                        current_state.num_attempts(), current_state.peer().node_id.short_str()
+                    );
+                    match Self::dial_peer(
+                        current_state,
+                        &noise_config,
+                        &current_transport,
+                        config.network_info.network_wire_byte,
+                        config.excluded_dial_addresses.clone(),
+                    )
+                    .await
+                    {
                         (state, Ok((socket, addr))) => {
-                            debug!(target: LOG_TARGET, "Dial succeeded for peer '{}' after {} attempt(s)", state.peer().node_id.short_str(), state.num_attempts());
+                            debug!(
+                                target: LOG_TARGET,
+                                "Dial succeeded for peer '{}' after {} attempt(s)",
+                                state.peer().node_id.short_str(), state.num_attempts()
+                            );
                             break (state, Ok((socket, addr)));
                         },
                         // Connection went stale, propagate error to enable starting a fresh connection
-                        (state, Err(ConnectionManagerError::NoiseHandshakeError(e))) => break (state, Err(ConnectionManagerError::NoiseHandshakeError(e))),
+                        (state, Err(ConnectionManagerError::NoiseHandshakeError(e))) => {
+                            break (state, Err(ConnectionManagerError::NoiseHandshakeError(e)))
+                        },
                         // Inflight dial was cancelled
-                        (state, Err(ConnectionManagerError::DialCancelled)) => break (state, Err(ConnectionManagerError::DialCancelled)),
+                        (state, Err(ConnectionManagerError::DialCancelled)) => {
+                            break (state, Err(ConnectionManagerError::DialCancelled))
+                        },
                         // All public addresses for this peer are excluded
-                        (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e))) => break (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e))),
+                        (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e))) => {
+                            break (state, Err(ConnectionManagerError::AllPeerAddressesAreExcluded(e)))
+                        },
                         (state, Err(err)) => {
-                            debug!(target: LOG_TARGET, "Failed to dial peer {} | Attempt {} | Error: {}", state.peer().node_id.short_str(), state.num_attempts(), err);
+                            debug!(
+                                target: LOG_TARGET,
+                                "Failed to dial peer {} | Attempt {} | Error: {}",
+                                state.peer().node_id.short_str(), state.num_attempts(), err
+                            );
                             if state.num_attempts() >= config.max_dial_attempts {
                                 break (state, Err(ConnectionManagerError::ConnectFailedMaximumAttemptsReached));
                             }
@@ -546,12 +573,16 @@ where
                             // Put the dial state and transport back for the retry
                             dial_state = Some(state);
                             transport = Some(current_transport);
-                        }
+                        },
                     }
                 },
                 // Delayed dial was cancelled
                 _ = cancel_signal => {
-                    warn!(target: LOG_TARGET, "[Attempt {}] Connection attempt cancelled for peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
+                    warn!(
+                        target: LOG_TARGET,
+                        "[Attempt {}] Connection attempt cancelled for peer '{}'",
+                        current_state.num_attempts(), current_state.peer().node_id.short_str()
+                    );
                     break (current_state, Err(ConnectionManagerError::DialCancelled));
                 }
             }
@@ -613,25 +644,37 @@ where
             let node_id = dial_state.peer().node_id.clone();
             let dial_fut = async move {
                 let mut timer = Instant::now();
-                let mut socket =
-                    transport
-                        .dial(&moved_address)
-                        .await
-                        .map_err(|err| ConnectionManagerError::TransportError {
+
+                let socket_res =
+                    tokio::time::timeout(noise_config.dial_timeout(), transport.dial(&moved_address)).await;
+                let mut socket = match socket_res {
+                    Ok(Ok(value)) => value,
+                    Ok(Err(err)) => {
+                        return Err(ConnectionManagerError::TransportError {
                             address: moved_address.to_string(),
                             details: err.to_string(),
-                        })?;
+                        })
+                    },
+                    Err(_) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Dial - Timed out while dialing peer '{}' on address '{}' after {:.2?}",
+                            node_id.short_str(),
+                            moved_address,
+                            noise_config.dial_timeout(),
+                        );
+                        return Err(ConnectionManagerError::DialTimeout {
+                            address: moved_address.to_string(),
+                            timeout: format!("{:.2?}", noise_config.dial_timeout()),
+                        });
+                    },
+                };
                 let initial_dial_time = timer.elapsed();
 
                 trace!(
-                    "Dial - Dialed peer: {} on address: {} on tcp after: {}",
-                    node_id.short_str(),
-                    moved_address,
-                    timer.elapsed().as_millis()
-                );
-                trace!(
                     target: LOG_TARGET,
-                    "Dial - Socket established on '{}'. Performing noise upgrade protocol", moved_address
+                    "Dial - Socket established for '{}' on '{}' after {:.2?}. Performing noise upgrade protocol",
+                    node_id.short_str(), moved_address, timer.elapsed()
                 );
                 timer = Instant::now();
 

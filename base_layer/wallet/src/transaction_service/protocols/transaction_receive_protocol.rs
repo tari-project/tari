@@ -416,7 +416,7 @@ where
                                     self.id,
                                     v,
                                     e.id,
-                                    e.error.to_string()
+                                    e.error
                                 );
                             },
                         }

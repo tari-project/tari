@@ -172,9 +172,6 @@ listener_self_liveness_check_interval = 15
 # with a new session. If false, the RPC server will reject the new session and preserve the older session.
 # (default value = true).
 #pub cull_oldest_peer_rpc_connection_on_full = true
-# Listening address of the base node wallet query service.
-# Default: 0.0.0.0:9000
-# base_node_http_wallet_query_service_listen_address = "0.0.0.0:9000"
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -342,5 +339,5 @@ excluded_dial_addresses = []
 # `external_address` is optional, but if not set, then wallet wont be able to call our endpoint.
 # This address must be accessible by the wallet (on a global scale over the internet).
 [base_node.http_wallet_query_service]
-port = 9000
-external_address = "http://127.0.0.1:9000"
+#port = 9000
+#external_address = "http://127.0.0.1:9000"

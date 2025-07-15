@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     cmp::{max, min},
     collections::HashMap,
@@ -28,7 +27,7 @@ use std::{
     fs::File,
     io,
     io::{BufRead, BufReader, LineWriter, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     time::{Duration, Instant},
 };
@@ -36,11 +35,9 @@ use std::{
 use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
-use futures::FutureExt;
 use log::*;
 use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
 use minotari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::UseOutput,
@@ -60,12 +57,13 @@ use minotari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     burnt_proof::BurntProof,
     emoji::EmojiId,
+    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::TxId,
@@ -76,17 +74,10 @@ use tari_common_types::{
         HashOutput,
         PrivateKey,
         Signature,
-        UncompressedCommitment,
         UncompressedPublicKey,
         UncompressedSignature,
     },
     wallet_types::WalletType,
-};
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester},
-    multiaddr::Multiaddr,
-    peer_manager::Peer,
-    types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
@@ -109,16 +100,11 @@ use tari_core::{
             WalletOutput,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        CryptoFactories,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    dhke::DiffieHellmanSharedSecret,
-    ristretto::RistrettoSecretKey,
-};
+use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
-use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig};
+use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
@@ -157,8 +143,6 @@ use crate::{
     cli::{CliCommands, CliRecipientInfo, MakeItRainTransactionType},
     init::init_wallet,
     recovery::{get_seed_from_seed_words, wallet_recovery},
-    utils::db::{get_custom_base_node_peer_from_db, CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -200,6 +184,7 @@ pub async fn burn_tari(
     fee_per_gram: u64,
     amount: MicroMinotari,
     payment_id: PaymentId,
+    sidechain_deployment_key: Option<PrivateKey>,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
         .burn_tari(
@@ -208,6 +193,7 @@ pub async fn burn_tari(
             fee_per_gram * uT,
             payment_id,
             None,
+            sidechain_deployment_key,
         )
         .await
         .map_err(CommandError::TransactionServiceError)
@@ -366,6 +352,9 @@ pub async fn register_validator_node(
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: CompressedPublicKey,
     validator_node_signature: Signature,
+    validator_node_claim_public_key: CompressedPublicKey,
+    sidechain_deployment_key: Option<PrivateKey>,
+    epoch: VnEpoch,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
     payment_id: PaymentId,
@@ -375,6 +364,9 @@ pub async fn register_validator_node(
             amount,
             validator_node_public_key,
             validator_node_signature,
+            validator_node_claim_public_key,
+            sidechain_deployment_key,
+            epoch,
             selection_criteria,
             fee_per_gram,
             payment_id,
@@ -420,42 +412,6 @@ pub async fn coin_split(
         .await?;
 
     Ok(tx_id)
-}
-
-async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<(), CommandError> {
-    let mut connectivity = connectivity_requester.get_event_subscription();
-    print!("Waiting for connectivity... ");
-    let timeout = sleep(Duration::from_secs(30));
-    tokio::pin!(timeout);
-    let mut timeout = timeout.fuse();
-    loop {
-        tokio::select! {
-            // Wait for the first base node connection
-            Ok(ConnectivityEvent::PeerConnected(conn)) = connectivity.recv() => {
-                if conn.peer_features().is_node() {
-                    println!("✅");
-                    return Ok(());
-                }
-            },
-            () = &mut timeout => {
-                println!("❌");
-                return Err(CommandError::Comms("Timed out".to_string()));
-            }
-        }
-    }
-}
-
-async fn set_base_node_peer(
-    mut wallet: WalletSqlite,
-    public_key: CompressedPublicKey,
-    address: Multiaddr,
-) -> Result<(CommsPublicKey, Multiaddr), CommandError> {
-    println!("Setting base node peer...");
-    println!("{}::{}", public_key, address);
-    wallet
-        .set_base_node_peer(public_key.clone(), Some(address.clone()), None)
-        .await?;
-    Ok((public_key, address))
 }
 
 pub async fn discover_peer(
@@ -596,9 +552,11 @@ pub async fn make_it_rain(
                             )
                             .await
                         },
-                        MakeItRainTransactionType::BurnTari => burn_tari(tx_service, fee, amount, payment_id_clone)
-                            .await
-                            .map(|(tx_id, _)| tx_id),
+                        MakeItRainTransactionType::BurnTari => {
+                            burn_tari(tx_service, fee, amount, payment_id_clone, None)
+                                .await
+                                .map(|(tx_id, _)| tx_id)
+                        },
                     };
                     let submit_time = Instant::now();
 
@@ -614,7 +572,7 @@ pub async fn make_it_rain(
                         warn!(
                             target: LOG_TARGET,
                             "make-it-rain: Error sending transaction send stats to channel: {}",
-                            e.to_string()
+                            e
                         );
                     }
                 });
@@ -642,7 +600,7 @@ pub async fn make_it_rain(
                         "make-it-rain transaction {} ({}) error: {}",
                         send_stats.i,
                         transaction_type,
-                        e.to_string(),
+                        e,
                     );
                 },
             }
@@ -770,9 +728,7 @@ pub async fn command_runner(
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
-    let connectivity_requester = wallet.comms.connectivity();
     let key_manager_service = wallet.key_manager_service.clone();
-    let mut online = false;
 
     let mut tx_ids = Vec::new();
 
@@ -780,12 +736,6 @@ pub async fn command_runner(
     println!("Command Runner");
     println!("==============");
 
-    let (_current_index, mut peer_list) =
-        if let Some((index, list)) = wallet.wallet_connectivity.get_base_node_peer_manager_state() {
-            (index, list)
-        } else {
-            (0, vec![])
-        };
     let mut unban_peer_manager_peers = false;
 
     #[allow(clippy::enum_glob_use)]
@@ -801,17 +751,6 @@ pub async fn command_runner(
                 Err(e) => eprintln!("GetBalance error! {}", e),
             },
             DiscoverPeer(args) => {
-                if !online {
-                    match wait_for_comms(&connectivity_requester).await {
-                        Ok(..) => {
-                            online = true;
-                        },
-                        Err(e) => {
-                            eprintln!("DiscoverPeer error! {}", e);
-                            continue;
-                        },
-                    }
-                }
                 if let Err(e) = discover_peer(dht_service.clone(), args.dest_public_key.into()).await {
                     eprintln!("DiscoverPeer error! {}", e);
                 }
@@ -822,6 +761,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     PaymentId::open_from_string(&args.payment_id, TxType::Burn),
+                    None,
                 )
                 .await
                 {
@@ -1287,7 +1227,6 @@ pub async fn command_runner(
                     Ok(items) => items,
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
-                        lift_temp_ban_peers(&wallet, &mut peer_list).await;
                         return Ok(true);
                     },
                 };
@@ -1691,7 +1630,6 @@ pub async fn command_runner(
                 println!();
             },
             PreMineSpendTx(args) => {
-                temp_ban_peers(&wallet, &mut peer_list).await;
                 unban_peer_manager_peers = true;
 
                 // Read session info
@@ -1792,10 +1730,6 @@ pub async fn command_runner(
                 }
 
                 // Create finalized spend transactions
-                let mut inputs = Vec::new();
-                let mut outputs = Vec::new();
-                let mut kernels = Vec::new();
-                let mut kernel_offset = PrivateKey::default();
                 for (i, (indexed_info, leader_self)) in party_info_per_index
                     .iter()
                     .zip(leader_info.outputs_for_self.iter())
@@ -1829,208 +1763,12 @@ pub async fn command_runner(
 
                     // Collect all inputs, outputs and kernels that should go into the genesis block
                     println!();
-                    if session_info.use_pre_mine_input_file {
-                        match transaction_service.get_any_transaction(leader_self.tx_id).await {
-                            Ok(Some(WalletTransaction::Completed(tx))) => {
-                                // Fees must be zero
-                                match tx.transaction.body.get_total_fee() {
-                                    Ok(fee) => {
-                                        if fee != MicroMinotari::zero() {
-                                            eprintln!(
-                                                "\nError: Transaction {} fee ({}) for does not equal zero!\n",
-                                                tx.tx_id, fee
-                                            );
-                                            error = true;
-                                            break;
-                                        }
-                                    },
-                                    Err(e) => {
-                                        eprintln!("\nError: Transaction {}! ({})\n", tx.tx_id, e);
-                                        error = true;
-                                        break;
-                                    },
-                                }
-
-                                let mut utxo_sum = UncompressedCommitment::default();
-                                for output in tx.transaction.body.outputs() {
-                                    outputs.push(output.clone());
-                                    utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
-                                }
-                                for input in tx.transaction.body.inputs() {
-                                    inputs.push(input.clone());
-                                    match input.commitment() {
-                                        Ok(commitment) => utxo_sum = &utxo_sum - &commitment.to_commitment()?,
-                                        Err(e) => {
-                                            eprintln!("\nError: Input commitment ({})!\n", e);
-                                            error = true;
-                                            break;
-                                        },
-                                    }
-                                }
-                                if error {
-                                    break;
-                                }
-                                let mut kernel_sum = UncompressedCommitment::default();
-                                for kernel in tx.transaction.body.kernels() {
-                                    kernels.push(kernel.clone());
-                                    kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
-                                }
-                                kernel_offset = &kernel_offset + &tx.transaction.offset;
-                                // Ensure that the balance equation holds:
-                                //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) +
-                                // total_offset
-                                let offset = CryptoFactories::default()
-                                    .commitment
-                                    .commit_value(&tx.transaction.offset, 0);
-                                if utxo_sum != &kernel_sum + &offset {
-                                    eprintln!(
-                                        "\nError: Transaction {} balance: UTXO sum {} vs. kernel sum + offset {}!\n",
-                                        tx.tx_id,
-                                        utxo_sum.to_hex(),
-                                        (&kernel_sum + &offset).to_hex()
-                                    );
-                                    error = true;
-                                    break;
-                                }
-                            },
-                            Ok(_) => {
-                                eprintln!(
-                                    "\nError: Transaction '{}' is not in a completed state!\n",
-                                    leader_self.tx_id
-                                );
-                                break;
-                            },
-                            Err(e) => {
-                                eprintln!("\nError: Transaction '{}' not found! ({})\n", leader_self.tx_id, e);
-                                break;
-                            },
-                        }
-                    }
-
                     println!("  Processed {} of {}", i + 1, party_info_per_index.len());
                 }
                 if error {
                     break;
                 }
-
-                let file_name = get_pre_mine_addition_file_name();
-                let out_dir_path = out_dir(&args.session_id)?;
-                let out_file = out_dir_path.join(&file_name);
-                if session_info.use_pre_mine_input_file {
-                    // Ensure that the balance equation holds:
-                    //   sum(output commitments) - sum(input  commitments) =  sum(kernel excesses) + kernel_offset
-                    let mut utxo_sum = UncompressedCommitment::default();
-                    for output in &outputs {
-                        utxo_sum = &utxo_sum + &output.commitment.to_commitment()?;
-                    }
-                    for input in &inputs {
-                        match input.commitment() {
-                            Ok(commitment) => utxo_sum = &utxo_sum - &commitment.to_commitment()?,
-                            Err(e) => {
-                                eprintln!("\nError: Input commitment ({})!\n", e);
-                                break;
-                            },
-                        }
-                    }
-                    let mut kernel_sum = UncompressedCommitment::default();
-                    for kernel in &kernels {
-                        kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
-                    }
-                    let offset = CryptoFactories::default().commitment.commit_value(&kernel_offset, 0);
-                    if utxo_sum != &kernel_sum + &offset {
-                        eprintln!(
-                            "\nError: Transactions balance: UTXO sum {} vs. kernel sum + offset {}!\n",
-                            utxo_sum.to_hex(),
-                            (&kernel_sum + &offset).to_hex()
-                        );
-                    }
-
-                    let mut file_stream = match File::create(&out_file) {
-                        Ok(file) => file,
-                        Err(e) => {
-                            eprintln!("\nError: Could not create the pre-mine file ({})\n", e);
-                            break;
-                        },
-                    };
-
-                    let mut error = false;
-                    inputs.sort();
-                    for input in &inputs {
-                        let input_s = match serde_json::to_string(&input) {
-                            Ok(val) => val,
-                            Err(e) => {
-                                eprintln!("\nError: Could not serialize UTXO ({})\n", e);
-                                error = true;
-                                break;
-                            },
-                        };
-                        if let Err(e) = file_stream.write_all(format!("{}\n", input_s).as_bytes()) {
-                            eprintln!("\nError: Could not write UTXO to file ({})\n", e);
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
-                        break;
-                    }
-                    outputs.sort();
-                    for output in &outputs {
-                        let utxo_s = match serde_json::to_string(&output) {
-                            Ok(val) => val,
-                            Err(e) => {
-                                eprintln!("\nError: Could not serialize UTXO ({})\n", e);
-                                error = true;
-                                break;
-                            },
-                        };
-                        if let Err(e) = file_stream.write_all(format!("{}\n", utxo_s).as_bytes()) {
-                            eprintln!("\nError: Could not write UTXO to file ({})\n", e);
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
-                        break;
-                    }
-                    kernels.sort();
-                    for kernel in &kernels {
-                        let kernel_s = match serde_json::to_string(&kernel) {
-                            Ok(val) => val,
-                            Err(e) => {
-                                eprintln!("\nError: Could not serialize kernel ({})\n", e);
-                                break;
-                            },
-                        };
-                        if let Err(e) = file_stream.write_all(format!("{}\n", kernel_s).as_bytes()) {
-                            eprintln!("\nError: Could not write the genesis file ({})\n", e);
-                            error = true;
-                            break;
-                        }
-                    }
-                    if error {
-                        break;
-                    }
-                    let kernel_offset_s = match serde_json::to_string(&kernel_offset) {
-                        Ok(val) => val,
-                        Err(e) => {
-                            eprintln!("\nError: Could not serialize kernel offset ({})\n", e);
-                            break;
-                        },
-                    };
-                    if let Err(e) = file_stream.write_all(format!("{}\n", kernel_offset_s).as_bytes()) {
-                        eprintln!("\nError: Could not write the genesis file ({})\n", e);
-                        break;
-                    }
-                }
-
                 println!();
-                if session_info.use_pre_mine_input_file {
-                    println!(
-                        "Genesis block immediate pre-mine spend information: '{}' in '{}'",
-                        file_name,
-                        out_dir_path.display()
-                    );
-                }
                 println!("Concluded step 5 'pre-mine-spend-aggregate-transaction'");
                 println!();
             },
@@ -2250,48 +1988,6 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("CountUtxos error! {}", e),
             },
-            SetBaseNode(args) => {
-                if let Err(e) = set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
-                    eprintln!("SetBaseNode error! {}", e);
-                }
-            },
-            SetCustomBaseNode(args) => {
-                match set_base_node_peer(wallet.clone(), args.public_key.into(), args.address).await {
-                    Ok((public_key, net_address)) => {
-                        if let Err(e) = wallet
-                            .db
-                            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
-                        {
-                            eprintln!("SetCustomBaseNode error! {}", e);
-                        } else if let Err(e) = wallet
-                            .db
-                            .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
-                        {
-                            eprintln!("SetCustomBaseNode error! {}", e);
-                        } else {
-                            println!("Custom base node peer saved in wallet database.");
-                        }
-                    },
-                    Err(e) => eprintln!("SetCustomBaseNode error! {}", e),
-                }
-            },
-            ClearCustomBaseNode => {
-                match wallet
-                    .db
-                    .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
-                {
-                    Ok(_) => match wallet.db.clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string()) {
-                        Ok(true) => {
-                            println!("Custom base node peer cleared from wallet database.")
-                        },
-                        Ok(false) => {
-                            println!("Warning - custom base node peer not cleared from wallet database.")
-                        },
-                        Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
-                    },
-                    Err(e) => eprintln!("ClearCustomBaseNode error! {}", e),
-                }
-            },
             InitShaAtomicSwap(args) => {
                 match init_sha_atomic_swap(
                     transaction_service.clone(),
@@ -2355,23 +2051,6 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
-
-            RevalidateWalletDb => {
-                if let Err(e) = output_service
-                    .revalidate_all_outputs()
-                    .await
-                    .map_err(CommandError::OutputManagerError)
-                {
-                    eprintln!("RevalidateWalletDb error! {}", e);
-                }
-                if let Err(e) = transaction_service
-                    .revalidate_all_transactions()
-                    .await
-                    .map_err(CommandError::TransactionServiceError)
-                {
-                    eprintln!("RevalidateWalletDb error! {}", e);
-                }
-            },
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
                     args.amount,
@@ -2379,8 +2058,17 @@ pub async fn command_runner(
                     args.validator_node_public_key.into(),
                     Signature::new(
                         args.validator_node_public_nonce.into(),
-                        RistrettoSecretKey::from_vec(&args.validator_node_signature)?,
+                        RistrettoSecretKey::from_vec(&args.validator_node_signature[0])?,
                     ),
+                    args.validator_node_claim_public_key.into(),
+                    if args.sidechain_deployment_key.is_empty() {
+                        None
+                    } else {
+                        Some(RistrettoSecretKey::from_canonical_bytes(
+                            &args.sidechain_deployment_key[0],
+                        )?)
+                    },
+                    args.epoch,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
@@ -2412,30 +2100,9 @@ pub async fn command_runner(
                 let mut utxo_scanner = wallet.utxo_scanner_service.clone();
                 let mut receiver = utxo_scanner.get_event_receiver();
 
-                if !online {
-                    match wait_for_comms(&connectivity_requester).await {
-                        Ok(..) => {
-                            online = true;
-                        },
-                        Err(e) => {
-                            eprintln!("Sync error! {}", e);
-                            continue;
-                        },
-                    }
-                }
-
                 loop {
                     match receiver.recv().await {
                         Ok(event) => match event {
-                            UtxoScannerEvent::ConnectingToBaseNode(_) => {
-                                println!("Connecting to base node...");
-                            },
-                            UtxoScannerEvent::ConnectedToBaseNode(_, _) => {
-                                println!("Connected to base node");
-                            },
-                            UtxoScannerEvent::ConnectionFailedToBaseNode { .. } => {
-                                println!("Failed to connect to base node");
-                            },
                             UtxoScannerEvent::ScanningRoundFailed {
                                 num_retries,
                                 retry_limit,
@@ -2449,30 +2116,30 @@ pub async fn command_runner(
                             UtxoScannerEvent::Progress {
                                 current_height,
                                 tip_height,
+                                latency,
+                                ..
                             } => {
-                                println!("Progress: {}/{}", current_height, tip_height);
+                                println!(
+                                    "Progress: {}/{} (Latency: {}ms)",
+                                    current_height,
+                                    tip_height,
+                                    latency.as_millis()
+                                );
                                 if current_height >= args.sync_to_height && args.sync_to_height > 0 {
                                     break;
                                 }
                             },
                             UtxoScannerEvent::Completed {
                                 final_height,
-                                num_recovered,
-                                value_recovered,
                                 time_taken,
+                                ..
                             } => {
                                 println!(
-                                    "Completed! Height: {}, UTXOs recovered: {}, Value recovered: {}, Time taken: {}",
+                                    "Completed! Height: {},  Time taken: {}",
                                     final_height,
-                                    num_recovered,
-                                    value_recovered,
                                     time_taken.as_secs()
                                 );
 
-                                break;
-                            },
-                            UtxoScannerEvent::ScanningFailed => {
-                                println!("Scanning failed");
                                 break;
                             },
                         },
@@ -2590,7 +2257,7 @@ pub async fn command_runner(
                     new_config.set_base_path(temp_path.clone());
 
                     let peer_config = PeerSeedsConfig::default();
-                    let mut new_wallet = init_wallet(
+                    let new_wallet = init_wallet(
                         &new_config,
                         AutoUpdateConfig::default(),
                         peer_config,
@@ -2605,45 +2272,7 @@ pub async fn command_runner(
                     .map_err(|e| CommandError::General(e.to_string()))?;
                     // config
 
-                    let peer_seeds = wallet
-                        .comms
-                        .peer_manager()
-                        .get_seed_peers()
-                        .await
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    // config
-                    let base_node_peers = config
-                        .base_node_service_peers
-                        .iter()
-                        .map(|s| SeedPeer::from_str(s))
-                        .map(|r| r.map(Peer::from))
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    let selected_base_node = match config.custom_base_node {
-                        Some(ref custom) => SeedPeer::from_str(custom)
-                            .map(|node| Some(Peer::from(node)))
-                            .map_err(|e| CommandError::General(e.to_string()))?,
-                        None => get_custom_base_node_peer_from_db(&wallet),
-                    };
-
-                    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
-
-                    let base_nodes = peer_config
-                        .get_base_node_peers()
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    new_wallet
-                        .set_base_node_peer(
-                            base_nodes[0].public_key.clone(),
-                            Some(
-                                base_nodes[0]
-                                    .last_address_used()
-                                    .ok_or(CommandError::General("No address found".to_string()))?,
-                            ),
-                            Some(base_nodes),
-                        )
-                        .await
-                        .map_err(|e| CommandError::General(e.to_string()))?;
-                    wallet_recovery(&new_wallet, &peer_config, new_config.recovery_retry_limit)
+                    wallet_recovery(&new_wallet, new_config.recovery_retry_limit)
                         .await
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     print!("Wallet recovery completed");
@@ -2934,10 +2563,6 @@ pub async fn command_runner(
             },
         }
     }
-    if unban_peer_manager_peers {
-        lift_temp_ban_peers(&wallet, &mut peer_list).await;
-        return Ok(true);
-    }
 
     // listen to event stream
     if tx_ids.is_empty() {
@@ -2995,44 +2620,6 @@ async fn detect_tx_metadata(wallet: &WalletSqlite, destination: TariAddress) -> 
     }
 }
 
-async fn temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
-    for peer in peer_list {
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .remove_peer_from_allow_list(peer.node_id.clone())
-            .await;
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .ban_peer_until(
-                peer.node_id.clone(),
-                Duration::from_secs(24 * 60 * 60),
-                "Busy with pre-mine spend".to_string(),
-            )
-            .await;
-    }
-}
-
-async fn lift_temp_ban_peers(wallet: &WalletSqlite, peer_list: &mut Vec<Peer>) {
-    for peer in peer_list {
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .ban_peer_until(
-                peer.node_id.clone(),
-                Duration::from_millis(1),
-                "Busy with pre-mine spend".to_string(),
-            )
-            .await;
-        let _unused = wallet
-            .comms
-            .connectivity()
-            .add_peer_to_allow_list(peer.node_id.clone())
-            .await;
-    }
-}
-
 fn read_genesis_file_outputs(
     use_pre_mine_input_file: bool,
     pre_mine_file_path: Option<PathBuf>,
@@ -3081,17 +2668,6 @@ fn get_pre_mine_file_name() -> String {
         Network::LocalNet => "esmeralda_pre_mine.json".to_string(),
         Network::Igor => "igor_pre_mine.json".to_string(),
         Network::Esmeralda => "esmeralda_pre_mine.json".to_string(),
-    }
-}
-
-fn get_pre_mine_addition_file_name() -> String {
-    match Network::get_current_or_user_setting_or_default() {
-        Network::MainNet => "mainnet_pre_mine_addition.json".to_string(),
-        Network::StageNet => "stagenet_pre_mine_addition.json".to_string(),
-        Network::NextNet => "nextnet_pre_mine_addition.json".to_string(),
-        Network::LocalNet => "esmeralda_pre_mine_addition.json".to_string(),
-        Network::Igor => "igor_pre_mine_addition.json".to_string(),
-        Network::Esmeralda => "esmeralda_pre_mine_addition.json".to_string(),
     }
 }
 
@@ -3258,37 +2834,4 @@ fn load_tx_from_csv_file(file_path: PathBuf) -> Result<Vec<WalletTransaction>, C
         }
     }
     Ok(results)
-}
-
-#[allow(dead_code)]
-fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, data: &T) -> Result<(), CommandError> {
-    fs::create_dir_all(path.as_ref().parent().unwrap()).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    let file = File::create(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    serde_json::to_writer_pretty(file, data).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, CommandError> {
-    let file = File::open(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    serde_json::from_reader(file).map_err(|e| CommandError::JsonFile(e.to_string()))
-}
-
-#[allow(dead_code)]
-async fn get_tip_height(wallet: &WalletSqlite) -> Option<u64> {
-    let client = wallet
-        .wallet_connectivity
-        .clone()
-        .obtain_base_node_wallet_rpc_client_timeout(Duration::from_secs(10))
-        .await;
-
-    match client {
-        Some(mut client) => client
-            .get_tip_info()
-            .await
-            .ok()
-            .and_then(|t| t.metadata)
-            .map(|m| m.best_block_height),
-        None => None,
-    }
 }

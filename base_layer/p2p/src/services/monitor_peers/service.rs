@@ -209,7 +209,7 @@ impl MonitorPeersService {
                                         debug!(
                                             target: LOG_TARGET,
                                             "Liveness event error: {:?} ({})",
-                                            event_str, e.to_string()
+                                            event_str, e
                                         );
                                     },
                                 }
@@ -311,7 +311,11 @@ async fn update_stats_and_cull_unresponsive_connections(
                 peer.peer_node_id(),
                 stats.iter().map(|s|(s.loop_count, s.connected, s.responsive)).collect::<Vec<_>>(),
             );
-            if let Err(e) = peer.clone().disconnect(Minimized::No).await {
+            if let Err(e) = peer
+                .clone()
+                .disconnect(Minimized::No, "Monitor peers disconnect unresponsive")
+                .await
+            {
                 warn!(
                     target: LOG_TARGET,
                     "Error while attempting to disconnect peer {}: {}", peer.peer_node_id(), e

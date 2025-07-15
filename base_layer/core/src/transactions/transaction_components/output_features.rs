@@ -28,18 +28,20 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, Signature};
-use tari_max_size::{MaxSizeBytes, MaxSizeString};
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{CompressedPublicKey, PrivateKey},
+};
+use tari_max_size::MaxSizeBytes;
+use tari_sidechain::EvictionProof;
 
-use super::OutputFeaturesVersion;
+use super::{OutputFeaturesVersion, SideChainFeatureData, SideChainId, ValidatorNodeExit};
 use crate::transactions::transaction_components::{
     range_proof_type::RangeProofType,
     side_chain::SideChainFeature,
-    BuildInfo,
     CodeTemplateRegistration,
     ConfidentialOutputData,
     OutputType,
-    TemplateType,
     ValidatorNodeRegistration,
     ValidatorNodeSignature,
 };
@@ -48,7 +50,7 @@ use crate::transactions::transaction_components::{
 pub type CoinBaseExtra = MaxSizeBytes<258>;
 
 /// Options for UTXO's
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct OutputFeatures {
     pub version: OutputFeaturesVersion,
     /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
@@ -129,65 +131,95 @@ impl OutputFeatures {
     }
 
     /// creates output features for a burned output with confidential output data
-    pub fn create_burn_confidential_output(claim_public_key: CompressedPublicKey) -> OutputFeatures {
+    pub fn create_burn_confidential_output(
+        claim_public_key: CompressedPublicKey,
+        sidechain_deployment_key: Option<&PrivateKey>,
+    ) -> OutputFeatures {
+        let output_data = ConfidentialOutputData { claim_public_key };
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, output_data.sidechain_id_message()));
+
         OutputFeatures {
             output_type: OutputType::Burn,
-            sidechain_feature: Some(SideChainFeature::ConfidentialOutput(ConfidentialOutputData {
-                claim_public_key,
-            })),
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ConfidentialOutput(output_data),
+                sidechain_id,
+            }),
             ..Default::default()
         }
     }
 
     /// Creates template registration output features
-    pub fn for_template_registration(template_registration: CodeTemplateRegistration) -> OutputFeatures {
+    pub fn for_template_registration(
+        template_registration: CodeTemplateRegistration,
+        sidechain_deployment_key: Option<&PrivateKey>,
+    ) -> OutputFeatures {
+        let sidechain_id =
+            sidechain_deployment_key.map(|k| SideChainId::sign(k, template_registration.sidechain_id_message()));
+
         OutputFeatures {
             output_type: OutputType::CodeTemplateRegistration,
-            sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(template_registration)),
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::CodeTemplateRegistration(template_registration),
+                sidechain_id,
+            }),
             ..Default::default()
         }
     }
 
     pub fn for_validator_node_registration(
-        validator_node_public_key: CompressedPublicKey,
-        validator_node_signature: Signature,
+        signature: ValidatorNodeSignature,
+        claim_public_key: CompressedPublicKey,
+        sidechain_deployment_key: Option<&PrivateKey>,
+        vn_epoch: VnEpoch,
     ) -> OutputFeatures {
+        let vn_reg = ValidatorNodeRegistration::new(signature, claim_public_key, vn_epoch);
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, vn_reg.sidechain_id_message()));
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
-            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
-                ValidatorNodeRegistration::new(ValidatorNodeSignature::new(
-                    validator_node_public_key,
-                    validator_node_signature,
-                )),
-            )),
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ValidatorNodeRegistration(Box::new(vn_reg)),
+                sidechain_id,
+            }),
             ..Default::default()
         }
     }
 
-    pub fn for_code_template_registration(
-        author_public_key: CompressedPublicKey,
-        author_signature: Signature,
-        template_name: MaxSizeString<32>,
-        template_version: u16,
-        template_type: TemplateType,
-        build_info: BuildInfo,
-        binary_sha: MaxSizeBytes<32>,
-        binary_url: MaxSizeString<255>,
+    pub fn for_validator_node_exit(
+        signature: ValidatorNodeSignature,
+        sidechain_deployment_key: Option<&PrivateKey>,
+        max_epoch: VnEpoch,
     ) -> OutputFeatures {
+        let exit = ValidatorNodeExit::new(signature, max_epoch);
+        let sidechain_id = sidechain_deployment_key.map(|k| SideChainId::sign(k, exit.sidechain_id_message()));
+
         OutputFeatures {
-            output_type: OutputType::CodeTemplateRegistration,
-            sidechain_feature: Some(SideChainFeature::CodeTemplateRegistration(CodeTemplateRegistration {
-                author_public_key,
-                author_signature,
-                template_name,
-                template_version,
-                template_type,
-                build_info,
-                binary_sha,
-                binary_url,
-            })),
+            output_type: OutputType::ValidatorNodeExit,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::ValidatorNodeExit(exit),
+                sidechain_id,
+            }),
             ..Default::default()
         }
+    }
+
+    pub fn for_validator_node_eviction(
+        eviction_proof: EvictionProof,
+        sidechain_deployment_key: Option<&PrivateKey>,
+    ) -> OutputFeatures {
+        let sidechain_id =
+            sidechain_deployment_key.map(|k| SideChainId::sign(k, eviction_proof.sidechain_id_message()));
+        OutputFeatures {
+            output_type: OutputType::SidechainProof,
+            sidechain_feature: Some(SideChainFeature {
+                data: SideChainFeatureData::EvictionProof(Box::new(eviction_proof)),
+                sidechain_id,
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn sidechain_id(&self) -> Option<&SideChainId> {
+        self.sidechain_feature.as_ref().and_then(|s| s.sidechain_id())
     }
 
     pub fn validator_node_registration(&self) -> Option<&ValidatorNodeRegistration> {
@@ -200,6 +232,12 @@ impl OutputFeatures {
         self.sidechain_feature
             .as_ref()
             .and_then(|s| s.code_template_registration())
+    }
+
+    pub fn confidential_output_data(&self) -> Option<&ConfidentialOutputData> {
+        self.sidechain_feature
+            .as_ref()
+            .and_then(|s| s.confidential_output_data())
     }
 
     pub fn is_coinbase(&self) -> bool {

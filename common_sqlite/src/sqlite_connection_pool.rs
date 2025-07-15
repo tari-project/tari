@@ -86,7 +86,7 @@ impl SqliteConnectionPool {
                     target: LOG_TARGET,
                     "Connection pool state {:?}: {}",
                     pool.state(),
-                    e.to_string()
+                    e
                 );
                 SqliteStorageError::DieselR2d2Error(e.to_string())
             })
@@ -107,7 +107,7 @@ impl SqliteConnectionPool {
                     target: LOG_TARGET,
                     "Connection pool state {:?}: {}",
                     pool.state(),
-                    e.to_string()
+                    e
                 );
                 SqliteStorageError::DieselR2d2Error(e.to_string())
             })

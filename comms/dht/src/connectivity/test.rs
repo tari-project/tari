@@ -142,7 +142,7 @@ async fn initialize() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn added_neighbours() {
-    // env_logger::init(); // Set `$env:RUST_LOG = "trace"` // Pipe to `> .\target\output.txt 2>&1`
+    // env_logger::init(); // Set `$env:RUST_LOG = "trace"` // Pipe to `> .\target\output.log 2>&1`
     let node_identity = make_node_identity();
     let mut node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);

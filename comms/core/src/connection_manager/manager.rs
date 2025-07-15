@@ -123,6 +123,9 @@ pub struct ConnectionManagerConfig {
     /// the responder will wait 2 x this value (1 per receive) before timing out.
     /// Default: 3s
     pub noise_handshake_recv_timeout: Duration,
+    /// The maximum time to wait for a peer to respond on a noise protocol dial.
+    /// Default: 60s
+    pub noise_dial_timeout: Duration,
     /// The number of liveness check sessions to allow. Default: 0
     pub liveness_max_sessions: usize,
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
@@ -157,6 +160,7 @@ impl Default for ConnectionManagerConfig {
             auxiliary_tcp_listener_address: None,
             peer_validation_config: PeerValidatorConfig::default(),
             noise_handshake_recv_timeout: Duration::from_secs(6),
+            noise_dial_timeout: Duration::from_secs(60),
             excluded_dial_addresses: vec![],
         }
     }
@@ -218,8 +222,9 @@ where
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
 
-        let noise_config =
-            NoiseConfig::new(node_identity.clone()).with_recv_timeout(config.noise_handshake_recv_timeout);
+        let noise_config = NoiseConfig::new(node_identity.clone())
+            .with_recv_timeout(config.noise_handshake_recv_timeout)
+            .with_dial_timeout(config.noise_dial_timeout);
 
         let listener = PeerListener::new(
             config.clone(),

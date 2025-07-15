@@ -329,14 +329,14 @@ impl PaymentId {
                 sent_output_hashes,
                 ..
             } => {
-                let len = 1
-                    + 1
-                    + recipient_address.get_size()
-                    + PaymentId::SIZE_VALUE_AND_META_DATA
-                    + 1
-                    + (sent_output_hashes.len() * FixedHash::byte_size())
-                    + 1
-                    + user_data.len();
+                let len = 1 +
+                    1 +
+                    recipient_address.get_size() +
+                    PaymentId::SIZE_VALUE_AND_META_DATA +
+                    1 +
+                    (sent_output_hashes.len() * FixedHash::byte_size()) +
+                    1 +
+                    user_data.len();
                 if len < PADDING_SIZE {
                     PADDING_SIZE
                 } else {
@@ -373,9 +373,9 @@ impl PaymentId {
 
     pub fn get_type(&self) -> TxType {
         match self {
-            PaymentId::Open { tx_type, .. }
-            | PaymentId::AddressAndData { tx_type, .. }
-            | PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
+            PaymentId::Open { tx_type, .. } |
+            PaymentId::AddressAndData { tx_type, .. } |
+            PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
@@ -439,8 +439,8 @@ impl PaymentId {
                 sender_one_sided,
                 tx_type,
                 ..
-            }
-            | PaymentId::AddressAndData {
+            } |
+            PaymentId::AddressAndData {
                 fee,
                 sender_one_sided,
                 tx_type,

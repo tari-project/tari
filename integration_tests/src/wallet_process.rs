@@ -197,9 +197,6 @@ pub async fn spawn_wallet(
 
     let wallet_addr = format!("http://127.0.0.1:{}", grpc_port);
     let mut wallet_client = WalletGrpcClient::connect(wallet_addr.as_str()).await.unwrap();
-    if let Some((_, _, request)) = base_node {
-        let _resp = wallet_client.set_base_node(request).await.unwrap();
-    }
     let wallet_address_bytes = wallet_client
         .get_address(minotari_wallet_grpc_client::grpc::Empty {})
         .await

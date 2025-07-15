@@ -203,7 +203,7 @@ fn test_checkpoints() {
 #[test]
 #[allow(clippy::identity_op)]
 fn test_rewind_to_height() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    // let _ = env_logger::builder().is_test(true).try_init();
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
 

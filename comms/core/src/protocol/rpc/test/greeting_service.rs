@@ -24,7 +24,7 @@ use std::{
     cmp,
     convert::TryFrom,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::Duration,
@@ -406,6 +406,7 @@ impl GreetingClient {
             framed,
             Self::PROTOCOL_NAME.into(),
             Default::default(),
+            Arc::new(AtomicBool::new(true)),
         )
         .await?;
         Ok(Self { inner })

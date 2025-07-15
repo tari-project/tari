@@ -21,12 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::{consts::U32, FixedOutput};
 use jmt::SimpleHasher;
 use tari_crypto::{
     hash_domain,
     hashing::{AsFixedBytes, DomainSeparatedHasher},
 };
+
+use crate::ValidatorNodeMerkleHasherBlake256;
+
 hash_domain!(OutputSmtHashDomain, "com.tari.base_layer.core.output_smt", 1);
 pub type OutputSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;
 pub struct SmtHasher {
@@ -46,5 +49,25 @@ impl SimpleHasher for SmtHasher {
 
     fn finalize(self) -> [u8; 32] {
         self.hasher.finalize().as_fixed_bytes().expect("Hash is 32 bytes")
+    }
+}
+
+pub struct ValidatorNodeJmtHasher {
+    hasher: ValidatorNodeMerkleHasherBlake256,
+}
+
+impl SimpleHasher for ValidatorNodeJmtHasher {
+    fn new() -> Self {
+        Self {
+            hasher: ValidatorNodeMerkleHasherBlake256::new(),
+        }
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        self.hasher.update(data);
+    }
+
+    fn finalize(self) -> [u8; 32] {
+        self.hasher.finalize_fixed().into()
     }
 }

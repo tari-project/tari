@@ -75,76 +75,16 @@ pub enum WalletMode {
 
 #[derive(Debug, Clone)]
 pub struct ConsoleWalletConfig {
-    pub base_node_config: PeerConfig,
-    pub base_node_selected: Peer,
     pub notify_script: Option<PathBuf>,
     pub wallet_mode: WalletMode,
     pub grpc_address: Option<Multiaddr>,
     pub recovery_retry_limit: usize,
 }
 
-#[derive(Debug, Clone)]
-pub struct PeerConfig {
-    pub base_node_custom: Option<Peer>,
-    pub base_node_peers: Vec<Peer>,
-    pub peer_seeds: Vec<Peer>,
-}
-
-impl PeerConfig {
-    /// Create a new PeerConfig
-    pub fn new(base_node_custom: Option<Peer>, base_node_peers: Vec<Peer>, peer_seeds: Vec<Peer>) -> Self {
-        Self {
-            base_node_custom,
-            base_node_peers,
-            peer_seeds,
-        }
-    }
-
-    /// Get the prioritised base node peer from the PeerConfig.
-    /// 1. Custom Base Node
-    /// 2. All configured Base Node Peers (a random node will be prioritised)
-    /// 3. All configured Peer Seeds (a random node will be prioritised)
-    pub fn get_base_node_peers(&self) -> Result<Vec<Peer>, ExitError> {
-        if let Some(base_node) = self.base_node_custom.clone() {
-            Ok(vec![base_node])
-        } else if !self.base_node_peers.is_empty() {
-            Ok(self.base_node_peers.clone())
-        } else if !self.peer_seeds.is_empty() {
-            Ok(self.peer_seeds.clone())
-        } else {
-            Err(ExitError::new(
-                ExitCode::ConfigError,
-                "No peer seeds or base node peer defined in config!",
-            ))
-        }
-    }
-
-    /// Returns all the peers from the PeerConfig.
-    /// In order: Custom base node, service peers, peer seeds.
-    pub fn get_all_peers(&self) -> Vec<Peer> {
-        let num_peers = self.base_node_peers.len();
-        let num_seeds = self.peer_seeds.len();
-
-        let mut peers = if let Some(peer) = self.base_node_custom.clone() {
-            let mut peers = Vec::with_capacity(1 + num_peers + num_seeds);
-            peers.push(peer);
-            peers
-        } else {
-            Vec::with_capacity(num_peers + num_seeds)
-        };
-
-        peers.extend(self.base_node_peers.clone());
-        peers.extend(self.peer_seeds.clone());
-
-        peers
-    }
-}
-
 pub(crate) fn command_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
-    base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     command: CliCommands,
 ) -> Result<(), ExitError> {
@@ -166,15 +106,7 @@ pub(crate) fn command_mode(
     } else {
         force_exit_for_pre_mine_commands(&command)
     };
-    wallet_or_exit(
-        handle,
-        cli,
-        config,
-        base_node_config,
-        wallet,
-        force_exit,
-        force_interactive,
-    )
+    wallet_or_exit(handle, cli, config, wallet, force_exit, force_interactive)
 }
 
 fn force_exit_for_pre_mine_commands(command: &CliCommands) -> (bool, bool) {
@@ -222,7 +154,6 @@ pub(crate) fn script_mode(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
-    base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     path: PathBuf,
 ) -> Result<(), ExitError> {
@@ -267,15 +198,7 @@ pub(crate) fn script_mode(
         info!(target: LOG_TARGET, "Completed wallet script mode");
     }
 
-    wallet_or_exit(
-        handle,
-        cli,
-        config,
-        base_node_config,
-        wallet,
-        force_exit,
-        force_interactive,
-    )
+    wallet_or_exit(handle, cli, config, wallet, force_exit, force_interactive)
 }
 
 /// Prompts the user to continue to the wallet, or exit.
@@ -283,14 +206,13 @@ fn wallet_or_exit(
     handle: Handle,
     cli: &Cli,
     config: &WalletConfig,
-    base_node_config: &PeerConfig,
     wallet: WalletSqlite,
     force_exit: bool,
     force_interactive: bool,
 ) -> Result<(), ExitError> {
     if force_interactive {
         info!(target: LOG_TARGET, "Starting TUI.");
-        tui_mode(handle.clone(), config, base_node_config, wallet.clone())
+        tui_mode(handle.clone(), config, wallet.clone())
     } else {
         if cli.command_mode_auto_exit {
             info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
@@ -319,19 +241,14 @@ fn wallet_or_exit(
                 },
                 _ => {
                     info!(target: LOG_TARGET, "Starting TUI.");
-                    tui_mode(handle, config, base_node_config, wallet)
+                    tui_mode(handle, config, wallet)
                 },
             }
         }
     }
 }
 
-pub fn tui_mode(
-    handle: Handle,
-    config: &WalletConfig,
-    base_node_config: &PeerConfig,
-    mut wallet: WalletSqlite,
-) -> Result<(), ExitError> {
+pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite) -> Result<(), ExitError> {
     let (events_broadcaster, _events_listener) = broadcast::channel(100);
 
     if config.grpc_enabled {
@@ -376,23 +293,10 @@ pub fn tui_mode(
         events_broadcaster,
     );
 
-    let base_node_selected;
-    if let Some(peer) = base_node_config.base_node_custom.clone() {
-        base_node_selected = peer;
-    } else if let Some(peer) = get_custom_base_node_peer_from_db(&wallet) {
-        base_node_selected = peer;
-    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
-        base_node_selected = peer;
-    } else {
-        return Err(ExitError::new(ExitCode::WalletError, "Could not select a base node"));
-    }
-
     let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
         "Minotari Wallet".into(),
         wallet,
         config.clone(),
-        base_node_selected,
-        base_node_config.clone(),
         notifier,
     ))?;
 
@@ -417,7 +321,6 @@ pub fn tui_mode(
 
 pub fn recovery_mode(
     handle: Handle,
-    base_node_config: &PeerConfig,
     wallet_config: &WalletConfig,
     wallet_mode: WalletMode,
     wallet: WalletSqlite,
@@ -428,12 +331,9 @@ pub fn recovery_mode(
         const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
         println!("{}", CUCUMBER_TEST_MARKER_A);
 
-        println!("Starting recovery...");
-        match handle.block_on(wallet_recovery(
-            &wallet,
-            base_node_config,
-            wallet_config.recovery_retry_limit,
-        )) {
+        let url = Url::parse(wallet_config.http_server_url.as_ref())
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid HTTP client URL: {}", e)))?;
+        match handle.block_on(wallet_recovery(&wallet, wallet_config.recovery_retry_limit)) {
             Ok(_) => println!("Wallet recovered!"),
             Err(e) => {
                 error!(target: LOG_TARGET, "Recovery failed: {}", e);
@@ -455,7 +355,7 @@ pub fn recovery_mode(
 
     match wallet_mode {
         WalletMode::RecoveryDaemon => grpc_mode(handle, wallet_config, wallet),
-        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, base_node_config, wallet),
+        WalletMode::RecoveryTui => tui_mode(handle, wallet_config, wallet),
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
             "Unsupported post recovery mode",
@@ -648,13 +548,9 @@ mod test {
                 },
                 CliCommands::ExportSpentUtxos(_) => {},
                 CliCommands::CountUtxos => {},
-                CliCommands::SetBaseNode(_) => {},
-                CliCommands::SetCustomBaseNode(_) => {},
-                CliCommands::ClearCustomBaseNode => {},
                 CliCommands::InitShaAtomicSwap(_) => {},
                 CliCommands::FinaliseShaAtomicSwap(_) => {},
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
-                CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
                 CliCommands::CreateTlsCerts => {},
                 CliCommands::PreMineSpendBackupUtxo(_) => {},

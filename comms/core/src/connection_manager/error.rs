@@ -56,6 +56,8 @@ pub enum ConnectionManagerError {
     ListenerError { address: String, details: String },
     #[error("Transport error for {address}: {details}")]
     TransportError { address: String, details: String },
+    #[error("Dial timeout dialing {address} after {timeout}")]
+    DialTimeout { address: String, timeout: String },
     #[error(
         "The peer authenticated to public key '{authenticated_pk}' which did not match the dialed peer's public key \
          '{expected_pk}'"

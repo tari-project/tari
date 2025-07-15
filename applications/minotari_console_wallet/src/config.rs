@@ -23,7 +23,6 @@
 #![allow(dead_code, unused)]
 
 use config::Config;
-use minotari_app_utilities::consts;
 use minotari_wallet::WalletConfig;
 use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};

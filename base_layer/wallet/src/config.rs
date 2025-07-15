@@ -29,13 +29,19 @@ use std::{
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 use tari_common::{
-    configuration::{serializers, Network, StringList},
+    configuration::{
+        bootstrap::{wallet_get_default_seed_https_address, wallet_http_service_default_port},
+        serializers,
+        Network,
+        StringList,
+    },
     SubConfigPath,
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
+use url::Url;
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -121,8 +127,14 @@ pub struct WalletConfig {
     /// responsiveness of the wallet with slightly delayed balance updates
     #[serde(with = "serializers::seconds")]
     pub balance_enquiry_cooldown_period: Duration,
-    // How many days do we need to start scanning before our actual birthday
+    /// How many days do we need to start scanning before our actual birthday
     pub birthday_offset: u16,
+    /// The URL of the HTTP client to use for base node requests
+    pub http_server_url: String,
+    /// The fallback url address to use if the base node at http_server_url does not respond
+    pub fallback_http_server_url: String,
+    /// the scanning interval for the utxo scanner service
+    pub scanning_interval: u64,
 }
 
 impl Default for WalletConfig {
@@ -132,6 +144,13 @@ impl Default for WalletConfig {
             listener_self_liveness_check_interval: None,
             ..Default::default()
         };
+        let port = wallet_http_service_default_port(Network::get_current());
+        let http_server_url = Url::parse(format!("http://127.0.0.1:{port}").as_str())
+            .expect("This should be a valid URL")
+            .to_string();
+        let fallback_http_server_url = Url::parse(wallet_get_default_seed_https_address(Network::get_current()))
+            .expect("This should be a valid URL")
+            .to_string();
         Self {
             override_from: None,
             p2p,
@@ -163,6 +182,9 @@ impl Default for WalletConfig {
             identity_file: None,
             balance_enquiry_cooldown_period: Duration::from_secs(5),
             birthday_offset: 2,
+            http_server_url,
+            fallback_http_server_url,
+            scanning_interval: 60,
         }
     }
 }

@@ -46,16 +46,22 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 #[repr(u8)]
 #[borsh(use_discriminant = true)]
 pub enum OutputType {
-    /// An standard output.
+    /// A standard output.
     Standard = 0,
     /// Output is a coinbase output, must not be spent until maturity.
     Coinbase = 1,
     /// Output is a burned output and can not be spent ever.
     Burn = 2,
-    /// Output defines a validator node registration
+    /// Output containing a validator node registration
     ValidatorNodeRegistration = 3,
-    /// Output defines a new re-usable code template.
+    /// Output containing a new re-usable code template.
     CodeTemplateRegistration = 4,
+    /// Output containing a sidechain checkpoint
+    SidechainCheckpoint = 5,
+    /// Output containing a sidechain proof.
+    SidechainProof = 6,
+    /// Output containing a validator node exit
+    ValidatorNodeExit = 7,
 }
 
 impl OutputType {
@@ -77,14 +83,25 @@ impl OutputType {
             OutputType::Burn,
             OutputType::ValidatorNodeRegistration,
             OutputType::CodeTemplateRegistration,
+            OutputType::SidechainCheckpoint,
+            OutputType::SidechainProof,
+            OutputType::ValidatorNodeExit,
         ]
     }
 
     pub fn is_sidechain_type(&self) -> bool {
         matches!(
             self,
-            OutputType::ValidatorNodeRegistration | OutputType::CodeTemplateRegistration | OutputType::Burn
+            OutputType::ValidatorNodeRegistration |
+                OutputType::CodeTemplateRegistration |
+                OutputType::SidechainCheckpoint |
+                OutputType::SidechainProof |
+                OutputType::ValidatorNodeExit
         )
+    }
+
+    pub fn is_template_registration(&self) -> bool {
+        matches!(self, OutputType::CodeTemplateRegistration)
     }
 }
 
@@ -104,7 +121,32 @@ impl Display for OutputType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn it_contains_all_enum_variants() {
+        let mut variant_bits = 0u8;
 
+        fn check_duplicate(variant_bits: u8, mask: u8) {
+            if variant_bits & mask != 0 {
+                panic!("Duplicate variant");
+            }
+        }
+
+        for variant in OutputType::all() {
+            let mask = 1 << *variant as u8;
+            check_duplicate(variant_bits, mask);
+            match variant {
+                OutputType::Standard => variant_bits |= mask,
+                OutputType::Coinbase => variant_bits |= mask,
+                OutputType::Burn => variant_bits |= mask,
+                OutputType::ValidatorNodeRegistration => variant_bits |= mask,
+                OutputType::CodeTemplateRegistration => variant_bits |= mask,
+                OutputType::SidechainCheckpoint => variant_bits |= mask,
+                OutputType::SidechainProof => variant_bits |= mask,
+                OutputType::ValidatorNodeExit => variant_bits |= mask,
+            }
+        }
+        assert_eq!(variant_bits, 0b11111111);
+    }
     #[test]
     fn it_converts_from_byte_to_output_type() {
         assert_eq!(OutputType::from_byte(0), Some(OutputType::Standard));
@@ -112,7 +154,10 @@ mod tests {
         assert_eq!(OutputType::from_byte(2), Some(OutputType::Burn));
         assert_eq!(OutputType::from_byte(3), Some(OutputType::ValidatorNodeRegistration));
         assert_eq!(OutputType::from_byte(4), Some(OutputType::CodeTemplateRegistration));
-        for i in 5..=255 {
+        assert_eq!(OutputType::from_byte(5), Some(OutputType::SidechainCheckpoint));
+        assert_eq!(OutputType::from_byte(6), Some(OutputType::SidechainProof));
+        assert_eq!(OutputType::from_byte(7), Some(OutputType::ValidatorNodeExit));
+        for i in 8..=255 {
             assert_eq!(OutputType::from_byte(i), None);
         }
     }

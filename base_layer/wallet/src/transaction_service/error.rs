@@ -202,10 +202,18 @@ pub enum TransactionServiceError {
     ScriptError(#[from] ScriptError),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Other error: `{0}`")]
+    Other(String),
     #[error("Could not read file {file_path} - {err}.")]
     FileReadError { file_path: PathBuf, err: io::Error },
     #[error("Failed to write to file {file_path} - {err}.")]
     FileWriteError { file_path: PathBuf, err: io::Error },
+    #[error("Error signing sidechain data: `{0}`")]
+    SidechainSigningError(String),
+    #[error("Invalid data for a burn transaction: `{0}`")]
+    InvalidBurnTransaction(String),
+    #[error("Invalid validator node signature")]
+    InvalidValidatorNodeSignature,
 }
 
 impl From<RangeProofError> for TransactionServiceError {

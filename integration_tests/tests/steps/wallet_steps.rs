@@ -3196,6 +3196,7 @@ async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fe
         amount,
         fee_per_gram: fee,
         claim_public_key: identity.public_key,
+        sidechain_deployment_key: vec![],
         payment_id: PaymentId::open_from_string("Burning some tari", TxType::Burn).to_bytes(),
     };
 

@@ -47,6 +47,7 @@ pub trait WalletBackend: Send + Sync + Clone {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
 
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, WalletStorageError>;
     fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError>;
     fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError>;
     fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError>;
@@ -255,22 +256,6 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub fn get_chain_metadata(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
-        let c = match self.db.fetch(&DbKey::BaseNodeChainMetadata) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::BaseNodeChainMetadata(metadata))) => Ok(Some(metadata)),
-            Ok(Some(other)) => unexpected_result(DbKey::BaseNodeChainMetadata, other),
-            Err(e) => log_error(DbKey::BaseNodeChainMetadata, e),
-        }?;
-        Ok(c)
-    }
-
-    pub fn set_chain_metadata(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
-        self.db
-            .write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))?;
-        Ok(())
-    }
-
     pub fn set_client_key_value(&self, key: String, value: String) -> Result<(), WalletStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::ClientKeyValue(key, value)))?;
@@ -335,6 +320,11 @@ where T: WalletBackend + 'static
             Ok(Some(other)) => unexpected_result(DbKey::WalletBirthday, other),
             Err(e) => log_error(DbKey::WalletBirthday, e),
         }?;
+        Ok(result)
+    }
+
+    pub fn get_last_scanned_height(&self) -> Result<Option<u64>, WalletStorageError> {
+        let result = self.db.get_last_scanned_height()?;
         Ok(result)
     }
 
@@ -435,7 +425,7 @@ fn log_error<T>(req: DbKey, err: WalletStorageError) -> Result<T, WalletStorageE
         target: LOG_TARGET,
         "Database access error on request: {}: {}",
         req.to_key_string(),
-        err.to_string()
+        err
     );
     Err(err)
 }

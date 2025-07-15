@@ -23,8 +23,15 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::CompressedPublicKey;
+use tari_utilities::ByteArray;
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ConfidentialOutputData {
     pub claim_public_key: CompressedPublicKey,
+}
+
+impl ConfidentialOutputData {
+    pub fn sidechain_id_message(&self) -> &[u8] {
+        self.claim_public_key.as_bytes()
+    }
 }

@@ -31,7 +31,10 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, Error, OsRng},
-    KeyInit, Tag, XChaCha20Poly1305, XNonce,
+    KeyInit,
+    Tag,
+    XChaCha20Poly1305,
+    XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use primitive_types::U256;
@@ -43,7 +46,8 @@ use tari_max_size::MaxSizeBytes;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
-    ByteArray, ByteArrayError,
+    ByteArray,
+    ByteArrayError,
 };
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};

@@ -26,14 +26,9 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    BlockHash,
-    CompressedCommitment,
-    CompressedPublicKey,
-    FixedHash,
-    HashOutput,
-    PrivateKey,
-    Signature,
+use tari_common_types::{
+    epoch::VnEpoch,
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_utilities::hex::Hex;
 
@@ -70,13 +65,6 @@ pub enum NodeCommsRequest {
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },
-    FetchValidatorNodesKeys {
-        height: u64,
-    },
-    GetShardKey {
-        height: u64,
-        public_key: CompressedPublicKey,
-    },
     FetchTemplateRegistrations {
         start_height: u64,
         end_height: u64,
@@ -84,8 +72,22 @@ pub enum NodeCommsRequest {
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
     },
-    FetchOutputByPayRef(FixedHash),
+    FetchMinedInfoByPayRef(FixedHash),
+    FetchMinedInfoByOutputHash(HashOutput),
+    FetchOutputMinedInfo(HashOutput),
     CheckOutputSpentStatus(HashOutput),
+    FetchValidatorNodesKeys {
+        height: u64,
+        validator_network: Option<CompressedPublicKey>,
+    },
+    FetchValidatorNodeChanges {
+        epoch: VnEpoch,
+        sidechain_id: Option<CompressedPublicKey>,
+    },
+    GetValidatorNode {
+        sidechain_id: Option<CompressedPublicKey>,
+        public_key: CompressedPublicKey,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -125,11 +127,29 @@ impl Display for NodeCommsRequest {
             FetchMempoolTransactionsByExcessSigs { .. } => {
                 write!(f, "FetchMempoolTransactionsByExcessSigs")
             },
-            FetchValidatorNodesKeys { height } => {
-                write!(f, "FetchValidatorNodesKeys ({})", height)
+            FetchValidatorNodesKeys {
+                height,
+                validator_network,
+            } => {
+                write!(
+                    f,
+                    "FetchValidatorNodesKeys ({}, {})",
+                    height,
+                    validator_network
+                        .as_ref()
+                        .map(|n| n.to_hex())
+                        .unwrap_or_else(|| "None".to_string())
+                )
             },
-            GetShardKey { height, public_key } => {
-                write!(f, "GetShardKey height ({}), public key ({:?})", height, public_key)
+            GetValidatorNode {
+                sidechain_id,
+                public_key,
+            } => {
+                write!(
+                    f,
+                    "GetValidatorNode ({:?}), public key ({:?})",
+                    sidechain_id, public_key
+                )
             },
             FetchTemplateRegistrations {
                 start_height: start,
@@ -140,11 +160,24 @@ impl Display for NodeCommsRequest {
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
             },
-            FetchOutputByPayRef(payref) => {
-                write!(f, "FetchOutputByPayRef ({})", payref.to_hex())
+            FetchMinedInfoByPayRef(payref) => {
+                write!(f, "FetchMinedInfoByPayRef ({})", payref)
+            },
+            FetchMinedInfoByOutputHash(payref) => {
+                write!(f, "FetchMinedInfoByOutputHash ({})", payref)
+            },
+            FetchOutputMinedInfo(output_hash) => {
+                write!(f, "FetchOutputMinedInfo ({})", output_hash)
             },
             CheckOutputSpentStatus(output_hash) => {
                 write!(f, "CheckOutputSpentStatus ({})", output_hash)
+            },
+            FetchValidatorNodeChanges { epoch, sidechain_id } => {
+                write!(
+                    f,
+                    "FetchValidatorNodeChanges (Side chain ID:{:?}), Epoch: {}",
+                    sidechain_id, epoch
+                )
             },
         }
     }

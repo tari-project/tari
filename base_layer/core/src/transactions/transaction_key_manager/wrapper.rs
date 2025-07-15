@@ -45,7 +45,6 @@ use crate::transactions::{
         TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
-        TransactionOutput,
         TransactionOutputVersion,
     },
     transaction_key_manager::{
@@ -410,13 +409,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     async fn try_output_key_recovery(
         &self,
-        output: &TransactionOutput,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .try_output_key_recovery(output, custom_recovery_key_id)
+            .try_output_key_recovery(commitment, encrypted_data, custom_recovery_key_id)
             .await
     }
 

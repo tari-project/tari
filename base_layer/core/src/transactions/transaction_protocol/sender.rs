@@ -1843,7 +1843,10 @@ mod test {
 
         let output = tx.body.outputs().iter().find(|o| o.script.size() > 1).unwrap();
 
-        let (key, _value, _) = key_manager_alice.try_output_key_recovery(output, None).await.unwrap();
+        let (key, _value, _) = key_manager_alice
+            .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
+            .await
+            .unwrap();
         assert_eq!(key, change_params.commitment_mask_key_id);
     }
 }

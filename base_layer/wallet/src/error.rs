@@ -47,7 +47,6 @@ use crate::{
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
-    utxo_scanner_service::error::UtxoScannerError,
 };
 
 #[derive(Debug, Error)]
@@ -93,7 +92,7 @@ pub enum WalletError {
     #[error("Byte array error")]
     ByteArrayError(String),
     #[error("Utxo Scanner Error: {0}")]
-    UtxoScannerError(#[from] UtxoScannerError),
+    UtxoScannerError(String),
     #[error("Key manager error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
     #[error("Key manager service error: `{0}`")]
@@ -106,6 +105,8 @@ pub enum WalletError {
     PublicAddressNotSet,
     #[error("Wallet connectivity error: `{0}`")]
     WalletConnectivityError(#[from] WalletConnectivityError),
+    #[error("Invalid http node url: `{0}`")]
+    InvalidHttpNodeUrl(String),
 }
 
 pub const LOG_TARGET: &str = "minotari::application";

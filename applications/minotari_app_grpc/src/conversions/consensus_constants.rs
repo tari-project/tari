@@ -138,7 +138,6 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             output_version_range: Some(output_version_range),
             permitted_output_types,
             permitted_range_proof_types,
-            validator_node_validity_period: cc.validator_node_validity_period_epochs().as_u64(),
             epoch_length: cc.epoch_length(),
             validator_node_registration_min_deposit_amount: cc
                 .validator_node_registration_min_deposit_amount()
@@ -147,6 +146,8 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             validator_node_registration_shuffle_interval_epoch: cc
                 .validator_node_registration_shuffle_interval()
                 .as_u64(),
+            vn_registration_max_vns_initial_epoch: cc.vn_registration_max_vns_initial_epoch(),
+            vn_registration_max_vns_per_epoch: cc.vn_registration_max_vns_per_epoch(),
         }
     }
 }

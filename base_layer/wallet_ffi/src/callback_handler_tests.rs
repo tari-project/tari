@@ -40,7 +40,6 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus},
         types::{CompressedPublicKey, PrivateKey},
     };
-    use tari_comms::peer_manager::NodeId;
     use tari_comms_dht::event::DhtEvent;
     use tari_contacts::contacts_service::{
         handle::{ContactsLivenessData, ContactsLivenessEvent},
@@ -567,7 +566,6 @@ mod test {
 
         base_node_event_sender
             .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
-                node_id: Some(NodeId::new()),
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(true),
                 updated: DateTime::from_timestamp_millis(ts_now.timestamp_millis() - (60 * 1000)),
@@ -890,6 +888,8 @@ mod test {
             .send(UtxoScannerEvent::Progress {
                 current_height: 500,
                 tip_height: 600,
+                latency: Duration::from_millis(100),
+                current_node: "".to_string(),
             })
             .unwrap();
 
@@ -900,6 +900,8 @@ mod test {
                 num_recovered: 0,
                 value_recovered: 0.into(),
                 time_taken: Duration::from_secs(0),
+                latency: Duration::from_millis(100),
+                current_node: "".to_string(),
             })
             .unwrap();
 

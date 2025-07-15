@@ -220,7 +220,7 @@ impl PeerConnectionMock {
                     reply_tx.send(Err(err)).unwrap();
                 },
             },
-            Disconnect(_, reply_tx, _minimized) => {
+            Disconnect(_, reply_tx, _minimized, _requester) => {
                 self.receiver.close();
                 reply_tx.send(self.state.disconnect().await).unwrap();
             },
