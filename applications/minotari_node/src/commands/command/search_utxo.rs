@@ -23,7 +23,7 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::{payment_reference::generate_payment_reference, types::CompressedCommitment};
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
@@ -54,6 +54,17 @@ impl CommandContext {
             .await?
             .pop()
             .ok_or_else(|| anyhow!("Block not found for utxo commitment {}", commitment.to_hex()))?;
+
+        for output in v.block().body.outputs() {
+            if output.commitment() == &commitment {
+                let payref = generate_payment_reference(v.hash(), &output.hash());
+                println!("Payref for output: {}", payref);
+                let mined_info = self.node_service.fetch_mined_info_by_payref(&payref).await?;
+                println!("---- Mined info ----");
+                println!("{}", mined_info);
+            }
+        }
+
         println!("{}", v.block());
         Ok(())
     }
