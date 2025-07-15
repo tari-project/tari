@@ -1110,7 +1110,7 @@ where
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
             TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => self
-                .replace_by_fee(tx_id, fee_increase, send_transaction_join_handles)
+                .replace_by_fee(tx_id, fee_increase, transaction_broadcast_join_handles)
                 .await
                 .map(TransactionServiceResponse::TransactionReplaced),
             TransactionServiceRequest::UserPayForFee {
@@ -1118,8 +1118,7 @@ where
                 destination,
                 fee,
             } => {
-                let reply_channel = reply_channel.take().expect("reply_channel is Some");
-                self.user_pay_for_fee(tx_id, destination, fee, send_transaction_join_handles, reply_channel)
+                self.user_pay_for_fee(tx_id, destination, fee, transaction_broadcast_join_handles)
                     .await
                     .map(TransactionServiceResponse::TransactionSent)?;
                 return Ok(());
@@ -4162,7 +4161,7 @@ where
     /// # Arguments
     /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
     /// * `fee_increase` - Fee increase for replaced transaction. It cannot be zero
-    /// * `send_transaction_join_handles` - Join handles for send transaction protocols
+    /// * `transaction_broadcast_join_handle` - Transaction broadcast join handle
     ///
     /// # Returns
     /// The new transaction ID or an error
@@ -4170,8 +4169,8 @@ where
         &mut self,
         tx_id: TxId,
         fee_increase: MicroMinotari,
-        send_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
         if fee_increase == MicroMinotari::zero() {
@@ -4214,34 +4213,17 @@ where
             fee_per_gram
         );
 
-        let new_tx_id = TxId::new_random();
-        let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
-        let (cancellation_sender, cancellation_receiver) = oneshot::channel();
-
-        self.pending_transaction_reply_senders
-            .insert(new_tx_id, tx_reply_sender);
-        self.send_transaction_cancellation_senders
-            .insert(new_tx_id, cancellation_sender);
-
-        let protocol = TransactionSendProtocol::new(
-            new_tx_id,
-            self.resources.clone(),
-            tx_reply_receiver,
-            cancellation_receiver,
-            destination.clone(),
-            original_amount,
-            fee_per_gram, // Calculated from total fee and weight
-            payment_id.clone(),
-            TransactionMetadata::default(),
-            None, // No reply channel for internal call
-            TransactionSendProtocolStage::Initial,
-            None,
-            Some(UtxoSelectionCriteria::must_include(original_inputs)),
-        );
-
-        // Launch the new transaction protocol with the same UTXOs (no need to cancel original)
-        let join_handle = tokio::spawn(protocol.execute());
-        send_transaction_join_handles.push(join_handle);
+        let new_tx_id = self
+            .send_one_sided_transaction(
+                destination,
+                original_amount,
+                UtxoSelectionCriteria::must_include(original_inputs),
+                OutputFeatures::default(),
+                fee_per_gram,
+                payment_id,
+                transaction_broadcast_join_handles,
+            )
+            .await?;
 
         info!(
             target: LOG_TARGET,
@@ -4255,16 +4237,30 @@ where
         Ok(new_tx_id)
     }
 
+    /// Spend all outputs from an unmined transaction to a given destination address    ///
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the original transaction whose outputs will be spent
+    /// * `destination` - The destination address where the remaining amount (after fee) will be sent
+    /// * `fee` - The total fee amount to be paid
+    /// * `transaction_broadcast_join_handles` - Join handles for transaction broadcast protocols
+    ///
+    /// # Returns
+    /// Returns the new transaction ID of the fee payment transaction, or an error if the operation fails.
+    ///
+    /// # Errors
+    /// * `TransactionStorageError` - If the original transaction cannot be found
+    /// * `TransactionAlreadyMined` - If the original transaction has already been mined
+    /// * `KeyManagerServiceError` - If there are issues accessing cryptographic keys
     #[allow(clippy::too_many_lines)]
     async fn user_pay_for_fee(
         &mut self,
         tx_id: TxId,
         destination: TariAddress,
         fee: MicroMinotari,
-        send_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<TxId, TransactionServiceError> {
         let original_transaction = self.resources.db.get_transaction_to_be_broadcast(tx_id).map_err(|_| {
             TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
@@ -4383,16 +4379,6 @@ where
             calculated_amount
         );
 
-        let new_tx_id = TxId::new_random();
-        let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
-        let (cancellation_sender, cancellation_receiver) = oneshot::channel();
-
-        // Store the senders for the new transaction
-        self.pending_transaction_reply_senders
-            .insert(new_tx_id, tx_reply_sender);
-        self.send_transaction_cancellation_senders
-            .insert(new_tx_id, cancellation_sender);
-
         let num_inputs = original_outputs.len();
         let num_outputs = 2; // destination + change
         let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
@@ -4411,24 +4397,17 @@ where
             if weight_in_grams > 0 { fee.0 as f64 / weight_in_grams as f64 } else { 0.0 }
         );
 
-        let protocol = TransactionSendProtocol::new(
-            new_tx_id,
-            self.resources.clone(),
-            tx_reply_receiver,
-            cancellation_receiver,
-            destination.clone(),
-            calculated_amount,
-            fee_per_gram,
-            original_transaction.payment_id,
-            TransactionMetadata::default(),
-            Some(reply_channel),
-            TransactionSendProtocolStage::Initial,
-            None,
-            Some(UtxoSelectionCriteria::must_include(original_outputs)),
-        );
-
-        let join_handle = tokio::spawn(protocol.execute());
-        send_transaction_join_handles.push(join_handle);
+        let new_tx_id = self
+            .send_one_sided_transaction(
+                destination,
+                calculated_amount,
+                UtxoSelectionCriteria::must_include(original_outputs),
+                OutputFeatures::default(),
+                fee_per_gram,
+                original_transaction.payment_id,
+                transaction_broadcast_join_handles,
+            )
+            .await?;
 
         info!(
             target: LOG_TARGET,
