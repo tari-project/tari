@@ -18,6 +18,7 @@ use tari_core::{
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{io, net::TcpListener};
+use tower_http::limit::RequestBodyLimitLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -77,8 +78,9 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .route("/get_utxos_by_block", get(handler::get_utxos_by_block::handle::<B>))
             .route(
                 "/json_rpc",
-                post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::max(4 * 1024 * 1024)), // 4 MiB
+                post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::disable()), // 4 MiB
             )
+            .layer(RequestBodyLimitLayer::new(4 * 1024 * 1024))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
             .layer(Extension(self.mempool_handle.clone()));

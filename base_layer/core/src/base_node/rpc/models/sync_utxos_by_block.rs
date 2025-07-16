@@ -26,6 +26,7 @@ pub struct BlockUtxoInfo {
     pub header_hash: Vec<u8>,
     pub height: u64,
     pub outputs: Vec<MinimalUtxoSyncInfo>,
+    pub inputs: Vec<Vec<u8>>,
     pub mined_timestamp: u64,
 }
 
@@ -33,7 +34,6 @@ pub struct BlockUtxoInfo {
 pub struct MinimalUtxoSyncInfo {
     pub output_hash: Vec<u8>,
     pub commitment: Vec<u8>,
-    // pub script: Vec<u8>,
     pub encrypted_data: Vec<u8>,
     pub sender_offset_public_key: Vec<u8>,
 }

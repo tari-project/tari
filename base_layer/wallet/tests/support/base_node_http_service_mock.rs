@@ -244,6 +244,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
                                     sender_offset_public_key: o.sender_offset_public_key.to_vec(),
                                 })
                                 .collect(),
+                            inputs: Vec::new(),
                             mined_timestamp: header.timestamp.as_u64(),
                         });
                     }

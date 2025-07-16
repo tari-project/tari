@@ -161,6 +161,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         Ok(utxo_block_response)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn fetch_utxos(&self, request: SyncUtxosByBlockRequest) -> Result<SyncUtxosByBlockResponse, Error> {
         // validate and fetch inputs
         request.validate()?;
@@ -216,6 +217,13 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 .db
                 .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
                 .await?;
+            let mut inputs = self
+                .db
+                .fetch_inputs_in_block(current_header.hash())
+                .await?
+                .into_iter()
+                .map(|input| input.output_hash().to_vec())
+                .collect::<Vec<Vec<u8>>>();
 
             let outputs = outputs_with_statuses
                 .into_iter()
@@ -223,6 +231,13 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 .collect::<Vec<TransactionOutput>>();
 
             for output_chunk in outputs.chunks(2000) {
+                let inputs_to_send = if inputs.is_empty() {
+                    Vec::new()
+                } else {
+                    let num_to_drain = inputs.len().min(2000);
+                    inputs.drain(..num_to_drain).collect()
+                };
+
                 let output_block_response = BlockUtxoInfo {
                     outputs: output_chunk
                         .iter()
@@ -233,21 +248,23 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                             sender_offset_public_key: output.sender_offset_public_key.to_vec(),
                         })
                         .collect(),
+                    inputs: inputs_to_send,
                     height: current_header.height,
                     header_hash: current_header_hash.to_vec(),
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(output_block_response);
             }
-            if outputs.is_empty() {
-                // if its empty, we need to send an empty vec of outputs.
-                let utxo_block_response = BlockUtxoInfo {
+            // We might still have inputs left to send if they are more than the outputs
+            for input_chunk in inputs.chunks(2000) {
+                let output_block_response = BlockUtxoInfo {
                     outputs: Vec::new(),
+                    inputs: input_chunk.to_vec(),
                     height: current_header.height,
                     header_hash: current_header_hash.to_vec(),
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
-                utxos.push(utxo_block_response);
+                utxos.push(output_block_response);
             }
 
             fetched_utxos += 1;
