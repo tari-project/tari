@@ -34,8 +34,7 @@ use chrono::{Days, Utc};
 use digest::consts::U32;
 use futures::{
     channel::{mpsc, mpsc::Sender},
-    FutureExt,
-    SinkExt,
+    FutureExt, SinkExt,
 };
 use minotari_wallet::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -49,8 +48,7 @@ use minotari_wallet::{
             models::KnownOneSidedPaymentScript,
             sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
         },
-        OutputManagerServiceInitializer,
-        UtxoSelectionCriteria,
+        OutputManagerServiceInitializer, UtxoSelectionCriteria,
     },
     storage::{
         database::WalletDatabase,
@@ -58,9 +56,7 @@ use minotari_wallet::{
         sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     },
     test_utils::{
-        create_consensus_constants,
-        make_wallet_database_connection,
-        make_wallet_database_memory_connection,
+        create_consensus_constants, make_wallet_database_connection, make_wallet_database_memory_connection,
         random_string,
     },
     transaction_service::{
@@ -76,9 +72,7 @@ use minotari_wallet::{
     },
     util::watch::Watch,
     utxo_scanner_service::{
-        handle::UtxoScannerHandle,
-        initializer::UtxoScannerServiceInitializer,
-        service::ScannedBlock,
+        handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, service::ScannedBlock,
     },
 };
 use prost::Message;
@@ -99,14 +93,10 @@ use tari_comms::{
     },
     test_utils::node_identity::build_node_identity,
     types::CommsDHKE,
-    CommsNode,
-    PeerConnection,
+    CommsNode, PeerConnection,
 };
 use tari_comms_dht::outbound::mock::{
-    create_outbound_service_mock,
-    MockBehaviour,
-    OutboundServiceMockState,
-    ResponseType,
+    create_outbound_service_mock, MockBehaviour, OutboundServiceMockState, ResponseType,
 };
 use tari_core::{
     base_node::{
@@ -122,28 +112,17 @@ use tari_core::{
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            KernelBuilder,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
+            KernelBuilder, OutputFeatures, RangeProofType, Transaction,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager,
-            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInitializer,
-            TransactionKeyManagerInterface,
+            create_memory_db_key_manager, storage::sqlite_db::TransactionKeyManagerSqliteDatabase, MemoryDbKeyManager,
+            TariKeyId, TransactionKeyManagerInitializer, TransactionKeyManagerInterface,
         },
         transaction_protocol::{
-            proto::protocol as proto,
-            recipient::RecipientSignedMessage,
-            sender::TransactionSenderMessage,
+            proto::protocol as proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage,
             TransactionMetadata,
         },
-        CryptoFactories,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        CryptoFactories, ReceiverTransactionProtocol, SenderTransactionProtocol,
     },
     ConfidentialOutputHasher,
 };
@@ -619,7 +598,7 @@ async fn manage_single_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .is_err());
@@ -1482,7 +1461,7 @@ async fn single_transaction_burn_tari() {
             burn_value,
             UtxoSelectionCriteria::default(),
             20.into(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
             Some(claim_public_key.clone()),
             None,
         )
@@ -1786,7 +1765,7 @@ async fn recover_one_sided_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1908,7 +1887,7 @@ async fn recover_stealth_one_sided_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -2015,7 +1994,7 @@ async fn test_htlc_send_and_claim() {
             value,
             UtxoSelectionCriteria::default(),
             20.into(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .expect("Alice sending HTLC transaction");
@@ -2058,7 +2037,7 @@ async fn test_htlc_send_and_claim() {
 
     bob_ts_interface
         .transaction_service_handle
-        .submit_transaction(tx_id_htlc, tx, htlc_amount, PaymentId::Empty)
+        .submit_transaction(tx_id_htlc, tx, htlc_amount, PaymentId::new_empty())
         .await
         .unwrap();
     assert_eq!(
@@ -2451,7 +2430,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -2556,7 +2535,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -2686,7 +2665,7 @@ async fn finalize_tx_with_missing_output() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();

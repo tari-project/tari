@@ -32,12 +32,7 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TxId},
     types::{
-        ComAndPubSignature,
-        CompressedCommitment,
-        CompressedPublicKey,
-        PrivateKey,
-        RangeProof,
-        SignatureWithDomain,
+        ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey, RangeProof, SignatureWithDomain,
     },
     wallet_types::WalletType,
 };
@@ -45,15 +40,11 @@ use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
     tor::TorIdentity,
     types::CommsSecretKey,
-    CommsNode,
-    NodeIdentity,
-    UnspawnedCommsNode,
+    CommsNode, NodeIdentity, UnspawnedCommsNode,
 };
 use tari_comms_dht::Dht;
 use tari_contacts::contacts_service::{
-    handle::ContactsServiceHandle,
-    storage::database::ContactsBackend,
-    ContactsServiceInitializer,
+    handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer,
 };
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
@@ -62,16 +53,11 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            EncryptedData,
-            OutputFeatures,
-            UnblindedOutput,
+            EncryptedData, OutputFeatures, UnblindedOutput,
         },
         transaction_key_manager::{
-            error::KeyManagerServiceError,
-            key_manager::TariKeyManager,
-            storage::database::TransactionKeyManagerBackend,
-            SecretTransactionKeyManagerInterface,
-            TariKeyId,
+            error::KeyManagerServiceError, key_manager::TariKeyManager,
+            storage::database::TransactionKeyManagerBackend, SecretTransactionKeyManagerInterface, TariKeyId,
             TransactionKeyManagerInitializer,
         },
         CryptoFactories,
@@ -90,8 +76,7 @@ use tari_p2p::{
     initialization,
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
-    PeerSeedsConfig,
-    TransportType,
+    PeerSeedsConfig, TransportType,
 };
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -117,9 +102,7 @@ use crate::{
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
-        handle::TransactionServiceHandle,
-        storage::database::TransactionBackend,
-        TransactionServiceInitializer,
+        handle::TransactionServiceHandle, storage::database::TransactionBackend, TransactionServiceInitializer,
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
@@ -140,7 +123,8 @@ hash_domain!(
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
 pub struct Wallet<T, U, V, W, TKeyManagerInterface, THttpClientFactory>
-where THttpClientFactory: HttpClientFactory
+where
+    THttpClientFactory: HttpClientFactory,
 {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
@@ -533,7 +517,7 @@ where
     ) -> Result<TxId, WalletError> {
         let value = unblinded_output.value;
         let wallet_output = unblinded_output
-            .to_wallet_output(&self.key_manager_service, PaymentId::Empty)
+            .to_wallet_output(&self.key_manager_service, PaymentId::new_empty())
             .await?;
 
         let tx_id = self

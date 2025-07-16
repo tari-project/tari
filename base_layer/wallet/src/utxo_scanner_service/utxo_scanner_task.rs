@@ -22,6 +22,7 @@
 
 use std::{
     convert::TryInto,
+    ops::Deref,
     time::{Duration, Instant},
 };
 
@@ -40,7 +41,7 @@ use tari_core::{
     one_sided::shared_secret_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{payment_id::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
+        transaction_components::{payment_id::InnerPaymentId, EncryptedData, TransactionOutput, WalletOutput},
         transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
@@ -668,12 +669,12 @@ where
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
             } else {
-                match &wo.payment_id {
-                    PaymentId::AddressAndData {
+                match &wo.payment_id.deref() {
+                    InnerPaymentId::AddressAndData {
                         sender_address: address,
                         ..
                     } => address.clone(),
-                    PaymentId::TransactionInfo { .. } => self.resources.one_sided_tari_address.clone(),
+                    InnerPaymentId::TransactionInfo { .. } => self.resources.one_sided_tari_address.clone(),
                     _ => TariAddress::default(),
                 }
             };

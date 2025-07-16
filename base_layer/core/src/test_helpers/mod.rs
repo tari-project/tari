@@ -136,7 +136,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
-        PaymentId::new_open(vec![], TxType::Coinbase),
+        PaymentId::new_open(vec![], TxType::Coinbase).unwrap(),
     )
     .await
     .unwrap();

@@ -31,10 +31,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, Error, OsRng},
-    KeyInit,
-    Tag,
-    XChaCha20Poly1305,
-    XNonce,
+    KeyInit, Tag, XChaCha20Poly1305, XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use primitive_types::U256;
@@ -46,8 +43,7 @@ use tari_max_size::MaxSizeBytes;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
-    ByteArray,
-    ByteArrayError,
+    ByteArray, ByteArrayError,
 };
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
@@ -276,7 +272,6 @@ mod test {
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
     use super::*;
-    use crate::transactions::transaction_components::payment_id::PaymentId;
 
     #[test]
     fn test_premine() {
@@ -321,13 +316,13 @@ mod test {
             EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
         assert_eq!(amount, decrypted_value);
         assert_eq!(mask, decrypted_mask);
-        match decrypted_payment_id {
-            PaymentId::Open { user_data: data, .. } => {
-                let bytes: [u8; SIZE_VALUE] = data.try_into().unwrap();
-                let v = u64::from_le_bytes(bytes);
-                assert_eq!(v, id);
-            },
-            _ => panic!("Expected PaymentId::Open"),
+        if decrypted_payment_id.is_open() {
+            let data = decrypted_payment_id.get_user_data();
+            let bytes: [u8; SIZE_VALUE] = data.try_into().unwrap();
+            let v = u64::from_le_bytes(bytes);
+            assert_eq!(v, id);
+        } else {
+            panic!("Expected PaymentId::Open");
         }
     }
 

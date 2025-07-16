@@ -25,10 +25,7 @@ use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address:
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
-        InboundNodeCommsHandlers,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
+        InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse, OutboundNodeCommsInterface,
     },
     chain_storage::{BlockchainDatabaseConfig, Validators},
     consensus::ConsensusManager,
@@ -43,18 +40,11 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
-            payment_id::PaymentId,
-            OutputFeatures,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
+            payment_id::PaymentId, OutputFeatures, TransactionOutput, TransactionOutputVersion, WalletOutput,
             WalletOutputBuilder,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
+            create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface,
         },
         transaction_protocol::transaction_initializer::SenderTransactionInitializer,
         SenderTransactionProtocol,
@@ -319,7 +309,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
         let output = WalletOutputBuilder::new(tx_output, commitment_mask_key.key_id)
             .with_features(txn_schema.features.clone())
             .with_script(txn_schema.script.clone())
-            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
+            .encrypt_data_for_recovery(key_manager, None, PaymentId::new_empty())
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -395,7 +385,7 @@ async fn test_sender_transaction_protocol_for_overflow() {
         utxo.encrypted_data,
         utxo.minimum_value_promise,
         utxo.proof,
-        PaymentId::Empty,
+        PaymentId::new_empty(),
     );
 
     // Test overflow in inputs

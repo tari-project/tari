@@ -61,15 +61,11 @@ use tari_core::{
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{payment_id::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
         transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
+            create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface,
         },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
-        CryptoFactories,
-        SenderTransactionProtocol,
+        CryptoFactories, SenderTransactionProtocol,
     },
 };
 use tari_script::{inputs, script, TariScript};
@@ -335,8 +331,8 @@ async fn fee_estimate() {
                 1,
                 outputs + 1,
                 default_features_and_scripts_size_byte_size()
-                    .expect("Failed to get default features and scripts size byte size") *
-                    (outputs + 1)
+                    .expect("Failed to get default features and scripts size byte size")
+                    * (outputs + 1)
             )
         );
     }
@@ -382,7 +378,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap_err();
@@ -419,7 +415,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -445,8 +441,8 @@ async fn test_utxo_selection_no_chain_metadata() {
         1,
         3,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
-            3,
+            .expect("Failed to get default features and scripts size byte size")
+            * 3,
     );
     assert_eq!(fee, expected_fee);
 
@@ -472,8 +468,8 @@ async fn test_utxo_selection_no_chain_metadata() {
         1,
         6,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
-            6,
+            .expect("Failed to get default features and scripts size byte size")
+            * 6,
     );
     assert_eq!(tx.body.get_total_fee().unwrap(), expected_fee);
     assert_eq!(utxos_total_value, MicroMinotari::from(5_000));
@@ -520,7 +516,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap_err();
@@ -558,8 +554,8 @@ async fn test_utxo_selection_with_chain_metadata() {
         2,
         3,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
-            3,
+            .expect("Failed to get default features and scripts size byte size")
+            * 3,
     );
     assert_eq!(fee, expected_fee);
 
@@ -579,8 +575,8 @@ async fn test_utxo_selection_with_chain_metadata() {
         1,
         6,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
-            6,
+            .expect("Failed to get default features and scripts size byte size")
+            * 6,
     );
     assert_eq!(tx.body.get_total_fee().unwrap(), expected_fee);
 
@@ -603,7 +599,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -632,7 +628,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -734,7 +730,7 @@ async fn test_utxo_selection_with_tx_priority() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -781,7 +777,7 @@ async fn send_not_enough_funds() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
     {
@@ -849,7 +845,7 @@ async fn send_no_change() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -916,7 +912,7 @@ async fn send_not_enough_for_change() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
     {
@@ -958,7 +954,7 @@ async fn cancel_transaction() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -1064,7 +1060,7 @@ async fn test_get_balance() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -1136,7 +1132,7 @@ async fn sending_transaction_persisted_while_offline() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -1170,7 +1166,7 @@ async fn sending_transaction_persisted_while_offline() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -1230,8 +1226,8 @@ async fn coin_split_with_change() {
         1,
         2,
         split_count + 1,
-        (split_count + 1) *
-            default_features_and_scripts_size_byte_size()
+        (split_count + 1)
+            * default_features_and_scripts_size_byte_size()
                 .expect("Failed to get default features and scripts size byte size"),
     );
     assert_eq!(coin_split_tx.body.get_total_fee().unwrap(), expected_fee);
@@ -1254,8 +1250,8 @@ async fn coin_split_no_change() {
         1,
         3,
         split_count,
-        split_count *
-            default_features_and_scripts_size_byte_size()
+        split_count
+            * default_features_and_scripts_size_byte_size()
                 .expect("Failed to get default features and scripts size byte size"),
     );
 
@@ -2171,7 +2167,7 @@ async fn scan_for_recovery_test() {
         let features = OutputFeatures::default();
         let encrypted_data = oms
             .key_manager_handle
-            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount, PaymentId::Empty)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount, PaymentId::new_empty())
             .await
             .unwrap();
 
@@ -2188,7 +2184,7 @@ async fn scan_for_recovery_test() {
             Covenant::new(),
             encrypted_data,
             MicroMinotari::zero(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
             &oms.key_manager_handle,
         )
         .await

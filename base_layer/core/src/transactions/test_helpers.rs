@@ -43,26 +43,12 @@ use crate::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            WalletOutput,
-            WalletOutputBuilder,
+            payment_id::PaymentId, KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, Transaction,
+            TransactionKernel, TransactionKernelVersion, TransactionOutput, WalletOutput, WalletOutputBuilder,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager,
-            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerWrapper,
-            TxoStage,
+            create_memory_db_key_manager, storage::sqlite_db::TransactionKeyManagerSqliteDatabase, MemoryDbKeyManager,
+            TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerWrapper, TxoStage,
         },
         transaction_protocol::{transaction_initializer::SenderTransactionInitializer, TransactionMetadata},
         weight::TransactionWeight,
@@ -202,8 +188,8 @@ impl TestParams {
     pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> std::io::Result<usize> {
         let output_features = OutputFeatures { ..Default::default() };
         Ok(self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
-                output_features.get_serialized_size()?,
+            script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()?
+                + output_features.get_serialized_size()?,
         ) * num_outputs)
     }
 }
@@ -566,9 +552,9 @@ pub async fn create_wallet_outputs(
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
     let output_features_and_scripts_size = weighting.round_up_features_and_scripts_size(
-        output_features.get_serialized_size()? +
-            output_script.get_serialized_size()? +
-            output_covenant.get_serialized_size()?,
+        output_features.get_serialized_size()?
+            + output_script.get_serialized_size()?
+            + output_covenant.get_serialized_size()?,
     ) * output_count;
     let estimated_fee = Fee::new(weighting).calculate(
         fee_per_gram,
@@ -751,7 +737,7 @@ pub async fn create_stx_protocol_internal(
         let output = WalletOutputBuilder::new(val, commitment_mask.key_id)
             .with_features(schema.features.clone())
             .with_script(schema.script.clone())
-            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
+            .encrypt_data_for_recovery(key_manager, None, PaymentId::new_empty())
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -859,7 +845,7 @@ pub async fn create_utxo(
         .await
         .unwrap();
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&commitment_mask.key_id, None, value.into(), PaymentId::Empty)
+        .encrypt_data_for_recovery(&commitment_mask.key_id, None, value.into(), PaymentId::new_empty())
         .await
         .unwrap();
     let sender_offset = key_manager

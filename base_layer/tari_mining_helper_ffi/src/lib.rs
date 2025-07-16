@@ -44,8 +44,7 @@ use tari_core::{
         generate_coinbase,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra,
-            RangeProofType,
+            CoinBaseExtra, RangeProofType,
         },
         transaction_key_manager::create_memory_db_key_manager,
     },
@@ -404,10 +403,7 @@ pub unsafe extern "C" fn inject_coinbase(
             stealth_payment,
             consensus_manager.consensus_constants(height),
             range_proof_type,
-            PaymentId::Open {
-                user_data: vec![],
-                tx_type: TxType::Coinbase,
-            },
+            PaymentId::new_open(vec![], TxType::Coinbase).unwrap(),
         )
         .await
     }) {

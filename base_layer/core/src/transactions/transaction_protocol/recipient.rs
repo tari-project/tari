@@ -36,8 +36,7 @@ use crate::{
         transaction_protocol::{
             sender::{SingleRoundSenderData, TransactionSenderMessage},
             single_receiver::SingleReceiverTransactionProtocol,
-            TransactionMetadata,
-            TransactionProtocolError,
+            TransactionMetadata, TransactionProtocolError,
         },
     },
 };
@@ -176,10 +175,7 @@ mod test {
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{
-                payment_id::PaymentId,
-                OutputFeatures,
-                TransactionKernelVersion,
-                TransactionOutputVersion,
+                payment_id::PaymentId, OutputFeatures, TransactionKernelVersion, TransactionOutputVersion,
             },
             transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             transaction_protocol::{
@@ -205,7 +201,7 @@ mod test {
             public_excess: sender_test_params.kernel_nonce_key_pk, // any random key will do
             public_nonce: sender_test_params.public_nonce_key_pk,  // any random key will do
             metadata: m.clone(),
-            payment_id: PaymentId::Empty,
+            payment_id: PaymentId::new_empty(),
             features,
             script,
             sender_offset_public_key: sender_test_params.sender_offset_key_pk,

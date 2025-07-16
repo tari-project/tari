@@ -1129,7 +1129,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -1249,10 +1249,7 @@ mod test {
             false,
             &create_consensus_constants(header_height),
             range_proof_type,
-            PaymentId::Open {
-                user_data: vec![],
-                tx_type: TxType::Coinbase,
-            },
+            PaymentId::new_open(vec![], TxType::Coinbase).unwrap(),
         )
         .await
         .unwrap();

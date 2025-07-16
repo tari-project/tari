@@ -137,7 +137,7 @@ impl Deref for PaymentId {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
-enum InnerPaymentId {
+pub enum InnerPaymentId {
     /// No payment ID.
     #[default]
     Empty,
@@ -319,20 +319,12 @@ impl PaymentId {
         })
     }
 
-    pub fn new_u256(value: U256) -> Result<Self, String> {
+    pub fn new_u256(value: U256) -> PaymentId {
         // U256 PaymentId: 1 byte for tag + 32 bytes for U256 = 33 bytes total
-        // This should always fit within 256 bytes, but let's be explicit
-        let total_size = 1 + SIZE_U256;
-
-        if total_size > MAX_PAYMENT_ID_SIZE {
-            return Err(format!(
-                "PaymentId exceeds {}-byte limit: {} bytes (U256: {} bytes, tag: 1 byte)",
-                MAX_PAYMENT_ID_SIZE, total_size, SIZE_U256
-            ));
-        }
-        Ok(PaymentId {
+        // This always fits within 256 bytes, no runtime validation needed
+        PaymentId {
             inner: InnerPaymentId::U256(value),
-        })
+        }
     }
 
     /// Helper function to create a validated `PaymentId::Open` from user data and transaction type
@@ -1064,15 +1056,6 @@ impl PaymentId {
         }
     }
 
-    /// Unchecked constructor for U256 payment ID
-    /// Use this for migration from old direct enum construction
-    /// WARNING: This bypasses validation - use new_u256() for new code
-    pub fn u256_unchecked(value: U256) -> Self {
-        PaymentId {
-            inner: InnerPaymentId::U256(value),
-        }
-    }
-
     /// Unchecked constructor for Raw payment ID
     /// Use this for migration from old direct enum construction
     /// WARNING: This bypasses validation - use new_raw() for new code
@@ -1213,24 +1196,17 @@ mod test {
         let sent_output_hashes = vec![create_random_fixed_hash()];
         vec![
             PaymentId::new_empty(),
-            PaymentId::new_u256(1.into()).unwrap(),
-            PaymentId::new_u256(156486946518564u64.into()).unwrap(),
+            PaymentId::new_u256(1.into()),
+            PaymentId::new_u256(156486946518564u64.into()),
             PaymentId::new_u256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
-            )
-            .unwrap(),
+            ),
             // Open - no data
             PaymentId::new_open(vec![], TxType::PaymentToOther).unwrap(),
             // Open - some data
-            PaymentId::Open {
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                tx_type: TxType::default(),
-            },
+            PaymentId::new_open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], TxType::default()).unwrap(),
             // Open - max data
-            PaymentId::Open {
-                user_data: vec![1; 254],
-                tx_type: TxType::default(),
-            },
+            PaymentId::new_open(vec![1; 254], TxType::default()).unwrap(),
             // AddressAndData - dual, no data
             PaymentId::new_address_and_data(
                 TariAddress::from_base58(
@@ -1406,10 +1382,7 @@ mod test {
         // Lastly, add the TariAddress
         user_data.extend_from_slice(&fake_recipient_bytes);
         // Create our original PaymentId::Open
-        let original_payment_id = PaymentId::Open {
-            tx_type, // This will be the first byte (0x03 for CoinSplit)
-            user_data,
-        };
+        let original_payment_id = PaymentId::new_open(user_data, tx_type).unwrap();
         // Serialize to bytes
         let bytes = original_payment_id.to_bytes();
 
@@ -1492,34 +1465,33 @@ mod test {
             TxType::ImportedUtxoNoneRewindable,
             TxType::Coinbase,
         ] {
-            let payment_id = PaymentId::Open {
-                tx_type,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            };
+            let payment_id = PaymentId::new_open(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], tx_type).unwrap();
             let payment_id_bytes = payment_id.to_bytes();
             let payment_id_from_bytes = PaymentId::from_bytes(&payment_id_bytes);
             assert_eq!(payment_id, payment_id_from_bytes);
 
-            let payment_id = PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+            let payment_id = PaymentId::new_address_and_data(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123),
+                false,
                 tx_type,
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            };
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap();
             let payment_id_bytes = payment_id.to_bytes();
             let payment_id_from_bytes = PaymentId::from_bytes(&payment_id_bytes);
             assert_eq!(payment_id, payment_id_from_bytes);
 
-            let payment_id = PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
+            let payment_id = PaymentId::new_transaction_info(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
                 tx_type,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                sent_output_hashes: vec![create_random_fixed_hash()],
-            };
+                vec![create_random_fixed_hash()],
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap();
             let payment_id_bytes = payment_id.to_bytes();
             let payment_id_from_bytes = PaymentId::from_bytes(&payment_id_bytes);
             assert_eq!(payment_id, payment_id_from_bytes);
@@ -1528,59 +1500,63 @@ mod test {
 
     #[test]
     fn payment_id_display() {
-        assert_eq!(PaymentId::Empty.to_string(), "None");
-        assert_eq!(PaymentId::U256(1235678.into()).to_string(), "u256(1235678)");
+        assert_eq!(PaymentId::new_empty().to_string(), "None");
+        assert_eq!(PaymentId::new_u256(1235678.into()).to_string(), "u256(1235678)");
         assert_eq!(
-            PaymentId::U256(
+            PaymentId::new_u256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail")
             )
             .to_string(),
             "u256(465465489789785458694894263185648978947864164681631)"
         );
         assert_eq!(
-            PaymentId::Open {
-                user_data: vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64],
-                tx_type: TxType::CoinSplit
-            }
+            PaymentId::new_open(
+                vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64],
+                TxType::CoinSplit
+            )
+            .unwrap()
             .to_string(),
             "type(CoinSplit), data(Hello World)"
         );
         assert_eq!(
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                tx_type: TxType::HtlcAtomicSwapRefund,
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                user_data: vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64]
-            }
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123),
+                false,
+                TxType::HtlcAtomicSwapRefund,
+                vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64]
+            )
+            .unwrap()
             .to_string(),
             "sender_address(f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk), sender_one_sided(false), fee(123 µT), \
              type(HtlcAtomicSwapRefund), data(Hello World)"
         );
         assert_eq!(
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64],
-                sent_output_hashes: vec![],
-            }
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                vec![],
+                vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64]
+            )
+            .unwrap()
             .to_string(),
             "recipient_address(f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk), sender_one_sided(false), \
              amount(123456 µT), fee(123 µT), type(Burn), data(Hello World)"
         );
         assert_eq!(
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: true,
-                amount: MicroMinotari::from(1234),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::ValidatorNodeRegistration,
-                user_data: "Hello World!!! 11-22-33".as_bytes().to_vec(),
-                sent_output_hashes: vec![],
-            }
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(1234),
+                MicroMinotari::from(123),
+                true,
+                TxType::ValidatorNodeRegistration,
+                vec![],
+                "Hello World!!! 11-22-33".as_bytes().to_vec()
+            )
+            .unwrap()
             .to_string(),
             "recipient_address(f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk), sender_one_sided(true), amount(1234 \
              µT), fee(123 µT), type(ValidatorNodeRegistration), data(Hello World!!! 11-22-33)"
@@ -1590,27 +1566,29 @@ mod test {
     #[test]
     fn test_payment_id_max_meta_data_values() {
         // Maximum values for the metadata fields
-        let payment_id_1 = PaymentId::TransactionInfo {
-            recipient_address: TariAddress::from_base58(
+        let payment_id_1 = PaymentId::new_transaction_info(
+            TariAddress::from_base58(
                 "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
             )
             .unwrap(),
-            sender_one_sided: true,
-            amount: MicroMinotari::from(u64::MAX),
-            fee: MicroMinotari::from(4_294_967_295),
-            tx_type: TxType::PaymentToOther,
-            user_data: "Hello World!!! 11-22-33".as_bytes().to_vec(),
-            sent_output_hashes: vec![create_random_fixed_hash()],
-        };
-        let payment_id_2 = PaymentId::TransactionInfo {
-            recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-            sender_one_sided: false,
-            amount: MicroMinotari::from(u64::MAX),
-            fee: MicroMinotari::from(4_294_967_295),
-            tx_type: TxType::PaymentToSelf,
-            user_data: "Hello World!!! 11-22-33".as_bytes().to_vec(),
-            sent_output_hashes: vec![create_random_fixed_hash()],
-        };
+            MicroMinotari::from(u64::MAX),
+            MicroMinotari::from(4_294_967_295),
+            true,
+            TxType::PaymentToOther,
+            vec![create_random_fixed_hash()],
+            "Hello World!!! 11-22-33".as_bytes().to_vec(),
+        )
+        .unwrap();
+        let payment_id_2 = PaymentId::new_transaction_info(
+            TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+            MicroMinotari::from(u64::MAX),
+            MicroMinotari::from(4_294_967_295),
+            false,
+            TxType::PaymentToSelf,
+            vec![create_random_fixed_hash()],
+            "Hello World!!! 11-22-33".as_bytes().to_vec(),
+        )
+        .unwrap();
 
         assert_eq!(
             payment_id_1.to_string(),
@@ -1630,18 +1608,19 @@ mod test {
         assert_eq!(payment_id_2, PaymentId::from_bytes(&payment_id_2_bytes));
 
         // Increase metadata fields to test 'to_bytes' overflow
-        let payment_id_3 = PaymentId::TransactionInfo {
-            recipient_address: TariAddress::from_base58(
+        let payment_id_3 = PaymentId::new_transaction_info(
+            TariAddress::from_base58(
                 "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
             )
             .unwrap(),
-            sender_one_sided: true,
-            amount: MicroMinotari::from(u64::MAX),
-            fee: MicroMinotari::from(4_294_967_295 + 100), // 4294.967395 T
-            tx_type: TxType::Coinbase,
-            user_data: "Hello World!!! 11-22-33".as_bytes().to_vec(),
-            sent_output_hashes: vec![create_random_fixed_hash()],
-        };
+            MicroMinotari::from(u64::MAX),
+            MicroMinotari::from(4_294_967_295 + 100), // 4294.967395 T
+            true,
+            TxType::Coinbase,
+            vec![create_random_fixed_hash()],
+            "Hello World!!! 11-22-33".as_bytes().to_vec(),
+        )
+        .unwrap();
         // - It can be displayed as is ...
         assert_eq!(
             payment_id_3.to_string(),
@@ -1660,36 +1639,38 @@ mod test {
 
     #[test]
     fn it_gets_useable_payment_id_data() {
-        let payment_id = PaymentId::Empty;
+        let payment_id = PaymentId::new_empty();
         assert_eq!("", PaymentId::stringify_bytes(&payment_id.user_data_as_bytes()));
 
-        let payment_id = PaymentId::U256(U256::from_dec_str("123456789").unwrap());
+        let payment_id = PaymentId::new_u256(U256::from_dec_str("123456789").unwrap());
         assert_eq!(
             "123456789",
             U256::from_little_endian(&payment_id.user_data_as_bytes()).to_string()
         );
 
-        let payment_id = PaymentId::AddressAndData {
-            sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-            tx_type: TxType::CoinSplit,
-            sender_one_sided: false,
-            fee: MicroMinotari::from(123),
-            user_data: "Hello World!!!".as_bytes().to_vec(),
-        };
+        let payment_id = PaymentId::new_address_and_data(
+            TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+            MicroMinotari::from(123),
+            false,
+            TxType::CoinSplit,
+            "Hello World!!!".as_bytes().to_vec(),
+        )
+        .unwrap();
         assert_eq!(
             "Hello World!!!",
             PaymentId::stringify_bytes(&payment_id.user_data_as_bytes())
         );
 
-        let payment_id = PaymentId::TransactionInfo {
-            recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-            sender_one_sided: true,
-            amount: MicroMinotari::from(1234),
-            fee: MicroMinotari::from(123),
-            tx_type: TxType::PaymentToOther,
-            user_data: "Hello World!!! 11-22-33".as_bytes().to_vec(),
-            sent_output_hashes: vec![create_random_fixed_hash()],
-        };
+        let payment_id = PaymentId::new_transaction_info(
+            TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+            MicroMinotari::from(1234),
+            MicroMinotari::from(123),
+            true,
+            TxType::PaymentToOther,
+            vec![create_random_fixed_hash()],
+            "Hello World!!! 11-22-33".as_bytes().to_vec(),
+        )
+        .unwrap();
         assert_eq!(
             "Hello World!!! 11-22-33",
             PaymentId::stringify_bytes(&payment_id.user_data_as_bytes())
@@ -1708,61 +1689,67 @@ mod test {
             .unwrap();
         let payment_ids = vec![
             // AddressAndData - dual, no data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58(
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::PaymentToSelf,
-                user_data: vec![],
-            },
+                MicroMinotari::from(123),
+                false,
+                TxType::PaymentToSelf,
+                vec![],
+            )
+            .unwrap(),
             // // AddressAndData - dual, some data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58(
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::PaymentToOther,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            },
+                MicroMinotari::from(123),
+                false,
+                TxType::PaymentToOther,
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
             // AddressAndData - dual,
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58(
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                fee: MicroMinotari::from(123),
-                sender_one_sided: false,
-                tx_type: TxType::PaymentToSelf,
-                user_data: vec![1; 80],
-            },
+                MicroMinotari::from(123),
+                false,
+                TxType::PaymentToSelf,
+                vec![1; 80],
+            )
+            .unwrap(),
             // AddressAndData - single, no data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinSplit,
-                user_data: vec![],
-            },
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123),
+                false,
+                TxType::CoinSplit,
+                vec![],
+            )
+            .unwrap(),
             // AddressAndData - single, some data
-            PaymentId::AddressAndData {
-                sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            },
-            PaymentId::AddressAndData {
-                sender_address: pay_id_address,
-                sender_one_sided: false,
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            },
+            PaymentId::new_address_and_data(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
+            PaymentId::new_address_and_data(
+                pay_id_address,
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
         ];
         fn old_to_bytes(payment_id: &PaymentId) -> Vec<u8> {
             fn pack_meta_data(fee: MicroMinotari, tx_type: TxType, sender_one_side: bool) -> Vec<u8> {
@@ -1782,13 +1769,13 @@ mod test {
                 bytes
             }
             let mut bytes = Vec::new();
-            if let PaymentId::AddressAndData {
+            if let InnerPaymentId::AddressAndData {
                 sender_address,
                 tx_type,
                 sender_one_sided,
                 fee,
                 user_data,
-            } = payment_id
+            } = &payment_id.inner
             {
                 bytes.push(PTag::AddressAndDataV1 as u8);
                 bytes.extend_from_slice(&0u64.to_le_bytes());
@@ -1817,64 +1804,69 @@ mod test {
             .unwrap();
         let payment_ids = vec![
             // TransactionInfo - single + amount, no data
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinJoin,
-                user_data: vec![],
-                sent_output_hashes: vec![],
-            },
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::CoinJoin,
+                vec![],
+                vec![],
+            )
+            .unwrap(),
             // TransactionInfo - single + amount + some data
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::ValidatorNodeRegistration,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                sent_output_hashes: vec![],
-            },
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::ValidatorNodeRegistration,
+                vec![],
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
             // TransactionInfo - dual + amount, no dta
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58(
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: true,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::CoinSplit,
-                user_data: vec![],
-                sent_output_hashes: vec![],
-            },
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                true,
+                TxType::CoinSplit,
+                vec![],
+                vec![],
+            )
+            .unwrap(),
             // TransactionInfo - dual + amount + some data
-            PaymentId::TransactionInfo {
-                recipient_address: TariAddress::from_base58(
+            PaymentId::new_transaction_info(
+                TariAddress::from_base58(
                     "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
                 )
                 .unwrap(),
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                sent_output_hashes: vec![],
-            },
-            PaymentId::TransactionInfo {
-                recipient_address: pay_id_address,
-                sender_one_sided: false,
-                amount: MicroMinotari::from(123456),
-                fee: MicroMinotari::from(123),
-                tx_type: TxType::Burn,
-                user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                sent_output_hashes: vec![],
-            },
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                vec![],
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
+            PaymentId::new_transaction_info(
+                pay_id_address,
+                MicroMinotari::from(123456),
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                vec![],
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
+            .unwrap(),
         ];
         fn old_to_bytes(payment_id: &PaymentId) -> Vec<u8> {
             let mut bytes = Vec::new();
-            if let PaymentId::TransactionInfo {
+            if let InnerPaymentId::TransactionInfo {
                 recipient_address,
                 tx_type,
                 sender_one_sided,
@@ -1882,7 +1874,7 @@ mod test {
                 fee,
                 user_data,
                 sent_output_hashes: _,
-            } = payment_id
+            } = &payment_id.inner
             {
                 fn pack_meta_data(fee: MicroMinotari, tx_type: TxType, sender_one_side: bool) -> Vec<u8> {
                     let mut bytes = Vec::with_capacity(5);
@@ -1923,8 +1915,8 @@ mod test {
         let hex = "03404e9c30000000000000000a8000016c1b073261df680b5a95dbc8c559ed1eec8d31f66c90e9e2843d3376cb6142511299678d6494bd091405cd78b1b9cb8d1602b7d075f72dbf54fde4b89fbbe016ab34f142623015444b06f34f3f4f860c94";
         let bytes = hex::decode(hex).expect("Failed to decode hex");
         let payment_id = PaymentId::from_bytes(&bytes);
-        let address = match payment_id {
-            PaymentId::AddressAndData { sender_address, .. } => sender_address,
+        let address = match &payment_id.inner {
+            InnerPaymentId::AddressAndData { sender_address, .. } => sender_address.clone(),
             _ => panic!("Expected AddressAndData variant"),
         };
         match address {
@@ -1946,7 +1938,7 @@ mod test {
     fn test_payment_id_size_validation() {
         // Test U256 PaymentId validation
         let u256_value = U256::from(12345u64);
-        let u256_payment_id = PaymentId::new_u256(u256_value).expect("U256 PaymentId should be valid");
+        let u256_payment_id = PaymentId::new_u256(u256_value);
         assert_eq!(u256_payment_id.get_size(), 1 + SIZE_U256); // 1 + 32 = 33 bytes
 
         // Test Open PaymentId validation - valid case
@@ -2218,10 +2210,10 @@ mod test {
         let open_payment_id = PaymentId::new_open_from_string(valid_string, TxType::PaymentToOther)
             .expect("Valid string should create Open PaymentId");
 
-        match open_payment_id {
-            PaymentId::Open { user_data, tx_type } => {
+        match &open_payment_id.inner {
+            InnerPaymentId::Open { user_data, tx_type } => {
                 assert_eq!(user_data, valid_string.as_bytes());
-                assert_eq!(tx_type, TxType::PaymentToOther);
+                assert_eq!(*tx_type, TxType::PaymentToOther);
             },
             _ => panic!("Expected Open PaymentId"),
         }

@@ -30,11 +30,7 @@ use minotari_wallet::{
     transaction_service::storage::{
         database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
         models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
         },
         sqlite_db::TransactionServiceSqliteDatabase,
     },
@@ -54,17 +50,11 @@ use tari_core::{
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
+            OutputFeatures, RangeProofType, Transaction, TransactionOutput, TransactionOutputVersion, WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::sender::TransactionSenderMessage,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        ReceiverTransactionProtocol, SenderTransactionProtocol,
     },
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
@@ -194,7 +184,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             &commitment_mask_key.key_id,
             None,
             sender.amount.as_u64(),
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -212,7 +202,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
-        PaymentId::Empty,
+        PaymentId::new_empty(),
         &key_manager,
     )
     .await
@@ -355,10 +345,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();
-        db.complete_inbound_transaction(inbound_txs[i].tx_id, CompletedTransaction {
-            tx_id: inbound_txs[i].tx_id,
-            ..completed_txs[i].clone()
-        })
+        db.complete_inbound_transaction(
+            inbound_txs[i].tx_id,
+            CompletedTransaction {
+                tx_id: inbound_txs[i].tx_id,
+                ..completed_txs[i].clone()
+            },
+        )
         .unwrap();
     }
 

@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::str::FromStr;
+use std::{ops::Deref, str::FromStr};
 
 use log::*;
 use tari_common_types::{
@@ -32,7 +32,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            payment_id::{InnerPaymentId, PaymentId, TxType},
             OutputFeatures,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
@@ -49,11 +49,8 @@ use crate::{
         offline_signing::{
             marshal_output_pair::MarshalOutputPair,
             models::{
-                get_supported_version,
-                OneSidedTransactionInfo,
-                PaymentRecipient,
-                PrepareOneSidedTransactionForSigningResult,
-                SignedOneSidedTransactionResult,
+                get_supported_version, OneSidedTransactionInfo, PaymentRecipient,
+                PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult,
             },
             one_sided_signer::OneSidedSigner,
         },
@@ -96,13 +93,13 @@ where
             debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_payment_id_user_data_bytes());
             payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
         }
-        let payment_id = match payment_id {
-            PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
+        let payment_id = match payment_id.deref() {
+            InnerPaymentId::Open { .. } | InnerPaymentId::Empty => payment_id.add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 fee_per_gram,
-                if dest_address == self.resources.one_sided_tari_address ||
-                    dest_address == self.resources.interactive_tari_address
+                if dest_address == self.resources.one_sided_tari_address
+                    || dest_address == self.resources.interactive_tari_address
                 {
                     Some(TxType::PaymentToSelf)
                 } else {
@@ -207,8 +204,9 @@ where
     }
 
     async fn make_key_id_export_safe(&self, key_id: &TariKeyId) -> Result<TariKeyId, String> {
-        if *key_id ==
-            self.resources
+        if *key_id
+            == self
+                .resources
                 .transaction_key_manager_service
                 .get_spend_key()
                 .await
@@ -217,8 +215,9 @@ where
         {
             return Ok(key_id.clone());
         }
-        if *key_id ==
-            self.resources
+        if *key_id
+            == self
+                .resources
                 .transaction_key_manager_service
                 .get_view_key()
                 .await

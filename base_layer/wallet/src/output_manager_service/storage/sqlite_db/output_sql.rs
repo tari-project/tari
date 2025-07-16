@@ -38,12 +38,7 @@ use tari_common_types::{
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::PaymentId,
-        EncryptedData,
-        OutputFeatures,
-        OutputType,
-        TransactionOutputVersion,
-        WalletOutput,
+        payment_id::PaymentId, EncryptedData, OutputFeatures, OutputType, TransactionOutputVersion, WalletOutput,
     },
     transaction_key_manager::TariKeyId,
 };
@@ -60,12 +55,9 @@ use crate::{
             database::{OutputBackendQuery, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
             sqlite_db::{UpdateOutput, UpdateOutputSql},
-            OutputSource,
-            OutputStatus,
+            OutputSource, OutputStatus,
         },
-        UtxoSelectionFilter,
-        UtxoSelectionOrdering,
-        TRANSACTION_INPUTS_LIMIT,
+        UtxoSelectionFilter, UtxoSelectionOrdering, TRANSACTION_INPUTS_LIMIT,
     },
     schema::outputs,
 };
@@ -917,7 +909,7 @@ impl OutputSql {
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
         let payment_id = match self.payment_id {
             Some(bytes) => PaymentId::from_bytes(&bytes),
-            None => PaymentId::Empty,
+            None => PaymentId::new_empty(),
         };
 
         let wallet_output = WalletOutput::new_with_rangeproof(
