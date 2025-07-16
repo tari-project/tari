@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
+use std::{convert::TryFrom, panic, path::PathBuf, time::Duration};
 
 use cucumber::{given, then, when};
 use futures::StreamExt;
@@ -35,11 +35,19 @@ use grpc::{
     GetTransactionInfoRequest,
     ImportUtxosRequest,
     PaymentRecipient,
+    ReplaceByFeeRequest,
     SendShaAtomicSwapRequest,
     TransferRequest,
+    UserPayForFeeRequest,
     ValidateRequest,
 };
-use minotari_app_grpc::tari_rpc::{self as grpc, GetBalanceResponse, GetStateRequest, TransactionStatus};
+use minotari_app_grpc::tari_rpc::{
+    self as grpc,
+    GetBalanceResponse,
+    GetStateRequest,
+    TransactionStatus,
+    TxOutputsToSpendTransfer,
+};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_common_types::types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof};
@@ -1329,6 +1337,79 @@ async fn wallet_detects_at_least_coinbase_unconfirmed_transactions(
             wallet_name, coinbases
         );
     }
+}
+
+#[then(expr = "wallet {word} detects only {int} transaction as unconfirmed")]
+async fn wallet_detects_only_transactions_as_unconfirmed(
+    world: &mut TariWorld,
+    wallet_name: String,
+    expected_count: u64,
+) {
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let mut completed_tx_res = client
+        .get_completed_transactions(GetCompletedTransactionsRequest {
+            payment_id: None,
+            block_hash: None,
+            block_height: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let num_retries = 40;
+    let mut total_unconfirmed_transactions = 0u64;
+    let mut all_transactions_status = Vec::new();
+
+    'outer: for _ in 0..num_retries {
+        cucumber_steps_log(format!("{}, Detecting unconfirmed transactions", wallet_name));
+        total_unconfirmed_transactions = 0;
+        all_transactions_status.clear();
+
+        'inner: while let Some(tx_info) = completed_tx_res.next().await {
+            let tx_id = tx_info.unwrap().transaction.unwrap().tx_id;
+            let request = GetTransactionInfoRequest {
+                transaction_ids: vec![tx_id],
+            };
+            let tx_info = client.get_transaction_info(request).await.unwrap().into_inner();
+            let tx_info = tx_info.transactions.first().unwrap();
+            all_transactions_status.push((tx_id, tx_info.status()));
+            match tx_info.status() {
+                grpc::TransactionStatus::MinedUnconfirmed => {
+                    total_unconfirmed_transactions += 1;
+                },
+                _ => continue 'inner,
+            }
+        }
+
+        // Debug: Print all transaction statuses
+        cucumber_steps_log(format!(
+            "{}, Found {} completed transactions with statuses: {:?}",
+            wallet_name,
+            all_transactions_status.len(),
+            all_transactions_status
+        ));
+
+        if total_unconfirmed_transactions == expected_count {
+            break 'outer;
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        completed_tx_res = client
+            .get_completed_transactions(GetCompletedTransactionsRequest {
+                payment_id: None,
+                block_hash: None,
+                block_height: None,
+            })
+            .await
+            .unwrap()
+            .into_inner();
+    }
+
+    assert_eq!(
+        total_unconfirmed_transactions, expected_count,
+        "Expected {} unconfirmed transactions, but found {}. All transaction statuses: {:?}",
+        expected_count, total_unconfirmed_transactions, all_transactions_status
+    );
 }
 
 #[then(expr = "wallet {word} detects exactly {int} coinbase transactions as CoinbaseConfirmed")]
@@ -3110,65 +3191,6 @@ async fn multi_send_txs_from_wallet(
     }
 }
 
-#[then(expr = "I check if last imported transactions are valid in wallet {word}")]
-async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, wallet: String) {
-    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
-
-    let num_retries = 30;
-    let mut imported_cnt = 0;
-    for i in 0..num_retries {
-        let mut get_completed_txs_res = client
-            .get_completed_transactions(GetCompletedTransactionsRequest {
-                payment_id: None,
-                block_hash: None,
-                block_height: None,
-            })
-            .await
-            .unwrap()
-            .into_inner();
-
-        while let Some(tx) = get_completed_txs_res.next().await {
-            let tx_info = tx.unwrap().transaction.unwrap();
-            for &tx_id in &world.last_imported_tx_ids {
-                if tx_id == tx_info.tx_id {
-                    if [
-                        TransactionStatus::OneSidedConfirmed,
-                        TransactionStatus::CoinbaseConfirmed,
-                    ]
-                    .contains(&tx_info.status())
-                    {
-                        imported_cnt += 1;
-                        if i % 3 == 0 {
-                            cucumber_steps_log(format!(
-                                "Wallet {} needs all imported transactions to be valid, has {:?}",
-                                wallet, imported_cnt
-                            ));
-                        }
-                    } else {
-                        imported_cnt = 0;
-                        cucumber_steps_log(format!(
-                            "Wallet {} needs all imported transactions to be valid, restarting count",
-                            wallet
-                        ));
-                    }
-                    break;
-                }
-            }
-        }
-        if imported_cnt == world.last_imported_tx_ids.len() {
-            cucumber_steps_log(format!(
-                "Wallet {} needs all imported transactions to be valid (DONE), has {:?}",
-                wallet, imported_cnt
-            ));
-            return;
-        }
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    assert_eq!(imported_cnt, world.last_imported_tx_ids.len());
-}
-
 #[then(expr = "I cancel last transaction in wallet {word}")]
 async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
@@ -3185,6 +3207,75 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
         "Unable to cancel transaction with id = {}",
         tx_id
     );
+}
+
+#[when(
+    expr = "I send a replace by fee of {int} uT from wallet {word} to wallet {word} at fee higher by {int} then before"
+)]
+async fn send_replace_by_fee_transaction(
+    world: &mut TariWorld,
+    _amount: u64,
+    sender: String,
+    _receiver: String,
+    fee_increase: u64,
+) {
+    let mut client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+
+    let wallet_tx_ids = world.wallet_tx_ids.get(&sender_wallet_address).unwrap();
+    let tx_id = *wallet_tx_ids.last().unwrap();
+
+    let replace_by_fee_req = ReplaceByFeeRequest {
+        transaction_id: tx_id,
+        fee_increase,
+    };
+
+    let replace_by_fee_res = client.replace_by_fee(replace_by_fee_req).await.unwrap().into_inner();
+    let new_tx_id = replace_by_fee_res.transaction_id;
+
+    let wallet_tx_ids = world.wallet_tx_ids.get_mut(&sender_wallet_address).unwrap();
+    wallet_tx_ids.push(new_tx_id);
+}
+
+#[allow(clippy::too_many_lines)]
+#[when(expr = "I send a user_pay_for_fee from wallet {word} to wallet {word} at fee {int}")]
+async fn send_user_pay_for_fee_transaction(world: &mut TariWorld, sender: String, receiver: String, fee: u64) {
+    let mut client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
+
+    let wallet_tx_ids = world.wallet_tx_ids.get(&sender_wallet_address).unwrap();
+    let tx_id = *wallet_tx_ids.last().unwrap();
+
+    let transfer_with_tx_id = TxOutputsToSpendTransfer {
+        tx_id,
+        fee,
+        destination: receiver_wallet_address.clone(),
+    };
+    let user_pay_for_fee_req = UserPayForFeeRequest {
+        recipients: vec![transfer_with_tx_id],
+    };
+
+    let response = client.user_pay_for_fee(user_pay_for_fee_req).await;
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
+    let tx_results = response
+        .expect("UserPayForFee response should succeed")
+        .into_inner()
+        .results;
+    assert!(
+        !tx_results.is_empty(),
+        "UserPayForFee response should contain at least one result"
+    );
+    let tx_result = tx_results.first().unwrap();
+    assert!(tx_result.is_success, "UserPayForFee should be successful");
+    let new_tx_id = tx_result.transaction_id;
+
+    let wallet_tx_ids = world.wallet_tx_ids.get_mut(&sender_wallet_address).unwrap();
+    wallet_tx_ids.push(new_tx_id);
+
+    let receiver_tx_ids = world.wallet_tx_ids.get_mut(&receiver_wallet_address.clone()).unwrap();
+    receiver_tx_ids.push(new_tx_id);
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]

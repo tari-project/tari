@@ -100,6 +100,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInt
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     tx_meta: TransactionMetadata,
     sender_protocol: Option<SenderTransactionProtocol>,
+    utxo_selection_criteria: Option<UtxoSelectionCriteria>,
 }
 
 impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
@@ -124,6 +125,7 @@ where
         >,
         stage: TransactionSendProtocolStage,
         sender_protocol: Option<SenderTransactionProtocol>,
+        utxo_selection_criteria: Option<UtxoSelectionCriteria>,
     ) -> Self {
         Self {
             id,
@@ -138,6 +140,7 @@ where
             stage,
             tx_meta,
             sender_protocol,
+            utxo_selection_criteria,
         }
     }
 
@@ -220,7 +223,7 @@ where
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
-                UtxoSelectionCriteria::default(),
+                self.utxo_selection_criteria.clone().unwrap_or_default(),
                 OutputFeatures::default(),
                 self.fee_per_gram,
                 self.tx_meta.clone(),

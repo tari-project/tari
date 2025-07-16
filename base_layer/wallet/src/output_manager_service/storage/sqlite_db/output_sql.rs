@@ -198,7 +198,7 @@ impl OutputSql {
     }
 
     /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
-    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_sign_loss, clippy::too_many_lines)]
     pub fn fetch_unspent_outputs_for_spending(
         selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
@@ -243,6 +243,10 @@ impl OutputSql {
                     ),
                 };
             },
+
+            UtxoSelectionFilter::MustInclude { commitments } => {
+                return Self::handle_must_include_filter(selection_criteria, commitments, amount, tip_height, conn);
+            },
         }
 
         for exclude in &selection_criteria.excluding {
@@ -275,6 +279,121 @@ impl OutputSql {
         };
 
         Ok(query.limit(i64::from(TRANSACTION_INPUTS_LIMIT)).load(conn)?)
+    }
+
+    fn handle_must_include_filter(
+        selection_criteria: &UtxoSelectionCriteria,
+        commitments: &[CompressedCommitment],
+        amount: u64,
+        tip_height: Option<u64>,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        if commitments.is_empty() {
+            // If no commitments specified, fall back to standard behavior
+            let mut selection_criteria = selection_criteria.clone();
+            selection_criteria.filter = UtxoSelectionFilter::Standard;
+            return OutputSql::fetch_unspent_outputs_for_spending(&selection_criteria, amount, tip_height, conn);
+        }
+
+        let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+        let i64_value = i64::try_from(selection_criteria.min_dust).unwrap_or(i64::MAX);
+
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.gt(i64_value))
+            .order_by(outputs::spending_priority.desc());
+
+        // NOTE: Safe mode presets `script_lock_height` and `maturity` filters for all queries
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            query = query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        }
+
+        query = query.filter(
+            outputs::output_type
+                .eq(i32::from(OutputType::Standard.as_byte()))
+                .or(outputs::output_type.eq(i32::from(OutputType::Coinbase.as_byte()))),
+        );
+
+        if selection_criteria.excluding_onesided {
+            query = query.filter(outputs::source.ne(OutputSource::OneSided as i32));
+        }
+
+        // Exclude the must-include outputs from the main query
+        for commitment in commitments {
+            query = query.filter(outputs::commitment.ne(commitment.to_vec()));
+        }
+
+        for exclude in &selection_criteria.excluding {
+            query = query.filter(outputs::commitment.ne(exclude.as_bytes()));
+        }
+
+        query = match selection_criteria.ordering {
+            UtxoSelectionOrdering::SmallestFirst => query.then_order_by(outputs::value.asc()),
+            UtxoSelectionOrdering::LargestFirst => query.then_order_by(outputs::value.desc()),
+            UtxoSelectionOrdering::Default => {
+                let max: Option<i64> = outputs::table
+                    .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                    .filter(outputs::script_lock_height.le(i64_tip_height))
+                    .filter(outputs::maturity.le(i64_tip_height))
+                    .order(outputs::value.desc())
+                    .select(outputs::value)
+                    .first(conn)
+                    .optional()?;
+
+                match max {
+                    Some(max) if amount > max as u64 => query.then_order_by(outputs::value.desc()),
+                    _ => query.then_order_by(outputs::value.asc()),
+                }
+            },
+        };
+
+        // First, get the must-include outputs
+        let mut must_include_query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.gt(i64_value))
+            .order_by(outputs::spending_priority.desc());
+
+        // Apply safe mode filters if needed
+        if selection_criteria.mode == UtxoSelectionMode::Safe {
+            must_include_query = must_include_query
+                .filter(outputs::script_lock_height.le(i64_tip_height))
+                .filter(outputs::maturity.le(i64_tip_height));
+        }
+
+        // Filter for the specific commitments
+        must_include_query = must_include_query
+            .filter(outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()));
+
+        // Apply excluding filters
+        for exclude in &selection_criteria.excluding {
+            must_include_query = must_include_query.filter(outputs::commitment.ne(exclude.as_bytes()));
+        }
+
+        let must_include_outputs: Vec<OutputSql> = must_include_query.load(conn)?;
+
+        // Calculate total value of must-include outputs
+        let must_include_total: i64 = must_include_outputs.iter().map(|o| o.value).sum();
+        let i64_amount = i64::try_from(amount).unwrap_or(i64::MAX);
+
+        // If must-include outputs are sufficient, return only them
+        if must_include_total >= i64_amount {
+            return Ok(must_include_outputs);
+        }
+
+        // Otherwise, we need additional outputs
+        let remaining_limit = i64::from(TRANSACTION_INPUTS_LIMIT) - must_include_outputs.len() as i64;
+        let mut final_outputs = must_include_outputs;
+
+        if remaining_limit > 0 {
+            let additional_outputs: Vec<OutputSql> = query.limit(remaining_limit).load(conn)?;
+            final_outputs.extend(additional_outputs);
+        }
+
+        Ok(final_outputs)
     }
 
     /// Return all unspent outputs that have a maturity above the provided chain tip

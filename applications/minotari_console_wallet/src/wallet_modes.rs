@@ -467,7 +467,7 @@ mod test {
 
             send-minotari --payment-id Our_secret! 125T \
                       f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
-            
+
             burn-minotari --payment-id Ups_these_funds_will_be_burned! 100T
 
             pre-mine-spend-get-output-status
@@ -559,6 +559,8 @@ mod test {
                 CliCommands::ShowPayRef(_) => {},
                 CliCommands::FindPayRef(_) => {},
                 CliCommands::ListTx => {},
+                CliCommands::ReplaceByFee(_) => {},
+                CliCommands::UserPayForFee(_) => {},
             }
         }
         assert!(

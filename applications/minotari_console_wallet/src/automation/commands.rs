@@ -1375,6 +1375,38 @@ pub async fn command_runner(
                 );
                 println!();
             },
+            ReplaceByFee(args) => {
+                match transaction_service
+                    .replace_by_fee(args.tx_id.into(), args.fee_increase)
+                    .await
+                {
+                    Ok(tx_id) => {
+                        debug!(target: LOG_TARGET, "replace-by-fee concluded with tx_id {}", tx_id);
+                        println!(
+                            "Transaction {} replaced with higher fee, new tx_id: {}",
+                            args.tx_id, tx_id
+                        );
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("ReplaceByFee error! {}", e),
+                }
+            },
+            UserPayForFee(args) => {
+                match transaction_service
+                    .user_pay_for_fee(args.tx_id.into(), args.destination, args.fee)
+                    .await
+                {
+                    Ok(tx_id) => {
+                        debug!(target: LOG_TARGET, "replace-by-fee concluded with tx_id {}", tx_id);
+                        println!(
+                            "Transaction {} replaced with higher fee, new tx_id: {}",
+                            args.tx_id, tx_id
+                        );
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => eprintln!("ReplaceByFee error! {}", e),
+                }
+            },
             PreMineSigs(args) => {
                 let session_info;
                 // Read session info

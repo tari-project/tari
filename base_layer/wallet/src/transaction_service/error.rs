@@ -208,6 +208,12 @@ pub enum TransactionServiceError {
     FileReadError { file_path: PathBuf, err: io::Error },
     #[error("Failed to write to file {file_path} - {err}.")]
     FileWriteError { file_path: PathBuf, err: io::Error },
+    #[error("Transaction with id {0} has been already mined")]
+    TransactionAlreadyMined(String),
+    #[error("Transaction inputs were invalid")]
+    InvalidTransactionInputs,
+    #[error("Fee increase is zero")]
+    ZeroFeeIncrease,
     #[error("Error signing sidechain data: `{0}`")]
     SidechainSigningError(String),
     #[error("Invalid data for a burn transaction: `{0}`")]
@@ -300,6 +306,8 @@ pub enum TransactionStorageError {
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Coinbase transactions are not supported in the wallet")]
     CoinbaseNotSupported,
+    #[error("Failed to calculate transaction fee: {0}")]
+    FailedToCalculateTransactionFee(String),
 }
 
 impl From<ByteArrayError> for TransactionStorageError {

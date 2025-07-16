@@ -1,6 +1,5 @@
 # Copyright 2022 The Tari Project
 # SPDX-License-Identifier: BSD-3-Clause
-
 @wallet-transact @wallet @flaky
 Feature: Wallet Transactions
 
@@ -31,8 +30,8 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 30
     Then I wait for wallet WALLET_C to have at least 1500000 uT
-
   #This is flaky, passes on local run time, but fails CI (still true?)
+
   @critical @flaky
   Scenario: Wallet sending and receiving one-sided stealth transactions
     Given I have a seed node NODE
@@ -113,11 +112,9 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 15
     When I wait for wallet WALLET_B to have at least 50000 uT
-
     Then I import WALLET_B spent outputs to WALLET_C
     Then I stop-start wallet WALLET_C
     Then I wait for wallet WALLET_C to have less than 1 uT
-
     Then I import WALLET_B unspent outputs to WALLET_C
     Then I stop-start wallet WALLET_C
     When I wait for wallet WALLET_C to have at least 50000 uT
@@ -193,7 +190,6 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 55
 
-
   Scenario: Wallet should display all transactions made
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes
@@ -213,8 +209,6 @@ Feature: Wallet Transactions
     Then I check if wallet WALLET_B has 5 transactions
     Then I stop-start wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
-
-    @missing-steps
   # Scenario: Wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:
@@ -267,7 +261,7 @@ Feature: Wallet Transactions
   #   When I mine 6 blocks on NODE_C
   #   Then all nodes are at height 16
 
-   @missing-steps
+  @missing-steps @missing-steps
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
     When I have wallet WALLET_A connected to seed node SEED
@@ -292,9 +286,6 @@ Feature: Wallet Transactions
     When I mine 1 blocks on SEED
     Then all nodes are at height 6
     #Then wallet WALLET_B detects all transactions are at least Pending
-
-
-      @missing-steps
   # Scenario: Short wallet clearing out invalid transactions after a reorg
   #   #
   #   # Chain 1:
@@ -346,7 +337,6 @@ Feature: Wallet Transactions
   #   Then all nodes are at height 4
   #   When I mine 2 blocks on NODE_C
   #   Then all nodes are at height 6
-
   # @flaky @long-running @missing-steps
   # Scenario: Wallet SAF negotiation and cancellation with offline peers
   #   Given I have a seed node NODE
@@ -391,7 +381,6 @@ Feature: Wallet Transactions
   #   When I wait 5 seconds
   #   Then I stop-start wallet WALLET_RECV
   #   Then I wait for wallet WALLET_RECV to have at least 1000000 uT
-
   # @critical @missing-steps
   # Scenario: Wallet should cancel stale transactions
   #   Given I have a seed node NODE
@@ -432,3 +421,35 @@ Feature: Wallet Transactions
     Then all nodes are at height 20
     Then wallet WALLET_A detects all transactions as Mined_or_OneSidedConfirmed
     When I wait for wallet WALLET_A to have at least 18462593892 uT
+
+  @critical
+  Scenario: Replace transaction with higher fee
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 15 blocks
+    Then all nodes are at height 15
+    When I wait for wallet WALLET_A to have at least 55000000000 uT
+    When I send a one-sided transaction of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    Then wallet WALLET_A detects all transactions as Pending
+    When I send a replace by fee of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee higher by 100 then before
+    Then wallet WALLET_A detects all transactions as Pending
+    When mining node MINER mines 1 blocks
+    Then wallet WALLET_A detects only 1 transaction as unconfirmed
+
+  @critical
+  Scenario: Adds new transaction to spend pending transaction outputs
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 15 blocks
+    Then all nodes are at height 15
+    When I wait for wallet WALLET_A to have at least 55000000000 uT
+    When I send a one-sided transaction of 100000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    Then wallet WALLET_A detects all transactions as Pending
+    When I send a user_pay_for_fee from wallet WALLET_A to wallet WALLET_B at fee 100
+    Then wallet WALLET_A detects all transactions as Pending
+    When mining node MINER mines 1 blocks
+    Then wallet WALLET_A detects only 2 transaction as unconfirmed

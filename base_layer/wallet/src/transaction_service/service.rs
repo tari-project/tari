@@ -68,6 +68,7 @@ use tari_core::{
             payment_id::{PaymentId, TxType},
             BuildInfo,
             CodeTemplateRegistration,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             TemplateType,
@@ -1108,6 +1109,20 @@ where
                 .start_rejected_transaction_revalidation(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase } => self
+                .replace_by_fee(tx_id, fee_increase, transaction_broadcast_join_handles)
+                .await
+                .map(TransactionServiceResponse::TransactionReplaced),
+            TransactionServiceRequest::UserPayForFee {
+                tx_id,
+                destination,
+                fee,
+            } => {
+                self.user_pay_for_fee(tx_id, destination, fee, transaction_broadcast_join_handles)
+                    .await
+                    .map(TransactionServiceResponse::TransactionSent)?;
+                return Ok(());
+            },
             TransactionServiceRequest::GetFeePerGramStatsPerBlock { count } => {
                 let reply_channel = reply_channel.take().expect("reply_channel is Some");
                 self.handle_get_fee_per_gram_stats_per_block_request(count, reply_channel);
@@ -1345,6 +1360,7 @@ where
             tx_meta,
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
+            None,
             None,
         );
         let join_handle = tokio::spawn(protocol.execute());
@@ -3270,6 +3286,7 @@ where
                     None,
                     stage,
                     sender_protocol,
+                    None,
                 );
 
                 let join_handle = tokio::spawn(protocol.execute());
@@ -4137,6 +4154,198 @@ where
             transaction_broadcast_join_handles,
         );
         Ok(())
+    }
+
+    /// Replace a pending outbound transaction with a new one with higher fee
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
+    /// * `fee_increase` - Fee increase for replaced transaction. It cannot be zero
+    /// * `transaction_broadcast_join_handle` - Transaction broadcast join handle
+    ///
+    /// # Returns
+    /// The new transaction ID or an error
+    pub async fn replace_by_fee(
+        &mut self,
+        tx_id: TxId,
+        fee_increase: MicroMinotari,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        if fee_increase == MicroMinotari::zero() {
+            return Err(TransactionServiceError::ZeroFeeIncrease);
+        }
+
+        let original_transaction = self.resources.db.get_transaction_to_be_broadcast(tx_id).map_err(|_| {
+            TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
+                DbKey::CompletedTransaction(tx_id),
+            ))
+        })?;
+
+        if original_transaction.status.is_mined() {
+            return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
+        }
+
+        let destination = original_transaction.destination_address.clone();
+        let original_amount = original_transaction.amount;
+        let payment_id = original_transaction.payment_id.clone();
+
+        let original_inputs = original_transaction.get_input_commitments_from_completed_transaction()?;
+        let fee = original_transaction.fee + fee_increase;
+
+        // Calculate transaction weight and fee_per_gram from total fee using original transaction
+        let num_inputs = original_inputs.len();
+        let num_outputs = original_transaction.transaction.body().outputs().len();
+        let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
+            fee,
+            &self.resources.consensus_manager,
+            num_inputs,
+            num_outputs,
+        )?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Replace-by-fee: Creating replacement for transaction {} with total fee {} (weight: {} grams, fee_per_gram: {})",
+            tx_id,
+            fee,
+            weight_in_grams,
+            fee_per_gram
+        );
+
+        let new_tx_id = self
+            .send_one_sided_transaction(
+                destination,
+                original_amount,
+                UtxoSelectionCriteria::must_include(original_inputs),
+                OutputFeatures::default(),
+                fee_per_gram,
+                payment_id,
+                transaction_broadcast_join_handles,
+            )
+            .await?;
+
+        info!(
+            target: LOG_TARGET,
+            "Replace-by-fee: Created new transaction {} to replace {} with total fee: {}, fee_per_gram: {}",
+            new_tx_id,
+            tx_id,
+            fee,
+            fee_per_gram
+        );
+
+        Ok(new_tx_id)
+    }
+
+    /// Spend all outputs from an unmined transaction to a given destination address    ///
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the original transaction whose outputs will be spent
+    /// * `destination` - The destination address where the remaining amount (after fee) will be sent
+    /// * `fee` - The total fee amount to be paid
+    /// * `transaction_broadcast_join_handles` - Join handles for transaction broadcast protocols
+    ///
+    /// # Returns
+    /// Returns the new transaction ID of the fee payment transaction, or an error if the operation fails.
+    ///
+    /// # Errors
+    /// * `TransactionStorageError` - If the original transaction cannot be found
+    /// * `TransactionAlreadyMined` - If the original transaction has already been mined
+    /// * `KeyManagerServiceError` - If there are issues accessing cryptographic keys
+    #[allow(clippy::too_many_lines)]
+    async fn user_pay_for_fee(
+        &mut self,
+        tx_id: TxId,
+        destination: TariAddress,
+        fee: MicroMinotari,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<TxId, TransactionServiceError> {
+        let original_transaction = self.resources.db.get_transaction_to_be_broadcast(tx_id).map_err(|_| {
+            TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
+                DbKey::CompletedTransaction(tx_id),
+            ))
+        })?;
+        if original_transaction.status.is_mined() {
+            return Err(TransactionServiceError::TransactionAlreadyMined(tx_id.to_string()));
+        }
+
+        let all_outputs = original_transaction
+            .transaction
+            .body
+            .outputs()
+            .iter()
+            .collect::<Vec<_>>();
+        let mut spendable_outputs = Vec::new();
+        let mut total_amount = MicroMinotari::zero();
+        let view_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_private_view_key()
+            .await?;
+
+        // only those outputs that can be decoded are spendable and can be used as inputs
+        for output in all_outputs {
+            match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
+                Ok((amount, _, _)) => {
+                    total_amount += amount;
+                    spendable_outputs.push(output.commitment().clone());
+                },
+                Err(_) => {
+                    debug!(target: LOG_TARGET, "Output {:?} not decryptable; skipping.", output.commitment());
+                },
+            }
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "user-pay-for-fee: Filtered {} outputs from {} total outputs for transaction {}, total amount: {}",
+            spendable_outputs.len(),
+            original_transaction.transaction.body.outputs().len(),
+            tx_id,
+            total_amount
+        );
+
+        let num_inputs = spendable_outputs.len();
+        let num_outputs = 2; // destination + change
+        let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
+            fee,
+            &self.resources.consensus_manager,
+            num_inputs,
+            num_outputs,
+        )?;
+
+        debug!(
+            target: LOG_TARGET,
+            "user-pay-for-fee: Fee calculation - target_fee: {}, weight: {} grams, fee_per_gram: {} (calculated as {:.3} rounded)",
+            fee,
+            weight_in_grams,
+            fee_per_gram,
+            if weight_in_grams > 0 { fee.0 as f64 / weight_in_grams as f64 } else { 0.0 }
+        );
+
+        let new_tx_id = self
+            .send_one_sided_transaction(
+                destination,
+                total_amount,
+                UtxoSelectionCriteria::must_include(spendable_outputs),
+                OutputFeatures::default(),
+                fee_per_gram,
+                original_transaction.payment_id,
+                transaction_broadcast_join_handles,
+            )
+            .await?;
+
+        info!(
+            target: LOG_TARGET,
+            "user-pay-for-fee: Created new transaction {} to spend outputs transaction with id: {}, weight: {} grams",
+            new_tx_id,
+            tx_id,
+            weight_in_grams,
+        );
+
+        Ok(new_tx_id)
     }
 
     async fn cancel_transaction(&mut self, tx_id: TxId, reason: TxCancellationReason) {

@@ -89,6 +89,8 @@ use minotari_app_grpc::tari_rpc::{
     PrepareOneSidedTransactionForSigningResponse,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
+    ReplaceByFeeRequest,
+    ReplaceByFeeResponse,
     RevalidateRequest,
     RevalidateResponse,
     SendShaAtomicSwapRequest,
@@ -108,6 +110,8 @@ use minotari_app_grpc::tari_rpc::{
     TransferRequest,
     TransferResponse,
     TransferResult,
+    UserPayForFeeRequest,
+    UserPayForFeeResponse,
     ValidateRequest,
     ValidateResponse,
 };
@@ -116,6 +120,7 @@ use minotari_wallet::{
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
+        error::TransactionServiceError,
         handle::TransactionServiceHandle,
         offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
@@ -248,7 +253,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
         let connectivity = self.wallet.wallet_connectivity.clone();
-        let status = connectivity.get_connectivity_status();
+        let status = connectivity.get_connectivity_status().await;
         Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
     }
 
@@ -2123,6 +2128,114 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }];
         Ok(Response::new(GetFeePerGramStatsResponse {
             fee_per_gram_stats: fee_stats,
+        }))
+    }
+
+    async fn user_pay_for_fee(
+        &self,
+        request: Request<UserPayForFeeRequest>,
+    ) -> Result<Response<UserPayForFeeResponse>, Status> {
+        let message = request.into_inner();
+        let recipients = message
+            .recipients
+            .into_iter()
+            .enumerate()
+            .map(|(index, transfer_with_id)| -> Result<_, String> {
+                let dest = transfer_with_id.destination;
+                let address = TariAddress::from_str(&dest)
+                    .map_err(|_| format!("Destination address at index {} is malformed", index))?;
+                Ok((address, transfer_with_id.fee, transfer_with_id.tx_id))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Status::invalid_argument)?;
+
+        let transfer_results: Vec<(TariAddress, Result<TxId, TransactionServiceError>)> =
+            future::join_all(recipients.iter().map(|(address, fee, tx_id)| async {
+                (
+                    address.to_owned(),
+                    self.get_transaction_service()
+                        .user_pay_for_fee(
+                            TxId::from(tx_id.to_owned()),
+                            address.to_owned(),
+                            MicroMinotari::from(fee.to_owned()),
+                        )
+                        .await,
+                )
+            }))
+            .await;
+
+        let mut results = Vec::new();
+        for (address, result) in transfer_results {
+            match result {
+                Ok(tx_id) => {
+                    let wallet_address = self
+                        .wallet
+                        .get_wallet_one_sided_address()
+                        .await
+                        .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                    let wallet_tx = timeout(Duration::from_millis(100), async {
+                        loop {
+                            let tx = self
+                                .get_transaction_service()
+                                .get_any_transaction(tx_id)
+                                .await
+                                .map_err(|e| Status::internal(format!("{:?}", e)));
+
+                            if let Ok(Some(tx)) = tx {
+                                break tx;
+                            }
+                            sleep(Duration::from_millis(10)).await;
+                        }
+                    })
+                    .await
+                    .map_err(|_| {
+                        error!(target: LOG_TARGET, "Transaction {} not found within timeout", tx_id);
+                        Status::not_found(format!("Transaction {} not found within timeout", tx_id))
+                    })?;
+                    let final_tx = convert_wallet_transaction_into_transaction_info(
+                        wallet_tx,
+                        &wallet_address,
+                        &self.wallet.key_manager_service,
+                    )
+                    .await;
+                    results.push(TransferResult {
+                        address: address.to_string(),
+                        transaction_id: tx_id.into(),
+                        is_success: true,
+                        failure_message: Default::default(),
+                        transaction_info: Some(final_tx),
+                    });
+                },
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to send transaction for address `{}`: {}", address, err
+                    );
+                    results.push(TransferResult {
+                        address: address.to_string(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: err.to_string(),
+                        transaction_info: None,
+                    });
+                },
+            }
+        }
+        Ok(Response::new(UserPayForFeeResponse { results }))
+    }
+
+    async fn replace_by_fee(
+        &self,
+        request: Request<ReplaceByFeeRequest>,
+    ) -> Result<Response<ReplaceByFeeResponse>, Status> {
+        let request = request.into_inner();
+        let mut transaction_service = self.get_transaction_service();
+        let tx_id = transaction_service
+            .replace_by_fee(request.transaction_id.into(), MicroMinotari::from(request.fee_increase))
+            .await
+            .map_err(|e| Status::internal(format!("Failed to replace by fee: {}", e)))?;
+        Ok(Response::new(ReplaceByFeeResponse {
+            transaction_id: tx_id.into(),
         }))
     }
 

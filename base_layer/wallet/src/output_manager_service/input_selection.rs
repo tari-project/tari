@@ -67,7 +67,14 @@ impl UtxoSelectionCriteria {
         Self {
             filter: UtxoSelectionFilter::SpecificOutputs { commitments },
             ordering: UtxoSelectionOrdering::Default,
-            min_dust: 0,
+            ..Default::default()
+        }
+    }
+
+    pub fn must_include(commitments: Vec<CompressedCommitment>) -> Self {
+        Self {
+            filter: UtxoSelectionFilter::MustInclude { commitments },
+            ordering: UtxoSelectionOrdering::Default,
             ..Default::default()
         }
     }
@@ -111,6 +118,9 @@ pub enum UtxoSelectionFilter {
     Standard,
     /// Selects specific outputs. All outputs must be exist and be spendable.
     SpecificOutputs { commitments: Vec<CompressedCommitment> },
+    /// Set of UTXOs that must be included in the selection. The system may include additional UTXOs if the specified
+    /// ones don't have the required combined amount for the transaction.
+    MustInclude { commitments: Vec<CompressedCommitment> },
 }
 impl UtxoSelectionFilter {
     pub fn is_standard(&self) -> bool {
@@ -126,6 +136,9 @@ impl Display for UtxoSelectionFilter {
             },
             UtxoSelectionFilter::SpecificOutputs { commitments: outputs } => {
                 write!(f, "Specific({} output(s))", outputs.len())
+            },
+            UtxoSelectionFilter::MustInclude { commitments: outputs } => {
+                write!(f, "MustInclude({} output(s))", outputs.len())
             },
         }
     }

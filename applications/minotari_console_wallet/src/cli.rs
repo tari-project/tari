@@ -33,7 +33,7 @@ use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPubli
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::{epoch::VnEpoch, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
+use tari_core::transactions::tari_amount::{self, MicroMinotari};
 use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
@@ -156,6 +156,8 @@ pub enum CliCommands {
     PreMineSpendTx(PreMineSpendAggregateTransactionArgs),
     PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
+    ReplaceByFee(ReplaceByFeeArgs),
+    UserPayForFee(UserPayForFeeArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
     DiscoverPeer(DiscoverPeerArgs),
@@ -216,6 +218,22 @@ pub struct SendMinotariArgs {
     pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
     pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ReplaceByFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    #[clap(short, long)]
+    pub fee_increase: MicroMinotari,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UserPayForFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    pub fee: MicroMinotari,
+    pub destination: TariAddress,
 }
 
 #[derive(Debug, Args, Clone)]

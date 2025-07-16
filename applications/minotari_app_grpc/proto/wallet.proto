@@ -992,7 +992,7 @@ service Wallet {
 
   // Creates a transaction with a template registration output
   rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
-  
+
   // Signs a message using the wallet's node identity private key.
   //
   // The `SignMessage` call creates a Schnorr signature over a message using the wallet's node identity private key.
@@ -1151,6 +1151,11 @@ service Wallet {
   rpc GetFeeEstimate(GetFeeEstimateRequest) returns (GetFeeEstimateResponse);
 
   rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
+
+  rpc ReplaceByFee(ReplaceByFeeRequest) returns (ReplaceByFeeResponse);
+
+  rpc UserPayForFee(UserPayForFeeRequest) returns (UserPayForFeeResponse);
+
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
 
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
@@ -1682,6 +1687,35 @@ message GetFeePerGramStatsRequest {
 
 message GetFeePerGramStatsResponse {
   repeated FeePerGramStat fee_per_gram_stats = 1;
+}
+
+message ReplaceByFeeRequest {
+  // The transaction id of the transaction to replace
+  uint64 transaction_id = 1;
+  // The amount to increase the fee by in microTari. Must be greater than zero.
+  uint64 fee_increase = 2;
+}
+
+message ReplaceByFeeResponse {
+  // Transaction id of the new transaction
+  uint64 transaction_id = 1;
+}
+
+message UserPayForFeeRequest {
+    repeated TxOutputsToSpendTransfer recipients = 1;
+}
+
+message TxOutputsToSpendTransfer {
+    // Id of the transaction to spend outputs from.
+    uint64 tx_id = 1;
+    // Fee to pay for the transaction in microTari.
+    uint64 fee = 2;
+    // Base58 Tari address of the recipient.
+    string destination = 3;
+}
+
+message UserPayForFeeResponse {
+  repeated TransferResult results = 1;
 }
 
 message FeePerGramStat {

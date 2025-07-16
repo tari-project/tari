@@ -242,6 +242,15 @@ pub enum TransactionServiceRequest {
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
     ReValidateRejectedTransactions,
+    ReplaceByFee {
+        tx_id: TxId,
+        fee_increase: MicroMinotari,
+    },
+    UserPayForFee {
+        tx_id: TxId,
+        destination: TariAddress,
+        fee: MicroMinotari,
+    },
     /// Returns the fee per gram estimates for the next {count} blocks.
     GetFeePerGramStatsPerBlock {
         count: u64,
@@ -464,6 +473,20 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
+            Self::ReplaceByFee { tx_id, fee_increase } => {
+                write!(f, "ReplaceByFee(tx_id: {}, fee_increase: {})", tx_id, fee_increase)
+            },
+            Self::UserPayForFee {
+                tx_id,
+                destination,
+                fee,
+            } => {
+                write!(
+                    f,
+                    "UserPayForFee(tx_id: {}, destination: {}, fee: {})",
+                    tx_id, destination, fee
+                )
+            },
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
@@ -543,6 +566,7 @@ pub enum TransactionServiceResponse {
     PaymentDetails(Option<PaymentDetails>),
     OneSidedTransactionPreparedForSigning(Box<PrepareOneSidedTransactionForSigningResult>),
     SignedOneSidedTransaction(Box<SignedOneSidedTransactionResult>),
+    TransactionReplaced(TxId),
     CodeRegistrationTransactionSent {
         tx_id: TxId,
         template_address: FixedHash,
@@ -1506,6 +1530,58 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CompletedTransaction(tx) => Ok(*tx),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Replace a pending outbound transaction with a new one with higher fee
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the pending outbound transaction to replace
+    /// * `fee_increase` - Fee increase
+    ///
+    /// # Returns
+    /// The new transaction ID or an error
+    pub async fn replace_by_fee(
+        &mut self,
+        tx_id: TxId,
+        fee_increase: MicroMinotari,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ReplaceByFee { tx_id, fee_increase })
+            .await??
+        {
+            TransactionServiceResponse::TransactionReplaced(new_tx_id) => Ok(new_tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Create a new transaction to pay for the fees of an existing transaction
+    ///
+    /// # Arguments
+    /// * `tx_id` - The transaction ID of the transaction
+    /// * `destination` - The destination address to receive remaining transaction outputs
+    /// * `fee` - The fee amount to pay for this transaction
+    ///
+    /// # Returns
+    /// The new transaction ID or an error
+    pub async fn user_pay_for_fee(
+        &mut self,
+        tx_id: TxId,
+        destination: TariAddress,
+        fee: MicroMinotari,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::UserPayForFee {
+                tx_id,
+                destination,
+                fee,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
