@@ -1,6 +1,23 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+### [4.9.1-rc.0](https://github.com/tari-project/tari/compare/v4.9.0-pre.2...v4.9.1-rc.0) (2025-07-16)
+
+
+### Features
+
+* add transport dial timeout ([#7312](https://github.com/tari-project/tari/issues/7312)) ([0ab5252](https://github.com/tari-project/tari/commit/0ab52522c85fd35b5ccaf17f9a99611d340c77f3))
+* enable caching of http requests ([#7325](https://github.com/tari-project/tari/issues/7325)) ([db97351](https://github.com/tari-project/tari/commit/db973514ddd55475e8091e1e14abaec65b500b04))
+* replace by fee and user pay for fee commands ([#7284](https://github.com/tari-project/tari/issues/7284)) ([a877048](https://github.com/tari-project/tari/commit/a877048936562b305429d477a8deda0369cb85c6))
+* update search-utxo with payref info ([#7319](https://github.com/tari-project/tari/issues/7319)) ([24ae263](https://github.com/tari-project/tari/commit/24ae263755ca60929d0df13150754e0d9b05e3bf))
+
+
+### Bug Fixes
+
+* blocking main tokio thread when reading last latency ([#7320](https://github.com/tari-project/tari/issues/7320)) ([4b8745e](https://github.com/tari-project/tari/commit/4b8745ed5a671227281b2ef0dff7dab4feef22b5))
+* http wallet json_rpc route size limit ([#7324](https://github.com/tari-project/tari/issues/7324)) ([5dcaccd](https://github.com/tari-project/tari/commit/5dcaccdea535a06f89412cc69194844e44b11ff1))
+
+
 ## [4.9.0-rc.0](https://github.com/tari-project/tari/compare/v4.8.0-rc.0...v4.9.0-rc.0) (2025-07-14)
 
 
