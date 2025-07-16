@@ -52,22 +52,22 @@ pub struct MinedInfo {
 impl Display for MinedInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(output) = &self.output {
-            write!(
+            writeln!(
                 f,
-                "Output mined at height {} in block {} at timestamp {}\n",
+                "Output mined at height {} in block {} at timestamp {}",
                 output.mined_height, output.header_hash, output.mined_timestamp
             )?;
         } else {
-            write!(f, "Output not mined \n")?;
+            writeln!(f, "Output not mined ")?;
         }
         if let Some(input) = &self.input {
-            write!(
+            writeln!(
                 f,
-                "Output spent at height {} in block {} at timestamp {}\n",
+                "Output spent at height {} in block {} at timestamp {}",
                 input.spent_height, input.header_hash, input.spent_timestamp
             )?;
         } else {
-            write!(f, "Output not spent\n")?;
+            writeln!(f, "Output not spent")?;
         }
         Ok(())
     }
