@@ -450,7 +450,7 @@ impl BaseNodeWalletClient for Client {
                 body
             ));
         }
-        debug!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {}", server_address);
+        info!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {}", server_address);
         let response = res.json::<JsonRpcResponse<TxSubmissionResponse>>().await?;
         match response.result {
             Some(result) => {
