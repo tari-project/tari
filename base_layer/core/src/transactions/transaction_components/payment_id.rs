@@ -39,6 +39,9 @@ use crate::transactions::{
     transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
 };
 
+// Maximum size for a PaymentID in bytes (256 bytes)
+const MAX_PAYMENT_ID_SIZE: usize = 256;
+
 // We pad the bytes to min this size, so that we can use the same size for AddressAndData and TransactionInfo
 const PADDING_SIZE: usize = 130;
 const PADDING_SIZE_NO_TAG: usize = 129;
@@ -2027,7 +2030,7 @@ mod test {
         .expect("Valid TransactionInfo should be created");
 
         let calculated_base_size =
-            1 + 1 + single_address.get_size() + PaymentId::SIZE_VALUE_AND_META_DATA + 1 + 0 + 1 + small_user_data.len();
+            1 + 1 + single_address.get_size() + PaymentId::SIZE_VALUE_AND_META_DATA + 1 + 1 + small_user_data.len();
         assert!(calculated_base_size < PADDING_SIZE);
         assert_eq!(transaction_info.get_size(), PADDING_SIZE);
     }
