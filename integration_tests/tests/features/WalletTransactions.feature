@@ -261,7 +261,7 @@ Feature: Wallet Transactions
   #   When I mine 6 blocks on NODE_C
   #   Then all nodes are at height 16
 
-  @missing-steps @missing-steps
+  @missing-steps
   Scenario: Wallet send transactions while offline
     Given I have a seed node SEED
     When I have wallet WALLET_A connected to seed node SEED

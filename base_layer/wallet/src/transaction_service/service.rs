@@ -4197,9 +4197,10 @@ where
         // Calculate transaction weight and fee_per_gram from total fee using original transaction
         let num_inputs = original_inputs.len();
         let num_outputs = original_transaction.transaction.body().outputs().len();
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
             fee,
-            &self.resources.consensus_manager,
+            self.resources.consensus_manager.consensus_constants(tip_height),
             num_inputs,
             num_outputs,
         )?;
@@ -4285,7 +4286,7 @@ where
             .get_private_view_key()
             .await?;
 
-        // only those outputs that can be decoded are spendable and can be used as inputs
+        // only those outputs that can be decrypted are spendable and can be used as inputs
         for output in all_outputs {
             match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
                 Ok((amount, _, _)) => {
@@ -4309,9 +4310,10 @@ where
 
         let num_inputs = spendable_outputs.len();
         let num_outputs = 2; // destination + change
+        let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
             fee,
-            &self.resources.consensus_manager,
+            self.resources.consensus_manager.consensus_constants(tip_height),
             num_inputs,
             num_outputs,
         )?;
