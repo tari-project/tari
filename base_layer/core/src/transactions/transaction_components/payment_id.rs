@@ -185,6 +185,31 @@ impl PaymentId {
     const SIZE_META_DATA: usize = 5;
     const SIZE_VALUE_AND_META_DATA: usize = SIZE_VALUE + PaymentId::SIZE_META_DATA;
 
+    /// Calculates the actual size that would be used by an AddressAndData PaymentId
+    /// This includes the recursive size of any PaymentIds contained within the address
+    fn calculate_address_and_data_size(address: &TariAddress, user_data_len: usize) -> usize {
+        let base_size = 1 + 1 + address.get_size() + PaymentId::SIZE_META_DATA + 1 + user_data_len;
+        std::cmp::max(base_size, PADDING_SIZE)
+    }
+
+    /// Calculates the actual size that would be used by a TransactionInfo PaymentId
+    /// This includes the recursive size of any PaymentIds contained within the address
+    fn calculate_transaction_info_size(
+        address: &TariAddress,
+        sent_output_hashes_len: usize,
+        user_data_len: usize,
+    ) -> usize {
+        let base_size = 1
+            + 1
+            + address.get_size()
+            + PaymentId::SIZE_VALUE_AND_META_DATA
+            + 1
+            + (sent_output_hashes_len * FixedHash::byte_size())
+            + 1
+            + user_data_len;
+        std::cmp::max(base_size, PADDING_SIZE)
+    }
+
     pub fn new_address_and_data(
         sender_address: TariAddress,
         fee: MicroMinotari,
@@ -192,14 +217,29 @@ impl PaymentId {
         tx_type: TxType,
         user_data: Vec<u8>,
     ) -> Result<Self, String> {
-        Self::validate_user_data_size(&user_data)?;
-        Ok(PaymentId::AddressAndData {
+        // Calculate the actual size this PaymentId would occupy (including any nested PaymentIds in the address)
+        let total_size = Self::calculate_address_and_data_size(&sender_address, user_data.len());
+
+        if total_size > MAX_PAYMENT_ID_SIZE {
+            return Err(format!(
+                "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, user_data: {} bytes, overhead: {} bytes)",
+                MAX_PAYMENT_ID_SIZE,
+                total_size,
+                sender_address.get_size(),
+                user_data.len(),
+                total_size - sender_address.get_size() - user_data.len()
+            ));
+        }
+
+        let payment_id = PaymentId::AddressAndData {
             sender_address,
             fee,
             sender_one_sided,
             tx_type,
             user_data,
-        })
+        };
+
+        Ok(payment_id)
     }
 
     pub fn new_transaction_info(
@@ -211,8 +251,23 @@ impl PaymentId {
         sent_output_hashes: Vec<FixedHash>,
         user_data: Vec<u8>,
     ) -> Result<Self, String> {
-        Self::validate_user_data_size(&user_data)?;
-        Ok(PaymentId::TransactionInfo {
+        // Calculate the actual size this PaymentId would occupy (including any nested PaymentIds in the address)
+        let total_size =
+            Self::calculate_transaction_info_size(&recipient_address, sent_output_hashes.len(), user_data.len());
+
+        if total_size > MAX_PAYMENT_ID_SIZE {
+            return Err(format!(
+                "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, hashes: {} bytes, user_data: {} bytes, overhead: {} bytes)",
+                MAX_PAYMENT_ID_SIZE,
+                total_size,
+                recipient_address.get_size(),
+                sent_output_hashes.len() * FixedHash::byte_size(),
+                user_data.len(),
+                total_size - recipient_address.get_size() - (sent_output_hashes.len() * FixedHash::byte_size()) - user_data.len()
+            ));
+        }
+
+        let payment_id = PaymentId::TransactionInfo {
             recipient_address,
             amount,
             fee,
@@ -220,7 +275,64 @@ impl PaymentId {
             tx_type,
             sent_output_hashes,
             user_data,
-        })
+        };
+
+        Ok(payment_id)
+    }
+
+    pub fn new_empty() -> Self {
+        PaymentId::Empty
+    }
+
+    pub fn new_raw(data: Vec<u8>) -> Result<Self, String> {
+        // Raw PaymentId: 1 byte for tag + data.len() bytes for data
+        let total_size = 1 + data.len();
+
+        if total_size > MAX_PAYMENT_ID_SIZE {
+            return Err(format!(
+                "PaymentId exceeds {}-byte limit: {} bytes (data: {} bytes, tag: 1 byte)",
+                MAX_PAYMENT_ID_SIZE,
+                total_size,
+                data.len()
+            ));
+        }
+        Ok(PaymentId::Raw(data))
+    }
+
+    pub fn new_u256(value: U256) -> Result<Self, String> {
+        // U256 PaymentId: 1 byte for tag + 32 bytes for U256 = 33 bytes total
+        // This should always fit within 256 bytes, but let's be explicit
+        let total_size = 1 + SIZE_U256;
+
+        if total_size > MAX_PAYMENT_ID_SIZE {
+            return Err(format!(
+                "PaymentId exceeds {}-byte limit: {} bytes (U256: {} bytes, tag: 1 byte)",
+                MAX_PAYMENT_ID_SIZE, total_size, SIZE_U256
+            ));
+        }
+        Ok(PaymentId::U256(value))
+    }
+
+    /// Helper function to create a validated `PaymentId::Open` from user data and transaction type
+    pub fn new_open(user_data: Vec<u8>, tx_type: TxType) -> Result<Self, String> {
+        // Open PaymentId: 1 byte for tag + user_data.len() bytes + 1 byte for tx_type
+        let total_size = 1 + user_data.len() + 1;
+
+        if total_size > MAX_PAYMENT_ID_SIZE {
+            return Err(format!(
+                "PaymentId exceeds {}-byte limit: {} bytes (user_data: {} bytes, tag: 1 byte, tx_type: 1 byte)",
+                MAX_PAYMENT_ID_SIZE,
+                total_size,
+                user_data.len()
+            ));
+        }
+
+        Ok(PaymentId::Open { user_data, tx_type })
+    }
+
+    /// Helper function to create a validated `PaymentId::Open` from a string and transaction type
+    pub fn new_open_from_string(s: &str, tx_type: TxType) -> Result<Self, String> {
+        Self::new_open(s.as_bytes().to_vec(), tx_type)
     }
 
     fn to_tag(&self) -> Vec<u8> {
@@ -234,117 +346,74 @@ impl PaymentId {
         }
     }
 
-    fn get_reserved_size(&self) -> usize {
-        match self {
-            PaymentId::Empty => 0,       // No reserved space, no user data possible
-            PaymentId::U256(_) => 1,     // 1 byte tag, rest (31 bytes) is user data
-            PaymentId::Open { .. } => 2, // 1 byte tag + 1 byte tx_type
-            PaymentId::AddressAndData { sender_address, .. } => {
-                // Calculate reserved space for system data
-                let base_size = 1 // tag
-                    + 5 // packed metadata (fee + tx_type + sender_one_sided)
-                    + 1 // address length byte
-                    + sender_address.get_size() // actual address size
-                    + 1; // user data length byte
-
-                // Account for padding - if base_size + user_data would be < 130,
-                // then we need to reserve space for padding
-                let min_total_with_padding = PADDING_SIZE;
-                if base_size < min_total_with_padding {
-                    min_total_with_padding
-                } else {
-                    base_size
-                }
-            },
-            PaymentId::TransactionInfo {
-                recipient_address,
-                sent_output_hashes,
-                ..
-            } => {
-                // Calculate reserved space for system data
-                let base_size = 1 // tag
-                    + 8 // amount (u64)
-                    + 5 // packed metadata (fee + tx_type + sender_one_sided)
-                    + 1 // address length byte
-                    + recipient_address.get_size() // actual address size
-                    + 1 // user data length byte
-                    + 1 // sent output hashes count
-                    + (sent_output_hashes.len() * FixedHash::byte_size()); // actual hashes
-
-                // Account for padding - if base_size + user_data would be < 130,
-                // then we need to reserve space for padding
-                let min_total_with_padding = PADDING_SIZE;
-                if base_size < min_total_with_padding {
-                    min_total_with_padding
-                } else {
-                    base_size
-                }
-            },
-            PaymentId::Raw(_) => 1, // 1 byte tag, rest is user data
-        }
-    }
-
-    pub fn validate_user_data_size(user_data: &[u8]) -> Result<(), String> {
-        // For static validation, we use the maximum possible reserved size
-        let max_reserved_size = TARI_ADDRESS_INTERNAL_DUAL_SIZE + 8 + 1 + 1 + 32; // address + amount + fee + flags + hash
-        let total_size = max_reserved_size + user_data.len();
-
-        if total_size > SIZE_U256 {
-            return Err(format!(
-                "PaymentId would exceed 256-bit limit: {} bytes (reserved: {}, user data: {})",
-                total_size,
-                max_reserved_size,
-                user_data.len()
-            ));
-        }
-
-        Ok(())
-    }
-
-    pub fn max_user_data_size(&self) -> usize {
-        let reserved = self.get_reserved_size();
-        SIZE_U256.saturating_sub(reserved)
-    }
-
     pub fn get_size(&self) -> usize {
         match self {
+            // Empty payment ID has no bytes
             PaymentId::Empty => 0,
+
+            // U256 payment ID:
+            // - 1 byte for the PTag (enum discriminator)
+            // - SIZE_U256 bytes for the U256 value (32 bytes = size_of::<U256>())
             PaymentId::U256(_) => 1 + SIZE_U256,
+
+            // Open payment ID:
+            // - 1 byte for the PTag (enum discriminator)
+            // - user_data.len() bytes for the variable-length user data
+            // - 1 byte for the TxType (transaction type as u8)
             PaymentId::Open { user_data, .. } => 1 + user_data.len() + 1,
+
             PaymentId::AddressAndData {
                 sender_address,
                 user_data,
                 ..
             } => {
+                // AddressAndData payment ID:
+                // - 1 byte for the PTag (enum discriminator)
+                // - 1 byte for sender_one_sided boolean flag
+                // - sender_address.get_size() bytes for the TariAddress (67 bytes for dual, 35 bytes for single)
+                // - PaymentId::SIZE_META_DATA bytes for metadata (5 bytes: 1 byte TxType + 4 bytes fee as u32)
+                // - 1 byte for user_data length
+                // - user_data.len() bytes for the variable-length user data
                 let len = 1 + 1 + sender_address.get_size() + PaymentId::SIZE_META_DATA + 1 + user_data.len();
-                if len < PADDING_SIZE {
-                    PADDING_SIZE
-                } else {
-                    len
-                }
+                // Ensure minimum size of PADDING_SIZE (130 bytes) for consistent serialization
+                std::cmp::max(len, PADDING_SIZE)
             },
+
             PaymentId::TransactionInfo {
                 recipient_address,
                 user_data,
                 sent_output_hashes,
                 ..
             } => {
-                let len = 1 +
-                    1 +
-                    recipient_address.get_size() +
-                    PaymentId::SIZE_VALUE_AND_META_DATA +
-                    1 +
-                    (sent_output_hashes.len() * FixedHash::byte_size()) +
-                    1 +
-                    user_data.len();
+                // TransactionInfo payment ID:
+                // - 1 byte for the PTag (enum discriminator)
+                // - 1 byte for sender_one_sided boolean flag
+                // - recipient_address.get_size() bytes for the TariAddress (67 bytes for dual, 35 bytes for single)
+                // - PaymentId::SIZE_VALUE_AND_META_DATA bytes for value and metadata (13 bytes: 8 bytes amount + 5 bytes metadata)
+                // - 1 byte for sent_output_hashes length
+                // - (sent_output_hashes.len() * FixedHash::byte_size()) bytes for output hashes (32 bytes per hash)
+                // - 1 byte for user_data length
+                // - user_data.len() bytes for the variable-length user data
+                let len = 1
+                    + 1
+                    + recipient_address.get_size()
+                    + PaymentId::SIZE_VALUE_AND_META_DATA
+                    + 1
+                    + (sent_output_hashes.len() * FixedHash::byte_size())
+                    + 1
+                    + user_data.len();
+                // Ensure minimum size of PADDING_SIZE (130 bytes) for consistent serialization
                 if len < PADDING_SIZE {
                     PADDING_SIZE
                 } else {
                     len
                 }
             },
+
             PaymentId::Raw(bytes) => {
-                // We add 1 for the tag byte
+                // Raw payment ID:
+                // - 1 byte for the PTag (enum discriminator)
+                // - bytes.len() bytes for the raw data
                 1 + bytes.len()
             },
         }
@@ -373,9 +442,9 @@ impl PaymentId {
 
     pub fn get_type(&self) -> TxType {
         match self {
-            PaymentId::Open { tx_type, .. } |
-            PaymentId::AddressAndData { tx_type, .. } |
-            PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
+            PaymentId::Open { tx_type, .. }
+            | PaymentId::AddressAndData { tx_type, .. }
+            | PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
@@ -408,24 +477,22 @@ impl PaymentId {
     ) -> PaymentId {
         match self {
             PaymentId::Open { user_data, tx_type } => {
-                let new_payment_id = PaymentId::AddressAndData {
-                    sender_address,
-                    sender_one_sided,
-                    fee,
-                    tx_type,
-                    user_data: user_data.clone(),
-                };
-                if let Err(e) = PaymentId::validate_user_data_size(&user_data) {
-                    panic!("Invalid user data size: {}", e);
+                match PaymentId::new_address_and_data(sender_address, fee, sender_one_sided, tx_type, user_data) {
+                    Ok(payment_id) => payment_id,
+                    Err(e) => panic!("Cannot create AddressAndData PaymentId: {}", e),
                 }
-                new_payment_id
             },
-            PaymentId::Empty => PaymentId::AddressAndData {
-                sender_address,
-                sender_one_sided,
-                fee,
-                tx_type: tx_type.unwrap_or_default(),
-                user_data: vec![],
+            PaymentId::Empty => {
+                match PaymentId::new_address_and_data(
+                    sender_address,
+                    fee,
+                    sender_one_sided,
+                    tx_type.unwrap_or_default(),
+                    vec![],
+                ) {
+                    Ok(payment_id) => payment_id,
+                    Err(e) => panic!("Cannot create AddressAndData PaymentId: {}", e),
+                }
             },
             _ => self,
         }
@@ -439,8 +506,8 @@ impl PaymentId {
                 sender_one_sided,
                 tx_type,
                 ..
-            } |
-            PaymentId::AddressAndData {
+            }
+            | PaymentId::AddressAndData {
                 fee,
                 sender_one_sided,
                 tx_type,
@@ -792,6 +859,9 @@ impl PaymentId {
     }
 
     /// Helper function to create a `PaymentId::Open` from a string and the transaction type
+    ///
+    /// # Deprecated
+    /// Use `new_open_from_string` instead for proper validation
     pub fn open_from_string(s: &str, tx_type: TxType) -> Self {
         PaymentId::Open {
             user_data: s.as_bytes().to_vec(),
@@ -800,6 +870,9 @@ impl PaymentId {
     }
 
     /// Helper function to create a `PaymentId::Open` from a bytes and the transaction type
+    ///
+    /// # Deprecated
+    /// Use `new_open` instead for proper validation
     pub fn open(bytes: Vec<u8>, tx_type: TxType) -> Self {
         PaymentId::Open {
             user_data: bytes,
@@ -885,7 +958,7 @@ mod test {
             "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
         )
         .unwrap();
-        pay_id_address = pay_id_address.with_payment_id_user_data(vec![11u8; 130]).unwrap();
+        pay_id_address = pay_id_address.with_payment_id_user_data(vec![11u8; 50]).unwrap();
         // pay_id_address = pay_id_address
         //     .with_payment_id_user_data(vec![0, 1, 2, 3, 4, 5])
         //     .unwrap();
@@ -950,7 +1023,7 @@ mod test {
             .unwrap(),
             // AddressAndData - single, no data
             PaymentId::new_address_and_data(
-                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 MicroMinotari::from(123),
                 false,
                 TxType::CoinSplit,
@@ -959,7 +1032,7 @@ mod test {
             .unwrap(),
             // AddressAndData - single, some data
             PaymentId::new_address_and_data(
-                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 MicroMinotari::from(123),
                 false,
                 TxType::Burn,
@@ -968,11 +1041,11 @@ mod test {
             .unwrap(),
             // AddressAndData - single, max data
             PaymentId::new_address_and_data(
-                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 MicroMinotari::from(123),
                 false,
                 TxType::CoinSplit,
-                vec![1; 100],
+                vec![1; 40],
             )
             .unwrap(),
             PaymentId::new_address_and_data(
@@ -980,12 +1053,12 @@ mod test {
                 MicroMinotari::from(123),
                 false,
                 TxType::CoinSplit,
-                vec![1; 80],
+                vec![1; 30],
             )
             .unwrap(),
             // TransactionInfo - single + amount, no data
             PaymentId::new_transaction_info(
-                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 MicroMinotari::from(123456),
                 MicroMinotari::from(123),
                 false,
@@ -996,7 +1069,7 @@ mod test {
             .unwrap(),
             // TransactionInfo - single + amount + some data
             PaymentId::new_transaction_info(
-                TariAddress::from_base58("f3s7xtiykqauzpdujdr8nbcq33myjigiwis44cczcxwaajk").unwrap(),
+                TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                 MicroMinotari::from(123456),
                 MicroMinotari::from(123),
                 false,
@@ -1621,5 +1694,341 @@ mod test {
             },
             _ => panic!("Dual variant was expected"),
         }
+    }
+
+    #[test]
+    fn test_payment_id_size_validation() {
+        // Test U256 PaymentId validation
+        let u256_value = U256::from(12345u64);
+        let u256_payment_id = PaymentId::new_u256(u256_value).expect("U256 PaymentId should be valid");
+        assert_eq!(u256_payment_id.get_size(), 1 + SIZE_U256); // 1 + 32 = 33 bytes
+
+        // Test Open PaymentId validation - valid case
+        let small_user_data = vec![1, 2, 3, 4, 5];
+        let open_payment_id = PaymentId::new_open(small_user_data.clone(), TxType::PaymentToOther)
+            .expect("Small Open PaymentId should be valid");
+        assert_eq!(open_payment_id.get_size(), 1 + small_user_data.len() + 1); // tag + data + tx_type
+
+        // Test Open PaymentId validation - too large
+        let large_user_data = vec![0u8; MAX_PAYMENT_ID_SIZE]; // 256 bytes
+        let result = PaymentId::new_open(large_user_data, TxType::PaymentToOther);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
+
+        // Test Open PaymentId validation - maximum valid size
+        let max_valid_open_data = vec![0u8; MAX_PAYMENT_ID_SIZE - 2]; // 254 bytes (256 - 1 tag - 1 tx_type)
+        let max_open_payment_id = PaymentId::new_open(max_valid_open_data.clone(), TxType::PaymentToOther)
+            .expect("Maximum valid Open PaymentId should be valid");
+        assert_eq!(max_open_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
+
+        // Test Raw PaymentId validation - valid case
+        let raw_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let raw_payment_id = PaymentId::new_raw(raw_data.clone()).expect("Small Raw PaymentId should be valid");
+        assert_eq!(raw_payment_id.get_size(), 1 + raw_data.len()); // tag + data
+
+        // Test Raw PaymentId validation - too large
+        let large_raw_data = vec![0u8; MAX_PAYMENT_ID_SIZE]; // 256 bytes
+        let result = PaymentId::new_raw(large_raw_data);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
+
+        // Test Raw PaymentId validation - maximum valid size
+        let max_valid_raw_data = vec![0u8; MAX_PAYMENT_ID_SIZE - 1]; // 255 bytes (256 - 1 tag)
+        let max_raw_payment_id =
+            PaymentId::new_raw(max_valid_raw_data.clone()).expect("Maximum valid Raw PaymentId should be valid");
+        assert_eq!(max_raw_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
+    }
+
+    #[test]
+    fn test_address_and_data_validation() {
+        // Create a test single address (smaller)
+        let single_address = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+
+        // Test AddressAndData with valid size
+        let small_user_data = vec![1, 2, 3, 4, 5];
+        let fee = MicroMinotari::from(100u64);
+        let address_and_data = PaymentId::new_address_and_data(
+            single_address.clone(),
+            fee,
+            false,
+            TxType::PaymentToOther,
+            small_user_data.clone(),
+        )
+        .expect("Valid AddressAndData should be created");
+
+        // Verify the size calculation
+        let expected_size = PaymentId::calculate_address_and_data_size(&single_address, small_user_data.len());
+        assert_eq!(address_and_data.get_size(), expected_size);
+        assert!(address_and_data.get_size() <= MAX_PAYMENT_ID_SIZE);
+
+        // Test AddressAndData with user data that would exceed limit
+        let large_user_data = vec![0u8; MAX_PAYMENT_ID_SIZE];
+        let result = PaymentId::new_address_and_data(
+            single_address.clone(),
+            fee,
+            false,
+            TxType::PaymentToOther,
+            large_user_data,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
+    }
+
+    #[test]
+    fn test_transaction_info_validation() {
+        // Create a test single address
+        let single_address = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+
+        // Test TransactionInfo with valid size
+        let small_user_data = vec![1, 2, 3, 4, 5];
+        let amount = MicroMinotari::from(1000u64);
+        let fee = MicroMinotari::from(100u64);
+        let sent_hashes = vec![create_random_fixed_hash(), create_random_fixed_hash()];
+
+        let transaction_info = PaymentId::new_transaction_info(
+            single_address.clone(),
+            amount,
+            fee,
+            false,
+            TxType::PaymentToOther,
+            sent_hashes.clone(),
+            small_user_data.clone(),
+        )
+        .expect("Valid TransactionInfo should be created");
+
+        // Verify the size calculation
+        let expected_size =
+            PaymentId::calculate_transaction_info_size(&single_address, sent_hashes.len(), small_user_data.len());
+        assert_eq!(transaction_info.get_size(), expected_size);
+        assert!(transaction_info.get_size() <= MAX_PAYMENT_ID_SIZE);
+
+        // Test TransactionInfo with too many hashes
+        let many_hashes = vec![create_random_fixed_hash(); 10]; // 10 * 32 = 320 bytes just for hashes
+        let result = PaymentId::new_transaction_info(
+            single_address.clone(),
+            amount,
+            fee,
+            false,
+            TxType::PaymentToOther,
+            many_hashes,
+            small_user_data,
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
+    }
+
+    #[test]
+    fn test_recursive_payment_id_validation() {
+        // Create dual address with payment ID feature (recursion allowed but total size limited)
+        let mut dual_address_with_payment_id = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+
+        // Add small payment ID data to the address
+        dual_address_with_payment_id = dual_address_with_payment_id
+            .with_payment_id_user_data(vec![1, 2, 3, 4, 5])
+            .unwrap();
+
+        // Test that we CAN create AddressAndData with an address that contains payment_id (recursion allowed)
+        let result = PaymentId::new_address_and_data(
+            dual_address_with_payment_id.clone(),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![1, 2, 3],
+        );
+        assert!(
+            result.is_ok(),
+            "Recursion should be allowed as long as total size is under 256 bytes"
+        );
+
+        // Test that we CAN create TransactionInfo with an address that contains payment_id (recursion allowed)
+        let result = PaymentId::new_transaction_info(
+            dual_address_with_payment_id.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![],
+            vec![1, 2, 3],
+        );
+        assert!(
+            result.is_ok(),
+            "Recursion should be allowed as long as total size is under 256 bytes"
+        );
+
+        // Test that validation still fails if the total size would exceed 256 bytes
+        // Create an address with large payment ID data
+        let mut large_dual_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+        large_dual_address = large_dual_address
+            .with_payment_id_user_data(vec![0u8; 200]) // Large payload
+            .unwrap();
+
+        let result = PaymentId::new_address_and_data(
+            large_dual_address,
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![1, 2, 3],
+        );
+        assert!(result.is_err(), "Should fail if total recursive size exceeds 256 bytes");
+        assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
+    }
+
+    #[test]
+    fn test_deeply_nested_payment_id_size_validation() {
+        // Test that deeply nested PaymentIds are correctly size-validated
+        // Create a base dual address with small nested PaymentId
+        let mut nested_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+
+        // Add a small PaymentId to the address (level 1 nesting)
+        nested_address = nested_address.with_payment_id_user_data(vec![1, 2, 3, 4, 5]).unwrap();
+
+        // Verify the nested address size includes the PaymentId data
+        let nested_address_size = nested_address.get_size();
+        assert!(
+            nested_address_size > TARI_ADDRESS_INTERNAL_DUAL_SIZE,
+            "Address with PaymentId should be larger than base dual address"
+        );
+
+        // Test creating AddressAndData with the nested address (level 2 nesting)
+        let result = PaymentId::new_address_and_data(
+            nested_address.clone(),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![1, 2, 3, 4, 5], // Small user data
+        );
+        assert!(result.is_ok(), "Should succeed with reasonable nested size");
+
+        let nested_payment_id = result.unwrap();
+        let total_size = nested_payment_id.get_size();
+        assert!(
+            total_size <= MAX_PAYMENT_ID_SIZE,
+            "Total nested PaymentId size should not exceed 256 bytes"
+        );
+
+        // Test creating TransactionInfo with nested address and verify size
+        let result = PaymentId::new_transaction_info(
+            nested_address.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![create_random_fixed_hash()], // One hash
+            vec![1, 2, 3],                    // Small user data
+        );
+        assert!(result.is_ok(), "Should succeed with reasonable nested size");
+
+        let nested_transaction_info = result.unwrap();
+        let total_size = nested_transaction_info.get_size();
+        assert!(
+            total_size <= MAX_PAYMENT_ID_SIZE,
+            "Total nested TransactionInfo size should not exceed 256 bytes"
+        );
+
+        // Test that validation fails when nested structure becomes too large
+        // Create an address with larger PaymentId data
+        let mut large_nested_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+
+        // Add a large PaymentId that will make the total structure exceed 256 bytes
+        large_nested_address = large_nested_address
+            .with_payment_id_user_data(vec![0u8; 180]) // Large nested data
+            .unwrap();
+
+        // This should fail because the total size exceeds 256 bytes
+        let result = PaymentId::new_address_and_data(
+            large_nested_address.clone(),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![1, 2, 3, 4, 5], // Even small user data should fail
+        );
+        assert!(result.is_err(), "Should fail when total nested size exceeds 256 bytes");
+        assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
+
+        // Verify the error shows the actual calculated size
+        let calculated_size = PaymentId::calculate_address_and_data_size(&large_nested_address, 5);
+        assert!(
+            calculated_size > MAX_PAYMENT_ID_SIZE,
+            "Calculated size should exceed the limit"
+        );
+    }
+
+    #[test]
+    fn test_open_from_string_validation() {
+        // Test valid string
+        let valid_string = "Hello World!";
+        let open_payment_id = PaymentId::new_open_from_string(valid_string, TxType::PaymentToOther)
+            .expect("Valid string should create Open PaymentId");
+
+        match open_payment_id {
+            PaymentId::Open { user_data, tx_type } => {
+                assert_eq!(user_data, valid_string.as_bytes());
+                assert_eq!(tx_type, TxType::PaymentToOther);
+            },
+            _ => panic!("Expected Open PaymentId"),
+        }
+
+        // Test string that would exceed size limit
+        let large_string = "x".repeat(MAX_PAYMENT_ID_SIZE); // 256 chars
+        let result = PaymentId::new_open_from_string(&large_string, TxType::PaymentToOther);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
+
+        // Test maximum valid string size
+        let max_valid_string = "x".repeat(MAX_PAYMENT_ID_SIZE - 2); // 254 chars (256 - 1 tag - 1 tx_type)
+        let max_open_payment_id = PaymentId::new_open_from_string(&max_valid_string, TxType::PaymentToOther)
+            .expect("Maximum valid string should create Open PaymentId");
+        assert_eq!(max_open_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
+    }
+
+    #[test]
+    fn test_padding_behavior() {
+        // Create a test single address
+        let single_address = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+
+        // Test that small AddressAndData gets padded to PADDING_SIZE
+        let small_user_data = vec![1u8; 5];
+        let address_and_data = PaymentId::new_address_and_data(
+            single_address.clone(),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            small_user_data.clone(),
+        )
+        .expect("Valid AddressAndData should be created");
+
+        let calculated_base_size =
+            1 + 1 + single_address.get_size() + PaymentId::SIZE_META_DATA + 1 + small_user_data.len();
+        assert!(calculated_base_size < PADDING_SIZE);
+        assert_eq!(address_and_data.get_size(), PADDING_SIZE);
+
+        // Test that small TransactionInfo gets padded to PADDING_SIZE
+        let transaction_info = PaymentId::new_transaction_info(
+            single_address.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![],
+            small_user_data.clone(),
+        )
+        .expect("Valid TransactionInfo should be created");
+
+        let calculated_base_size =
+            1 + 1 + single_address.get_size() + PaymentId::SIZE_VALUE_AND_META_DATA + 1 + 0 + 1 + small_user_data.len();
+        assert!(calculated_base_size < PADDING_SIZE);
+        assert_eq!(transaction_info.get_size(), PADDING_SIZE);
     }
 }
