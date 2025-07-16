@@ -687,8 +687,6 @@ impl AppStateInner {
         let mut payref_status_by_tx_id = HashMap::new();
 
         // Process each completed transaction directly
-        let required_confirmations = 5; // Default confirmation requirement
-        let deep_confirmations = 5 * required_confirmations;
         for completed_transaction in completed_transactions {
             let tx_id = completed_transaction.tx_id;
 
@@ -709,12 +707,8 @@ impl AppStateInner {
                     let payref = generate_payment_reference(block_hash, output_hash);
                     let payref_hex = payref.to_hex();
                     // Determine status based on confirmations
-                    let (payref_hex_opt, status_text) = if confirmations > deep_confirmations {
-                        (
-                            Some(payref_hex.clone()),
-                            format!("Available (>{} confirmations)", deep_confirmations),
-                        )
-                    } else if confirmations >= required_confirmations {
+                    let required_confirmations = 5; // Default confirmation requirement
+                    let (payref_hex_opt, status_text) = if confirmations >= required_confirmations {
                         (
                             Some(payref_hex.clone()),
                             format!("Available ({} confirmations)", confirmations),
@@ -738,7 +732,6 @@ impl AppStateInner {
             } else {
                 // Transaction not mined yet
                 payref_status_by_tx_id.insert(tx_id.as_u64(), "Not Mined".to_string());
-                debug!(target: LOG_TARGET, "payref_debug: Transaction {} not mined yet", tx_id);
             }
         }
 
