@@ -31,6 +31,7 @@ use tari_comms::{
     Minimized,
     PeerConnection,
 };
+use tari_utilities::hex::Hex;
 
 use crate::{
     network_discovery::{
@@ -46,8 +47,11 @@ use crate::{
 // Use a reasonable value based on the existing configuration
 const DHT_RPC_MAX_PEERS_PER_REQUEST: u32 = 500;
 
-// Define a timeout for individual stream items
-const STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(10);
+// Timeout for individual operations during getting peers info from seed nodes
+const DIAL_TIMEOUT: Duration = Duration::from_secs(30);
+const RPC_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const RPC_GET_PEERS_STREAM_TIMEOUT: Duration = Duration::from_secs(10);
+const RPC_STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(10);
 
 const LOG_TARGET: &str = "comms::dht::network_discovery::seed_strap";
 
@@ -389,13 +393,14 @@ async fn get_peers(
     const NUM_RETRIES: usize = 3;
     let mut peers_from_seed = vec![];
     for attempt in 1..=NUM_RETRIES {
-        let mut conn = match context
-            .connectivity
-            .dial_peer(seed_peer_candidate.node_id.clone())
-            .await
-        {
-            Ok(c) => c,
-            Err(e) => {
+        let dial_result = tokio::time::timeout(
+            DIAL_TIMEOUT,
+            context.connectivity.dial_peer(seed_peer_candidate.node_id.clone()),
+        )
+        .await;
+        let mut conn = match dial_result {
+            Ok(Ok(conn)) => conn,
+            Ok(Err(e)) => {
                 warn!(
                     target: LOG_TARGET,
                     "SeedStrap: Attempt {}/{}: Failed to dial seed peer '{}': {}.",
@@ -403,6 +408,14 @@ async fn get_peers(
                     num_seeds_this_round,
                     seed_peer_node_id_str,
                     e
+                );
+                return (vec![], 0, 0);
+            },
+            Err(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "SeedStrap: Peer dial_peer to seed '{}' timed out after {:?}",
+                    seed_peer_node_id_str, DIAL_TIMEOUT
                 );
                 return (vec![], 0, 0);
             },
@@ -632,8 +645,9 @@ async fn fetch_peers_from_connection(
         conn.peer_node_id()
     );
 
-    let mut client = match conn.connect_rpc::<DhtClient>().await {
-        Ok(client) => {
+    let rpc_result = tokio::time::timeout(RPC_CONNECT_TIMEOUT, conn.connect_rpc::<DhtClient>()).await;
+    let mut client = match rpc_result {
+        Ok(Ok(client)) => {
             debug!(
                 target: LOG_TARGET,
                 "SeedStrap: Successfully connected RPC client to seed peer '{}'",
@@ -641,7 +655,7 @@ async fn fetch_peers_from_connection(
             );
             client
         },
-        Err(e) => {
+        Ok(Err(e)) => {
             error!(
                 target: LOG_TARGET,
                 "SeedStrap: Failed to connect RPC client to seed peer {}: {}",
@@ -649,6 +663,19 @@ async fn fetch_peers_from_connection(
                 e
             );
             return Err(e.into());
+        },
+        Err(_) => {
+            error!(
+                target: LOG_TARGET,
+                "SeedStrap: RPC connect_rpc to seed '{}' timed out after {:?}",
+                conn.peer_node_id(),
+                RPC_CONNECT_TIMEOUT
+            );
+            return Err(NetworkDiscoveryError::Timeout {
+                operation: "connect_rpc".to_string(),
+                peer: conn.peer_node_id().to_hex(),
+                duration: format!("{:.2?}", RPC_CONNECT_TIMEOUT),
+            });
         },
     };
 
@@ -670,8 +697,9 @@ async fn fetch_peers_from_connection(
         conn.peer_node_id()
     );
 
-    let mut peer_stream = match client.get_peers(req).await {
-        Ok(stream) => {
+    let stream_result = tokio::time::timeout(RPC_GET_PEERS_STREAM_TIMEOUT, client.get_peers(req)).await;
+    let mut peer_stream = match stream_result {
+        Ok(Ok(stream)) => {
             debug!(
                 target: LOG_TARGET,
                 "SeedStrap: Successfully initiated get_peers stream from seed peer '{}'",
@@ -679,7 +707,7 @@ async fn fetch_peers_from_connection(
             );
             stream
         },
-        Err(e) => {
+        Ok(Err(e)) => {
             error!(
                 target: LOG_TARGET,
                 "SeedStrap: Failed to initiate get_peers stream from seed peer '{}': {}. This seed peer will be skipped.",
@@ -687,6 +715,18 @@ async fn fetch_peers_from_connection(
                 e
             );
             return Err(e.into());
+        },
+        Err(_) => {
+            error!(
+                target: LOG_TARGET,
+                "SeedStrap: RPC get_peers to seed '{}' timed out after {:?}",
+                conn.peer_node_id(), RPC_GET_PEERS_STREAM_TIMEOUT
+            );
+            return Err(NetworkDiscoveryError::Timeout {
+                operation: "get_peers".to_string(),
+                peer: conn.peer_node_id().to_hex(),
+                duration: format!("{:.2?}", RPC_GET_PEERS_STREAM_TIMEOUT),
+            });
         },
     };
 
@@ -728,14 +768,14 @@ where
         );
 
         // Add timeout to prevent hanging indefinitely on a stalled stream
-        match tokio::time::timeout(STREAM_ITEM_TIMEOUT, peer_stream.next()).await {
+        match tokio::time::timeout(RPC_STREAM_ITEM_TIMEOUT, peer_stream.next()).await {
             // Timeout occurred while waiting for the next item
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
                     "SeedStrap: Timeout after {:.2?} waiting for next peer from stream for seed '{}'. Breaking from \
                     peer stream collection.",
-                    STREAM_ITEM_TIMEOUT,
+                    RPC_STREAM_ITEM_TIMEOUT,
                     seed_node_id_str
                 );
                 // Treat as if the stream ended, but it was due to a timeout

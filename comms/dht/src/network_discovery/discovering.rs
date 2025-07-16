@@ -281,7 +281,8 @@ impl Discovering {
                     NetworkDiscoveryError::RpcError(_) |
                     NetworkDiscoveryError::ConnectivityError(_) |
                     NetworkDiscoveryError::PeerValidationError(_) |
-                    NetworkDiscoveryError::JoinError(_) => {},
+                    NetworkDiscoveryError::JoinError(_) |
+                    NetworkDiscoveryError::Timeout { .. } => {},
                 }
                 Err(err)
             },
