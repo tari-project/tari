@@ -23,10 +23,10 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::CompressedCommitment;
+use tari_transaction_components::transaction_components::{transaction_metadata::TransactionMetadata, KernelFeatures};
 use tari_utilities::ByteArray;
 
 use super::protocol as proto;
-use crate::transactions::transaction_protocol::{KernelFeatures, TransactionMetadata};
 
 impl TryFrom<proto::TransactionMetadata> for TransactionMetadata {
     type Error = String;

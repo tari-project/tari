@@ -42,24 +42,21 @@ use tari_sidechain::{
     SidechainBlockHeader,
     ValidatorQcSignature,
 };
+use tari_transaction_components::transaction_components::{
+    BuildInfo,
+    CodeTemplateRegistration,
+    ConfidentialOutputData,
+    SideChainFeature,
+    SideChainFeatureData,
+    SideChainId,
+    TemplateType,
+    ValidatorNodeExit,
+    ValidatorNodeRegistration,
+    ValidatorNodeSignature,
+};
 use tari_utilities::ByteArray;
 
-use crate::{
-    proto,
-    transactions::transaction_components::{
-        BuildInfo,
-        CodeTemplateRegistration,
-        ConfidentialOutputData,
-        SideChainFeature,
-        SideChainFeatureData,
-        SideChainId,
-        TemplateType,
-        ValidatorNodeExit,
-        ValidatorNodeRegistration,
-        ValidatorNodeSignature,
-    },
-};
-
+use crate::proto;
 //---------------------------------- SideChainFeature --------------------------------------------//
 impl From<SideChainFeature> for proto::types::SideChainFeature {
     fn from(value: SideChainFeature) -> Self {

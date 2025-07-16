@@ -32,8 +32,7 @@ use serde::{Deserialize, Serialize};
 pub use stats_collector::DatabaseStats;
 use tari_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
-
-use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 mod composite_key;
 pub(crate) mod cursors;

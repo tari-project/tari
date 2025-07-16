@@ -29,6 +29,10 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
+use tari_transaction_components::{
+    proof_of_work::PowAlgorithm,
+    transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
+};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{MinedInfo, TemplateRegistrationEntry, ValidatorNodeRegistrationInfo};
@@ -59,10 +63,8 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
+    proof_of_work::TargetDifficultyWindow,
 };
-
 const LOG_TARGET: &str = "c::bn::async_db";
 
 fn trace_log<F, R>(name: &str, f: F) -> R

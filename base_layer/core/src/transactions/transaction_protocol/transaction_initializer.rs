@@ -31,32 +31,31 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
 };
 use tari_script::{ExecutionStack, TariScript};
-
-use crate::{
-    borsh::SerializedSize,
+use tari_transaction_components::{
     consensus::ConsensusConstants,
-    covenants::Covenant,
-    transactions::{
-        fee::Fee,
-        tari_amount::*,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-            MAX_TRANSACTION_INPUTS,
-            MAX_TRANSACTION_OUTPUTS,
-        },
-        transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::{
-            sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
-            KernelFeatures,
-            TransactionMetadata,
-        },
+    fee::Fee,
+    key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::*,
+    transaction_components::{
+        covenants::Covenant,
+        payment_id::{PaymentId, TxType},
+        transaction_metadata::TransactionMetadata,
+        OutputFeatures,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
+        MAX_TRANSACTION_INPUTS,
+        MAX_TRANSACTION_OUTPUTS,
     },
 };
 
+use crate::{
+    borsh::SerializedSize,
+    transactions::transaction_protocol::{
+        sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+        KernelFeatures,
+    },
+};
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

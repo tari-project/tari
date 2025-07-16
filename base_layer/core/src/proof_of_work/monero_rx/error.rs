@@ -20,17 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_transaction_components::{proof_of_work::DifficultyError, BanPeriod, BanReason};
 use tari_utilities::hex::HexError;
 
-use crate::{
-    common::{BanPeriod, BanReason},
-    proof_of_work::{
-        monero_rx::merkle_tree_parameters::MerkleTreeParametersError,
-        randomx_factory::RandomXVMFactoryError,
-        DifficultyError,
-    },
+use crate::proof_of_work::{
+    monero_rx::merkle_tree_parameters::MerkleTreeParametersError,
+    randomx_factory::RandomXVMFactoryError,
 };
-
 /// Errors that can occur when merging Monero PoW data with Tari PoW data
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {

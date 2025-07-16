@@ -22,17 +22,14 @@
 
 use tari_common_types::types::Signature;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_transaction_components::transaction_components::Transaction;
 
-use crate::{
-    mempool::{
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
-        StateResponse,
-        StatsResponse,
-        TxStorageResponse,
-    },
-    transactions::transaction_components::Transaction,
+use crate::mempool::{
+    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+    StateResponse,
+    StatsResponse,
+    TxStorageResponse,
 };
-
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
 /// A local interface into the mempool service.

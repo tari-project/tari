@@ -27,19 +27,16 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedPublicKey, PrivateKey, Signature},
 };
-
-use crate::{
+use tari_transaction_components::{
     consensus::ConsensusConstants,
-    transactions::{
-        transaction_components::{TransactionOutput, WalletOutput},
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::{
-            sender::{SingleRoundSenderData, TransactionSenderMessage},
-            single_receiver::SingleReceiverTransactionProtocol,
-            TransactionMetadata,
-            TransactionProtocolError,
-        },
-    },
+    key_manager::TransactionKeyManagerInterface,
+    transaction_components::{transaction_metadata::TransactionMetadata, TransactionOutput, WalletOutput},
+};
+
+use crate::transactions::transaction_protocol::{
+    sender::{SingleRoundSenderData, TransactionSenderMessage},
+    single_receiver::SingleReceiverTransactionProtocol,
+    TransactionProtocolError,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

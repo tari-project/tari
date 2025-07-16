@@ -42,37 +42,10 @@ use tari_common_types::{
     },
 };
 use tari_comms::types::CommsDHKE;
-use tari_core::{
-    borsh::SerializedSize,
-    consensus::ConsensusConstants,
-    covenants::Covenant,
-    one_sided::{
-        public_key_to_output_encryption_key,
-        shared_secret_to_output_encryption_key,
-        shared_secret_to_output_spending_key,
-    },
-    transactions::{
-        fee::Fee,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            EncryptedData,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionError,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
-        CryptoFactories,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    },
+use tari_core::transactions::{
+    transaction_protocol::sender::TransactionSenderMessage,
+    ReceiverTransactionProtocol,
+    SenderTransactionProtocol,
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{
@@ -87,6 +60,34 @@ use tari_script::{
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    consensus::ConsensusConstants,
+    crypto_factories::CryptoFactories,
+    fee::Fee,
+    helpers::borsh::SerializedSize,
+    key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        one_sided::{
+            public_key_to_output_encryption_key,
+            shared_secret_to_output_encryption_key,
+            shared_secret_to_output_spending_key,
+        },
+        payment_id::{PaymentId, TxType},
+        transaction_metadata::TransactionMetadata,
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        RangeProofType,
+        Transaction,
+        TransactionError,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
+        WalletOutputBuilder,
+    },
+};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
 

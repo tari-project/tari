@@ -28,12 +28,9 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
 };
+use tari_transaction_components::{BanPeriod, BanReason};
 
-use crate::{
-    chain_storage::ChainStorageError,
-    common::{BanPeriod, BanReason},
-    validation::ValidationError,
-};
+use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {

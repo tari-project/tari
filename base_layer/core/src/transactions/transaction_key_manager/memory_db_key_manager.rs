@@ -25,18 +25,14 @@ use std::{iter, mem::size_of, sync::Arc};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-use tari_common_types::wallet_types::WalletType;
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
+use tari_transaction_components::{
+    crypto_factories::CryptoFactories,
+    key_manager::{error::KeyManagerServiceError, TransactionKeyManagerWrapper},
+};
 use zeroize::Zeroizing;
 
-use crate::transactions::{
-    transaction_key_manager::{
-        error::KeyManagerServiceError,
-        storage::{database::TransactionKeyManagerDatabase, sqlite_db::TransactionKeyManagerSqliteDatabase},
-        TransactionKeyManagerWrapper,
-    },
-    CryptoFactories,
-};
+use crate::transactions::transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 pub type MemoryDbKeyManager = TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
 
 fn random_string(len: usize) -> String {
@@ -49,7 +45,8 @@ fn random_string(len: usize) -> String {
 pub fn create_memory_db_key_manager_with_range_proof_size(
     size: usize,
 ) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))?;
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))
+        .map_err(|e| KeyManagerServiceError::StorageError(e.to_string()))?;
     let cipher = CipherSeed::new();
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
@@ -59,7 +56,7 @@ pub fn create_memory_db_key_manager_with_range_proof_size(
     let factory = CryptoFactories::new(size);
     TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
         cipher,
-        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),
     )
@@ -69,7 +66,8 @@ pub fn create_memory_db_key_manager_from_seed(
     seed: CipherSeed,
     rangeproof_size: usize,
 ) -> Result<MemoryDbKeyManager, KeyManagerServiceError> {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))?;
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5))
+        .map_err(|e| KeyManagerServiceError::StorageError(e.to_string()))?;
     let cipher = seed;
 
     let mut key = Zeroizing::new([0u8; size_of::<Key>()]);
@@ -80,7 +78,7 @@ pub fn create_memory_db_key_manager_from_seed(
 
     TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<DbConnection>>::new(
         cipher,
-        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),
     )

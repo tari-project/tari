@@ -27,14 +27,10 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
+use tari_transaction_components::key_manager::{error::KeyManagerStorageError, KeyManagerState};
 use tari_utilities::{ByteArray, Hidden};
 
-use crate::transactions::transaction_key_manager::{
-    error::KeyManagerStorageError,
-    schema::key_manager_states,
-    storage::{database::KeyManagerState, sqlite_db::Encryptable},
-};
-
+use crate::transactions::transaction_key_manager::{schema::key_manager_states, storage::sqlite_db::Encryptable};
 /// Represents a row in the key_manager_states table.
 #[derive(Clone, Debug, Queryable, Identifiable)]
 #[diesel(table_name = key_manager_states)]
@@ -82,7 +78,8 @@ impl NewKeyManagerStateSql {
     pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         diesel::insert_into(key_manager_states::table)
             .values(self.clone())
-            .execute(conn)?;
+            .execute(conn)
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         Ok(())
     }
 }
@@ -91,7 +88,9 @@ impl KeyManagerStateSql {
     /// Retrieve every key manager branch currently in the database.
     /// Returns a `Vec` of [KeyManagerStateSql], if none are found, it will return an empty `Vec`.
     pub fn index(conn: &mut SqliteConnection) -> Result<Vec<KeyManagerStateSql>, KeyManagerStorageError> {
-        Ok(key_manager_states::table.load::<KeyManagerStateSql>(conn)?)
+        Ok(key_manager_states::table
+            .load::<KeyManagerStateSql>(conn)
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?)
     }
 
     /// Retrieve the key manager for the provided branch
@@ -115,7 +114,8 @@ impl KeyManagerStateSql {
                 diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
                     .set(update)
                     .execute(conn)
-                    .num_rows_affected_or_not_found(1)?;
+                    .num_rows_affected_or_not_found(1)
+                    .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
             },
             Err(_) => {
                 let inserter = NewKeyManagerStateSql {
@@ -138,7 +138,8 @@ impl KeyManagerStateSql {
         diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&id)))
             .set(update)
             .execute(conn)
-            .num_rows_affected_or_not_found(1)?;
+            .num_rows_affected_or_not_found(1)
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         Ok(())
     }
 }

@@ -22,10 +22,15 @@
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
-use tari_core::transactions::{
+use tari_transaction_components::{
     tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, OutputFeatures, Transaction, WalletOutput},
-    transaction_protocol::TransactionMetadata,
+    transaction_components::{
+        payment_id::PaymentId,
+        transaction_metadata::TransactionMetadata,
+        OutputFeatures,
+        Transaction,
+        WalletOutput,
+    },
 };
 
 use crate::transaction_service::{

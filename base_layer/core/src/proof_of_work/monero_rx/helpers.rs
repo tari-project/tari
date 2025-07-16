@@ -32,6 +32,7 @@ use monero::{
 use primitive_types::U256;
 use sha2::{Digest, Sha256};
 use tari_common_types::types::FixedHash;
+use tari_transaction_components::proof_of_work::Difficulty;
 use tari_utilities::hex::HexError;
 use tiny_keccak::{Hasher, Keccak};
 
@@ -44,11 +45,10 @@ use super::{
 use crate::{
     blocks::BlockHeader,
     common::AuxChainHashes,
-    consensus::ConsensusManager,
+    consensus::BaseConsensusManager,
     proof_of_work::{
         monero_rx::merkle_tree_parameters::MerkleTreeParameters,
         randomx_factory::{RandomXFactory, RandomXVMInstance},
-        Difficulty,
     },
 };
 
@@ -60,7 +60,7 @@ pub fn monero_randomx_difficulty(
     header: &BlockHeader,
     randomx_factory: &RandomXFactory,
     genesis_block_hash: &FixedHash,
-    consensus: &ConsensusManager,
+    consensus: &BaseConsensusManager,
 ) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header, genesis_block_hash, consensus)?;
     trace!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
@@ -134,7 +134,7 @@ fn parse_extra_field_truncate_on_error(raw_extra_field: &RawExtraField) -> Extra
 pub fn verify_header(
     header: &BlockHeader,
     genesis_block_hash: &FixedHash,
-    consensus: &ConsensusManager,
+    consensus: &BaseConsensusManager,
 ) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header, consensus)?;
     let expected_merge_mining_hash = header.merge_mining_hash();

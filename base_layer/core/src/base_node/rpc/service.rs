@@ -6,6 +6,7 @@ use std::convert::{TryFrom, TryInto};
 use log::*;
 use tari_common_types::types::{FixedHash, Signature};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 use url::Url;
@@ -45,7 +46,6 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";

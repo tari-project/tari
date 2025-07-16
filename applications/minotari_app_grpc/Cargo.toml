@@ -16,6 +16,7 @@ tari_script = { workspace = true }
 tari_max_size = { workspace = true }
 tari_sidechain = { workspace = true }
 tari_utilities = { workspace = true }
+tari_transaction_components = { workspace = true }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"

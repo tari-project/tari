@@ -134,21 +134,19 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
-use tari_core::{
-    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-            UnblindedOutput,
-        },
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::recipient::RecipientState,
+use tari_comms::{types::CommsPublicKey, CommsNode};
+use tari_core::transactions::transaction_protocol::recipient::RecipientState;
+use tari_crypto::hash_domain;
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, ConsensusManager},
+    key_manager::TransactionKeyManagerInterface,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        payment_id::{PaymentId, TxType},
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
-use tari_crypto::hash_domain;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
@@ -194,7 +192,7 @@ pub struct WalletGrpcServer {
 
 impl WalletGrpcServer {
     #[allow(dead_code)]
-    pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
+    pub fn new(wallet: WalletSqlite) -> Self {
         let scanned_height = wallet
             .db
             .get_last_scanned_height()
@@ -208,12 +206,12 @@ impl WalletGrpcServer {
             wallet.comms.shutdown_signal(),
             scanned_height,
         );
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
-        Ok(Self {
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build();
+        Self {
             wallet,
             debouncer: Arc::new(Mutex::new(debouncer)),
             rules,
-        })
+        }
     }
 
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {

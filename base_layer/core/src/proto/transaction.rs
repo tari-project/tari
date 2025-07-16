@@ -31,32 +31,30 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BulletRangeProof, CompressedCommitment, CompressedPublicKey, PrivateKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
-use tari_utilities::convert::try_convert_all;
-
-use crate::{
-    proto,
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            CoinBaseExtra,
-            EncryptedData,
-            KernelFeatures,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            SideChainFeature,
-            Transaction,
-            TransactionInput,
-            TransactionInputVersion,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-        },
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        CoinBaseExtra,
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        SideChainFeature,
+        Transaction,
+        TransactionInput,
+        TransactionInputVersion,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
     },
 };
+use tari_utilities::convert::try_convert_all;
+
+use crate::proto;
 //---------------------------------- TransactionKernel --------------------------------------------//
 
 impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {

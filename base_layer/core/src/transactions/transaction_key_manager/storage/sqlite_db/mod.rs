@@ -34,17 +34,18 @@ use tari_common_types::{
     encryption::Encryptable,
     types::{CompressedPublicKey, PrivateKey},
 };
+use tari_transaction_components::key_manager::{
+    error::KeyManagerStorageError,
+    KeyManagerState,
+    TransactionKeyManagerBackend,
+};
 use tari_utilities::acquire_read_lock;
 use tokio::time::Instant;
 
-use crate::transactions::transaction_key_manager::{
-    error::KeyManagerStorageError,
-    storage::{
-        database::{ImportedKey, KeyManagerState, TransactionKeyManagerBackend},
-        sqlite_db::imported_keys::{ImportedKeySql, NewImportedKeySql},
-    },
+use crate::transactions::transaction_key_manager::storage::{
+    database::ImportedKey,
+    sqlite_db::imported_keys::{ImportedKeySql, NewImportedKeySql},
 };
-
 mod imported_keys;
 mod key_manager_state;
 
@@ -98,7 +99,10 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
 {
     fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self
+            .database_connection
+            .get_pooled_connection()
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         let acquire_lock = start.elapsed();
 
         let result = match KeyManagerStateSql::get_state(branch, &mut conn).ok() {
@@ -126,7 +130,10 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
 
     fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self
+            .database_connection
+            .get_pooled_connection()
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
 
@@ -150,7 +157,10 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
 
     fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self
+            .database_connection
+            .get_pooled_connection()
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
         let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
@@ -180,7 +190,10 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
 
     fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self
+            .database_connection
+            .get_pooled_connection()
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
         let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
@@ -211,7 +224,10 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         private_key: PrivateKey,
     ) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self
+            .database_connection
+            .get_pooled_connection()
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         // check if we already have the key:
         if self.get_imported_key(&public_key).is_ok() {
             // we already have the key so we dont have to add it in
@@ -240,7 +256,10 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
 
     fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
         let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
+        let mut conn = self
+            .database_connection
+            .get_pooled_connection()
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
         let key = ImportedKeySql::get_key(public_key, &mut conn)?;

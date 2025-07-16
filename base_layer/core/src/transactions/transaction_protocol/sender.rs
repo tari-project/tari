@@ -36,36 +36,34 @@ use tari_common_types::{
         UncompressedPublicKey,
     },
 };
-pub use tari_key_manager::key_manager_service::KeyId;
+// pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
-
-use crate::{
+use tari_transaction_components::{
     consensus::ConsensusConstants,
-    covenants::Covenant,
-    transactions::{
-        tari_amount::*,
-        transaction_components::{
-            memo_field::MemoField,
-            KernelBuilder,
-            OutputFeatures,
-            Transaction,
-            TransactionBuilder,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-            MAX_TRANSACTION_INPUTS,
-            MAX_TRANSACTION_OUTPUTS,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::{
-            recipient::RecipientSignedMessage,
-            transaction_initializer::{RecipientDetails, SenderTransactionInitializer},
-            TransactionMetadata,
-            TransactionProtocolError as TPE,
-        },
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    tari_amount::*,
+    transaction_components::{
+        covenants::Covenant,
+        payment_id::PaymentId,
+        transaction_metadata::TransactionMetadata,
+        KernelBuilder,
+        OutputFeatures,
+        Transaction,
+        TransactionBuilder,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
+        MAX_TRANSACTION_INPUTS,
+        MAX_TRANSACTION_OUTPUTS,
     },
+};
+
+use crate::transactions::transaction_protocol::{
+    recipient::RecipientSignedMessage,
+    transaction_initializer::{RecipientDetails, SenderTransactionInitializer},
+    TransactionProtocolError as TPE,
 };
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//

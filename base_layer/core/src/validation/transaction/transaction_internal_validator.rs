@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
+use tari_transaction_components::{
+    crypto_factories::CryptoFactories,
+    tari_amount::MicroMinotari,
+    transaction_components::{OutputType::Coinbase, Transaction},
+};
 
 use crate::{
-    consensus::ConsensusManager,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{OutputType::Coinbase, Transaction},
-        CryptoFactories,
-    },
+    consensus::BaseConsensusManager,
     validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, ValidationError},
 };
 
@@ -39,7 +39,7 @@ pub struct TransactionInternalConsistencyValidator {
 impl TransactionInternalConsistencyValidator {
     pub fn new(
         bypass_range_proof_verification: bool,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         factories: CryptoFactories,
     ) -> Self {
         Self {

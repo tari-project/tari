@@ -29,11 +29,8 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
-use tari_core::transactions::{
-    transaction_components::Transaction,
-    transaction_key_manager::TransactionKeyManagerInterface,
-    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
-};
+use tari_core::transactions::transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage};
+use tari_transaction_components::{key_manager::TransactionKeyManagerInterface, transaction_components::Transaction};
 use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,

@@ -24,17 +24,12 @@ mod backend;
 
 use std::sync::Arc;
 
-pub use backend::TransactionKeyManagerBackend;
 use tari_common_types::types::{CompressedPublicKey, PrivateKey};
-
-use crate::transactions::transaction_key_manager::error::KeyManagerStorageError;
-
-/// Holds the state of the KeyManager for the branch
-#[derive(Clone, Debug, PartialEq)]
-pub struct KeyManagerState {
-    pub branch_seed: String,
-    pub primary_key_index: u64,
-}
+use tari_transaction_components::key_manager::{
+    error::KeyManagerStorageError,
+    KeyManagerState,
+    TransactionKeyManagerBackend,
+};
 
 /// Holds the state of the KeyManager for the branch
 #[derive(Clone, Debug, PartialEq)]

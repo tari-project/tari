@@ -27,11 +27,11 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     types::{BlockHash, BulletRangeProof, CompressedCommitment, CompressedPublicKey, RangeProof},
 };
-use tari_core::transactions::{
+use tari_script::TariScript;
+use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
 };
-use tari_script::TariScript;
 use tari_utilities::ByteArray;
 
 use crate::{tari_rpc as grpc, tari_rpc::RangeProof as GrpcRangeProof};

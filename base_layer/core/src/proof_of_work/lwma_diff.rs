@@ -14,14 +14,8 @@
 use std::{cmp::min, collections::VecDeque, convert::TryFrom};
 
 use log::*;
+use tari_transaction_components::proof_of_work::{Difficulty, DifficultyAdjustment, DifficultyError};
 use tari_utilities::epoch_time::EpochTime;
-
-use crate::proof_of_work::{
-    difficulty::{Difficulty, DifficultyAdjustment},
-    error::DifficultyAdjustmentError,
-    DifficultyError,
-};
-
 /// This is the recommended maximum block time ratio for LWMA-1
 pub const LWMA_MAX_BLOCK_TIME_RATIO: u64 = 6;
 
@@ -199,7 +193,7 @@ impl LinearWeightedMovingAverage {
 }
 
 impl DifficultyAdjustment for LinearWeightedMovingAverage {
-    fn add(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError> {
+    fn add(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) -> Result<(), String> {
         self.add_back(timestamp, target_difficulty);
         Ok(())
     }

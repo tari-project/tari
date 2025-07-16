@@ -1,7 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_transaction_components::tari_amount::MicroMinotari;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},

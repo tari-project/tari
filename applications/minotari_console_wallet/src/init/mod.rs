@@ -50,14 +50,14 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
+    seeds::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage},
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
-use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
 
@@ -313,9 +313,7 @@ pub async fn init_wallet(
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
-    let consensus_manager = ConsensusManager::builder(config.network)
-        .build()
-        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error consensus manager. {}", e)))?;
+    let consensus_manager = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
 
     let now = Instant::now();

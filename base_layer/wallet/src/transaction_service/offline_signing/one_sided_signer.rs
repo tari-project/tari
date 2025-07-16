@@ -24,28 +24,26 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, Signature, UncompressedPublicKey},
 };
-use tari_core::{
-    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            KernelBuilder,
-            Transaction,
-            TransactionBuilder,
-            TransactionKernel,
-            TransactionKernelVersion,
-            WalletOutput,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::{
-            recipient::RecipientSignedMessage,
-            sender::OutputPair,
-            TransactionProtocolError as TPE,
-        },
-    },
+use tari_core::transactions::transaction_protocol::{
+    recipient::RecipientSignedMessage,
+    sender::OutputPair,
+    TransactionProtocolError as TPE,
 };
 use tari_script::push_pubkey_script;
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+        KernelBuilder,
+        Transaction,
+        TransactionBuilder,
+        TransactionKernel,
+        TransactionKernelVersion,
+        WalletOutput,
+        WalletOutputBuilder,
+    },
+};
 
 use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},

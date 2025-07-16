@@ -67,26 +67,28 @@ use tari_core::{
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
-    consensus::{ConsensusManager, NetworkConsensus},
+    consensus::BaseConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
-    proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{
-        generate_coinbase_with_wallet_output,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoinBaseExtra,
-            KernelBuilder,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    },
+    transactions::transaction_key_manager::create_memory_db_key_manager,
     validation::tari_rx_vm_key_height,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tari_transaction_components::{
+    consensus::NetworkConsensus,
+    generate_coinbase_with_wallet_output,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    proof_of_work::{Difficulty, PowAlgorithm},
+    transaction_components::{
+        payment_id::{PaymentId, TxType},
+        CoinBaseExtra,
+        KernelBuilder,
+        RangeProofType,
+        Transaction,
+        TransactionKernel,
+        TransactionKernelVersion,
+    },
+};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};
@@ -126,7 +128,7 @@ pub struct BaseNodeGrpcServer {
     mempool_service: LocalMempoolService,
     network: NetworkConsensus,
     state_machine_handle: StateMachineHandle,
-    consensus_rules: ConsensusManager,
+    consensus_rules: BaseConsensusManager,
     software_updater: SoftwareUpdaterHandle,
     comms: CommsNode,
     liveness: LivenessHandle,
@@ -2282,7 +2284,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let block_height = request.into_inner().block_height;
 
-        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+        let consensus_manager = BaseConsensusManager::builder(self.network.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -2375,7 +2377,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+        let consensus_manager = BaseConsensusManager::builder(self.network.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(

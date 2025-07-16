@@ -58,33 +58,13 @@ use tari_common_types::{
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    consensus::ConsensusManager,
-    covenants::Covenant,
-    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     proto::base_node as base_node_proto,
     transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            BuildInfo,
-            CodeTemplateRegistration,
-            EncryptedData,
-            KernelFeatures,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
-            TransactionOutput,
-            ValidatorNodeSignature,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
-            TransactionMetadata,
         },
-        CryptoFactories,
         ReceiverTransactionProtocol,
     },
 };
@@ -105,6 +85,28 @@ use tari_script::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_sidechain::EvictionProof;
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    crypto_factories::CryptoFactories,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+        payment_id::{PaymentId, TxType},
+        transaction_metadata::TransactionMetadata,
+        BuildInfo,
+        CodeTemplateRegistration,
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        TemplateType,
+        Transaction,
+        TransactionOutput,
+        ValidatorNodeSignature,
+        WalletOutputBuilder,
+    },
+};
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,

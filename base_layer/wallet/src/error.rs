@@ -31,13 +31,12 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_contacts::contacts_service::error::ContactsServiceError;
-use tari_core::transactions::{
-    transaction_components::TransactionError,
-    transaction_key_manager::error::KeyManagerServiceError,
-};
-use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
+use tari_transaction_components::{
+    key_manager::error::KeyManagerServiceError,
+    transaction_components::TransactionError,
+};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
@@ -93,8 +92,8 @@ pub enum WalletError {
     ByteArrayError(String),
     #[error("Utxo Scanner Error: {0}")]
     UtxoScannerError(String),
-    #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    #[error("Cipher error: `{0}`")]
+    CipherError(#[from] tari_common_types::seeds::error::CipherError),
     #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("Transport channel error: `{0}`")]
@@ -181,8 +180,8 @@ pub enum WalletStorageError {
     NoPasswordError,
     #[error("Deprecated operation error")]
     DeprecatedOperation,
-    #[error("Key Manager Error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    #[error("Cipher error: `{0}`")]
+    CipherError(#[from] tari_common_types::seeds::error::CipherError),
     #[error("Recovery Seed Error: {0}")]
     RecoverySeedError(String),
     #[error("Bad encryption version: `{0}`")]

@@ -65,6 +65,12 @@ use tari_common_types::{
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
+    proof_of_work::PowAlgorithm,
+    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    BanPeriod,
+};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::{
@@ -111,17 +117,11 @@ use crate::{
         Reorg,
         TargetDifficulties,
     },
-    common::{rolling_vec::RollingVec, BanPeriod},
-    consensus::{
-        chain_strength_comparer::ChainStrengthComparer,
-        ConsensusConstants,
-        ConsensusManager,
-        DomainSeparatedConsensusHasher,
-    },
+    common::rolling_vec::RollingVec,
+    consensus::{chain_strength_comparer::ChainStrengthComparer, BaseConsensusManager},
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
-    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    proof_of_work::TargetDifficultyWindow,
     validation::{
         helpers::calc_median_timestamp,
         tari_rx_vm_key_height,
@@ -236,7 +236,7 @@ pub struct BlockchainDatabase<B> {
     db: Arc<RwLock<B>>,
     validators: Validators<B>,
     config: BlockchainDatabaseConfig,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
     disable_add_block_flag: Arc<AtomicBool>,
 }
@@ -248,7 +248,7 @@ where B: BlockchainBackend
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
         db: B,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
@@ -267,7 +267,7 @@ where B: BlockchainBackend
 
     pub fn start_new(
         db: B,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
@@ -464,7 +464,7 @@ where B: BlockchainBackend
     }
 
     /// Returns a reference to the consensus rules
-    pub fn rules(&self) -> &ConsensusManager {
+    pub fn rules(&self) -> &BaseConsensusManager {
         &self.consensus_manager
     }
 
@@ -1535,7 +1535,7 @@ impl std::fmt::Display for MmrRoots {
 #[allow(clippy::similar_names)]
 pub fn calculate_mmr_roots<T: BlockchainBackend>(
     db: &T,
-    rules: &ConsensusManager,
+    rules: &BaseConsensusManager,
     block: &Block,
 ) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
@@ -1803,7 +1803,7 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, 
 fn add_block<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
     header_validator: &dyn HeaderChainLinkedValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
@@ -1857,7 +1857,7 @@ fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64)
 #[allow(clippy::ptr_arg)]
 pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     db: &T,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
     pow_algo: PowAlgorithm,
     current_block_hash: &HashOutput,
 ) -> Result<TargetDifficultyWindow, ChainStorageError> {
@@ -2153,7 +2153,7 @@ fn rewind_to_hash<T: BlockchainBackend>(
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
     header_validator: &dyn HeaderChainLinkedValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
@@ -2405,7 +2405,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     candidate_block: Arc<Block>,
     validator: &dyn HeaderChainLinkedValidator<T>,
-    rules: &ConsensusManager,
+    rules: &BaseConsensusManager,
 ) -> Result<(), ChainStorageError> {
     let hash = candidate_block.hash();
 
@@ -2624,7 +2624,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 fn get_previous_timestamps<T: BlockchainBackend>(
     db: &mut T,
     header: &BlockHeader,
-    rules: &ConsensusManager,
+    rules: &BaseConsensusManager,
 ) -> Result<RollingVec<EpochTime>, ChainStorageError> {
     let median_timestamp_window_size = rules.consensus_constants(header.height).median_timestamp_count();
     let prev_height = usize::try_from(header.height)

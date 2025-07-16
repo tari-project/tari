@@ -120,6 +120,22 @@ use tari_common_types::{
 };
 use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::ConsensusConstants,
+    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        OutputType,
+        SideChainFeatureData,
+        SideChainId,
+        SpentOutput,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+        ValidatorNodeRegistration,
+    },
+};
 use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
@@ -191,22 +207,8 @@ use crate::{
         ValidatorNodeEntry,
         ValidatorNodeRegistrationInfo,
     },
-    consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty, Difficulty, PowAlgorithm},
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            OutputType,
-            SideChainFeatureData,
-            SideChainId,
-            SpentOutput,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            ValidatorNodeRegistration,
-        },
-    },
+    consensus::BaseConsensusManager,
+    proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty},
     PrunedKernelMmr,
 };
 
@@ -389,7 +391,7 @@ pub fn create_readonly_lmdb_environment<P: AsRef<Path>>(path: P) -> Result<Arc<E
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
     LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, None)
@@ -398,7 +400,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
 pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     stats_sender: Option<watch::Sender<DatabaseStats>>,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
@@ -472,7 +474,7 @@ pub struct LMDBDatabase {
     jmt_node_data: DatabaseRef,
     jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     stats_collector: LMDBStatsCollector,
 }
 
@@ -480,7 +482,7 @@ impl LMDBDatabase {
     pub fn new(
         store: &LMDBStore,
         file_lock: File,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         stats_sender: Option<watch::Sender<DatabaseStats>>,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();

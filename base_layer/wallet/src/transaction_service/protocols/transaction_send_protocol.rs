@@ -34,23 +34,26 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, SendMessageResponse},
 };
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{memo_field::MemoField, OutputFeatures},
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::{
-            proto::protocol as proto,
-            recipient::RecipientSignedMessage,
-            sender::SingleRoundSenderData,
-            TransactionMetadata,
-        },
-        SenderTransactionProtocol,
+use tari_core::transactions::{
+    transaction_protocol::{
+        proto::protocol as proto,
+        recipient::RecipientSignedMessage,
+        sender::SingleRoundSenderData,
     },
+    SenderTransactionProtocol,
 };
 use tari_p2p::tari_message::TariMessageType;
 use tari_script::TariScript;
+use tari_transaction_components::{
+    key_manager::TransactionKeyManagerInterface,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        payment_id::PaymentId,
+        transaction_metadata::TransactionMetadata,
+        OutputFeatures,
+    },
+};
 use tokio::{
     sync::{mpsc::Receiver, oneshot},
     time::sleep,

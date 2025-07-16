@@ -32,27 +32,25 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey};
-use thiserror::Error;
-
-use crate::{
-    blocks::BlockHeader,
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
+    crypto_factories::CryptoFactories,
     proof_of_work::ProofOfWork,
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            KernelFeatures,
-            OutputType,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        CryptoFactories,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        KernelFeatures,
+        OutputType,
+        Transaction,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
     },
 };
+use thiserror::Error;
+
+use crate::blocks::BlockHeader;
 
 #[derive(Clone, Debug, Error)]
 pub enum BlockValidationError {

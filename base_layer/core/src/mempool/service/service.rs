@@ -32,6 +32,7 @@ use tari_comms_dht::{
 };
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
@@ -44,7 +45,6 @@ use crate::{
         MempoolResponse,
     },
     proto,
-    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::mempool::service::service";

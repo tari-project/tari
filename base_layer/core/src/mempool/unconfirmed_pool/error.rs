@@ -20,12 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_transaction_components::{transaction_components::TransactionError, BanPeriod, BanReason};
 use thiserror::Error;
-
-use crate::{
-    common::{BanPeriod, BanReason},
-    transactions::transaction_components::TransactionError,
-};
 
 #[derive(Debug, Error)]
 pub enum UnconfirmedPoolError {

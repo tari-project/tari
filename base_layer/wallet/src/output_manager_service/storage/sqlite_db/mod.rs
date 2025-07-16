@@ -38,12 +38,12 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash},
 };
-use tari_core::transactions::{
-    transaction_components::{OutputType, TransactionOutput},
-    transaction_key_manager::TariKeyId,
-};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
+    transaction_components::{OutputType, TransactionOutput},
+};
 use tokio::time::Instant;
 
 use crate::{

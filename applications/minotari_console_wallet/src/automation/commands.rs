@@ -65,6 +65,7 @@ use tari_common_types::{
     emoji::EmojiId,
     epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
+    seeds::{cipher_seed::CipherSeed, seed_words::SeedWords},
     tari_address::TariAddress,
     transaction::TxId,
     types::{
@@ -80,33 +81,30 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::{
-    blocks::pre_mine::get_pre_mine_items,
-    covenants::Covenant,
-    one_sided::shared_secret_to_output_encryption_key,
-    transactions::{
-        tari_amount::{uT, MicroMinotari, Minotari},
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            EncryptedData,
-            OutputFeatures,
-            Transaction,
-            TransactionInput,
-            TransactionInputVersion,
-            TransactionKernel,
-            TransactionOutput,
-            TransactionOutputVersion,
-            UnblindedOutput,
-            WalletOutput,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    },
-};
+use tari_core::blocks::pre_mine::get_pre_mine_items;
 use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey};
-use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::{uT, MicroMinotari, Minotari},
+    transaction_components::{
+        covenants::Covenant,
+        one_sided::shared_secret_to_output_encryption_key,
+        payment_id::{PaymentId, TxType},
+        EncryptedData,
+        OutputFeatures,
+        Transaction,
+        TransactionInput,
+        TransactionInputVersion,
+        TransactionKernel,
+        TransactionOutput,
+        TransactionOutputVersion,
+        UnblindedOutput,
+        WalletOutput,
+    },
+};
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},

@@ -7,6 +7,7 @@ use tari_common_types::{
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_sidechain::ShardGroup;
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 use super::{
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
@@ -30,9 +31,7 @@ use crate::{
         OutputMinedInfo,
         Reorg,
     },
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
-
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
 /// operation within it must succeed, or they all fail. Failure to support this contract could lead to

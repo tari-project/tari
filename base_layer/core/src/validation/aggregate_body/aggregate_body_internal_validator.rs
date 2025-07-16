@@ -35,25 +35,26 @@ use tari_common_types::types::{
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::ConsensusConstants,
+    crypto_factories::CryptoFactories,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        KernelSum,
+        SideChainFeature,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+    },
+};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            transaction_output::batch_verify_range_proofs,
-            KernelSum,
-            SideChainFeature,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        CryptoFactories,
-    },
+    consensus::BaseConsensusManager,
     validation::{
+        aggregate_body::batch_verify_range_proofs,
         helpers::{
             check_covenant_length,
             check_permitted_output_types,
@@ -74,14 +75,14 @@ pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_valida
 #[derive(Clone)]
 pub struct AggregateBodyInternalConsistencyValidator {
     bypass_range_proof_verification: bool,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     factories: CryptoFactories,
 }
 
 impl AggregateBodyInternalConsistencyValidator {
     pub fn new(
         bypass_range_proof_verification: bool,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         factories: CryptoFactories,
     ) -> Self {
         Self {

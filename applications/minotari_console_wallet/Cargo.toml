@@ -12,6 +12,7 @@ minotari_app_utilities = { workspace = true }
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
+tari_transaction_components = { workspace = true, features = ["ledger"] }
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_contacts = { workspace = true }

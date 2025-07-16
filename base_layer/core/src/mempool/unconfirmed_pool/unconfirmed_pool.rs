@@ -28,6 +28,11 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, HashOutput, PrivateKey, Signature};
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    transaction_components::{Transaction, TransactionError},
+    weight::TransactionWeight,
+};
 use tokio::time::Instant;
 
 use crate::{
@@ -38,11 +43,6 @@ use crate::{
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
         MempoolError,
-    },
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{Transaction, TransactionError},
-        weight::TransactionWeight,
     },
 };
 

@@ -29,12 +29,7 @@ use tari_crypto::keys::PublicKey;
 
 use crate::key_manager_service::error::KeyManagerStorageError;
 
-/// Holds the state of the KeyManager for the branch
-#[derive(Clone, Debug, PartialEq)]
-pub struct KeyManagerState {
-    pub branch_seed: String,
-    pub primary_key_index: u64,
-}
+
 
 /// Holds the state of the KeyManager for the branch
 #[derive(Clone, Debug, PartialEq)]

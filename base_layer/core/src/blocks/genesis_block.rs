@@ -26,16 +26,16 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    proof_of_work::{Difficulty, PowAlgorithm, PowData, ProofOfWork},
+    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+};
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
-    transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-    },
+    proof_of_work::AccumulatedDifficulty,
 };
-
 /// Placeholder root hash for an empty validator node Merkle tree.
 /// This hash was embedded previously in genesis blocks from the balanced merkle tree implementation, so now if the
 /// validator set is empty, we define this hash as the resulting Merkle root.
@@ -473,6 +473,7 @@ mod test {
     use serial_test::serial;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
     use tari_mmr::pruned_hashset::PrunedHashSet;
+    use tari_transaction_components::{aggregated_body::AggregateBody, transaction_components::TransactionOutput};
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -803,5 +804,27 @@ mod test {
             );
             false
         }
+    }
+
+    pub fn calculate_header_block_output_mr(
+        normal_output_mr: FixedHash,
+        coinbases: &Vec<TransactionOutput>,
+    ) -> Result<FixedHash, MrHashError> {
+        let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in coinbases {
+            block_output_mmr.push(o.hash().to_vec())?;
+        }
+        block_output_mmr.push(normal_output_mr.to_vec())?;
+        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+    }
+
+    pub fn calculate_header_normal_output_mr(body: &AggregateBody) -> Result<FixedHash, MrHashError> {
+        let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in body.outputs() {
+            if !o.features.is_coinbase() {
+                normal_output_mmr.push(o.hash().to_vec())?;
+            }
+        }
+        Ok(FixedHash::try_from(normal_output_mmr.get_merkle_root()?)?)
     }
 }

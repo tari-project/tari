@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proof_of_work::{Difficulty, PowAlgorithm};
-
+use tari_transaction_components::proof_of_work::{Difficulty, PowAlgorithm};
 /// Immutable struct that is guaranteed to have achieved the target difficulty
 #[derive(Debug, Clone, Copy)]
 pub struct AchievedTargetDifficulty {

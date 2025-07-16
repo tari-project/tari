@@ -26,11 +26,11 @@ use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::{CompressedPublicKey, PrivateKey},
 };
+use tari_transaction_components::key_manager::error::KeyManagerStorageError;
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use zeroize::Zeroize;
 
 use crate::transactions::transaction_key_manager::{
-    error::KeyManagerStorageError,
     schema::imported_keys::{private_key, public_key, table, timestamp},
     storage::{
         database::ImportedKey,
@@ -76,7 +76,8 @@ impl NewImportedKeySql {
     pub fn commit(&self, conn: &mut SqliteConnection) -> Result<(), KeyManagerStorageError> {
         diesel::insert_into(imported_keys::table)
             .values(self.clone())
-            .execute(conn)?;
+            .execute(conn)
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         Ok(())
     }
 }
@@ -85,7 +86,9 @@ impl ImportedKeySql {
     /// Retrieve every imported key currently in the database.
     /// Returns a `Vec` of [ImportedKeySql], if none are found, it will return an empty `Vec`.
     pub fn index(conn: &mut SqliteConnection) -> Result<Vec<ImportedKeySql>, KeyManagerStorageError> {
-        Ok(imported_keys::table.load::<ImportedKeySql>(conn)?)
+        Ok(imported_keys::table
+            .load::<ImportedKeySql>(conn)
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?)
     }
 
     #[allow(clippy::wrong_self_convention)]

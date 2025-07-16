@@ -33,15 +33,12 @@ use tari_common_types::{
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, CompressedCommitment, FixedHash, PrivateKey, Signature},
 };
-use tari_core::{
+use tari_core::transactions::{ReceiverTransactionProtocol, SenderTransactionProtocol};
+use tari_transaction_components::{
     consensus::ConsensusConstants,
-    transactions::{
-        fee::Fee,
-        tari_amount::MicroMinotari,
-        transaction_components::{memo_field::MemoField, Transaction},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    },
+    fee::Fee,
+    tari_amount::MicroMinotari,
+    transaction_components::{payment_id::PaymentId, Transaction},
 };
 
 use crate::transaction_service::error::TransactionStorageError;

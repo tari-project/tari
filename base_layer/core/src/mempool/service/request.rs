@@ -24,9 +24,10 @@ use core::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::Signature;
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
-use crate::{common::waiting_requests::RequestKey, transactions::transaction_components::Transaction};
+use crate::common::waiting_requests::RequestKey;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]

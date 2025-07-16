@@ -23,15 +23,10 @@
 #[cfg(feature = "base_node")]
 pub(crate) mod chain_strength_comparer;
 
-pub mod consensus_constants;
-pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
+// pub mod consensus_constants;
+// pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
 
 mod consensus_manager;
-pub use consensus_manager::{ConsensusBuilderError, ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
+pub use consensus_manager::{BaseConsensusBuilderError, BaseConsensusManager, BaseConsensusManagerBuilder};
 
 mod consensus_encoding;
-pub use consensus_encoding::DomainSeparatedConsensusHasher;
-mod network;
-pub use network::NetworkConsensus;
-
-pub mod emission;

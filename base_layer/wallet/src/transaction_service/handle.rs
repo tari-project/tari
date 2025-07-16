@@ -36,26 +36,23 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::{
-    mempool::FeePerGramStat,
-    proto,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::MemoField,
-            BuildInfo,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
-            TransactionOutput,
-        },
-    },
-};
+use tari_core::{mempool::FeePerGramStat, proto};
 use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        payment_id::PaymentId,
+        BuildInfo,
+        CodeTemplateRegistration,
+        OutputFeatures,
+        TemplateType,
+        Transaction,
+        TransactionOutput,
+    },
+};
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;

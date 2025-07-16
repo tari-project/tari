@@ -22,17 +22,15 @@
 
 use tari_common_types::types::Signature;
 use tari_service_framework::{reply_channel::TrySenderService, Service};
+use tari_transaction_components::transaction_components::Transaction;
 
-use crate::{
-    mempool::{
-        service::{MempoolRequest, MempoolResponse},
-        FeePerGramStat,
-        MempoolServiceError,
-        StateResponse,
-        StatsResponse,
-        TxStorageResponse,
-    },
-    transactions::transaction_components::Transaction,
+use crate::mempool::{
+    service::{MempoolRequest, MempoolResponse},
+    FeePerGramStat,
+    MempoolServiceError,
+    StateResponse,
+    StatsResponse,
+    TxStorageResponse,
 };
 
 #[derive(Clone)]

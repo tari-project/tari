@@ -28,11 +28,11 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedCommitment, HashOutput},
 };
-use tari_core::transactions::{
-    transaction_components::{memo_field::MemoField, WalletOutput},
-    transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-};
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    transaction_components::{payment_id::PaymentId, WalletOutput},
+};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,

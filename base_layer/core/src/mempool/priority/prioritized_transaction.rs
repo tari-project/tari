@@ -27,12 +27,11 @@ use std::{
 };
 
 use tari_common_types::types::{HashOutput, PrivateKey, UncompressedPublicKey};
-use tari_utilities::{hex::Hex, ByteArray};
-
-use crate::transactions::{
+use tari_transaction_components::{
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
+use tari_utilities::{hex::Hex, ByteArray};
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.

@@ -21,12 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use sha3::{Digest, Sha3_256};
+use tari_transaction_components::proof_of_work::{Difficulty, DifficultyError};
 
-use crate::{
-    blocks::BlockHeader,
-    proof_of_work::{error::DifficultyError, Difficulty},
-};
-
+use crate::blocks::BlockHeader;
 /// The Tari Sha3X proof-of-work algorithm. This is the reference implementation of Tari's standalone mining
 /// algorithm as described in [RFC-0131](https://rfc.tari.com/RFC-0131_Mining.html).
 ///

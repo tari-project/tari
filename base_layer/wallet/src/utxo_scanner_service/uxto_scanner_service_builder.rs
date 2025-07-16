@@ -23,8 +23,8 @@
 use std::fmt::Debug;
 
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 
 use crate::{

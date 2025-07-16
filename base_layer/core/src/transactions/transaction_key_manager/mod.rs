@@ -19,29 +19,29 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// mod wrapper;
+// pub use wrapper::TransactionKeyManagerWrapper;
+//
+// mod interface;
+// pub use interface::{
+//     SecretTransactionKeyManagerInterface,
+//     SerializedKeyString,
+//     TariKeyAndId,
+//     TariKeyId,
+//     TransactionKeyManagerInterface,
+//     TransactionKeyManagerLabel,
+//     TxoStage,
+// };
+//
+// mod initializer;
+// pub use initializer::TransactionKeyManagerInitializer;
 
-mod wrapper;
-pub use wrapper::TransactionKeyManagerWrapper;
-
-mod interface;
-pub use interface::{
-    SecretTransactionKeyManagerInterface,
-    SerializedKeyString,
-    TariKeyAndId,
-    TariKeyId,
-    TransactionKeyManagerInterface,
-    TransactionKeyManagerLabel,
-    TxoStage,
-};
-
-mod initializer;
-pub use initializer::TransactionKeyManagerInitializer;
-
-mod inner;
-pub use inner::LEDGER_NOT_SUPPORTED;
+// mod inner;
+// pub use inner::LEDGER_NOT_SUPPORTED;
 /// This is a memory database implementation of the `TransactionKeyManager` trait.
 mod memory_db_key_manager;
-pub use inner::TransactionKeyManagerInner;
+// pub use inner::TransactionKeyManagerInner;
 pub use memory_db_key_manager::{
     create_memory_db_key_manager,
     create_memory_db_key_manager_from_seed,
@@ -49,12 +49,12 @@ pub use memory_db_key_manager::{
     MemoryDbKeyManager,
 };
 
-pub mod error;
-pub use error::CoreKeyManagerError;
-pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
+// pub mod error;
+// pub use error::CoreKeyManagerError;
+// pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
 pub mod storage;
 
 pub mod schema;
 
-pub mod key_manager;
+// pub mod key_manager;

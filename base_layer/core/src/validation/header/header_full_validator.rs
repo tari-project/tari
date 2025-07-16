@@ -24,13 +24,17 @@ use std::cmp;
 
 use log::warn;
 use tari_common_types::types::FixedHash;
+use tari_transaction_components::{
+    consensus::ConsensusConstants,
+    proof_of_work::{Difficulty, PowAlgorithm, PowError},
+};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
-    consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
+    consensus::BaseConsensusManager,
+    proof_of_work::AchievedTargetDifficulty,
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
         DifficultyCalculator,
@@ -38,17 +42,18 @@ use crate::{
         ValidationError,
     },
 };
+
 pub const LOG_TARGET: &str = "c::val::header_full_validator";
 
 #[derive(Clone)]
 pub struct HeaderFullValidator {
-    rules: ConsensusManager,
+    rules: BaseConsensusManager,
     difficulty_calculator: DifficultyCalculator,
     gen_hash: FixedHash,
 }
 
 impl HeaderFullValidator {
-    pub fn new(rules: ConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
+    pub fn new(rules: BaseConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
         let gen_hash = *rules.get_genesis_block().hash();
         Self {
             rules,
@@ -160,7 +165,7 @@ fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Res
 /// This function tests that the block timestamp is less than the FTL
 pub fn check_timestamp_ftl(
     block_header: &BlockHeader,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
 ) -> Result<(), ValidationError> {
     if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
         warn!(
@@ -188,7 +193,6 @@ fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<
 
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
 fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
-    use PowAlgorithm::{RandomXM, RandomXT, Sha3x};
     let allowed_algos = consensus_constants.current_permitted_pow_algos();
     if !allowed_algos.contains(&block_header.pow.pow_algo) {
         return Err(ValidationError::BlockHeaderError(
@@ -196,7 +200,7 @@ fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusCon
         ));
     }
     match block_header.pow.pow_algo {
-        RandomXM => {
+        PowAlgorithm::RandomXM => {
             if block_header.nonce != 0 {
                 return Err(ValidationError::BlockHeaderError(
                     BlockHeaderValidationError::InvalidNonce,
@@ -204,13 +208,13 @@ fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusCon
             }
             Ok(())
         },
-        RandomXT => {
+        PowAlgorithm::RandomXT => {
             if block_header.pow.pow_data.len() > 32 {
                 return Err(PowError::RandomxTPowDataTooLong.into());
             }
             Ok(())
         },
-        Sha3x => {
+        PowAlgorithm::Sha3x => {
             if !block_header.pow.pow_data.is_empty() {
                 return Err(PowError::Sha3HeaderNonEmptyPowBytes.into());
             }

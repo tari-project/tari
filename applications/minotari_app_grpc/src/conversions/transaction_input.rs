@@ -23,12 +23,11 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
-use tari_core::{
-    borsh::FromBytes,
-    covenants::Covenant,
-    transactions::transaction_components::{EncryptedData, TransactionInput, TransactionInputVersion},
-};
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    helpers::borsh::FromBytes,
+    transaction_components::{covenants::Covenant, EncryptedData, TransactionInput, TransactionInputVersion},
+};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;

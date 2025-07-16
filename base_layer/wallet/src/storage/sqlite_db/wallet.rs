@@ -42,6 +42,7 @@ use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    seeds::cipher_seed::CipherSeed,
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -49,7 +50,6 @@ use tari_comms::{
     tor::TorIdentity,
 };
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
     hidden_type,

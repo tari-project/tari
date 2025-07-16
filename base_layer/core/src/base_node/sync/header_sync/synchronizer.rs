@@ -35,6 +35,7 @@ use tari_comms::{
     protocol::rpc::{RpcClient, RpcError},
     PeerConnection,
 };
+use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
@@ -49,8 +50,8 @@ use crate::{
     },
     blocks::{BlockHeader, ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
-    common::{rolling_avg::RollingAverageTime, BanPeriod},
-    consensus::ConsensusManager,
+    common::rolling_avg::RollingAverageTime,
+    consensus::BaseConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
@@ -77,7 +78,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
-        consensus_rules: ConsensusManager,
+        consensus_rules: BaseConsensusManager,
         connectivity: ConnectivityRequester,
         sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,

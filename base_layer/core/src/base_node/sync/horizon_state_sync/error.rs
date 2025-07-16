@@ -30,17 +30,12 @@ use tari_comms::{
 };
 use tari_crypto::errors::RangeProofError;
 use tari_mmr::error::MerkleMountainRangeError;
+use tari_transaction_components::{transaction_components::TransactionError, BanPeriod, BanReason};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
-use crate::{
-    chain_storage::ChainStorageError,
-    common::{BanPeriod, BanReason},
-    transactions::transaction_components::TransactionError,
-    validation::ValidationError,
-    MrHashError,
-};
+use crate::{chain_storage::ChainStorageError, validation::ValidationError, MrHashError};
 
 #[derive(Debug, Error)]
 pub enum HorizonSyncError {

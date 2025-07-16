@@ -30,10 +30,10 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
 };
+use tari_transaction_components::proof_of_work::PowAlgorithm;
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
-
+use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree};
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MmrStateRequest {

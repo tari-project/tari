@@ -24,13 +24,12 @@ use std::convert::{TryFrom, TryInto};
 
 use log::*;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
     proto,
-    transactions::transaction_components::Transaction,
 };
-
 const LOG_TARGET: &str = "c::mempool::rpc";
 
 pub struct MempoolRpcService {

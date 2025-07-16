@@ -37,6 +37,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use tari_transaction_components::transaction_components::Transaction;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -52,9 +53,7 @@ use crate::{
         },
     },
     proto,
-    transactions::transaction_components::Transaction,
 };
-
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
 

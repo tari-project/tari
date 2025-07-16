@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::tari_address::TariAddress;
-use tari_core::{consensus::ConsensusConstants, transactions::CryptoFactories};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{consensus::ConsensusConstants, crypto_factories::CryptoFactories};
 
 use crate::{
     output_manager_service::{

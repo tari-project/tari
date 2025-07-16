@@ -84,7 +84,11 @@ pub type RangeProofService = BulletproofsPlusService;
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
 
+// Diffie-Hellman key exchange type
+pub type CommsDHKE = DiffieHellmanSharedSecret<RistrettoPublicKey>;
+
 use tari_crypto::{
+    dhke::DiffieHellmanSharedSecret,
     hash_domain,
     hashing::DomainSeparatedHasher,
     ristretto::{pedersen::PedersenCommitment, RistrettoSchnorr},

@@ -5,7 +5,7 @@ use std::fs;
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_core::transactions::{
+use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::memo_field::{MemoField, TxType},
 };

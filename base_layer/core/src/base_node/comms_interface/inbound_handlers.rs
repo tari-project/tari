@@ -28,6 +28,11 @@ use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::ConsensusConstants,
+    proof_of_work::{Difficulty, PowAlgorithm, PowError},
+};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
 
@@ -45,18 +50,14 @@ use crate::{
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::BaseConsensusManager,
     mempool::Mempool,
     proof_of_work::{
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         tari_randomx_difficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
     },
-    transactions::aggregated_body::AggregateBody,
     validation::{helpers, tari_rx_vm_key_height, ValidationError},
 };
 
@@ -87,7 +88,7 @@ pub struct InboundNodeCommsHandlers<B> {
     block_event_sender: BlockEventSender,
     blockchain_db: AsyncBlockchainDb<B>,
     mempool: Mempool,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     list_of_reconciling_blocks: Arc<RwLock<HashSet<HashOutput>>>,
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
@@ -102,7 +103,7 @@ where B: BlockchainBackend + 'static
         block_event_sender: BlockEventSender,
         blockchain_db: AsyncBlockchainDb<B>,
         mempool: Mempool,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
         randomx_factory: RandomXFactory,

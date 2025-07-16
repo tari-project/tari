@@ -13,6 +13,7 @@ tari_core = { workspace = true, default-features = false, features = [
     "mempool_proto",
     "base_node_proto",
 ] }
+tari_transaction_components = { workspace = true, features = ["ledger"] }
 tari_common = { workspace = true }
 tari_common_sqlite = { workspace = true }
 tari_common_types = { workspace = true }

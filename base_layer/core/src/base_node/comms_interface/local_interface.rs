@@ -28,6 +28,10 @@ use tari_common_types::{
     types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_transaction_components::{
+    proof_of_work::{Difficulty, PowAlgorithm},
+    transaction_components::{TransactionKernel, TransactionOutput},
+};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -47,10 +51,7 @@ use crate::{
         TemplateRegistrationEntry,
         ValidatorNodeRegistrationInfo,
     },
-    proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
-
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 

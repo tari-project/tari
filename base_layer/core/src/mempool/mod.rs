@@ -75,11 +75,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::Signature;
+use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::Transaction};
 
-use crate::{
-    proto::base_node as base_node_proto,
-    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction},
-};
+use crate::proto::base_node as base_node_proto;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatsResponse {

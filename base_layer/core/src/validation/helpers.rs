@@ -30,29 +30,30 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
 use tari_sidechain::SidechainProofValidationError;
+use tari_transaction_components::{
+    consensus::consensus_constants::ConsensusConstants,
+    proof_of_work::{Difficulty, PowAlgorithm, PowError},
+    transaction_components::{
+        covenants::Covenant,
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        EncryptedData,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+    },
+};
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{ConsensusConstants, ConsensusManager},
-    covenants::Covenant,
+    consensus::BaseConsensusManager,
     proof_of_work::{
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         tari_randomx_difficulty,
         AchievedTargetDifficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
-    },
-    transactions::transaction_components::{
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-        EncryptedData,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
     },
     validation::ValidationError,
 };
@@ -134,7 +135,7 @@ pub fn check_target_difficulty(
     target: Difficulty,
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
-    consensus: &ConsensusManager,
+    consensus: &BaseConsensusManager,
     tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {

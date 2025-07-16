@@ -19,15 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[macro_use]
 extern crate bitflags;
 
 pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;
 pub mod consensus;
-#[macro_use]
-pub mod covenants;
 #[cfg(feature = "base_node")]
 pub mod iterators;
 pub mod proof_of_work;
@@ -53,7 +50,7 @@ mod common;
 
 #[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;
-pub use common::{borsh, one_sided, ConfidentialOutputHasher};
+use tari_transaction_components::helpers::borsh;
 
 #[cfg(feature = "base_node")]
 mod domain_hashing {

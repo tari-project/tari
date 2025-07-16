@@ -24,6 +24,7 @@
 //! Horizon state synchronisation module for pruned mode.
 
 use log::*;
+use tari_transaction_components::crypto_factories::CryptoFactories;
 
 use super::{StateEvent, StateInfo};
 use crate::{
@@ -33,9 +34,7 @@ use crate::{
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
-    transactions::CryptoFactories,
 };
-
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
 #[derive(Clone, Debug)]

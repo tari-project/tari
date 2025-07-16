@@ -50,11 +50,6 @@ impl KeyManagerBranch {
 
 /// The value returned from [add_new_branch]. `AlreadyExists` is returned if the branch was previously created,
 /// otherwise `NewEntry` is returned.
-#[derive(Debug, PartialEq)]
-pub enum AddResult {
-    NewEntry,
-    AlreadyExists,
-}
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct KeyAndId<PK> {

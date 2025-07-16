@@ -254,10 +254,7 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
-            let grpc = WalletGrpcServer::new(wallet.clone()).map_err(|e| ExitError {
-                exit_code: ExitCode::UnknownError,
-                details: Some(e.to_string()),
-            })?;
+            let grpc = WalletGrpcServer::new(wallet.clone());
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
@@ -368,10 +365,7 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
     if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
         #[cfg(feature = "grpc")]
         {
-            let grpc = WalletGrpcServer::new(wallet.clone()).map_err(|e| ExitError {
-                exit_code: ExitCode::UnknownError,
-                details: Some(e.to_string()),
-            })?;
+            let grpc = WalletGrpcServer::new(wallet.clone());
             let auth = config.grpc_authentication.clone();
 
             let mut tls_identity = None;

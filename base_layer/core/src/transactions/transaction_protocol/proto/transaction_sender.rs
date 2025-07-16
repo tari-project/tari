@@ -29,13 +29,11 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 use tari_script::TariScript;
+use tari_transaction_components::transaction_components::payment_id::PaymentId;
 use tari_utilities::ByteArray;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
-use crate::transactions::{
-    transaction_components::memo_field::MemoField,
-    transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage},
-};
+use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
 
 impl proto::TransactionSenderMessage {
     pub fn none() -> Self {

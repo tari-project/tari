@@ -22,24 +22,22 @@
 
 use std::collections::VecDeque;
 
-use tari_core::{
-    consensus::ConsensusManager,
-    proof_of_work::{Difficulty, PowAlgorithm},
-};
+use tari_core::consensus::BaseConsensusManager;
+use tari_transaction_components::proof_of_work::{Difficulty, PowAlgorithm};
 
 const HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
 
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
     pow_algo: PowAlgorithm,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     window_size: usize,
     hash_rates: VecDeque<u64>,
     average: u64,
 }
 
 impl HashRateMovingAverage {
-    pub fn new(pow_algo: PowAlgorithm, consensus_manager: ConsensusManager) -> Self {
+    pub fn new(pow_algo: PowAlgorithm, consensus_manager: BaseConsensusManager) -> Self {
         let window_size = HASH_RATE_MOVING_AVERAGE_WINDOW;
         let hash_rates = VecDeque::with_capacity(window_size);
 

@@ -27,24 +27,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, Signature},
 };
-use tari_core::{
-    base_node::comms_interface::ValidatorNodeChange,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            BuildInfo,
-            CodeTemplateRegistration,
-            ConfidentialOutputData,
-            SideChainFeature,
-            SideChainFeatureData,
-            SideChainId,
-            TemplateType,
-            ValidatorNodeExit,
-            ValidatorNodeRegistration,
-            ValidatorNodeSignature,
-        },
-    },
-};
+use tari_core::base_node::comms_interface::ValidatorNodeChange;
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
     ChainLink,
@@ -59,6 +42,21 @@ use tari_sidechain::{
     SidechainBlockCommitProof,
     SidechainBlockHeader,
     ValidatorQcSignature,
+};
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        BuildInfo,
+        CodeTemplateRegistration,
+        ConfidentialOutputData,
+        SideChainFeature,
+        SideChainFeatureData,
+        SideChainId,
+        TemplateType,
+        ValidatorNodeExit,
+        ValidatorNodeRegistration,
+        ValidatorNodeSignature,
+    },
 };
 use tari_utilities::ByteArray;
 

@@ -24,11 +24,15 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_transaction_components::{
+    transaction_components::{Transaction, TransactionError},
+    weight::TransactionWeight,
+};
 use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::Block,
-    consensus::ConsensusManager,
+    consensus::BaseConsensusManager,
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
@@ -38,10 +42,6 @@ use crate::{
         StateResponse,
         StatsResponse,
         TxStorageResponse,
-    },
-    transactions::{
-        transaction_components::{Transaction, TransactionError},
-        weight::TransactionWeight,
     },
     validation::{TransactionValidator, ValidationError},
 };
@@ -55,14 +55,14 @@ pub struct MempoolStorage {
     pub(crate) unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
-    rules: ConsensusManager,
+    rules: BaseConsensusManager,
     last_seen_height: u64,
     pub(crate) last_seen_hash: FixedHash,
 }
 
 impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, rules: ConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
+    pub fn new(config: MempoolConfig, rules: BaseConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),

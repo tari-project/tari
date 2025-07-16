@@ -26,8 +26,8 @@ use std::{
 };
 
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
-use tari_core::transactions::transaction_components::Transaction;
 use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::ByteArray;
 
 use crate::{conversions::aggregate_body::grpc_aggregate_body_with_payrefs, tari_rpc as grpc};

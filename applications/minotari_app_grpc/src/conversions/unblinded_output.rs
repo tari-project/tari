@@ -24,11 +24,11 @@ use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
-use tari_core::transactions::{
+use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
 };
-use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
 use zeroize::Zeroize;
 

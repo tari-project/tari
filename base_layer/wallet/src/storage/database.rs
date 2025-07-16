@@ -27,13 +27,12 @@ use std::{
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::{chain_metadata::ChainMetadata, wallet_types::WalletType};
+use tari_common_types::{chain_metadata::ChainMetadata, seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
     tor::TorIdentity,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::SafePassword;
 
 use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};

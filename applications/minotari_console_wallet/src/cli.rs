@@ -31,10 +31,9 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
-use tari_common_types::{epoch::VnEpoch, tari_address::TariAddress};
+use tari_common_types::{epoch::VnEpoch, seeds::seed_words::SeedWords, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::tari_amount::{self, MicroMinotari};
-use tari_key_manager::SeedWords;
+use tari_transaction_components::tari_amount::{self, MicroMinotari};
 use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,

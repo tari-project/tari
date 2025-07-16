@@ -24,11 +24,12 @@ use std::sync::{Arc, RwLock};
 
 use log::debug;
 use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_transaction_components::transaction_components::Transaction;
 use tokio::task;
 
 use crate::{
     blocks::Block,
-    consensus::ConsensusManager,
+    consensus::BaseConsensusManager,
     mempool::{
         error::MempoolError,
         mempool_storage::MempoolStorage,
@@ -38,7 +39,6 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction_components::Transaction,
     validation::TransactionValidator,
 };
 
@@ -54,7 +54,7 @@ pub struct Mempool {
 
 impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, rules: ConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
+    pub fn new(config: MempoolConfig, rules: BaseConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
         }

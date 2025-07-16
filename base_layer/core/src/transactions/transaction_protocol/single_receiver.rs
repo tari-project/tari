@@ -21,18 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::CompressedPublicKey};
-
-use crate::{
+use tari_transaction_components::{
     consensus::ConsensusConstants,
-    transactions::{
-        transaction_components::{TransactionKernel, WalletOutput},
-        transaction_key_manager::{TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::{
-            recipient::RecipientSignedMessage,
-            sender::SingleRoundSenderData,
-            TransactionProtocolError as TPE,
-        },
-    },
+    key_manager::{TransactionKeyManagerInterface, TxoStage},
+    transaction_components::{TransactionKernel, WalletOutput},
+};
+
+use crate::transactions::transaction_protocol::{
+    recipient::RecipientSignedMessage,
+    sender::SingleRoundSenderData,
+    TransactionProtocolError as TPE,
 };
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari

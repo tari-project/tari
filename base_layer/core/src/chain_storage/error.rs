@@ -24,20 +24,17 @@ use lmdb_zero::error;
 use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSizeError};
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
+use tari_transaction_components::{
+    proof_of_work::PowError,
+    transaction_components::TransactionError,
+    BanPeriod,
+    BanReason,
+};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::task;
 
-use crate::{
-    blocks::BlockError,
-    chain_storage::MmrTree,
-    common::{BanPeriod, BanReason},
-    proof_of_work::PowError,
-    transactions::transaction_components::TransactionError,
-    validation::ValidationError,
-    MrHashError,
-};
-
+use crate::{blocks::BlockError, chain_storage::MmrTree, validation::ValidationError, MrHashError};
 #[derive(Debug, Error)]
 pub enum ChainStorageError {
     #[error("Access to the underlying storage mechanism failed: {0}")]

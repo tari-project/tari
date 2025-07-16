@@ -32,12 +32,12 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
 };
-use tari_core::transactions::{
+use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, OutputFeatures},
-    transaction_key_manager::TariKeyId,
 };
-use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, TariScript};
 
 // Step 1 outputs for all with `PreMineSpendSessionInfo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
