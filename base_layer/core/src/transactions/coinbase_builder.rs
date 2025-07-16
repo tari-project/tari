@@ -42,27 +42,13 @@ use crate::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionBuilder,
-            TransactionError,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
+            CoinBaseExtra, KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, Transaction,
+            TransactionBuilder, TransactionError, TransactionKernel, TransactionKernelVersion, TransactionOutput,
+            TransactionOutputVersion, WalletOutput,
         },
         transaction_key_manager::{
-            error::KeyManagerServiceError,
-            CoreKeyManagerError,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TxoStage,
+            error::KeyManagerServiceError, CoreKeyManagerError, MemoryDbKeyManager, TariKeyId,
+            TransactionKeyManagerInterface, TxoStage,
         },
         transaction_protocol::TransactionMetadata,
     },
@@ -143,7 +129,8 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
 }
 
 impl<TKeyManagerInterface> CoinbaseBuilder<TKeyManagerInterface>
-where TKeyManagerInterface: TransactionKeyManagerInterface
+where
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods.
@@ -453,10 +440,10 @@ pub async fn generate_coinbase_with_wallet_output(
     let payment_id = if wallet_payment_address.get_payment_id_user_data_bytes().is_empty() {
         payment_id
     } else {
-        PaymentId::Open {
-            user_data: wallet_payment_address.get_payment_id_user_data_bytes(),
-            tx_type: TxType::Coinbase,
-        }
+        PaymentId::open_unchecked(
+            wallet_payment_address.get_payment_id_user_data_bytes(),
+            TxType::Coinbase,
+        )
     };
 
     let sender_offset = key_manager
@@ -560,7 +547,7 @@ mod test {
                 .build(
                     rules.consensus_constants(0),
                     rules.emission_schedule(),
-                    PaymentId::Empty
+                    PaymentId::new_empty()
                 )
                 .await
                 .unwrap_err(),
@@ -577,7 +564,7 @@ mod test {
                 .build(
                     rules.consensus_constants(42),
                     rules.emission_schedule(),
-                    PaymentId::Empty
+                    PaymentId::new_empty()
                 )
                 .await
                 .unwrap_err(),
@@ -596,7 +583,7 @@ mod test {
                 .build(
                     rules.consensus_constants(42),
                     rules.emission_schedule(),
-                    PaymentId::Empty
+                    PaymentId::new_empty()
                 )
                 .await
                 .unwrap_err(),
@@ -622,7 +609,7 @@ mod test {
             .build(
                 rules.consensus_constants(42),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -678,7 +665,7 @@ mod test {
             .build(
                 rules.consensus_constants(42),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -718,7 +705,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -737,7 +724,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -774,7 +761,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -799,17 +786,10 @@ mod test {
             tari_amount::MicroMinotari,
             transaction_components::{
                 payment_id::{PaymentId, TxType},
-                CoinBaseExtra,
-                KernelBuilder,
-                RangeProofType,
-                TransactionKernelVersion,
+                CoinBaseExtra, KernelBuilder, RangeProofType, TransactionKernelVersion,
             },
             transaction_key_manager::{
-                create_memory_db_key_manager,
-                MemoryDbKeyManager,
-                TariKeyId,
-                TransactionKeyManagerInterface,
-                TxoStage,
+                create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage,
             },
         },
     };
@@ -838,7 +818,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -859,7 +839,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -982,7 +962,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -1003,7 +983,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -1066,8 +1046,8 @@ mod test {
             .unwrap()
             .to_schnorr_signature()
             .unwrap();
-        kernel_signature = &kernel_signature +
-            &key_manager
+        kernel_signature = &kernel_signature
+            + &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,
@@ -1128,7 +1108,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::Empty,
+                PaymentId::new_empty(),
             )
             .await
             .unwrap();
@@ -1194,8 +1174,8 @@ mod test {
             .unwrap()
             .to_schnorr_signature()
             .unwrap();
-        kernel_signature = &kernel_signature +
-            &key_manager
+        kernel_signature = &kernel_signature
+            + &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,

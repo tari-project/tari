@@ -35,9 +35,7 @@ use tari_core::{
         generate_coinbase,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra,
-            TransactionKernel,
-            TransactionOutput,
+            CoinBaseExtra, TransactionKernel, TransactionOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     },
@@ -251,10 +249,7 @@ impl BlockTemplateManager<'_> {
             true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
-            PaymentId::Open {
-                user_data: vec![],
-                tx_type: TxType::Coinbase,
-            },
+            PaymentId::open_unchecked(vec![], TxType::Coinbase),
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))

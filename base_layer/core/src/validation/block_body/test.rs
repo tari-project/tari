@@ -39,15 +39,11 @@ use crate::{
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
         transaction_components::{
-            encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-            payment_id::PaymentId,
-            EncryptedData,
-            RangeProofType,
+            encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL, payment_id::PaymentId, EncryptedData, RangeProofType,
             TransactionError,
         },
         transaction_key_manager::TariKeyId,
-        CoinbaseBuilder,
-        CryptoFactories,
+        CoinbaseBuilder, CryptoFactories,
     },
     txn_schema,
     validation::{BlockBodyValidator, ValidationError},
@@ -254,7 +250,7 @@ async fn it_allows_multiple_coinbases() {
         .build_with_reward(
             blockchain.rules().consensus_constants(1),
             coinbase.value,
-            PaymentId::Empty,
+            PaymentId::new_empty(),
         )
         .await
         .unwrap();
@@ -530,8 +526,7 @@ mod body_only {
 mod orphan_validator {
     use super::*;
     use crate::{
-        transactions::transaction_components::OutputType,
-        txn_schema,
+        transactions::transaction_components::OutputType, txn_schema,
         validation::block_body::BlockBodyInternalConsistencyValidator,
     };
 
@@ -643,9 +638,10 @@ mod orphan_validator {
                         (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
                         (OutputType::Coinbase, &[RangeProofType::BulletProofPlus]),
                         (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
-                        (OutputType::ValidatorNodeRegistration, &[
-                            RangeProofType::BulletProofPlus,
-                        ]),
+                        (
+                            OutputType::ValidatorNodeRegistration,
+                            &[RangeProofType::BulletProofPlus],
+                        ),
                         (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
                     ])
                     .with_coinbase_lockheight(0)
@@ -673,9 +669,10 @@ mod orphan_validator {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types(&[(OutputType::CodeTemplateRegistration, &[
-                        RangeProofType::BulletProofPlus,
-                    ])])
+                    .with_permitted_range_proof_types(&[(
+                        OutputType::CodeTemplateRegistration,
+                        &[RangeProofType::BulletProofPlus],
+                    )])
                     .with_coinbase_lockheight(0)
                     .build(),
             )

@@ -40,10 +40,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
         database::{PeerDatabaseSql, MIGRATIONS},
-        NodeId,
-        Peer,
-        PeerFeatures,
-        PeerFlags,
+        NodeId, Peer, PeerFeatures, PeerFlags,
     },
     types::CommsPublicKey,
     PeerManager,
@@ -61,10 +58,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra,
-            RangeProofType,
-            Transaction,
-            WalletOutput,
+            CoinBaseExtra, RangeProofType, Transaction, WalletOutput,
         },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
     },
@@ -142,10 +136,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
-        PaymentId::Open {
-            user_data: vec![],
-            tx_type: TxType::Coinbase,
-        },
+        PaymentId::new_open(vec![], TxType::Coinbase),
     )
     .await
     .unwrap();

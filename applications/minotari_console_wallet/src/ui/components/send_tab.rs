@@ -75,7 +75,9 @@ impl SendTab {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_send_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Send Transaction",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -208,7 +210,9 @@ impl SendTab {
     }
 
     fn draw_contacts<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Contacts",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -273,14 +277,17 @@ impl SendTab {
 
                             let mut reset_fields = false;
 
-                            match Handle::current().block_on(app_state.send_one_sided_to_stealth_address_transaction(
-                                self.to_field.clone(),
-                                amount.into(),
-                                UtxoSelectionCriteria::default(),
-                                fee_per_gram,
-                                PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
-                                tx,
-                            )) {
+                            match Handle::current().block_on(
+                                app_state.send_one_sided_to_stealth_address_transaction(
+                                    self.to_field.clone(),
+                                    amount.into(),
+                                    UtxoSelectionCriteria::default(),
+                                    fee_per_gram,
+                                    PaymentId::new_open_from_string(&self.payment_id_field, TxType::PaymentToOther)
+                                        .unwrap_or_else(|_| PaymentId::new_empty()),
+                                    tx,
+                                ),
+                            ) {
                                 Err(e) => {
                                     self.error_message = Some(format!(
                                         "Error sending one-sided transaction to stealth address:\n{}\nPress Enter to \

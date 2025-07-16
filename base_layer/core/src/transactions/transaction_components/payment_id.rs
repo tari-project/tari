@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 use std::{
-    fmt,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
+    ops::Deref,
 };
 
 use log::debug;
@@ -124,7 +124,20 @@ impl Display for TxType {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub enum PaymentId {
+pub struct PaymentId {
+    inner: InnerPaymentId,
+}
+
+impl Deref for PaymentId {
+    type Target = InnerPaymentId;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+enum InnerPaymentId {
     /// No payment ID.
     #[default]
     Empty,
@@ -234,7 +247,7 @@ impl PaymentId {
             ));
         }
 
-        let payment_id = PaymentId::AddressAndData {
+        let payment_id = InnerPaymentId::AddressAndData {
             sender_address,
             fee,
             sender_one_sided,
@@ -242,7 +255,7 @@ impl PaymentId {
             user_data,
         };
 
-        Ok(payment_id)
+        Ok(PaymentId { inner: payment_id })
     }
 
     pub fn new_transaction_info(
@@ -270,7 +283,7 @@ impl PaymentId {
             ));
         }
 
-        let payment_id = PaymentId::TransactionInfo {
+        let payment_id = InnerPaymentId::TransactionInfo {
             recipient_address,
             amount,
             fee,
@@ -280,11 +293,13 @@ impl PaymentId {
             user_data,
         };
 
-        Ok(payment_id)
+        Ok(PaymentId { inner: payment_id })
     }
 
     pub fn new_empty() -> Self {
-        PaymentId::Empty
+        PaymentId {
+            inner: InnerPaymentId::Empty,
+        }
     }
 
     pub fn new_raw(data: Vec<u8>) -> Result<Self, String> {
@@ -299,7 +314,9 @@ impl PaymentId {
                 data.len()
             ));
         }
-        Ok(PaymentId::Raw(data))
+        Ok(PaymentId {
+            inner: InnerPaymentId::Raw(data),
+        })
     }
 
     pub fn new_u256(value: U256) -> Result<Self, String> {
@@ -313,7 +330,9 @@ impl PaymentId {
                 MAX_PAYMENT_ID_SIZE, total_size, SIZE_U256
             ));
         }
-        Ok(PaymentId::U256(value))
+        Ok(PaymentId {
+            inner: InnerPaymentId::U256(value),
+        })
     }
 
     /// Helper function to create a validated `PaymentId::Open` from user data and transaction type
@@ -330,7 +349,9 @@ impl PaymentId {
             ));
         }
 
-        Ok(PaymentId::Open { user_data, tx_type })
+        Ok(PaymentId {
+            inner: InnerPaymentId::Open { user_data, tx_type },
+        })
     }
 
     /// Helper function to create a validated `PaymentId::Open` from a string and transaction type
@@ -339,33 +360,33 @@ impl PaymentId {
     }
 
     fn to_tag(&self) -> Vec<u8> {
-        match self {
-            PaymentId::Empty => vec![],
-            PaymentId::U256(_) => vec![PTag::U256 as u8],
-            PaymentId::Open { .. } => vec![PTag::Open as u8],
-            PaymentId::AddressAndData { .. } => vec![PTag::AddressAndData as u8],
-            PaymentId::TransactionInfo { .. } => vec![PTag::TransactionInfo as u8],
-            PaymentId::Raw(_) => vec![PTag::Raw as u8],
+        match &self.inner {
+            InnerPaymentId::Empty => vec![],
+            InnerPaymentId::U256(_) => vec![PTag::U256 as u8],
+            InnerPaymentId::Open { .. } => vec![PTag::Open as u8],
+            InnerPaymentId::AddressAndData { .. } => vec![PTag::AddressAndData as u8],
+            InnerPaymentId::TransactionInfo { .. } => vec![PTag::TransactionInfo as u8],
+            InnerPaymentId::Raw(_) => vec![PTag::Raw as u8],
         }
     }
 
     pub fn get_size(&self) -> usize {
-        match self {
+        match &self.inner {
             // Empty payment ID has no bytes
-            PaymentId::Empty => 0,
+            InnerPaymentId::Empty => 0,
 
             // U256 payment ID:
             // - 1 byte for the PTag (enum discriminator)
             // - SIZE_U256 bytes for the U256 value (32 bytes = size_of::<U256>())
-            PaymentId::U256(_) => 1 + SIZE_U256,
+            InnerPaymentId::U256(_) => 1 + SIZE_U256,
 
             // Open payment ID:
             // - 1 byte for the PTag (enum discriminator)
             // - user_data.len() bytes for the variable-length user data
             // - 1 byte for the TxType (transaction type as u8)
-            PaymentId::Open { user_data, .. } => 1 + user_data.len() + 1,
+            InnerPaymentId::Open { user_data, .. } => 1 + user_data.len() + 1,
 
-            PaymentId::AddressAndData {
+            InnerPaymentId::AddressAndData {
                 sender_address,
                 user_data,
                 ..
@@ -382,7 +403,7 @@ impl PaymentId {
                 std::cmp::max(len, PADDING_SIZE)
             },
 
-            PaymentId::TransactionInfo {
+            InnerPaymentId::TransactionInfo {
                 recipient_address,
                 user_data,
                 sent_output_hashes,
@@ -413,7 +434,7 @@ impl PaymentId {
                 }
             },
 
-            PaymentId::Raw(bytes) => {
+            InnerPaymentId::Raw(bytes) => {
                 // Raw payment ID:
                 // - 1 byte for the PTag (enum discriminator)
                 // - bytes.len() bytes for the raw data
@@ -423,47 +444,51 @@ impl PaymentId {
     }
 
     pub fn get_fee(&self) -> Option<MicroMinotari> {
-        match self {
-            PaymentId::AddressAndData { fee, .. } | PaymentId::TransactionInfo { fee, .. } => Some(*fee),
+        match &self.inner {
+            InnerPaymentId::AddressAndData { fee, .. } | InnerPaymentId::TransactionInfo { fee, .. } => Some(*fee),
             _ => None,
         }
     }
 
     pub fn get_sent_hashes(&self) -> Option<Vec<FixedHash>> {
-        match self {
-            PaymentId::TransactionInfo { sent_output_hashes, .. } => Some(sent_output_hashes.clone()),
+        match &self.inner {
+            InnerPaymentId::TransactionInfo { sent_output_hashes, .. } => Some(sent_output_hashes.clone()),
             _ => None,
         }
     }
 
     /// Helper function to set the 'amount' of a 'PaymentId::TransactionInfo'
     pub fn transaction_info_set_amount(&mut self, amount: MicroMinotari) {
-        if let PaymentId::TransactionInfo { amount: a, .. } = self {
+        if let InnerPaymentId::TransactionInfo { amount: ref mut a, .. } = self.inner {
             *a = amount;
         }
     }
 
     pub fn get_type(&self) -> TxType {
-        match self {
-            PaymentId::Open { tx_type, .. }
-            | PaymentId::AddressAndData { tx_type, .. }
-            | PaymentId::TransactionInfo { tx_type, .. } => *tx_type,
+        match &self.inner {
+            InnerPaymentId::Open { tx_type, .. }
+            | InnerPaymentId::AddressAndData { tx_type, .. }
+            | InnerPaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
 
     /// Helper function to set the 'recipient_address' of a 'PaymentId::TransactionInfo'
     pub fn transaction_info_set_address(&mut self, address: TariAddress) {
-        if let PaymentId::TransactionInfo { recipient_address, .. } = self {
+        if let InnerPaymentId::TransactionInfo {
+            ref mut recipient_address,
+            ..
+        } = self.inner
+        {
             *recipient_address = address
         }
     }
 
     pub fn transaction_info_set_sent_output_hashes(&mut self, sent_output_hashes: Vec<FixedHash>) {
-        if let PaymentId::TransactionInfo {
-            sent_output_hashes: hashes,
+        if let InnerPaymentId::TransactionInfo {
+            sent_output_hashes: ref mut hashes,
             ..
-        } = self
+        } = self.inner
         {
             *hashes = sent_output_hashes;
         }
@@ -478,14 +503,14 @@ impl PaymentId {
         fee: MicroMinotari,
         tx_type: Option<TxType>,
     ) -> PaymentId {
-        match self {
-            PaymentId::Open { user_data, tx_type } => {
+        match self.inner {
+            InnerPaymentId::Open { user_data, tx_type } => {
                 match PaymentId::new_address_and_data(sender_address, fee, sender_one_sided, tx_type, user_data) {
                     Ok(payment_id) => payment_id,
                     Err(e) => panic!("Cannot create AddressAndData PaymentId: {}", e),
                 }
             },
-            PaymentId::Empty => {
+            InnerPaymentId::Empty => {
                 match PaymentId::new_address_and_data(
                     sender_address,
                     fee,
@@ -503,14 +528,14 @@ impl PaymentId {
 
     // This method is infallible; any out-of-bound values will be zeroed.
     fn pack_meta_data(&self) -> Vec<u8> {
-        match self {
-            PaymentId::TransactionInfo {
+        match &self.inner {
+            InnerPaymentId::TransactionInfo {
                 fee,
                 sender_one_sided,
                 tx_type,
                 ..
             }
-            | PaymentId::AddressAndData {
+            | InnerPaymentId::AddressAndData {
                 fee,
                 sender_one_sided,
                 tx_type,
@@ -545,37 +570,37 @@ impl PaymentId {
     }
 
     pub fn user_data_as_bytes(&self) -> Vec<u8> {
-        match &self {
-            PaymentId::Empty => vec![],
-            PaymentId::U256(v) => {
+        match &self.inner {
+            InnerPaymentId::Empty => vec![],
+            InnerPaymentId::U256(v) => {
                 let bytes: &mut [u8] = &mut [0; SIZE_U256];
                 v.to_little_endian(bytes);
                 bytes.to_vec()
             },
-            PaymentId::Open { user_data, .. } => user_data.clone(),
-            PaymentId::AddressAndData { user_data, .. } => user_data.clone(),
-            PaymentId::TransactionInfo { user_data, .. } => user_data.clone(),
-            PaymentId::Raw(bytes) => bytes.clone(),
+            InnerPaymentId::Open { user_data, .. } => user_data.clone(),
+            InnerPaymentId::AddressAndData { user_data, .. } => user_data.clone(),
+            InnerPaymentId::TransactionInfo { user_data, .. } => user_data.clone(),
+            InnerPaymentId::Raw(bytes) => bytes.clone(),
         }
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            PaymentId::Empty => Vec::new(),
-            PaymentId::U256(v) => {
+        match &self.inner {
+            InnerPaymentId::Empty => Vec::new(),
+            InnerPaymentId::U256(v) => {
                 let mut bytes = self.to_tag();
                 let mut value = vec![0; 32];
                 v.to_little_endian(&mut value);
                 bytes.extend_from_slice(&value);
                 bytes
             },
-            PaymentId::Open { user_data, tx_type } => {
+            InnerPaymentId::Open { user_data, tx_type } => {
                 let mut bytes = self.to_tag();
                 bytes.extend_from_slice(&tx_type.as_bytes());
                 bytes.extend_from_slice(user_data);
                 bytes
             },
-            PaymentId::AddressAndData {
+            InnerPaymentId::AddressAndData {
                 sender_address,
                 user_data,
                 ..
@@ -593,7 +618,7 @@ impl PaymentId {
                 }
                 bytes
             },
-            PaymentId::TransactionInfo {
+            InnerPaymentId::TransactionInfo {
                 recipient_address,
                 amount,
                 user_data,
@@ -620,9 +645,9 @@ impl PaymentId {
                 }
                 bytes
             },
-            PaymentId::Raw(bytes) => {
+            InnerPaymentId::Raw(data) => {
                 let mut result = self.to_tag();
-                result.extend_from_slice(bytes);
+                result.extend_from_slice(data);
                 result
             },
         }
@@ -636,9 +661,11 @@ impl PaymentId {
             let bytes_array: [u8; SIZE_VALUE] = bytes.try_into().expect("We already test the length");
             let v = u64::from_le_bytes(bytes_array);
             if v < 1000 {
-                return PaymentId::Open {
-                    tx_type: TxType::PaymentToOther,
-                    user_data: bytes.to_vec(),
+                return PaymentId {
+                    inner: InnerPaymentId::Open {
+                        tx_type: TxType::PaymentToOther,
+                        user_data: bytes.to_vec(),
+                    },
                 };
             }
         }
@@ -650,24 +677,40 @@ impl PaymentId {
         };
         let bytes = if bytes.len() > 1 { &bytes[1..] } else { &[] };
         match p_tag {
-            PTag::Empty => return PaymentId::Empty,
+            PTag::Empty => {
+                return PaymentId {
+                    inner: InnerPaymentId::Empty,
+                }
+            },
             PTag::U256 => {
                 if bytes.len() != SIZE_U256 {
-                    return PaymentId::Open {
+                    let inner_payment_id = InnerPaymentId::Open {
                         tx_type: TxType::from_u8(*bytes.first().unwrap_or(&0)),
                         user_data: bytes.get(1..).unwrap_or_default().to_vec(),
                     };
+                    return PaymentId {
+                        inner: inner_payment_id,
+                    };
                 }
                 let v = U256::from_little_endian(bytes);
-                return PaymentId::U256(v);
+                return PaymentId {
+                    inner: InnerPaymentId::U256(v),
+                };
             },
             PTag::Open => {
-                return PaymentId::Open {
+                let inner_payment_id = InnerPaymentId::Open {
                     tx_type: TxType::from_u8(*bytes.first().unwrap_or(&0)),
                     user_data: bytes.get(1..).unwrap_or_default().to_vec(),
+                };
+                return PaymentId {
+                    inner: inner_payment_id,
+                };
+            },
+            PTag::Raw => {
+                return PaymentId {
+                    inner: InnerPaymentId::Raw(raw_bytes),
                 }
             },
-            PTag::Raw => return PaymentId::Raw(raw_bytes),
             _ => {},
         }
 
@@ -675,7 +718,9 @@ impl PaymentId {
             Ok(payment_id) => payment_id,
             Err(e) => {
                 debug!("Failed to parse PaymentId from bytes: {}, returning Raw", e);
-                PaymentId::Raw(raw_bytes)
+                PaymentId {
+                    inner: InnerPaymentId::Raw(raw_bytes),
+                }
             },
         }
     }
@@ -705,26 +750,30 @@ impl PaymentId {
             // legacy support for AddressAndDataV1
             if p_tag == PTag::AddressAndDataV1 {
                 let user_data = bytes[PaymentId::SIZE_VALUE_AND_META_DATA + size..].to_vec();
-                return Ok(PaymentId::AddressAndData {
-                    sender_address: address,
-                    sender_one_sided,
-                    fee,
-                    tx_type: tx_meta_data,
-                    user_data,
+                return Ok(PaymentId {
+                    inner: InnerPaymentId::AddressAndData {
+                        sender_address: address,
+                        sender_one_sided,
+                        fee,
+                        tx_type: tx_meta_data,
+                        user_data,
+                    },
                 });
             }
 
             // legacy support for TransactionInfoV1
             if p_tag == PTag::TransactionInfoV1 {
                 let user_data = bytes[PaymentId::SIZE_VALUE_AND_META_DATA + size..].to_vec();
-                return Ok(PaymentId::TransactionInfo {
-                    recipient_address: address,
-                    sender_one_sided,
-                    amount,
-                    fee,
-                    tx_type: tx_meta_data,
-                    user_data,
-                    sent_output_hashes: vec![],
+                return Ok(PaymentId {
+                    inner: InnerPaymentId::TransactionInfo {
+                        recipient_address: address,
+                        sender_one_sided,
+                        amount,
+                        fee,
+                        tx_type: tx_meta_data,
+                        user_data,
+                        sent_output_hashes: vec![],
+                    },
                 });
             }
         }
@@ -765,12 +814,14 @@ impl PaymentId {
             if !Self::check_padding(bytes, user_data_start + user_data_length) {
                 return Err("Invalid padding for AddressAndData".to_string());
             }
-            return Ok(PaymentId::AddressAndData {
-                sender_address: address,
-                sender_one_sided,
-                fee,
-                tx_type: tx_meta_data,
-                user_data: user_data.to_vec(),
+            return Ok(PaymentId {
+                inner: InnerPaymentId::AddressAndData {
+                    sender_address: address,
+                    sender_one_sided,
+                    fee,
+                    tx_type: tx_meta_data,
+                    user_data: user_data.to_vec(),
+                },
             });
         }
         // so this must be a TransactionInfo
@@ -798,14 +849,16 @@ impl PaymentId {
         ) {
             return Err("Invalid padding for TransactionInfo".to_string());
         }
-        Ok(PaymentId::TransactionInfo {
-            recipient_address: address,
-            sender_one_sided,
-            amount,
-            fee,
-            tx_type: tx_meta_data,
-            user_data: user_data.to_vec(),
-            sent_output_hashes,
+        Ok(PaymentId {
+            inner: InnerPaymentId::TransactionInfo {
+                recipient_address: address,
+                sender_one_sided,
+                amount,
+                fee,
+                tx_type: tx_meta_data,
+                user_data: user_data.to_vec(),
+                sent_output_hashes,
+            },
         })
     }
 
@@ -851,13 +904,13 @@ impl PaymentId {
 
     /// Helper function to display the payment id's user data
     pub fn user_data_as_string(&self) -> String {
-        match self {
-            PaymentId::Empty => self.to_string(),
-            PaymentId::U256(v) => format!("{}", v),
-            PaymentId::Open { user_data, .. } => PaymentId::stringify_bytes(user_data),
-            PaymentId::AddressAndData { user_data, .. } => PaymentId::stringify_bytes(user_data),
-            PaymentId::TransactionInfo { user_data, .. } => PaymentId::stringify_bytes(user_data),
-            PaymentId::Raw(bytes) => bytes.to_hex(),
+        match &self.inner {
+            InnerPaymentId::Empty => self.to_string(),
+            InnerPaymentId::U256(v) => format!("{}", v),
+            InnerPaymentId::Open { user_data, .. } => PaymentId::stringify_bytes(user_data),
+            InnerPaymentId::AddressAndData { user_data, .. } => PaymentId::stringify_bytes(user_data),
+            InnerPaymentId::TransactionInfo { user_data, .. } => PaymentId::stringify_bytes(user_data),
+            InnerPaymentId::Raw(bytes) => bytes.to_hex(),
         }
     }
 
@@ -866,9 +919,11 @@ impl PaymentId {
     /// # Deprecated
     /// Use `new_open_from_string` instead for proper validation
     pub fn open_from_string(s: &str, tx_type: TxType) -> Self {
-        PaymentId::Open {
-            user_data: s.as_bytes().to_vec(),
-            tx_type,
+        PaymentId {
+            inner: InnerPaymentId::Open {
+                user_data: s.as_bytes().to_vec(),
+                tx_type,
+            },
         }
     }
 
@@ -877,22 +932,212 @@ impl PaymentId {
     /// # Deprecated
     /// Use `new_open` instead for proper validation
     pub fn open(bytes: Vec<u8>, tx_type: TxType) -> Self {
-        PaymentId::Open {
-            user_data: bytes,
-            tx_type,
+        PaymentId {
+            inner: InnerPaymentId::Open {
+                user_data: bytes,
+                tx_type,
+            },
+        }
+    }
+
+    /// Convenience method for pattern matching - checks if this is an Empty payment ID
+    pub fn is_empty(&self) -> bool {
+        matches!(self.inner, InnerPaymentId::Empty)
+    }
+
+    /// Convenience method for pattern matching - checks if this is a U256 payment ID
+    pub fn is_u256(&self) -> bool {
+        matches!(self.inner, InnerPaymentId::U256(_))
+    }
+
+    /// Convenience method for pattern matching - checks if this is an Open payment ID
+    pub fn is_open(&self) -> bool {
+        matches!(self.inner, InnerPaymentId::Open { .. })
+    }
+
+    /// Convenience method for pattern matching - checks if this is an AddressAndData payment ID
+    pub fn is_address_and_data(&self) -> bool {
+        matches!(self.inner, InnerPaymentId::AddressAndData { .. })
+    }
+
+    /// Convenience method for pattern matching - checks if this is a TransactionInfo payment ID
+    pub fn is_transaction_info(&self) -> bool {
+        matches!(self.inner, InnerPaymentId::TransactionInfo { .. })
+    }
+
+    /// Convenience method for pattern matching - checks if this is a Raw payment ID
+    pub fn is_raw(&self) -> bool {
+        matches!(self.inner, InnerPaymentId::Raw(_))
+    }
+
+    /// Get user data from Open, AddressAndData, or TransactionInfo variants
+    /// Returns empty Vec for other variants
+    pub fn get_user_data(&self) -> Vec<u8> {
+        match &self.inner {
+            InnerPaymentId::Open { user_data, .. }
+            | InnerPaymentId::AddressAndData { user_data, .. }
+            | InnerPaymentId::TransactionInfo { user_data, .. } => user_data.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Get transaction type from variants that have it
+    /// Returns None for variants without tx_type
+    pub fn get_tx_type(&self) -> Option<TxType> {
+        match &self.inner {
+            InnerPaymentId::Open { tx_type, .. }
+            | InnerPaymentId::AddressAndData { tx_type, .. }
+            | InnerPaymentId::TransactionInfo { tx_type, .. } => Some(*tx_type),
+            _ => None,
+        }
+    }
+
+    /// Get the sender address from AddressAndData variant
+    /// Returns None for other variants
+    pub fn get_sender_address(&self) -> Option<&TariAddress> {
+        match &self.inner {
+            InnerPaymentId::AddressAndData { sender_address, .. } => Some(sender_address),
+            _ => None,
+        }
+    }
+
+    /// Get the recipient address from TransactionInfo variant
+    /// Returns None for other variants
+    pub fn get_recipient_address(&self) -> Option<&TariAddress> {
+        match &self.inner {
+            InnerPaymentId::TransactionInfo { recipient_address, .. } => Some(recipient_address),
+            _ => None,
+        }
+    }
+
+    /// Get the amount from TransactionInfo variant
+    /// Returns None for other variants
+    pub fn get_amount(&self) -> Option<MicroMinotari> {
+        match &self.inner {
+            InnerPaymentId::TransactionInfo { amount, .. } => Some(*amount),
+            _ => None,
+        }
+    }
+
+    /// Get the sender_one_sided flag from AddressAndData or TransactionInfo variants
+    /// Returns None for other variants
+    pub fn get_sender_one_sided(&self) -> Option<bool> {
+        match &self.inner {
+            InnerPaymentId::AddressAndData { sender_one_sided, .. }
+            | InnerPaymentId::TransactionInfo { sender_one_sided, .. } => Some(*sender_one_sided),
+            _ => None,
+        }
+    }
+
+    /// Get the U256 value from U256 variant
+    /// Returns None for other variants
+    pub fn get_u256(&self) -> Option<U256> {
+        match &self.inner {
+            InnerPaymentId::U256(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    /// Get raw bytes from Raw variant
+    /// Returns None for other variants
+    pub fn get_raw_bytes(&self) -> Option<&[u8]> {
+        match &self.inner {
+            InnerPaymentId::Raw(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
+
+    /// Unchecked constructor for Empty payment ID
+    /// Use this for migration from old direct enum construction
+    pub fn empty() -> Self {
+        PaymentId {
+            inner: InnerPaymentId::Empty,
+        }
+    }
+
+    /// Unchecked constructor for Open payment ID
+    /// Use this for migration from old direct enum construction
+    /// WARNING: This bypasses validation - use new_open() for new code
+    pub fn open_unchecked(user_data: Vec<u8>, tx_type: TxType) -> Self {
+        PaymentId {
+            inner: InnerPaymentId::Open { user_data, tx_type },
+        }
+    }
+
+    /// Unchecked constructor for U256 payment ID
+    /// Use this for migration from old direct enum construction
+    /// WARNING: This bypasses validation - use new_u256() for new code
+    pub fn u256_unchecked(value: U256) -> Self {
+        PaymentId {
+            inner: InnerPaymentId::U256(value),
+        }
+    }
+
+    /// Unchecked constructor for Raw payment ID
+    /// Use this for migration from old direct enum construction
+    /// WARNING: This bypasses validation - use new_raw() for new code
+    pub fn raw_unchecked(data: Vec<u8>) -> Self {
+        PaymentId {
+            inner: InnerPaymentId::Raw(data),
+        }
+    }
+
+    /// Unchecked constructor for AddressAndData payment ID
+    /// Use this for migration from old direct enum construction
+    /// WARNING: This bypasses validation - use new_address_and_data() for new code
+    pub fn address_and_data_unchecked(
+        sender_address: TariAddress,
+        sender_one_sided: bool,
+        fee: MicroMinotari,
+        tx_type: TxType,
+        user_data: Vec<u8>,
+    ) -> Self {
+        PaymentId {
+            inner: InnerPaymentId::AddressAndData {
+                sender_address,
+                sender_one_sided,
+                fee,
+                tx_type,
+                user_data,
+            },
+        }
+    }
+
+    /// Unchecked constructor for TransactionInfo payment ID
+    /// Use this for migration from old direct enum construction
+    /// WARNING: This bypasses validation - use new_transaction_info() for new code
+    pub fn transaction_info_unchecked(
+        recipient_address: TariAddress,
+        sender_one_sided: bool,
+        amount: MicroMinotari,
+        fee: MicroMinotari,
+        tx_type: TxType,
+        sent_output_hashes: Vec<FixedHash>,
+        user_data: Vec<u8>,
+    ) -> Self {
+        PaymentId {
+            inner: InnerPaymentId::TransactionInfo {
+                recipient_address,
+                sender_one_sided,
+                amount,
+                fee,
+                tx_type,
+                sent_output_hashes,
+                user_data,
+            },
         }
     }
 }
 
 impl Display for PaymentId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            PaymentId::Empty => write!(f, "None"),
-            PaymentId::U256(v) => write!(f, "u256({v})"),
-            PaymentId::Open { user_data, tx_type } => {
+        match &self.inner {
+            InnerPaymentId::Empty => write!(f, "None"),
+            InnerPaymentId::U256(v) => write!(f, "u256({v})"),
+            InnerPaymentId::Open { user_data, tx_type } => {
                 write!(f, "type({}), data({})", tx_type, PaymentId::stringify_bytes(user_data))
             },
-            PaymentId::AddressAndData {
+            InnerPaymentId::AddressAndData {
                 sender_address,
                 sender_one_sided,
                 fee,
@@ -907,7 +1152,7 @@ impl Display for PaymentId {
                 tx_type,
                 PaymentId::stringify_bytes(user_data)
             ),
-            PaymentId::TransactionInfo {
+            InnerPaymentId::TransactionInfo {
                 recipient_address,
                 sender_one_sided,
                 amount,
@@ -925,7 +1170,7 @@ impl Display for PaymentId {
                 tx_meta_data,
                 PaymentId::stringify_bytes(user_data),
             ),
-            PaymentId::Raw(bytes) => write!(f, "Raw({})", bytes.to_hex()),
+            InnerPaymentId::Raw(bytes) => write!(f, "Raw({})", bytes.to_hex()),
         }
     }
 }
@@ -967,17 +1212,15 @@ mod test {
         //     .unwrap();
         let sent_output_hashes = vec![create_random_fixed_hash()];
         vec![
-            PaymentId::Empty,
-            PaymentId::U256(1.into()),
-            PaymentId::U256(156486946518564u64.into()),
-            PaymentId::U256(
+            PaymentId::new_empty(),
+            PaymentId::new_u256(1.into()).unwrap(),
+            PaymentId::new_u256(156486946518564u64.into()).unwrap(),
+            PaymentId::new_u256(
                 U256::from_dec_str("465465489789785458694894263185648978947864164681631").expect("Should not fail"),
-            ),
+            )
+            .unwrap(),
             // Open - no data
-            PaymentId::Open {
-                user_data: vec![],
-                tx_type: TxType::default(),
-            },
+            PaymentId::new_open(vec![], TxType::PaymentToOther).unwrap(),
             // Open - some data
             PaymentId::Open {
                 user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],

@@ -73,7 +73,9 @@ impl BurnTab {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_burn_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Burn Minotari",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -223,7 +225,9 @@ impl BurnTab {
     }
 
     fn draw_proofs<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
+    where
+        B: Backend,
+    {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Burnt Proofs",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -326,16 +330,19 @@ impl BurnTab {
                     let mut reset_fields = false;
                     match self.confirmation_dialog {
                         Some(BurnConfirmationDialogType::Normal) => {
-                            match Handle::current().block_on(app_state.send_burn_transaction(
-                                burn_proof_filepath,
-                                claim_public_key,
-                                amount.into(),
-                                UtxoSelectionCriteria::default(),
-                                fee_per_gram,
-                                PaymentId::open_from_string(&self.payment_id_field, TxType::Burn),
-                                sidechain_key,
-                                tx,
-                            )) {
+                            match Handle::current().block_on(
+                                app_state.send_burn_transaction(
+                                    burn_proof_filepath,
+                                    claim_public_key,
+                                    amount.into(),
+                                    UtxoSelectionCriteria::default(),
+                                    fee_per_gram,
+                                    PaymentId::new_open_from_string(&self.payment_id_field, TxType::Burn)
+                                        .unwrap_or_else(|_| PaymentId::new_empty()),
+                                    sidechain_key,
+                                    tx,
+                                ),
+                            ) {
                                 Err(e) => {
                                     self.error_message = Some(format!(
                                         "Error sending burn transaction (with a claim public key \

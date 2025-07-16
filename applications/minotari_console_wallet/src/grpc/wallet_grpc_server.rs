@@ -29,91 +29,30 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future,
-    SinkExt,
+    future, SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    BroadcastSignedOneSidedTransactionRequest,
-    BroadcastSignedOneSidedTransactionResponse,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    FeePerGramStat,
-    GetAddressResponse,
-    GetAllCompletedTransactionsRequest,
-    GetAllCompletedTransactionsResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetBlockHeightTransactionsRequest,
-    GetBlockHeightTransactionsResponse,
-    GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetFeeEstimateRequest,
-    GetFeeEstimateResponse,
-    GetFeePerGramStatsRequest,
-    GetFeePerGramStatsResponse,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetPaymentByReferenceRequest,
-    GetPaymentByReferenceResponse,
-    GetPaymentIdAddressRequest,
-    GetStateRequest,
-    GetStateResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetTransactionPayRefsRequest,
-    GetTransactionPayRefsResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportTransactionsRequest,
-    ImportTransactionsResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    PrepareOneSidedTransactionForSigningRequest,
-    PrepareOneSidedTransactionForSigningResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    ReplaceByFeeRequest,
-    ReplaceByFeeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SignMessageRequest,
-    SignMessageResponse,
-    SubmitValidatorEvictionProofRequest,
-    SubmitValidatorEvictionProofResponse,
-    SubmitValidatorNodeExitRequest,
-    SubmitValidatorNodeExitResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    UserPayForFeeRequest,
-    UserPayForFeeResponse,
-    ValidateRequest,
-    ValidateResponse,
+    self, payment_recipient::PaymentType, wallet_server, BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse, CheckConnectivityResponse, ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
+    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, FeePerGramStat, GetAddressResponse,
+    GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
+    GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse, GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetFeeEstimateRequest,
+    GetFeeEstimateResponse, GetFeePerGramStatsRequest, GetFeePerGramStatsResponse, GetIdentityRequest,
+    GetIdentityResponse, GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest,
+    GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest, GetTransactionPayRefsResponse, GetUnspentAmountsResponse, GetVersionRequest,
+    GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest, PrepareOneSidedTransactionForSigningResponse,
+    RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, ReplaceByFeeRequest, ReplaceByFeeResponse,
+    RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SignMessageRequest,
+    SignMessageResponse, SubmitValidatorEvictionProofRequest, SubmitValidatorEvictionProofResponse,
+    SubmitValidatorNodeExitRequest, SubmitValidatorNodeExitResponse, TransactionDirection, TransactionEvent,
+    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest,
+    TransferResponse, TransferResult, UserPayForFeeRequest, UserPayForFeeResponse, ValidateRequest, ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -141,8 +80,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            OutputFeatures,
-            UnblindedOutput,
+            OutputFeatures, UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
@@ -500,12 +438,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            PaymentId::Open {
-                user_data: bytes,
-                tx_type: TxType::ClaimAtomicSwap,
-            }
+            PaymentId::open_unchecked(bytes, TxType::ClaimAtomicSwap)
         } else {
-            PaymentId::Empty
+            PaymentId::new_empty()
         };
         let mut transaction_service = self.get_transaction_service();
         let response = match transaction_service
@@ -737,12 +672,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            PaymentId::Open {
-                user_data: bytes,
-                tx_type: TxType::PaymentToOther,
-            }
+            PaymentId::open_unchecked(bytes, TxType::PaymentToOther)
         } else {
-            PaymentId::Empty
+            PaymentId::new_empty()
         };
 
         let mut transaction_service = self.get_transaction_service();
@@ -841,7 +773,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
             let payment_id = if !raw_payment_id.is_empty() {
-                PaymentId::open(raw_payment_id.to_vec(), TxType::PaymentToOther)
+                PaymentId::open_unchecked(raw_payment_id.to_vec(), TxType::PaymentToOther)
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
@@ -857,12 +789,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         ));
                     },
                 };
-                PaymentId::Open {
-                    user_data: bytes,
-                    tx_type: TxType::PaymentToOther,
-                }
+                PaymentId::open_unchecked(bytes, TxType::PaymentToOther)
             } else {
-                PaymentId::Empty
+                PaymentId::new_empty()
             };
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
@@ -1805,11 +1734,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                PaymentId::Open {
-                    // TODO: should this be its own TxType?
-                    tx_type: TxType::PaymentToSelf,
-                    user_data: request.message,
-                },
+                PaymentId::open_unchecked(vec![], TxType::PaymentToSelf),
             )
             .await
         {
@@ -1863,10 +1788,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 proof,
                 request.fee_per_gram.into(),
                 sidechain_key,
-                PaymentId::Open {
-                    user_data: request.message.into_bytes(),
-                    tx_type: TxType::PaymentToSelf,
-                },
+                PaymentId::open_unchecked(request.message.into_bytes(), TxType::PaymentToSelf),
             )
             .await
         {

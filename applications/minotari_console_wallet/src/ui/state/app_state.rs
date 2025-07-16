@@ -38,8 +38,7 @@ use minotari_wallet::{
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::handle::UtxoScannerHandle,
-    WalletConfig,
-    WalletSqlite,
+    WalletConfig, WalletSqlite,
 };
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
@@ -55,9 +54,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         payment_id::{PaymentId, TxType},
-        OutputFeatures,
-        TemplateType,
-        TransactionError,
+        OutputFeatures, TemplateType, TransactionError,
     },
     weight::TransactionWeight,
 };
@@ -1056,10 +1053,7 @@ impl CompletedTransactionInfo {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let burn = if tx.transaction.body.contains_burn() {
             true
-        } else if let PaymentId::Open { tx_type, .. } |
-        PaymentId::AddressAndData { tx_type, .. } |
-        PaymentId::TransactionInfo { tx_type, .. } = tx.payment_id.clone()
-        {
+        } else if let Some(tx_type) = tx.payment_id.get_tx_type() {
             tx_type == TxType::Burn
         } else {
             false
