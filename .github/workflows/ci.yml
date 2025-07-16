@@ -90,6 +90,27 @@ jobs:
           cargo install cargo-vet@0.10.0 --locked
           cargo vet
 
+  ledger-build-tests:
+    name: ledger build tests
+    runs-on: [ ubuntu-latest ]
+    env:
+      DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:4.2.0"
+    steps:
+      - name: checkout tari
+        uses: actions/checkout@v4
+
+      - name: ledger build tests
+        shell: bash
+        run: |
+          for ledger_target in stax flex nanosplus nanox; do
+            echo "Building for ${ledger_target}"
+            docker run --rm \
+              -v "${GITHUB_WORKSPACE}:/app" \
+              -w /app/applications/minotari_ledger_wallet/wallet \
+              "${DOCKER_IMAGE}" \
+              cargo ledger build "${ledger_target}" -- --locked
+          done
+
   build-stable:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.
