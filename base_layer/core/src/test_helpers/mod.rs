@@ -40,7 +40,10 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
         database::{PeerDatabaseSql, MIGRATIONS},
-        NodeId, Peer, PeerFeatures, PeerFlags,
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
     },
     types::CommsPublicKey,
     PeerManager,
@@ -58,7 +61,10 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra, RangeProofType, Transaction, WalletOutput,
+            CoinBaseExtra,
+            RangeProofType,
+            Transaction,
+            WalletOutput,
         },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface},
     },

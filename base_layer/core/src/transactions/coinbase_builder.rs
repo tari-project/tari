@@ -42,13 +42,27 @@ use crate::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra, KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, Transaction,
-            TransactionBuilder, TransactionError, TransactionKernel, TransactionKernelVersion, TransactionOutput,
-            TransactionOutputVersion, WalletOutput,
+            CoinBaseExtra,
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionBuilder,
+            TransactionError,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
         },
         transaction_key_manager::{
-            error::KeyManagerServiceError, CoreKeyManagerError, MemoryDbKeyManager, TariKeyId,
-            TransactionKeyManagerInterface, TxoStage,
+            error::KeyManagerServiceError,
+            CoreKeyManagerError,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+            TxoStage,
         },
         transaction_protocol::TransactionMetadata,
     },
@@ -129,8 +143,7 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
 }
 
 impl<TKeyManagerInterface> CoinbaseBuilder<TKeyManagerInterface>
-where
-    TKeyManagerInterface: TransactionKeyManagerInterface,
+where TKeyManagerInterface: TransactionKeyManagerInterface
 {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
     /// methods.
@@ -786,10 +799,17 @@ mod test {
             tari_amount::MicroMinotari,
             transaction_components::{
                 payment_id::{PaymentId, TxType},
-                CoinBaseExtra, KernelBuilder, RangeProofType, TransactionKernelVersion,
+                CoinBaseExtra,
+                KernelBuilder,
+                RangeProofType,
+                TransactionKernelVersion,
             },
             transaction_key_manager::{
-                create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage,
+                create_memory_db_key_manager,
+                MemoryDbKeyManager,
+                TariKeyId,
+                TransactionKeyManagerInterface,
+                TxoStage,
             },
         },
     };
@@ -1046,8 +1066,8 @@ mod test {
             .unwrap()
             .to_schnorr_signature()
             .unwrap();
-        kernel_signature = &kernel_signature
-            + &key_manager
+        kernel_signature = &kernel_signature +
+            &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,
@@ -1174,8 +1194,8 @@ mod test {
             .unwrap()
             .to_schnorr_signature()
             .unwrap();
-        kernel_signature = &kernel_signature
-            + &key_manager
+        kernel_signature = &kernel_signature +
+            &key_manager
                 .get_partial_txo_kernel_signature(
                     &wo2.spending_key_id,
                     &new_nonce2.key_id,

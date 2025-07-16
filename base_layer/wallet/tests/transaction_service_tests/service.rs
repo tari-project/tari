@@ -34,7 +34,8 @@ use chrono::{Days, Utc};
 use digest::consts::U32;
 use futures::{
     channel::{mpsc, mpsc::Sender},
-    FutureExt, SinkExt,
+    FutureExt,
+    SinkExt,
 };
 use minotari_wallet::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -48,7 +49,8 @@ use minotari_wallet::{
             models::KnownOneSidedPaymentScript,
             sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
         },
-        OutputManagerServiceInitializer, UtxoSelectionCriteria,
+        OutputManagerServiceInitializer,
+        UtxoSelectionCriteria,
     },
     storage::{
         database::WalletDatabase,
@@ -56,7 +58,9 @@ use minotari_wallet::{
         sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     },
     test_utils::{
-        create_consensus_constants, make_wallet_database_connection, make_wallet_database_memory_connection,
+        create_consensus_constants,
+        make_wallet_database_connection,
+        make_wallet_database_memory_connection,
         random_string,
     },
     transaction_service::{
@@ -72,7 +76,9 @@ use minotari_wallet::{
     },
     util::watch::Watch,
     utxo_scanner_service::{
-        handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, service::ScannedBlock,
+        handle::UtxoScannerHandle,
+        initializer::UtxoScannerServiceInitializer,
+        service::ScannedBlock,
     },
 };
 use prost::Message;
@@ -93,10 +99,14 @@ use tari_comms::{
     },
     test_utils::node_identity::build_node_identity,
     types::CommsDHKE,
-    CommsNode, PeerConnection,
+    CommsNode,
+    PeerConnection,
 };
 use tari_comms_dht::outbound::mock::{
-    create_outbound_service_mock, MockBehaviour, OutboundServiceMockState, ResponseType,
+    create_outbound_service_mock,
+    MockBehaviour,
+    OutboundServiceMockState,
+    ResponseType,
 };
 use tari_core::{
     base_node::{
@@ -112,17 +122,28 @@ use tari_core::{
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            KernelBuilder, OutputFeatures, RangeProofType, Transaction,
+            KernelBuilder,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager, storage::sqlite_db::TransactionKeyManagerSqliteDatabase, MemoryDbKeyManager,
-            TariKeyId, TransactionKeyManagerInitializer, TransactionKeyManagerInterface,
+            create_memory_db_key_manager,
+            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInitializer,
+            TransactionKeyManagerInterface,
         },
         transaction_protocol::{
-            proto::protocol as proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage,
+            proto::protocol as proto,
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
             TransactionMetadata,
         },
-        CryptoFactories, ReceiverTransactionProtocol, SenderTransactionProtocol,
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
     ConfidentialOutputHasher,
 };

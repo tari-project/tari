@@ -27,7 +27,12 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
     types::{
-        ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedCommitment,
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        Signature,
+        UncompressedCommitment,
         UncompressedPublicKey,
     },
 };
@@ -40,15 +45,25 @@ use crate::{
     transactions::{
         tari_amount::*,
         transaction_components::{
-            payment_id::PaymentId, KernelBuilder, OutputFeatures, Transaction, TransactionBuilder, TransactionKernel,
-            TransactionKernelVersion, TransactionOutput, TransactionOutputVersion, WalletOutput,
-            MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS,
+            payment_id::PaymentId,
+            KernelBuilder,
+            OutputFeatures,
+            Transaction,
+            TransactionBuilder,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+            MAX_TRANSACTION_INPUTS,
+            MAX_TRANSACTION_OUTPUTS,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         transaction_protocol::{
             recipient::RecipientSignedMessage,
             transaction_initializer::{RecipientDetails, SenderTransactionInitializer},
-            TransactionMetadata, TransactionProtocolError as TPE,
+            TransactionMetadata,
+            TransactionProtocolError as TPE,
         },
     },
 };
@@ -243,28 +258,28 @@ impl SenderTransactionProtocol {
     /// Method to check if the provided tx_id matches this transaction
     pub fn check_tx_id(&self, tx_id: TxId) -> bool {
         match &self.state {
-            SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => info.tx_id == tx_id,
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => info.tx_id == tx_id,
             _ => false,
         }
     }
 
     pub fn get_tx_id(&self) -> Result<TxId, TPE> {
         match &self.state {
-            SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok(info.tx_id),
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.tx_id),
             _ => Err(TPE::InvalidStateError),
         }
     }
 
     pub fn get_amount_to_recipient(&self) -> Result<MicroMinotari, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok(info
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info
                 .recipient_data
                 .as_ref()
                 .map(|data| data.amount)
@@ -278,10 +293,10 @@ impl SenderTransactionProtocol {
     /// change
     pub fn get_amount_to_self(&self) -> Result<MicroMinotari, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
                 let mut amount = info
                     .change_output
                     .as_ref()
@@ -300,10 +315,10 @@ impl SenderTransactionProtocol {
     /// This function will return the value of the change transaction
     pub fn get_change_amount(&self) -> Result<MicroMinotari, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok(info
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info
                 .change_output
                 .as_ref()
                 .map(|output| output.output.value)
@@ -324,10 +339,10 @@ impl SenderTransactionProtocol {
     /// is returned.
     pub fn get_pre_finalized_change_output(&self) -> Result<Option<WalletOutput>, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
                 Ok(info.change_output.as_ref().as_ref().map(|output| output.output.clone()))
             },
             SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
@@ -339,10 +354,10 @@ impl SenderTransactionProtocol {
     /// is returned.
     pub fn get_pre_finalized_full_change_output(&self) -> Result<Option<OutputPair>, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok(info.change_output.clone()),
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.change_output.clone()),
             SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -352,11 +367,11 @@ impl SenderTransactionProtocol {
     /// is returned.
     pub fn get_finalized_change_output(&self) -> Result<Option<WalletOutput>, TPE> {
         match &self.state {
-            SenderState::Initializing(_)
-            | SenderState::Finalizing(_)
-            | SenderState::SingleRoundMessageReady(_)
-            | SenderState::CollectingSingleSignature(_)
-            | SenderState::Failed(_) => Err(TPE::InvalidStateError),
+            SenderState::Initializing(_) |
+            SenderState::Finalizing(_) |
+            SenderState::SingleRoundMessageReady(_) |
+            SenderState::CollectingSingleSignature(_) |
+            SenderState::Failed(_) => Err(TPE::InvalidStateError),
             SenderState::FinalizedTransaction {
                 final_transaction: _,
                 change_output,
@@ -368,10 +383,10 @@ impl SenderTransactionProtocol {
     /// is returned.
     pub fn get_spent_inputs(&self) -> Result<Vec<OutputPair>, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok(info.inputs.clone()),
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.inputs.clone()),
             SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -381,10 +396,10 @@ impl SenderTransactionProtocol {
     /// is returned.
     pub fn get_outputs(&self) -> Result<Vec<OutputPair>, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok(info.outputs.clone()),
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.outputs.clone()),
             SenderState::FinalizedTransaction { .. } => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -393,10 +408,10 @@ impl SenderTransactionProtocol {
     /// This function will return the script offset private keys for a single recipient
     pub fn get_recipient_sender_offset_private_key(&self) -> Result<Option<TariKeyId>, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok({
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok({
                 info.recipient_data
                     .as_ref()
                     .map(|data| data.recipient_sender_offset_key_id.clone())
@@ -408,10 +423,10 @@ impl SenderTransactionProtocol {
 
     pub fn change_recipient_sender_offset_private_key(&mut self, key_id: TariKeyId) -> Result<(), TPE> {
         match &mut self.state {
-            SenderState::Initializing(ref mut info)
-            | SenderState::Finalizing(ref mut info)
-            | SenderState::SingleRoundMessageReady(ref mut info)
-            | SenderState::CollectingSingleSignature(ref mut info) => {
+            SenderState::Initializing(ref mut info) |
+            SenderState::Finalizing(ref mut info) |
+            SenderState::SingleRoundMessageReady(ref mut info) |
+            SenderState::CollectingSingleSignature(ref mut info) => {
                 if let Some(ref mut v) = info.recipient_data {
                     v.recipient_sender_offset_key_id = key_id;
                 }
@@ -425,10 +440,10 @@ impl SenderTransactionProtocol {
     /// This function will return the value of the fee of this transaction
     pub fn get_fee_amount(&self) -> Result<MicroMinotari, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => Ok(info.metadata.fee),
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => Ok(info.metadata.fee),
             SenderState::FinalizedTransaction {
                 final_transaction: txn,
                 change_output: _,
@@ -529,38 +544,38 @@ impl SenderTransactionProtocol {
         // lets calculate the total sender kernel exess
         let mut public_excess = UncompressedPublicKey::default();
         for input in &info.inputs {
-            public_nonce = public_nonce
-                + key_manager
+            public_nonce = public_nonce +
+                key_manager
                     .get_public_key_at_key_id(&input.kernel_nonce)
                     .await?
                     .to_public_key()?;
-            public_excess = public_excess
-                - key_manager
+            public_excess = public_excess -
+                key_manager
                     .get_txo_kernel_signature_excess_with_offset(&input.output.spending_key_id, &input.kernel_nonce)
                     .await?
                     .to_public_key()?;
         }
         for output in &info.outputs {
-            public_nonce = public_nonce
-                + key_manager
+            public_nonce = public_nonce +
+                key_manager
                     .get_public_key_at_key_id(&output.kernel_nonce)
                     .await?
                     .to_public_key()?;
-            public_excess = public_excess
-                + key_manager
+            public_excess = public_excess +
+                key_manager
                     .get_txo_kernel_signature_excess_with_offset(&output.output.spending_key_id, &output.kernel_nonce)
                     .await?
                     .to_public_key()?;
         }
 
         if let Some(change) = &info.change_output {
-            public_nonce = public_nonce
-                + key_manager
+            public_nonce = public_nonce +
+                key_manager
                     .get_public_key_at_key_id(&change.kernel_nonce)
                     .await?
                     .to_public_key()?;
-            public_excess = public_excess
-                + key_manager
+            public_excess = public_excess +
+                key_manager
                     .get_txo_kernel_signature_excess_with_offset(&change.output.spending_key_id, &change.kernel_nonce)
                     .await?
                     .to_public_key()?;
@@ -663,8 +678,8 @@ impl SenderTransactionProtocol {
             .await?;
 
         let metadata_signature = ComAndPubSignature::new_from_capk_signature(
-            &received_output.metadata_signature.to_capk_signature()?
-                + &sender_metadata_signature.to_capk_signature()?,
+            &received_output.metadata_signature.to_capk_signature()? +
+                &sender_metadata_signature.to_capk_signature()?,
         );
         Ok(metadata_signature)
     }
@@ -680,9 +695,8 @@ impl SenderTransactionProtocol {
             // we dont have a recipient and thus we have not yet calculated the sender_nonce and sender_offset_excess
             SenderTransactionProtocol::calculate_total_nonce_and_total_public_excess(info, key_manager).await?
         } else {
-            let total_public_nonce = &info.total_sender_nonce.to_public_key()?
-                + info
-                    .recipient_partial_kernel_signature
+            let total_public_nonce = &info.total_sender_nonce.to_public_key()? +
+                info.recipient_partial_kernel_signature
                     .get_compressed_public_nonce()
                     .to_public_key()?;
             let total_public_excess =
@@ -746,8 +760,8 @@ impl SenderTransactionProtocol {
 
         for input in &info.inputs {
             tx_builder.add_input(input.output.to_transaction_input(key_manager).await?);
-            signature = &signature
-                + &key_manager
+            signature = &signature +
+                &key_manager
                     .get_partial_txo_kernel_signature(
                         &input.output.spending_key_id,
                         &input.kernel_nonce,
@@ -760,8 +774,8 @@ impl SenderTransactionProtocol {
                     )
                     .await?
                     .to_schnorr_signature()?;
-            offset = offset
-                - &key_manager
+            offset = offset -
+                &key_manager
                     .get_txo_private_kernel_offset(&input.output.spending_key_id, &input.kernel_nonce)
                     .await?;
             script_keys.push(input.output.script_key_id.clone());
@@ -769,8 +783,8 @@ impl SenderTransactionProtocol {
 
         for output in &info.outputs {
             tx_builder.add_output(output.output.to_transaction_output(key_manager).await?);
-            signature = &signature
-                + &key_manager
+            signature = &signature +
+                &key_manager
                     .get_partial_txo_kernel_signature(
                         &output.output.spending_key_id,
                         &output.kernel_nonce,
@@ -783,8 +797,8 @@ impl SenderTransactionProtocol {
                     )
                     .await?
                     .to_schnorr_signature()?;
-            offset = offset
-                + &key_manager
+            offset = offset +
+                &key_manager
                     .get_txo_private_kernel_offset(&output.output.spending_key_id, &output.kernel_nonce)
                     .await?;
             let sender_offset_key_id = output
@@ -799,8 +813,8 @@ impl SenderTransactionProtocol {
         }
         if let Some(change) = &change_output {
             tx_builder.add_output(change.output.to_transaction_output(key_manager).await?);
-            signature = &signature
-                + &key_manager
+            signature = &signature +
+                &key_manager
                     .get_partial_txo_kernel_signature(
                         &change.output.spending_key_id,
                         &change.kernel_nonce,
@@ -813,8 +827,8 @@ impl SenderTransactionProtocol {
                     )
                     .await?
                     .to_schnorr_signature()?;
-            offset = offset
-                + &key_manager
+            offset = offset +
+                &key_manager
                     .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
                     .await?;
             let sender_offset_key_id = change
@@ -909,10 +923,10 @@ impl SenderTransactionProtocol {
         km: &KM,
     ) -> Result<Vec<CompressedCommitment>, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
                 let mut commitments = Vec::new();
                 for output in &info.outputs {
                     commitments.push(output.output.to_transaction_output(km).await?.commitment);
@@ -938,10 +952,10 @@ impl SenderTransactionProtocol {
         km: &KM,
     ) -> Result<Vec<CompressedCommitment>, TPE> {
         match &self.state {
-            SenderState::Initializing(info)
-            | SenderState::Finalizing(info)
-            | SenderState::SingleRoundMessageReady(info)
-            | SenderState::CollectingSingleSignature(info) => {
+            SenderState::Initializing(info) |
+            SenderState::Finalizing(info) |
+            SenderState::SingleRoundMessageReady(info) |
+            SenderState::CollectingSingleSignature(info) => {
                 let mut commitments = Vec::new();
                 for output in &info.inputs {
                     commitments.push(output.output.to_transaction_output(km).await?.commitment);
@@ -1088,7 +1102,11 @@ mod test {
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
-                payment_id::PaymentId, EncryptedData, OutputFeatures, TransactionOutput, TransactionOutputVersion,
+                payment_id::PaymentId,
+                EncryptedData,
+                OutputFeatures,
+                TransactionOutput,
+                TransactionOutputVersion,
                 WalletOutput,
             },
             transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
@@ -1238,8 +1256,8 @@ mod test {
             .await
             .unwrap();
         output.metadata_signature = ComAndPubSignature::new_from_capk_signature(
-            &partial_metadata_signature.to_capk_signature().unwrap()
-                + &partial_sender_metadata_signature.to_capk_signature().unwrap(),
+            &partial_metadata_signature.to_capk_signature().unwrap() +
+                &partial_sender_metadata_signature.to_capk_signature().unwrap(),
         );
         assert!(output.verify_metadata_signature().is_ok());
     }

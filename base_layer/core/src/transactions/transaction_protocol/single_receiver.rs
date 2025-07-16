@@ -28,7 +28,9 @@ use crate::{
         transaction_components::{TransactionKernel, WalletOutput},
         transaction_key_manager::{TransactionKeyManagerInterface, TxoStage},
         transaction_protocol::{
-            recipient::RecipientSignedMessage, sender::SingleRoundSenderData, TransactionProtocolError as TPE,
+            recipient::RecipientSignedMessage,
+            sender::SingleRoundSenderData,
+            TransactionProtocolError as TPE,
         },
     },
 };
@@ -157,12 +159,20 @@ mod test {
             tari_amount::*,
             test_helpers::TestParams,
             transaction_components::{
-                payment_id::PaymentId, EncryptedData, OutputFeatures, TransactionKernel, TransactionKernelVersion,
-                TransactionOutput, TransactionOutputVersion, WalletOutput,
+                payment_id::PaymentId,
+                EncryptedData,
+                OutputFeatures,
+                TransactionKernel,
+                TransactionKernelVersion,
+                TransactionOutput,
+                TransactionOutputVersion,
+                WalletOutput,
             },
             transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             transaction_protocol::{
-                sender::SingleRoundSenderData, single_receiver::SingleReceiverTransactionProtocol, TransactionMetadata,
+                sender::SingleRoundSenderData,
+                single_receiver::SingleReceiverTransactionProtocol,
+                TransactionMetadata,
                 TransactionProtocolError,
             },
         },
@@ -346,9 +356,8 @@ mod test {
         let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
             &TransactionKernelVersion::get_current_version(),
             &CompressedPublicKey::new_from_pk(
-                &pub_rs.to_public_key().unwrap()
-                    + prot
-                        .partial_signature
+                &pub_rs.to_public_key().unwrap() +
+                    prot.partial_signature
                         .get_compressed_public_nonce()
                         .to_public_key()
                         .unwrap(),

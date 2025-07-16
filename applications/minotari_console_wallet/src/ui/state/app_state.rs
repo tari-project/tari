@@ -38,7 +38,8 @@ use minotari_wallet::{
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::handle::UtxoScannerHandle,
-    WalletConfig, WalletSqlite,
+    WalletConfig,
+    WalletSqlite,
 };
 use qrcode::{render::unicode, QrCode};
 use tari_common::configuration::Network;
@@ -54,7 +55,9 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         payment_id::{PaymentId, TxType},
-        OutputFeatures, TemplateType, TransactionError,
+        OutputFeatures,
+        TemplateType,
+        TransactionError,
     },
     weight::TransactionWeight,
 };

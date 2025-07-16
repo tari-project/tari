@@ -32,8 +32,13 @@ use crate::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId, EncryptedData, OutputFeatures, TransactionError, TransactionOutput,
-            TransactionOutputVersion, WalletOutput,
+            payment_id::PaymentId,
+            EncryptedData,
+            OutputFeatures,
+            TransactionError,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
     },
@@ -259,8 +264,8 @@ impl WalletOutputBuilder {
         );
 
         let sender_offset_public_key_self = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
-        let aggregate_sender_offset_public_key = aggregated_sender_offset_public_key_shares.to_public_key()?
-            + &sender_offset_public_key_self.to_public_key()?;
+        let aggregate_sender_offset_public_key = aggregated_sender_offset_public_key_shares.to_public_key()? +
+            &sender_offset_public_key_self.to_public_key()?;
 
         let ephemeral_pubkey_self = key_manager.get_random_key().await?;
         let aggregate_ephemeral_pubkey =
@@ -295,8 +300,8 @@ impl WalletOutputBuilder {
             .await?;
 
         let metadata_signature = ComAndPubSignature::new_from_capk_signature(
-            &receiver_partial_metadata_signature.to_capk_signature()?
-                + &sender_partial_metadata_signature_self.to_schnorr_signature()?,
+            &receiver_partial_metadata_signature.to_capk_signature()? +
+                &sender_partial_metadata_signature_self.to_schnorr_signature()?,
         );
 
         self.metadata_signature = Some(metadata_signature);
@@ -462,8 +467,8 @@ mod test {
                     .unwrap();
 
                 let metadata_signature_from_partials = ComAndPubSignature::new_from_capk_signature(
-                    &receiver_metadata_signature.to_capk_signature().unwrap()
-                        + &sender_metadata_signature.to_capk_signature().unwrap(),
+                    &receiver_metadata_signature.to_capk_signature().unwrap() +
+                        &sender_metadata_signature.to_capk_signature().unwrap(),
                 );
                 assert_ne!(output.metadata_signature, metadata_signature_from_partials);
                 output.metadata_signature = metadata_signature_from_partials;

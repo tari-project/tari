@@ -40,7 +40,9 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra, RangeProofType, WalletOutput,
+            CoinBaseExtra,
+            RangeProofType,
+            WalletOutput,
         },
         transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
     },

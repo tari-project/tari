@@ -215,14 +215,14 @@ impl PaymentId {
         sent_output_hashes_len: usize,
         user_data_len: usize,
     ) -> usize {
-        let base_size = 1
-            + 1
-            + address.get_size()
-            + PaymentId::SIZE_VALUE_AND_META_DATA
-            + 1
-            + (sent_output_hashes_len * FixedHash::byte_size())
-            + 1
-            + user_data_len;
+        let base_size = 1 +
+            1 +
+            address.get_size() +
+            PaymentId::SIZE_VALUE_AND_META_DATA +
+            1 +
+            (sent_output_hashes_len * FixedHash::byte_size()) +
+            1 +
+            user_data_len;
         std::cmp::max(base_size, PADDING_SIZE)
     }
 
@@ -238,7 +238,8 @@ impl PaymentId {
 
         if total_size > MAX_PAYMENT_ID_SIZE {
             return Err(format!(
-                "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, user_data: {} bytes, overhead: {} bytes)",
+                "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, user_data: {} bytes, overhead: {} \
+                 bytes)",
                 MAX_PAYMENT_ID_SIZE,
                 total_size,
                 sender_address.get_size(),
@@ -273,13 +274,17 @@ impl PaymentId {
 
         if total_size > MAX_PAYMENT_ID_SIZE {
             return Err(format!(
-                "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, hashes: {} bytes, user_data: {} bytes, overhead: {} bytes)",
+                "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, hashes: {} bytes, user_data: {} bytes, \
+                 overhead: {} bytes)",
                 MAX_PAYMENT_ID_SIZE,
                 total_size,
                 recipient_address.get_size(),
                 sent_output_hashes.len() * FixedHash::byte_size(),
                 user_data.len(),
-                total_size - recipient_address.get_size() - (sent_output_hashes.len() * FixedHash::byte_size()) - user_data.len()
+                total_size -
+                    recipient_address.get_size() -
+                    (sent_output_hashes.len() * FixedHash::byte_size()) -
+                    user_data.len()
             ));
         }
 
@@ -405,19 +410,20 @@ impl PaymentId {
                 // - 1 byte for the PTag (enum discriminator)
                 // - 1 byte for sender_one_sided boolean flag
                 // - recipient_address.get_size() bytes for the TariAddress (67 bytes for dual, 35 bytes for single)
-                // - PaymentId::SIZE_VALUE_AND_META_DATA bytes for value and metadata (13 bytes: 8 bytes amount + 5 bytes metadata)
+                // - PaymentId::SIZE_VALUE_AND_META_DATA bytes for value and metadata (13 bytes: 8 bytes amount + 5
+                //   bytes metadata)
                 // - 1 byte for sent_output_hashes length
                 // - (sent_output_hashes.len() * FixedHash::byte_size()) bytes for output hashes (32 bytes per hash)
                 // - 1 byte for user_data length
                 // - user_data.len() bytes for the variable-length user data
-                let len = 1
-                    + 1
-                    + recipient_address.get_size()
-                    + PaymentId::SIZE_VALUE_AND_META_DATA
-                    + 1
-                    + (sent_output_hashes.len() * FixedHash::byte_size())
-                    + 1
-                    + user_data.len();
+                let len = 1 +
+                    1 +
+                    recipient_address.get_size() +
+                    PaymentId::SIZE_VALUE_AND_META_DATA +
+                    1 +
+                    (sent_output_hashes.len() * FixedHash::byte_size()) +
+                    1 +
+                    user_data.len();
                 // Ensure minimum size of PADDING_SIZE (130 bytes) for consistent serialization
                 if len < PADDING_SIZE {
                     PADDING_SIZE
@@ -458,9 +464,9 @@ impl PaymentId {
 
     pub fn get_type(&self) -> TxType {
         match &self.inner {
-            InnerPaymentId::Open { tx_type, .. }
-            | InnerPaymentId::AddressAndData { tx_type, .. }
-            | InnerPaymentId::TransactionInfo { tx_type, .. } => *tx_type,
+            InnerPaymentId::Open { tx_type, .. } |
+            InnerPaymentId::AddressAndData { tx_type, .. } |
+            InnerPaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
@@ -526,8 +532,8 @@ impl PaymentId {
                 sender_one_sided,
                 tx_type,
                 ..
-            }
-            | InnerPaymentId::AddressAndData {
+            } |
+            InnerPaymentId::AddressAndData {
                 fee,
                 sender_one_sided,
                 tx_type,
@@ -966,9 +972,9 @@ impl PaymentId {
     /// Returns empty Vec for other variants
     pub fn get_user_data(&self) -> Vec<u8> {
         match &self.inner {
-            InnerPaymentId::Open { user_data, .. }
-            | InnerPaymentId::AddressAndData { user_data, .. }
-            | InnerPaymentId::TransactionInfo { user_data, .. } => user_data.clone(),
+            InnerPaymentId::Open { user_data, .. } |
+            InnerPaymentId::AddressAndData { user_data, .. } |
+            InnerPaymentId::TransactionInfo { user_data, .. } => user_data.clone(),
             _ => Vec::new(),
         }
     }
@@ -977,9 +983,9 @@ impl PaymentId {
     /// Returns None for variants without tx_type
     pub fn get_tx_type(&self) -> Option<TxType> {
         match &self.inner {
-            InnerPaymentId::Open { tx_type, .. }
-            | InnerPaymentId::AddressAndData { tx_type, .. }
-            | InnerPaymentId::TransactionInfo { tx_type, .. } => Some(*tx_type),
+            InnerPaymentId::Open { tx_type, .. } |
+            InnerPaymentId::AddressAndData { tx_type, .. } |
+            InnerPaymentId::TransactionInfo { tx_type, .. } => Some(*tx_type),
             _ => None,
         }
     }
@@ -1015,8 +1021,8 @@ impl PaymentId {
     /// Returns None for other variants
     pub fn get_sender_one_sided(&self) -> Option<bool> {
         match &self.inner {
-            InnerPaymentId::AddressAndData { sender_one_sided, .. }
-            | InnerPaymentId::TransactionInfo { sender_one_sided, .. } => Some(*sender_one_sided),
+            InnerPaymentId::AddressAndData { sender_one_sided, .. } |
+            InnerPaymentId::TransactionInfo { sender_one_sided, .. } => Some(*sender_one_sided),
             _ => None,
         }
     }
@@ -1742,13 +1748,9 @@ mod test {
                 vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             )
             .unwrap(),
-            PaymentId::new_address_and_data(
-                pay_id_address,
-                MicroMinotari::from(123),
-                false,
-                TxType::Burn,
-                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            )
+            PaymentId::new_address_and_data(pay_id_address, MicroMinotari::from(123), false, TxType::Burn, vec![
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+            ])
             .unwrap(),
         ];
         fn old_to_bytes(payment_id: &PaymentId) -> Vec<u8> {

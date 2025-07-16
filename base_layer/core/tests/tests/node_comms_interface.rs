@@ -25,7 +25,10 @@ use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address:
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
-        InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse, OutboundNodeCommsInterface,
+        InboundNodeCommsHandlers,
+        NodeCommsRequest,
+        NodeCommsResponse,
+        OutboundNodeCommsInterface,
     },
     chain_storage::{BlockchainDatabaseConfig, Validators},
     consensus::ConsensusManager,
@@ -40,11 +43,18 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
-            payment_id::PaymentId, OutputFeatures, TransactionOutput, TransactionOutputVersion, WalletOutput,
+            payment_id::PaymentId,
+            OutputFeatures,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
             WalletOutputBuilder,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId, TransactionKeyManagerInterface,
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
         },
         transaction_protocol::transaction_initializer::SenderTransactionInitializer,
         SenderTransactionProtocol,

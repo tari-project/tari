@@ -44,7 +44,8 @@ use tari_core::{
         generate_coinbase,
         transaction_components::{
             payment_id::{PaymentId, TxType},
-            CoinBaseExtra, RangeProofType,
+            CoinBaseExtra,
+            RangeProofType,
         },
         transaction_key_manager::create_memory_db_key_manager,
     },

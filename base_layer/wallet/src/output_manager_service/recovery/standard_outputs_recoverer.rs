@@ -31,7 +31,10 @@ use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
         payment_id::{InnerPaymentId, PaymentId},
-        OutputType, TransactionError, TransactionOutput, WalletOutput,
+        OutputType,
+        TransactionError,
+        TransactionOutput,
+        WalletOutput,
     },
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
@@ -93,9 +96,9 @@ where
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
         for (output, tx_id) in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
-            if output.script != script!(Nop)?
-                && known_script_index.is_none()
-                && !output.script.pattern_match(&push_pub_key_script)
+            if output.script != script!(Nop)? &&
+                known_script_index.is_none() &&
+                !output.script.pattern_match(&push_pub_key_script)
             {
                 continue;
             }

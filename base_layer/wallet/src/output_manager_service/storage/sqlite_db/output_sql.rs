@@ -38,7 +38,12 @@ use tari_common_types::{
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::PaymentId, EncryptedData, OutputFeatures, OutputType, TransactionOutputVersion, WalletOutput,
+        payment_id::PaymentId,
+        EncryptedData,
+        OutputFeatures,
+        OutputType,
+        TransactionOutputVersion,
+        WalletOutput,
     },
     transaction_key_manager::TariKeyId,
 };
@@ -55,9 +60,12 @@ use crate::{
             database::{OutputBackendQuery, SortDirection},
             models::{DbWalletOutput, SpendingPriority},
             sqlite_db::{UpdateOutput, UpdateOutputSql},
-            OutputSource, OutputStatus,
+            OutputSource,
+            OutputStatus,
         },
-        UtxoSelectionFilter, UtxoSelectionOrdering, TRANSACTION_INPUTS_LIMIT,
+        UtxoSelectionFilter,
+        UtxoSelectionOrdering,
+        TRANSACTION_INPUTS_LIMIT,
     },
     schema::outputs,
 };

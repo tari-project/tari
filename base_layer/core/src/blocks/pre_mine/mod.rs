@@ -27,7 +27,12 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     types::{
-        CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedPublicKey, UncompressedSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        Signature,
+        UncompressedPublicKey,
+        UncompressedSignature,
     },
 };
 use tari_crypto::keys::SecretKey as SkTrait;
@@ -39,12 +44,23 @@ use crate::{
     transactions::{
         tari_amount::{MicroMinotari, Minotari},
         transaction_components::{
-            payment_id::PaymentId, CoinBaseExtra, KernelFeatures, OutputFeatures, OutputFeaturesVersion, OutputType,
-            RangeProofType, TransactionKernel, TransactionKernelVersion, TransactionOutput, TransactionOutputVersion,
+            payment_id::PaymentId,
+            CoinBaseExtra,
+            KernelFeatures,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
             WalletOutputBuilder,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager, SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface,
+            create_memory_db_key_manager,
+            SecretTransactionKeyManagerInterface,
+            TransactionKeyManagerInterface,
         },
         transaction_protocol::TransactionMetadata,
     },
@@ -631,8 +647,8 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                                 taken_from_period: release.taken_from_period,
                                 value: release.value,
                             });
-                            let original_maturity = schedule.initial_lockup_days * BLOCKS_PER_DAY
-                                + release.taken_from_period * blocks_per_month;
+                            let original_maturity = schedule.initial_lockup_days * BLOCKS_PER_DAY +
+                                release.taken_from_period * blocks_per_month;
                             values_with_maturity.push(PreMineItem {
                                 value: release.value.uT(),
                                 maturity: release.maturity,
@@ -820,8 +836,8 @@ pub async fn create_pre_mine_genesis_block_info(
             .get_next_commitment_mask_and_script_key()
             .await
             .map_err(|e| e.to_string())?;
-        total_private_key = total_private_key
-            + &key_manager
+        total_private_key = total_private_key +
+            &key_manager
                 .get_private_key(&commitment_mask.key_id)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -911,10 +927,22 @@ mod test {
 
     use crate::{
         blocks::pre_mine::{
-            contributors_upfront_release, create_pre_mine_genesis_block_info, create_pre_mine_output_values,
-            get_expected_payout_grace_period_blocks, get_pre_mine_items, get_pre_mine_value, get_signature_threshold,
-            get_tokenomics_pre_mine_unlock_schedule, pre_mine_spendable_at_height, verify_script_keys_for_index,
-            Apportionment, CustomRelease, PreMineItem, ProportionalRelease, ReleaseCadence, ReleaseStrategy,
+            contributors_upfront_release,
+            create_pre_mine_genesis_block_info,
+            create_pre_mine_output_values,
+            get_expected_payout_grace_period_blocks,
+            get_pre_mine_items,
+            get_pre_mine_value,
+            get_signature_threshold,
+            get_tokenomics_pre_mine_unlock_schedule,
+            pre_mine_spendable_at_height,
+            verify_script_keys_for_index,
+            Apportionment,
+            CustomRelease,
+            PreMineItem,
+            ProportionalRelease,
+            ReleaseCadence,
+            ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
         consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission, ConsensusManager},
@@ -1053,54 +1081,48 @@ mod test {
                 },
             };
             let schedule = get_tokenomics_pre_mine_unlock_schedule(network);
-            assert_eq!(
-                schedule.network_rewards,
-                Apportionment {
-                    beneficiary: "network_rewards".to_string(),
-                    percentage: 70,
-                    tokens_amount: 14_700_000_000.into(),
-                    schedule: None,
-                }
-            );
-            assert_eq!(
-                schedule.protocol,
-                Apportionment {
-                    beneficiary: "protocol".to_string(),
-                    percentage: 9,
-                    tokens_amount: 1_890_000_000.into(),
-                    schedule: Some(ReleaseCadence {
-                        initial_lockup_days: 180,
-                        monthly_fraction_denominator: 48,
-                        upfront_release: vec![
-                            ReleaseStrategy::Proportional(ProportionalRelease {
-                                percentage: 40,
-                                number_of_tokens: 20,
-                            }),
-                            ReleaseStrategy::Custom({
-                                vec![
-                                    CustomRelease {
-                                        value: 1.into(),
-                                        maturity: 0,
-                                    },
-                                    CustomRelease {
-                                        value: 1.into(),
-                                        maturity: 0,
-                                    },
-                                    CustomRelease {
-                                        value: 1.into(),
-                                        maturity: 129_600,
-                                    },
-                                    CustomRelease {
-                                        value: 1.into(),
-                                        maturity: 129_600,
-                                    },
-                                ]
-                            }),
-                        ],
-                        expected_payout_period_blocks,
-                    }),
-                }
-            );
+            assert_eq!(schedule.network_rewards, Apportionment {
+                beneficiary: "network_rewards".to_string(),
+                percentage: 70,
+                tokens_amount: 14_700_000_000.into(),
+                schedule: None,
+            });
+            assert_eq!(schedule.protocol, Apportionment {
+                beneficiary: "protocol".to_string(),
+                percentage: 9,
+                tokens_amount: 1_890_000_000.into(),
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 180,
+                    monthly_fraction_denominator: 48,
+                    upfront_release: vec![
+                        ReleaseStrategy::Proportional(ProportionalRelease {
+                            percentage: 40,
+                            number_of_tokens: 20,
+                        }),
+                        ReleaseStrategy::Custom({
+                            vec![
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 0,
+                                },
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 0,
+                                },
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 129_600,
+                                },
+                                CustomRelease {
+                                    value: 1.into(),
+                                    maturity: 129_600,
+                                },
+                            ]
+                        }),
+                    ],
+                    expected_payout_period_blocks,
+                }),
+            });
             let percentage = if let ReleaseStrategy::Proportional(release) =
                 &schedule.protocol.schedule.unwrap().upfront_release[0]
             {
@@ -1109,64 +1131,55 @@ mod test {
                 panic!("Expected ReleaseStrategy::Proportional");
             };
             assert_eq!(schedule.protocol.tokens_amount * percentage / 100, 756_000_000.into());
-            assert_eq!(
-                schedule.community,
-                Apportionment {
-                    beneficiary: "community".to_string(),
-                    percentage: 5,
-                    tokens_amount: 1_050_000_000.into(),
-                    schedule: Some(ReleaseCadence {
-                        initial_lockup_days: 180,
-                        monthly_fraction_denominator: 12,
-                        upfront_release: vec![],
-                        expected_payout_period_blocks,
-                    }),
-                }
-            );
-            assert_eq!(
-                schedule.contributors,
-                Apportionment {
-                    beneficiary: "contributors".to_string(),
-                    percentage: 4,
-                    tokens_amount: 840_000_000.into(),
-                    schedule: Some(ReleaseCadence {
-                        initial_lockup_days: 365,
-                        monthly_fraction_denominator: 60,
-                        upfront_release: contributors_upfront_release(),
-                        expected_payout_period_blocks,
-                    }),
-                }
-            );
-            assert_eq!(
-                schedule.participants,
-                Apportionment {
-                    beneficiary: "participants".to_string(),
-                    percentage: 12,
-                    tokens_amount: 2_520_000_000.into(),
-                    schedule: Some(ReleaseCadence {
-                        initial_lockup_days: 365,
-                        monthly_fraction_denominator: 24,
-                        upfront_release: vec![],
-                        expected_payout_period_blocks,
-                    }),
-                }
-            );
+            assert_eq!(schedule.community, Apportionment {
+                beneficiary: "community".to_string(),
+                percentage: 5,
+                tokens_amount: 1_050_000_000.into(),
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 180,
+                    monthly_fraction_denominator: 12,
+                    upfront_release: vec![],
+                    expected_payout_period_blocks,
+                }),
+            });
+            assert_eq!(schedule.contributors, Apportionment {
+                beneficiary: "contributors".to_string(),
+                percentage: 4,
+                tokens_amount: 840_000_000.into(),
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 365,
+                    monthly_fraction_denominator: 60,
+                    upfront_release: contributors_upfront_release(),
+                    expected_payout_period_blocks,
+                }),
+            });
+            assert_eq!(schedule.participants, Apportionment {
+                beneficiary: "participants".to_string(),
+                percentage: 12,
+                tokens_amount: 2_520_000_000.into(),
+                schedule: Some(ReleaseCadence {
+                    initial_lockup_days: 365,
+                    monthly_fraction_denominator: 24,
+                    upfront_release: vec![],
+                    expected_payout_period_blocks,
+                }),
+            });
 
             assert_eq!(
-                schedule.participants.percentage
-                    + schedule.contributors.percentage
-                    + schedule.community.percentage
-                    + schedule.protocol.percentage
-                    + schedule.network_rewards.percentage,
+                schedule.participants.percentage +
+                    schedule.contributors.percentage +
+                    schedule.community.percentage +
+                    schedule.protocol.percentage +
+                    schedule.network_rewards.percentage,
                 100
             );
 
             assert_eq!(
-                schedule.participants.tokens_amount
-                    + schedule.contributors.tokens_amount
-                    + schedule.community.tokens_amount
-                    + schedule.protocol.tokens_amount
-                    + schedule.network_rewards.tokens_amount,
+                schedule.participants.tokens_amount +
+                    schedule.contributors.tokens_amount +
+                    schedule.community.tokens_amount +
+                    schedule.protocol.tokens_amount +
+                    schedule.network_rewards.tokens_amount,
                 21_000_000_000.into()
             );
         }
@@ -1286,11 +1299,11 @@ mod test {
 
         // Verify pre_mine items as per `https://tari.substack.com/p/tari-tokenomics`
         let total_pre_mine_value = get_pre_mine_value(Network::default()).unwrap();
-        let total_tokens = schedule.network_rewards.tokens_amount
-            + schedule.protocol.tokens_amount
-            + schedule.community.tokens_amount
-            + schedule.contributors.tokens_amount
-            + schedule.participants.tokens_amount;
+        let total_tokens = schedule.network_rewards.tokens_amount +
+            schedule.protocol.tokens_amount +
+            schedule.community.tokens_amount +
+            schedule.contributors.tokens_amount +
+            schedule.participants.tokens_amount;
         let total_value = MicroMinotari::from(total_tokens);
         assert_eq!(
             total_pre_mine_value + MicroMinotari::from(schedule.network_rewards.tokens_amount),
@@ -1337,10 +1350,10 @@ mod test {
             .sum::<MicroMinotari>();
         assert_eq!(
             all_tokens_at_start,
-            protocol_tokens_at_start
-                + community_tokens_at_start
-                + contributors_tokens_at_start
-                + participants_tokens_at_start
+            protocol_tokens_at_start +
+                community_tokens_at_start +
+                contributors_tokens_at_start +
+                participants_tokens_at_start
         );
 
         let community_tokens = pre_mine_items
@@ -1550,8 +1563,8 @@ mod test {
             assert!(
                 consensus_manager
                     .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity - 2,)
-                    .unwrap()
-                    < consensus_manager
+                    .unwrap() <
+                    consensus_manager
                         .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity - 1,)
                         .unwrap()
             );
@@ -1559,8 +1572,8 @@ mod test {
             assert!(
                 consensus_manager
                     .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity - 1,)
-                    .unwrap()
-                    < consensus_manager
+                    .unwrap() <
+                    consensus_manager
                         .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity,)
                         .unwrap()
             );
@@ -1568,8 +1581,8 @@ mod test {
             assert!(
                 consensus_manager
                     .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity,)
-                    .unwrap()
-                    < consensus_manager
+                    .unwrap() <
+                    consensus_manager
                         .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity + 1,)
                         .unwrap()
             );
@@ -1577,8 +1590,8 @@ mod test {
             assert!(
                 consensus_manager
                     .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity + 1,)
-                    .unwrap()
-                    < consensus_manager
+                    .unwrap() <
+                    consensus_manager
                         .block_rewards_spendable_at_height(tranche.effective_from_height + tranche.maturity + 2,)
                         .unwrap()
             );
@@ -1601,8 +1614,8 @@ mod test {
             .supply_at_block(maturity_tranches[1].effective_from_height)
             .saturating_sub(MAINNET_PRE_MINE_VALUE);
         assert!(
-            simple_calc
-                > consensus_manager
+            simple_calc >
+                consensus_manager
                     .block_rewards_spendable_at_height(
                         maturity_tranches[1].effective_from_height + maturity_tranches[1].maturity,
                     )

@@ -75,9 +75,7 @@ impl SendTab {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_send_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Send Transaction",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -210,9 +208,7 @@ impl SendTab {
     }
 
     fn draw_contacts<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where
-        B: Backend,
-    {
+    where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Contacts",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),

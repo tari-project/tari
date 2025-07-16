@@ -23,7 +23,9 @@
 use rand::rngs::OsRng;
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait, range_proof::RangeProofService,
+    commitment::HomomorphicCommitmentFactory,
+    keys::SecretKey as SecretKeyTrait,
+    range_proof::RangeProofService,
     tari_utilities::hex::Hex,
 };
 use tari_p2p::Network;
@@ -39,10 +41,13 @@ use crate::{
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{
-            payment_id::PaymentId, transaction_output::batch_verify_range_proofs, OutputFeatures,
+            payment_id::PaymentId,
+            transaction_output::batch_verify_range_proofs,
+            OutputFeatures,
         },
         transaction_key_manager::{
-            create_memory_db_key_manager, create_memory_db_key_manager_with_range_proof_size,
+            create_memory_db_key_manager,
+            create_memory_db_key_manager_with_range_proof_size,
             TransactionKeyManagerInterface,
         },
         transaction_protocol::TransactionProtocolError,

@@ -36,7 +36,8 @@ use crate::{
         transaction_protocol::{
             sender::{SingleRoundSenderData, TransactionSenderMessage},
             single_receiver::SingleReceiverTransactionProtocol,
-            TransactionMetadata, TransactionProtocolError,
+            TransactionMetadata,
+            TransactionProtocolError,
         },
     },
 };
@@ -175,7 +176,10 @@ mod test {
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{
-                payment_id::PaymentId, OutputFeatures, TransactionKernelVersion, TransactionOutputVersion,
+                payment_id::PaymentId,
+                OutputFeatures,
+                TransactionKernelVersion,
+                TransactionOutputVersion,
             },
             transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             transaction_protocol::{

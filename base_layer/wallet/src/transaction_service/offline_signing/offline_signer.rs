@@ -49,8 +49,11 @@ use crate::{
         offline_signing::{
             marshal_output_pair::MarshalOutputPair,
             models::{
-                get_supported_version, OneSidedTransactionInfo, PaymentRecipient,
-                PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult,
+                get_supported_version,
+                OneSidedTransactionInfo,
+                PaymentRecipient,
+                PrepareOneSidedTransactionForSigningResult,
+                SignedOneSidedTransactionResult,
             },
             one_sided_signer::OneSidedSigner,
         },
@@ -98,8 +101,8 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 fee_per_gram,
-                if dest_address == self.resources.one_sided_tari_address
-                    || dest_address == self.resources.interactive_tari_address
+                if dest_address == self.resources.one_sided_tari_address ||
+                    dest_address == self.resources.interactive_tari_address
                 {
                     Some(TxType::PaymentToSelf)
                 } else {
@@ -204,9 +207,8 @@ where
     }
 
     async fn make_key_id_export_safe(&self, key_id: &TariKeyId) -> Result<TariKeyId, String> {
-        if *key_id
-            == self
-                .resources
+        if *key_id ==
+            self.resources
                 .transaction_key_manager_service
                 .get_spend_key()
                 .await
@@ -215,9 +217,8 @@ where
         {
             return Ok(key_id.clone());
         }
-        if *key_id
-            == self
-                .resources
+        if *key_id ==
+            self.resources
                 .transaction_key_manager_service
                 .get_view_key()
                 .await
