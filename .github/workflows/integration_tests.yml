@@ -26,8 +26,7 @@ name: 'Integration Tests'
         description: 'ci profile to run'
         type: string
 
-permissions:
-  contents: read
+permissions: {}
 
 env:
   toolchain: stable

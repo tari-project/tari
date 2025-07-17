@@ -7,8 +7,7 @@ on:
     types:
       - completed
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   test-results:

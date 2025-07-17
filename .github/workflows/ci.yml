@@ -13,9 +13,7 @@ name: 'CI'
       - synchronize
   merge_group:
 
-permissions:
-  contents: read
-
+permissions: {}
 env:
   toolchain: stable
   nightly_toolchain: nightly-2025-01-01
