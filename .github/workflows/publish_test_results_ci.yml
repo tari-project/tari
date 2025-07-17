@@ -25,11 +25,15 @@ jobs:
       actions: read
 
     steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
       - name: Download and Extract Artifacts
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
         run: |
-          mkdir -p artifacts && cd artifacts
+          mkdir -p artifacts
+          cd artifacts
           
           artifacts_url=${{ github.event.workflow_run.artifacts_url }}
           
@@ -39,6 +43,7 @@ jobs:
             gh api $url > "$name.zip"
             unzip -d "$name" "$name.zip"
           done
+          ls -alhtR
 
       - name: Publish Test Results to PR
         uses: EnricoMi/publish-unit-test-result-action@v2
