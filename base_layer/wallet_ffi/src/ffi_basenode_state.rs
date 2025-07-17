@@ -100,11 +100,12 @@ mod tests {
     fn test_basenode_state_ffi_accessors() {
         let mut error_code = 0;
 
-        let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {best_block_height: 115, latency: 115 }));
+        let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
+            best_block_height: 115,
+            latency: 115,
+        }));
 
         unsafe {
-
-
             // ----------------------------------------------------------------------------
             // other scalars
 

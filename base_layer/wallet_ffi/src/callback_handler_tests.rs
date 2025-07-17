@@ -8,7 +8,7 @@ mod test {
         mem::size_of,
         sync::{Arc, Mutex},
         thread,
-        time::{Duration},
+        time::Duration,
     };
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -55,11 +55,7 @@ mod test {
     use tari_crypto::keys::SecretKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tokio::{
-        runtime::Runtime,
-        sync::{broadcast},
-        time::Instant,
-    };
+    use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
 
     use crate::{
         callback_handler::{CallbackHandler, Context},
@@ -538,8 +534,6 @@ mod test {
         );
 
         runtime.spawn(callback_handler.start());
-
-
 
         let start = Instant::now();
         while start.elapsed().as_secs() < 10 {
