@@ -3100,6 +3100,10 @@ criteria = "safe-to-deploy"
 version = "0.6.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.tower-http]]
+version = "0.6.6"
+criteria = "safe-to-deploy"
+
 [[exemptions.tower-layer]]
 version = "0.3.3"
 criteria = "safe-to-deploy"
