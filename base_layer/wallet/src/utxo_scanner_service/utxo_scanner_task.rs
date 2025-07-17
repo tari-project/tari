@@ -109,8 +109,7 @@ where
             }
             match self.attempt_sync().await {
                 Ok(sync_result) => {
-                    error!(target: LOG_TARGET, "Scanned to height #{}", sync_result.final_height);
-                    error!(target: LOG_TARGET, "Scanned to height #{}", sync_result.scanned_blocks);
+                    debug!(target: LOG_TARGET, "Scanned to height #{}", sync_result.final_height);
                     if sync_result.scanned_blocks > SAFETY_HEIGHT_MARGIN {
                         // if the TMS validates the transactions before the OMS does, it can invalidate some
                         // transactions, so we need to reset them to ensure we can revalidate them
@@ -245,7 +244,6 @@ where
         loop {
             let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
-            error!(target: LOG_TARGET, "scanned_blocks: {}", scanned_blocks);
             // check if we are already synced.
             if let Some(last_scanned_block) = &last_scanned_block {
                 if last_scanned_block.header_hash == tip_hash {
