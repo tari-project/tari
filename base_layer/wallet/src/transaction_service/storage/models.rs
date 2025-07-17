@@ -34,13 +34,12 @@ use tari_common_types::{
     types::{BlockHash, CompressedCommitment, FixedHash, PrivateKey, Signature},
 };
 use tari_core::{
-    consensus::ConsensusManager,
+    consensus::ConsensusConstants,
     transactions::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{payment_id::PaymentId, Transaction},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        ReceiverTransactionProtocol, SenderTransactionProtocol,
     },
 };
 
@@ -241,7 +240,8 @@ impl CompletedTransaction {
         })
     }
 
-    /// Helper function to calculate fee_per_gram from total fee and original transaction
+    /// Helper function to calculate fee_per_gram from total fee and original transaction. The resulting fee_per_gram is
+    /// rounded up to ensure we don't underpay.
     ///
     /// # Parameters
     /// - `total_fee`: The target total fee to pay for the transaction
@@ -269,7 +269,7 @@ impl CompletedTransaction {
     pub fn calculate_fee_per_gram_from_total_fee(
         &self,
         total_fee: MicroMinotari,
-        consensus_manager: &ConsensusManager,
+        consensus_constants: &ConsensusConstants,
         num_inputs: usize,
         num_outputs: usize,
     ) -> Result<(u64, MicroMinotari), TransactionStorageError> {
@@ -299,7 +299,6 @@ impl CompletedTransaction {
             ));
         }
 
-        let consensus_constants = consensus_manager.consensus_constants(0);
         let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
 
         // Calculate average features and scripts size from actual transaction outputs
@@ -321,8 +320,8 @@ impl CompletedTransaction {
         // Apply rounding and multiply by number of outputs for new transaction
         let features_and_scripts_size = fee_calculator
             .weighting()
-            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output) *
-            num_outputs;
+            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output)
+            * num_outputs;
 
         // Use the Fee struct's weighting calculation to get transaction weight in grams
         let weight_in_grams = fee_calculator.weighting().calculate(
@@ -333,10 +332,9 @@ impl CompletedTransaction {
         );
 
         let fee_per_gram = if weight_in_grams > 0 {
-            let fee_per_gram_f64 = total_fee.0 as f64 / weight_in_grams as f64;
-            // truncation from float to u64 is lossy, but we need to round up to ensure we don't underpay
-            #[allow(clippy::cast_possible_truncation)]
-            let fee_per_gram_u64 = fee_per_gram_f64.ceil() as u64;
+            // Use ceiling division to ensure we never underestimate the fee
+            let fee_per_gram_u64 = total_fee.0.div_ceil(weight_in_grams);
+            // Ensure minimum of 1 (though ceiling division should handle this for positive values)
             MicroMinotari::from(fee_per_gram_u64.max(1))
         } else {
             MicroMinotari::from(1)
@@ -636,5 +634,354 @@ impl Display for TxCancellationReason {
             Oversized => "Oversized",
         };
         fmt.write_str(response)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use chrono::Utc;
+    use tari_common::configuration::Network;
+    use tari_common_types::{
+        tari_address::TariAddress,
+        transaction::{TransactionDirection, TransactionStatus, TxId},
+        types::{PrivateKey, RangeProof, Signature},
+    };
+    use tari_core::{
+        consensus::ConsensusManager,
+        covenants::Covenant,
+        transactions::{
+            tari_amount::MicroMinotari,
+            transaction_components::{
+                payment_id::PaymentId, EncryptedData, OutputFeatures, Transaction, TransactionOutput,
+            },
+        },
+    };
+    use tari_script::TariScript;
+
+    use super::*;
+
+    fn create_test_completed_transaction(num_outputs: usize) -> CompletedTransaction {
+        // Create minimal test outputs with dummy data
+        let mut outputs = Vec::new();
+        for _i in 0..num_outputs {
+            let output = TransactionOutput::new_current_version(
+                OutputFeatures::default(),
+                Default::default(),          // Use default commitment for testing
+                Some(RangeProof::default()), // Use default range proof for testing
+                TariScript::default(),
+                Default::default(), // sender_offset_public_key
+                Default::default(), // metadata_signature
+                Covenant::default(),
+                EncryptedData::default(),
+                MicroMinotari::from(1000),
+            );
+            outputs.push(output);
+        }
+
+        // Create a minimal transaction with dummy data
+        let transaction = Transaction::new(
+            vec![], // inputs
+            outputs,
+            vec![], // kernels
+            PrivateKey::default(),
+            PrivateKey::default(),
+        );
+
+        CompletedTransaction {
+            tx_id: TxId::from(1u64),
+            source_address: TariAddress::default(),
+            destination_address: TariAddress::default(),
+            amount: MicroMinotari::from(1000),
+            fee: MicroMinotari::from(100),
+            transaction,
+            status: TransactionStatus::Completed,
+            timestamp: Utc::now(),
+            cancelled: None,
+            direction: TransactionDirection::Outbound,
+            send_count: 0,
+            last_send_timestamp: None,
+            transaction_signature: Signature::default(),
+            mined_height: None,
+            mined_in_block: None,
+            mined_timestamp: None,
+            payment_id: PaymentId::default(),
+            sent_output_hashes: vec![],
+            received_output_hashes: vec![],
+            change_output_hashes: vec![],
+        }
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_basic_cases() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(2);
+
+        // Test case 1: Exact division (400 / 200 = 2)
+        let total_fee = MicroMinotari::from(400);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 1, 2)
+            .unwrap();
+        let (weight, fee_per_gram) = result;
+
+        // Verify the calculated fee meets or exceeds the requested fee
+        let calculated_fee = fee_per_gram.0 * weight;
+        assert!(
+            calculated_fee >= total_fee.0,
+            "Calculated fee {} should be >= requested fee {}",
+            calculated_fee,
+            total_fee.0
+        );
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_rounding_up() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(2);
+
+        // Test case 2: Should round up (134 / 200 = 0.67, should become 1)
+        let total_fee = MicroMinotari::from(134);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 1, 2)
+            .unwrap();
+        let (weight, fee_per_gram) = result;
+
+        // fee_per_gram should be at least 1
+        assert!(
+            fee_per_gram.0 >= 1,
+            "fee_per_gram should be at least 1, got {}",
+            fee_per_gram.0
+        );
+
+        // Verify the calculated fee meets or exceeds the requested fee
+        let calculated_fee = fee_per_gram.0 * weight;
+        assert!(
+            calculated_fee >= total_fee.0,
+            "Calculated fee {} should be >= requested fee {} (weight: {}, fee_per_gram: {})",
+            calculated_fee,
+            total_fee.0,
+            weight,
+            fee_per_gram.0
+        );
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_small_amounts() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(1);
+
+        // Test case 3: Very small fee
+        let total_fee = MicroMinotari::from(1);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 1, 1)
+            .unwrap();
+        let (weight, fee_per_gram) = result;
+
+        // fee_per_gram should be at least 1
+        assert!(fee_per_gram.0 >= 1, "fee_per_gram should be at least 1");
+
+        // Verify the calculated fee meets or exceeds the requested fee
+        let calculated_fee = fee_per_gram.0 * weight;
+        assert!(
+            calculated_fee >= total_fee.0,
+            "Calculated fee {} should be >= requested fee {}",
+            calculated_fee,
+            total_fee.0
+        );
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_large_amounts() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(3);
+
+        // Test case 4: Large fee
+        let total_fee = MicroMinotari::from(1_000_000);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 2, 3)
+            .unwrap();
+        let (weight, fee_per_gram) = result;
+
+        // Verify the calculated fee meets or exceeds the requested fee
+        let calculated_fee = fee_per_gram.0 * weight;
+        assert!(
+            calculated_fee >= total_fee.0,
+            "Calculated fee {} should be >= requested fee {}",
+            calculated_fee,
+            total_fee.0
+        );
+
+        // For large amounts, we shouldn't have excessive overpayment
+        let overpayment = calculated_fee - total_fee.0;
+        assert!(
+            overpayment < weight,
+            "Overpayment {} should be less than weight {} for efficiency",
+            overpayment,
+            weight
+        );
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_edge_cases() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(1);
+
+        // Test case 5: Fractional result that needs rounding
+        let total_fee = MicroMinotari::from(999);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 1, 1)
+            .unwrap();
+        let (weight, fee_per_gram) = result;
+
+        // Verify the calculated fee meets or exceeds the requested fee
+        let calculated_fee = fee_per_gram.0 * weight;
+        assert!(
+            calculated_fee >= total_fee.0,
+            "Calculated fee {} should be >= requested fee {}",
+            calculated_fee,
+            total_fee.0
+        );
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_error_cases() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(1);
+
+        // Test case 6: Zero fee should fail
+        let total_fee = MicroMinotari::zero();
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result = completed_tx.calculate_fee_per_gram_from_total_fee(
+            total_fee,
+            consensus_manager.consensus_constants(tip_height),
+            1,
+            1,
+        );
+        assert!(result.is_err(), "Zero fee should result in error");
+
+        // Test case 7: Zero inputs should fail
+        let total_fee = MicroMinotari::from(100);
+        let result = completed_tx.calculate_fee_per_gram_from_total_fee(
+            total_fee,
+            consensus_manager.consensus_constants(tip_height),
+            0,
+            1,
+        );
+        assert!(result.is_err(), "Zero inputs should result in error");
+
+        // Test case 8: Zero outputs should fail
+        let result = completed_tx.calculate_fee_per_gram_from_total_fee(
+            total_fee,
+            consensus_manager.consensus_constants(tip_height),
+            1,
+            0,
+        );
+        assert!(result.is_err(), "Zero outputs should result in error");
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_consistency() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(2);
+
+        // Test case 9: Multiple calls with same parameters should return same result
+        let total_fee = MicroMinotari::from(500);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result1 = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 1, 2)
+            .unwrap();
+        let result2 = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 1, 2)
+            .unwrap();
+
+        assert_eq!(result1, result2, "Multiple calls should return consistent results");
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_no_overpayment() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(1);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+
+        // Test case 10: Verify we don't overpay by more than necessary
+        for fee_amount in [1, 10, 50, 100, 250, 500, 1000, 10000] {
+            let total_fee = MicroMinotari::from(fee_amount);
+            let result = completed_tx
+                .calculate_fee_per_gram_from_total_fee(
+                    total_fee,
+                    consensus_manager.consensus_constants(tip_height),
+                    1,
+                    1,
+                )
+                .unwrap();
+            let (weight, fee_per_gram) = result;
+
+            let calculated_fee = fee_per_gram.0 * weight;
+
+            // Should meet the minimum requirement
+            assert!(
+                calculated_fee >= total_fee.0,
+                "Calculated fee {} should be >= requested fee {} for amount {}",
+                calculated_fee,
+                total_fee.0,
+                fee_amount
+            );
+
+            // Should not overpay by more than the weight (which represents the granularity)
+            let overpayment = calculated_fee - total_fee.0;
+            assert!(
+                overpayment < weight,
+                "Overpayment {} should be less than weight {} for fee amount {}",
+                overpayment,
+                weight,
+                fee_amount
+            );
+        }
+    }
+
+    #[test]
+    fn test_calculate_fee_per_gram_user_example_134_200() {
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let completed_tx = create_test_completed_transaction(1);
+
+        // Test the specific user example: 134 / 200 should round up to at least 1
+        // and ensure final fee >= 134
+        let total_fee = MicroMinotari::from(134);
+        let tip_height = 100; // Ordinary number, doesn't matter in this case
+        let result = completed_tx
+            .calculate_fee_per_gram_from_total_fee(total_fee, consensus_manager.consensus_constants(tip_height), 1, 1)
+            .unwrap();
+        let (weight, fee_per_gram) = result;
+
+        // fee_per_gram should be at least 1
+        assert!(
+            fee_per_gram.0 >= 1,
+            "fee_per_gram should be at least 1 for the 134/200 case, got {}",
+            fee_per_gram.0
+        );
+
+        // The calculated total fee should meet or exceed the requested 134
+        let calculated_fee = fee_per_gram.0 * weight;
+        assert!(
+            calculated_fee >= 134,
+            "Calculated fee {} should be >= requested fee 134 (weight: {}, fee_per_gram: {})",
+            calculated_fee,
+            weight,
+            fee_per_gram.0
+        );
+
+        // With ceiling division, we should get exactly the right amount or slightly more
+        // For 134/weight, ceiling division should give us the minimum fee_per_gram needed
+        let expected_min_fee_per_gram = 134_u64.div_ceil(weight);
+        assert!(
+            fee_per_gram.0 >= expected_min_fee_per_gram,
+            "fee_per_gram {} should be at least the ceiling division result {}",
+            fee_per_gram.0,
+            expected_min_fee_per_gram
+        );
     }
 }

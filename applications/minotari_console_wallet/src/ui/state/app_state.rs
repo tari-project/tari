@@ -673,7 +673,11 @@ impl AppStateInner {
         &mut self,
         completed_transactions: &[CompletedTransaction],
     ) -> Result<(), UiError> {
-        debug!(target: LOG_TARGET, "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions", completed_transactions.len());
+        debug!(
+            target: LOG_TARGET,
+            "payref_debug: calculate_payment_references_for_specific_transactions() called for {} transactions",
+            completed_transactions.len()
+        );
 
         // Get current tip height for confirmation calculations
         let current_tip_height = self.wallet.db.get_last_scanned_height()?.unwrap_or(0);
@@ -721,8 +725,6 @@ impl AppStateInner {
                     };
                     if let Some(payref_hex) = payref_hex_opt {
                         payref_by_tx_id.insert(tx_id.as_u64(), payref_hex.clone());
-                        debug!(target: LOG_TARGET, "payref_debug: Generated PayRef for tx {}: {}: {}",
-                               tx_id, payref_hex, status_text);
                     }
 
                     payref_status_by_tx_id.insert(tx_id.as_u64(), status_text);
@@ -730,31 +732,22 @@ impl AppStateInner {
             } else {
                 // Transaction not mined yet
                 payref_status_by_tx_id.insert(tx_id.as_u64(), "Not Mined".to_string());
-                debug!(target: LOG_TARGET, "payref_debug: Transaction {} not mined yet", tx_id);
             }
         }
-
-        debug!(target: LOG_TARGET, "payref_debug: Created lookup map with {} payment references",
-               payref_by_tx_id.len());
 
         // Update completed transactions with their payment references
         for tx in &mut self.data.completed_txs {
             // Look up payment reference by transaction ID
             if let Some(payref_hex) = payref_by_tx_id.get(&tx.tx_id.as_u64()) {
                 tx.payment_reference_hex = Some(payref_hex.clone());
-                debug!(target: LOG_TARGET, "payref_debug: Matched payment reference for tx {}: {}",
-                       tx.tx_id, payref_hex);
             }
 
             // Always set the status, regardless of whether PayRef is available
             if let Some(status) = payref_status_by_tx_id.get(&tx.tx_id.as_u64()) {
                 tx.payment_reference_status = Some(status.clone());
-                debug!(target: LOG_TARGET, "payref_debug: Set status for tx {}: {}",
-                       tx.tx_id, status);
             }
         }
 
-        debug!(target: LOG_TARGET, "payref_debug: Payment reference calculation completed using direct transaction approach");
         Ok(())
     }
 

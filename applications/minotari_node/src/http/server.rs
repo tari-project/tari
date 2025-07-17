@@ -77,7 +77,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             .route("/get_utxos_by_block", get(handler::get_utxos_by_block::handle::<B>))
             .route(
                 "/json_rpc",
-                post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::max(4096)),
+                post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::max(4 * 1024 * 1024)), // 4 MiB
             )
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))

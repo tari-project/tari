@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
 
@@ -45,4 +47,28 @@ pub struct InputMinedInfo {
 pub struct MinedInfo {
     pub input: Option<InputMinedInfo>,
     pub output: Option<OutputMinedInfo>,
+}
+
+impl Display for MinedInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(output) = &self.output {
+            writeln!(
+                f,
+                "Output mined at height {} in block {} at timestamp {}",
+                output.mined_height, output.header_hash, output.mined_timestamp
+            )?;
+        } else {
+            writeln!(f, "Output not mined ")?;
+        }
+        if let Some(input) = &self.input {
+            writeln!(
+                f,
+                "Output spent at height {} in block {} at timestamp {}",
+                input.spent_height, input.header_hash, input.spent_timestamp
+            )?;
+        } else {
+            writeln!(f, "Output not spent")?;
+        }
+        Ok(())
+    }
 }

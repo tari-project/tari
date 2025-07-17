@@ -76,7 +76,10 @@ impl Client {
                 return Ok(&self.default_seed_address);
             }
         }
-        debug!(target: LOG_TARGET, "There is no last connected server set, trying local API address: {}", self.local_api_address);
+        debug!(
+            target: LOG_TARGET, "There is no last connected server set, trying local API address: {}",
+            self.local_api_address
+        );
         // Try to reach the local API address
         let res = match self
             .http_client
@@ -92,7 +95,10 @@ impl Client {
             },
         };
         if res.status().is_client_error() || res.status().is_server_error() {
-            debug!(target: LOG_TARGET, "Local API address {} is not reachable, falling back to default seed address: {}", self.local_api_address, self.default_seed_address);
+            debug!(
+                target: LOG_TARGET, "Local API address {} is not reachable, falling back to default seed address: {}",
+                self.local_api_address, self.default_seed_address
+            );
             // we cant use the local, use the default seed address
             *self.use_local_api_address.write().await = Some(false);
             Ok(&self.default_seed_address)
@@ -149,14 +155,22 @@ impl BaseNodeWalletClient for Client {
 
     async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Requesting block header at height {} from Base Node wallet service at {}", height, server_address);
+        debug!(
+            target: LOG_TARGET,
+            "Requesting block header at height {} from Base Node wallet service at {}",
+            height, server_address
+        );
         let mut target_url = server_address.join("/get_header_by_height")?;
         target_url.set_query(Some(format!("height={}", height).as_str()));
         let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
         self.set_last_latency(timer.elapsed()).await;
         if res.status() == StatusCode::NOT_FOUND {
-            debug!(target: LOG_TARGET, "No block header found at height {} from Base Node wallet service at {}", height, server_address);
+            debug!(
+                target: LOG_TARGET,
+                "No block header found at height {} from Base Node wallet service at {}",
+                height, server_address
+            );
             return Ok(None);
         }
         if res.status().is_client_error() || res.status().is_server_error() {
@@ -171,10 +185,7 @@ impl BaseNodeWalletClient for Client {
         } else {
             let text = res.text().await?;
             match serde_json::from_str::<BlockHeader>(&text) {
-                Ok(header) => {
-                    // debug!(target: LOG_TARGET, "Received block header at height {}: {:?}", height, header);
-                    Ok(Some(header))
-                },
+                Ok(header) => Ok(Some(header)),
                 Err(e) => {
                     warn!(target: LOG_TARGET, "Error decoding block header at height {}: {}, Received:{}", height, e, text);
                     Err(anyhow!("Error decoding block header at height {}: {}", height, e))
@@ -185,7 +196,10 @@ impl BaseNodeWalletClient for Client {
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Requesting block height at epoch time {} from Base Node wallet service at {}", epoch_time, server_address);
+        debug!(
+            target: LOG_TARGET, "Requesting block height at epoch time {} from Base Node wallet service at {}",
+            epoch_time, server_address
+        );
         let mut target_url = server_address.join("/get_height_at_time")?;
         target_url.set_query(Some(format!("time={}", epoch_time).as_str()));
         let timer = Instant::now();
@@ -207,7 +221,11 @@ impl BaseNodeWalletClient for Client {
 
     async fn get_utxos_by_block(&self, header_hash: Vec<u8>) -> Result<models::GetUtxosByBlockResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Requesting UTXOs for block with header hash {} from Base Node wallet service at {}", header_hash.to_hex(), server_address);
+        debug!(
+            target: LOG_TARGET,
+            "Requesting UTXOs for block with header hash {} from Base Node wallet service at {}",
+            header_hash.to_hex(), server_address
+        );
         let mut target_url = server_address.join("/get_utxos_by_block")?;
         target_url.set_query(Some(&format!("header_hash={}", header_hash.to_hex())));
         let timer = Instant::now();
@@ -237,7 +255,11 @@ impl BaseNodeWalletClient for Client {
         end_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, anyhow::Error>>, anyhow::Error> {
-        debug!(target: LOG_TARGET, "Starting UTXO sync from {} to {}", start_header_hash.to_hex(), end_header_hash.to_hex());
+        debug!(
+            target: LOG_TARGET,
+            "Starting UTXO sync from {} to {}",
+            start_header_hash.to_hex(), end_header_hash.to_hex()
+        );
         let mut target_url = self.http_server_address().await?.join("/sync_utxos_by_block")?;
         let (resp_tx, resp_rx) = mpsc::channel(1000);
         let start_header_hash_hex = start_header_hash.to_hex();
@@ -300,7 +322,11 @@ impl BaseNodeWalletClient for Client {
 
     async fn get_utxos_mined_info(&self, hashes: Vec<Vec<u8>>) -> Result<GetUtxosMinedInfoResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Requesting matching UTXOs for hashes {:?} from Base Node wallet service at {}", hashes, server_address);
+        debug!(
+            target: LOG_TARGET,
+            "Requesting matching UTXOs for {} hashes from Base Node wallet service at {}",
+            hashes.len(), server_address
+        );
         let mut target_url = server_address.join("/get_utxos_mined_info")?;
         target_url.set_query(Some(&format!(
             "hashes={}",
@@ -319,7 +345,11 @@ impl BaseNodeWalletClient for Client {
                 body
             ));
         }
-        info!(target: LOG_TARGET, "Received UTXOs mined info for hashes {:?} from Base Node wallet service at {}", hashes, server_address);
+        debug!(
+            target: LOG_TARGET,
+            "Received UTXOs mined info for {} hashes from Base Node wallet service at {}",
+            hashes.len(), server_address
+        );
 
         let res_text = res.text().await?;
         debug!(target: LOG_TARGET, "Response text: {}", res_text);
@@ -334,7 +364,11 @@ impl BaseNodeWalletClient for Client {
         must_include_header: Vec<u8>,
     ) -> Result<GetUtxosDeletedInfoResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Requesting deleted UTXOs for hashes {:?}, must include:{:?} from Base Node wallet", hashes, &must_include_header);
+        debug!(
+            target: LOG_TARGET,
+            "Requesting deleted UTXOs for {} hashes, must include header {} from Base Node wallet",
+            hashes.len(), &must_include_header.to_hex()
+        );
         let mut target_url = server_address.join("/get_utxos_deleted_info")?;
         target_url.set_query(Some(&format!(
             "hashes={}&must_include_header={}",
@@ -354,9 +388,12 @@ impl BaseNodeWalletClient for Client {
                 body
             ));
         }
-        info!(target: LOG_TARGET, "Received deleted UTXOs for hashes {:?} from Base Node wallet service at {}", hashes, server_address);
+        debug!(
+            target: LOG_TARGET,
+            "Received deleted UTXOs for {} hashes from Base Node wallet service at {}",
+            hashes.len(), server_address
+        );
         let res_text = res.text().await?;
-        debug!(target: LOG_TARGET, "Response text: {}", res_text);
         let json = serde_json::from_str::<GetUtxosDeletedInfoResponse>(&res_text)
             .map_err(|e| anyhow!("Failed to parse response JSON: {}", e))?;
         Ok(json)
@@ -364,7 +401,11 @@ impl BaseNodeWalletClient for Client {
 
     async fn fetch_utxo(&self, utxo: Vec<u8>) -> Result<Option<TransactionOutput>, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Requesting UTXO with hash {} from Base Node wallet service at {}", utxo.to_hex(), server_address);
+        debug!(
+            target: LOG_TARGET,
+            "Requesting UTXO with hash {} from Base Node wallet service at {}",
+            utxo.to_hex(), server_address
+        );
         let mut target_url = server_address.join("/fetch_utxo")?;
         target_url.set_query(Some(&format!("utxo={}", utxo.to_hex())));
         let timer = Instant::now();
@@ -431,7 +472,11 @@ impl BaseNodeWalletClient for Client {
         excess_sig_sig: Vec<u8>,
     ) -> Result<TxQueryResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Querying transaction with excess signature nonce {} and signature {}", excess_sig_nonce.to_hex(), excess_sig_sig.to_hex());
+        debug!(
+            target: LOG_TARGET,
+            "Querying transaction with excess signature nonce {} and signature {}",
+            excess_sig_nonce.to_hex(), excess_sig_sig.to_hex()
+        );
         let mut target_url = server_address.join("/transactions")?;
         target_url.set_query(Some(&format!(
             "excess_sig_nonce={}&excess_sig_sig={}",
@@ -451,7 +496,11 @@ impl BaseNodeWalletClient for Client {
                 body
             ));
         }
-        info!(target: LOG_TARGET, "Transaction query successful for excess signature nonce {} and signature {}", excess_sig_nonce.to_hex(), excess_sig_sig.to_hex());
+        debug!(
+            target: LOG_TARGET,
+            "Transaction query successful for excess signature nonce {} and signature {}",
+            excess_sig_nonce.to_hex(), excess_sig_sig.to_hex()
+        );
         let response = res.json::<TxQueryResponse>().await?;
         Ok(response)
     }
