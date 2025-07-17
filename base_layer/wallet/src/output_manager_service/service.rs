@@ -310,7 +310,8 @@ where
                     output_hash,
                     expected_commitment,
                     recipient_address,
-                    PaymentId::new_open(output_hash.to_vec(), TxType::PaymentToOther).unwrap(),
+                    PaymentId::new_open(output_hash.to_vec(), TxType::PaymentToOther)
+                        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID: {}", e)))?,
                     0,
                     RangeProofType::BulletProofPlus,
                     0.into(),
@@ -854,7 +855,7 @@ where
             TxType::PaymentToOther,
             vec![],
         )
-        .unwrap();
+        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID, size: {}", e)))?;
         let encrypted_data = self
             .resources
             .key_manager

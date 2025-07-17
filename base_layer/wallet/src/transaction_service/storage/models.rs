@@ -39,7 +39,8 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{payment_id::PaymentId, Transaction},
-        ReceiverTransactionProtocol, SenderTransactionProtocol,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
 };
 
@@ -320,8 +321,8 @@ impl CompletedTransaction {
         // Apply rounding and multiply by number of outputs for new transaction
         let features_and_scripts_size = fee_calculator
             .weighting()
-            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output)
-            * num_outputs;
+            .round_up_features_and_scripts_size(avg_features_and_scripts_size_per_output) *
+            num_outputs;
 
         // Use the Fee struct's weighting calculation to get transaction weight in grams
         let weight_in_grams = fee_calculator.weighting().calculate(
@@ -652,7 +653,11 @@ mod test {
         transactions::{
             tari_amount::MicroMinotari,
             transaction_components::{
-                payment_id::PaymentId, EncryptedData, OutputFeatures, Transaction, TransactionOutput,
+                payment_id::PaymentId,
+                EncryptedData,
+                OutputFeatures,
+                Transaction,
+                TransactionOutput,
             },
         },
     };

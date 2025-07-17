@@ -1202,7 +1202,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
-                PaymentId::open_unchecked(vec![], TxType::Coinbase),
+                PaymentId::new_open(vec![], TxType::Coinbase).expect("empty user-data should always be valid"),
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
@@ -1444,7 +1444,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 coinbase.stealth_payment,
                 self.consensus_rules.consensus_constants(height),
                 range_proof_type,
-                PaymentId::open_unchecked(vec![], TxType::Coinbase),
+                PaymentId::new_open(vec![], TxType::Coinbase).expect("empty user-data should always be valid"),
             )
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;

@@ -10,7 +10,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus},
 };
-use tari_core::transactions::transaction_components::payment_id::{PaymentId, TxType};
+use tari_core::transactions::transaction_components::payment_id::TxType;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -230,10 +230,11 @@ impl TransactionsTab {
             };
 
             if let Some(payment_id) = tx.payment_id.as_ref() {
-                if payment_id.is_open() || payment_id.is_address_and_data() {
-                    if transaction_type == TxType::PaymentToSelf && tx.source_address != tx.destination_address {
-                        transaction_type = TxType::PaymentToOther;
-                    }
+                if (payment_id.is_open() || payment_id.is_address_and_data()) &&
+                    transaction_type == TxType::PaymentToSelf &&
+                    tx.source_address != tx.destination_address
+                {
+                    transaction_type = TxType::PaymentToOther;
                 }
                 if transaction_type == TxType::Burn && tx.destination_address != TariAddress::default() {
                     transaction_type = TxType::PaymentToOther;

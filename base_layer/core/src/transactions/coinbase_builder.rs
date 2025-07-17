@@ -453,10 +453,11 @@ pub async fn generate_coinbase_with_wallet_output(
     let payment_id = if wallet_payment_address.get_payment_id_user_data_bytes().is_empty() {
         payment_id
     } else {
-        PaymentId::open_unchecked(
+        PaymentId::new_open(
             wallet_payment_address.get_payment_id_user_data_bytes(),
             TxType::Coinbase,
         )
+        .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {}, size too large", e)))?
     };
 
     let sender_offset = key_manager
@@ -1269,7 +1270,7 @@ mod test {
             false,
             &create_consensus_constants(header_height),
             range_proof_type,
-            PaymentId::new_open(vec![], TxType::Coinbase).unwrap(),
+            PaymentId::new_open(vec![], TxType::Coinbase).expect("Should create payment ID since data is empty"),
         )
         .await
         .unwrap();

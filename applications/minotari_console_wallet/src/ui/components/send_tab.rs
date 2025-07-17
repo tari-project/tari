@@ -273,17 +273,24 @@ impl SendTab {
 
                             let mut reset_fields = false;
 
-                            match Handle::current().block_on(
-                                app_state.send_one_sided_to_stealth_address_transaction(
-                                    self.to_field.clone(),
-                                    amount.into(),
-                                    UtxoSelectionCriteria::default(),
-                                    fee_per_gram,
-                                    PaymentId::new_open_from_string(&self.payment_id_field, TxType::PaymentToOther)
-                                        .unwrap_or_else(|_| PaymentId::new_empty()),
-                                    tx,
-                                ),
-                            ) {
+                            match Handle::current().block_on(app_state.send_one_sided_to_stealth_address_transaction(
+                                self.to_field.clone(),
+                                amount.into(),
+                                UtxoSelectionCriteria::default(),
+                                fee_per_gram,
+                                match PaymentId::new_open_from_string(&self.payment_id_field, TxType::PaymentToOther) {
+                                    Ok(payment_id) => payment_id,
+                                    Err(_) => {
+                                        self.error_message = Some(
+                                            "Payment ID is invalid or too large (max 256 bytes)\nPress Enter to \
+                                             continue."
+                                                .to_string(),
+                                        );
+                                        return KeyHandled::Handled;
+                                    },
+                                },
+                                tx,
+                            )) {
                                 Err(e) => {
                                     self.error_message = Some(format!(
                                         "Error sending one-sided transaction to stealth address:\n{}\nPress Enter to \

@@ -431,7 +431,7 @@ where KM: TransactionKeyManagerInterface
                                 .map(|pay_id| pay_id.user_data_as_bytes())
                                 .unwrap_or_default(),
                         )
-                        .unwrap();
+                        .map_err(|e| e.to_string())?;
                         if let Some(recipient) = self.recipient.clone() {
                             payment_id.transaction_info_set_amount(recipient.amount);
                             match payment_id.get_type() {

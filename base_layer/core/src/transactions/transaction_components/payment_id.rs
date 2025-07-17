@@ -1045,14 +1045,6 @@ impl PaymentId {
         }
     }
 
-    /// Unchecked constructor for Empty payment ID
-    /// Use this for migration from old direct enum construction
-    pub fn empty() -> Self {
-        PaymentId {
-            inner: InnerPaymentId::Empty,
-        }
-    }
-
     /// Unchecked constructor for Open payment ID
     /// Use this for migration from old direct enum construction
     /// WARNING: This bypasses validation - use new_open() for new code
@@ -1795,6 +1787,7 @@ mod test {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     #[test]
     fn test_legacy_transaction_info() {
         let mut pay_id_address = TariAddress::from_base58(

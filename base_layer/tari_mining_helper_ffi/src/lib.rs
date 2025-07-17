@@ -404,7 +404,7 @@ pub unsafe extern "C" fn inject_coinbase(
             stealth_payment,
             consensus_manager.consensus_constants(height),
             range_proof_type,
-            PaymentId::new_open(vec![], TxType::Coinbase).unwrap(),
+            PaymentId::new_open(vec![], TxType::Coinbase).expect("Should never fail since use data is empty"),
         )
         .await
     }) {

@@ -1796,7 +1796,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                PaymentId::open_unchecked(vec![], TxType::PaymentToSelf),
+                PaymentId::open_unchecked(request.message, TxType::PaymentToSelf),
             )
             .await
         {
