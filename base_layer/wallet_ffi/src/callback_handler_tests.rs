@@ -758,15 +758,16 @@ mod test {
         assert_eq!(callback_balance_updated, 5);
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
-                1u64.into(),
-            )))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged {
+                faux: false,
+                id: 1u64.into(),
+            }))
             .unwrap();
-
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
-                2u64.into(),
-            )))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged {
+                faux: false,
+                id: 2u64.into(),
+            }))
             .unwrap();
 
         oms_event_sender

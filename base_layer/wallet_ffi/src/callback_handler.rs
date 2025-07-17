@@ -313,7 +313,7 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations);
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
+                                TransactionEvent::TransactionValidationStateChanged{..}  => {
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationCompleted(request_key)  => {

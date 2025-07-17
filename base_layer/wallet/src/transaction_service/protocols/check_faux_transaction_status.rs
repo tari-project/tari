@@ -214,9 +214,10 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
     }
     if state_changed {
         let _size = event_publisher
-            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
-                OperationId::new_random(),
-            )))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged {
+                faux: true,
+                id: OperationId::new_random(),
+            }))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

@@ -1419,6 +1419,8 @@ message GetStateResponse {
   GetBalanceResponse balance = 2;
   // Status of the wallet's connection to the base node, based on the NetworkStatusResponse
   NetworkStatusResponse network = 3;
+  // Has the wallet since starting, completed a validation of all outputs after scanning
+  bool has_done_initial_validation = 4;
 }
 
 // Response message for GetUnspentAmounts RPC.

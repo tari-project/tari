@@ -102,7 +102,10 @@ where
         )
         .await;
         if state_changed {
-            self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
+            self.publish_event(TransactionEvent::TransactionValidationStateChanged {
+                faux: false,
+                id: self.operation_id,
+            });
         }
         self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
         Ok(self.operation_id)
@@ -244,7 +247,7 @@ where
                 );
                 self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
                     .await?;
-                self.publish_event(TransactionEvent::TransactionValidationStateChanged(op_id));
+                self.publish_event(TransactionEvent::TransactionValidationStateChanged { faux: false, id: op_id });
             } else {
                 debug!(
                     target: LOG_TARGET,
