@@ -110,8 +110,6 @@ impl EncryptedData {
         data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
         data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
             .clone_from_slice(bytes.as_slice());
-        println!("static encrypted data size total: {}", STATIC_ENCRYPTED_DATA_SIZE_TOTAL);
-        println!("bytes size: {}", bytes.len());
         Ok(Self {
             data: MaxSizeBytes::try_from(data)
                 .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))?,
