@@ -109,7 +109,8 @@ where
             }
             match self.attempt_sync().await {
                 Ok(sync_result) => {
-                    debug!(target: LOG_TARGET, "Scanned to height #{}", sync_result.final_height);
+                    error!(target: LOG_TARGET, "Scanned to height #{}", sync_result.final_height);
+                    error!(target: LOG_TARGET, "Scanned to height #{}", sync_result.scanned_blocks);
                     if sync_result.scanned_blocks > SAFETY_HEIGHT_MARGIN {
                         // if the TMS validates the transactions before the OMS does, it can invalidate some
                         // transactions, so we need to reset them to ensure we can revalidate them
@@ -244,7 +245,7 @@ where
         loop {
             let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
-
+            error!(target: LOG_TARGET, "scanned_blocks: {}", scanned_blocks);
             // check if we are already synced.
             if let Some(last_scanned_block) = &last_scanned_block {
                 if last_scanned_block.header_hash == tip_hash {
@@ -290,7 +291,7 @@ where
                 next_block_to_scan.header_hash.to_hex(),
             );
 
-            let (num_scanned, num_recovered, amount_recovered) = self
+            let scan_result = self
                 .scan_utxos(
                     &wallet_service_client,
                     next_block_to_scan.header_hash,
@@ -298,15 +299,15 @@ where
                     tip_height,
                 )
                 .await?;
-            scanned_blocks += 1;
-            total_num_recovered += num_recovered;
-            total_value_recovered += amount_recovered;
+            scanned_blocks += scan_result.blocks_scanned;
+            total_num_recovered += scan_result.total_num_recovered;
+            total_value_recovered += scan_result.total_value_recovered;
             debug!(
                 target: LOG_TARGET,
                 "Scanning round completed up to height {} in {:.2?} ({} outputs scanned)",
                 tip_height,
                 timer.elapsed(),
-                num_scanned,
+                scan_result.total_scanned,
             );
         }
     }
@@ -414,7 +415,7 @@ where
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(usize, u64, MicroMinotari), anyhow::Error> {
+    ) -> Result<ScanUtxosResult, anyhow::Error> {
         info!(
             target: LOG_TARGET,
             "Starting UTXO scanning from header hash {} to header hash {} at tip height {}",
@@ -428,6 +429,7 @@ where
         let mut total_scanned = 0;
         let mut total_num_recovered = 0;
         let mut total_value_recovered = MicroMinotari::zero();
+        let mut blocks_scanned = 0;
 
         let mut utxo_stream = client
             .sync_utxos_by_block(
@@ -440,12 +442,19 @@ where
         let mut prev_scanned_block: Option<ScannedBlock> = None;
         while let Some(response) = utxo_stream.recv().await {
             if self.shutdown_signal.is_triggered() {
-                return Ok((total_scanned, total_num_recovered, total_value_recovered));
+                let result = ScanUtxosResult {
+                    total_scanned,
+                    total_num_recovered,
+                    total_value_recovered,
+                    blocks_scanned,
+                };
+                return Ok(result);
             }
 
             let response = response?;
             #[allow(clippy::cast_possible_wrap)]
             for response in response.blocks {
+                blocks_scanned += 1;
                 let current_height = response.height;
                 let current_header_hash = response.header_hash;
                 let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
@@ -536,8 +545,13 @@ where
             )?;
             self.resources.db.save_scanned_block(scanned_block)?;
         }
-
-        Ok((total_scanned, total_num_recovered, total_value_recovered))
+        let result = ScanUtxosResult {
+            total_scanned,
+            total_num_recovered,
+            total_value_recovered,
+            blocks_scanned,
+        };
+        Ok(result)
     }
 
     async fn search_for_owned_outputs(
@@ -819,4 +833,11 @@ where
 struct HeightHash {
     height: u64,
     header_hash: HashOutput,
+}
+
+struct ScanUtxosResult {
+    total_scanned: usize,
+    total_num_recovered: u64,
+    blocks_scanned: u64,
+    total_value_recovered: MicroMinotari,
 }
