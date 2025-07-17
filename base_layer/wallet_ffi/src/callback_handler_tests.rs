@@ -8,14 +8,12 @@ mod test {
         mem::size_of,
         sync::{Arc, Mutex},
         thread,
-        time::{Duration, SystemTime},
+        time::{Duration},
     };
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::{DateTime, Utc};
     use minotari_wallet::{
-        base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
-        connectivity_service::OnlineStatus,
         output_manager_service::{
             handle::{OutputManagerEvent, OutputManagerHandle},
             service::Balance,
@@ -35,7 +33,6 @@ mod test {
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_types::{
-        chain_metadata::ChainMetadata,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus},
         types::{CompressedPublicKey, PrivateKey},
@@ -60,7 +57,7 @@ mod test {
     use tari_shutdown::Shutdown;
     use tokio::{
         runtime::Runtime,
-        sync::{broadcast, watch},
+        sync::{broadcast},
         time::Instant,
     };
 
@@ -474,7 +471,6 @@ mod test {
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
             .unwrap();
 
-        let (base_node_event_sender, base_node_event_receiver) = broadcast::channel(20);
         let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
         let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
@@ -499,7 +495,6 @@ mod test {
         runtime.spawn(mock_output_manager_service.run());
         assert_eq!(balance, runtime.block_on(oms_handle.get_balance()).unwrap());
 
-        let (connectivity_tx, connectivity_rx) = watch::channel(OnlineStatus::Offline);
         let (contacts_liveness_events_sender, _) = broadcast::channel(250);
         let contacts_liveness_events = contacts_liveness_events_sender.subscribe();
         let (utxo_scanner_events_sender, _) = broadcast::channel(250);
@@ -514,7 +509,6 @@ mod test {
         let callback_handler = CallbackHandler::new(
             Context(void_ptr),
             db,
-            base_node_event_receiver,
             transaction_event_receiver,
             oms_event_receiver,
             oms_handle,
@@ -522,7 +516,6 @@ mod test {
             dht_event_receiver,
             shutdown_signal.to_signal(),
             comms_address,
-            connectivity_rx,
             contacts_liveness_events,
             received_tx_callback,
             received_tx_reply_callback,
@@ -546,32 +539,7 @@ mod test {
 
         runtime.spawn(callback_handler.start());
 
-        let ts_now = DateTime::from_timestamp_millis(
-            SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64,
-        )
-        .unwrap();
 
-        let chain_metadata = ChainMetadata::new(
-            1,
-            Default::default(),
-            0,
-            0,
-            123.into(),
-            ts_now.timestamp_millis() as u64,
-        )
-        .unwrap();
-
-        base_node_event_sender
-            .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {
-                chain_metadata: Some(chain_metadata),
-                is_synced: Some(true),
-                updated: DateTime::from_timestamp_millis(ts_now.timestamp_millis() - (60 * 1000)),
-                latency: Some(Duration::from_micros(500)),
-            })))
-            .unwrap();
 
         let start = Instant::now();
         while start.elapsed().as_secs() < 10 {
@@ -873,14 +841,6 @@ mod test {
         dht_event_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
             .unwrap();
-        thread::sleep(Duration::from_secs(2));
-        connectivity_tx.send(OnlineStatus::Offline).unwrap();
-        thread::sleep(Duration::from_secs(2));
-        connectivity_tx.send(OnlineStatus::Connecting).unwrap();
-        thread::sleep(Duration::from_secs(2));
-        connectivity_tx.send(OnlineStatus::Online).unwrap();
-        thread::sleep(Duration::from_secs(2));
-        connectivity_tx.send(OnlineStatus::Connecting).unwrap();
 
         thread::sleep(Duration::from_secs(10));
 
