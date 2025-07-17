@@ -1,17 +1,20 @@
 ---
-name: CI
+name: 'CI'
 
 'on':
   workflow_dispatch:
   push:
     branches:
-      - "ci-*"
+      - 'ci-*'
   pull_request:
     types:
       - opened
       - reopened
       - synchronize
   merge_group:
+
+permissions:
+  contents: read
 
 env:
   toolchain: stable
