@@ -260,176 +260,175 @@ where TBackend: TransactionBackend + 'static
 
         loop {
             tokio::select! {
-                            result = self.transaction_service_event_stream.recv() => {
-                                match result {
-                                    Ok(msg) => {
-                                        trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
-                                        match (*msg).clone() {
-                                            TransactionEvent::ReceivedTransaction(tx_id) => {
-                                                self.receive_transaction_event(tx_id);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::ReceivedTransactionReply(tx_id) => {
-                                                self.receive_transaction_reply_event(tx_id);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
-                                                self.receive_finalized_transaction_event(tx_id);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionSendResult(tx_id, status) => {
-                                                self.receive_transaction_send_result(tx_id, status);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionCancelled(tx_id, reason) => {
-                                                self.receive_transaction_cancellation(tx_id, reason as u64);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionBroadcast(tx_id) => {
-                                                self.receive_transaction_broadcast_event(tx_id);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
-                                                self.receive_transaction_mined_event(tx_id);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
-                                                self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::DetectedTransactionConfirmed{tx_id, is_valid: _} => {
-                                                self.receive_faux_transaction_confirmed_event(tx_id);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::DetectedTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
-                                                self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionValidationCompleted(request_key)  => {
-                                                self.transaction_validation_complete_event(request_key.as_u64(), 0);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionValidationFailed(request_key, reason)  => {
-                                                self.transaction_validation_complete_event(request_key.as_u64(), reason);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            TransactionEvent::TransactionCompletedImmediately(_tx_id)
-                                            => {
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            // Only the above variants are mapped to callbacks
-                                            _ => (),
-                                        }
-                                    },
-                                    Err(_e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
-                                }
-                            },
-
-                            result = self.output_manager_service_event_stream.recv() => {
-                                match result {
-                                    Ok(msg) => {
-                                        trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                                        match (*msg).clone() {
-                                            OutputManagerEvent::TxoValidationSuccess(request_key) => {
-                                                self.output_validation_complete_event(request_key,  0);
-                                                self.trigger_balance_refresh().await;
-                                            },
-                                            OutputManagerEvent::TxoValidationAlreadyBusy(request_key) => {
-                                                self.output_validation_complete_event(request_key,  1);
-                                            },
-                                            OutputManagerEvent::TxoValidationInternalFailure(request_key) => {
-                                                self.output_validation_complete_event(request_key,  2);
-                                            },
-                                            OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => {
-                                                self.output_validation_complete_event(request_key,  3);
-                                            },
-                                        }
-                                    },
-                                    Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
-                                }
-                            },
-
-                            result = self.utxo_scanner_service_events.recv() => match result {
-                                    Ok(event) => {
-                                        match event {
-                                            UtxoScannerEvent::Progress {
-                                                current_height,
-                                                latency,
-                                                tip_height,
-                                                ..
-                                            }=> {
-                                                self.scanned_height_changed(current_height);
-                                                if online_status != OnlineStatus::Online {
-                                                    online_status = OnlineStatus::Online;
-                                                    self.connectivity_status_changed(online_status);
-                                                }
-                                                self.connectivity_status_changed(online_status);
-                                                base_node_state.best_block_height = tip_height;
-                                                base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
-                                                self.base_node_state_changed(base_node_state);
-                                            }
-                                            UtxoScannerEvent::Completed {
-                                                final_height,
-                                                latency,
-                                                ..
-                                            }=> {
-                                            self.scanned_height_changed(final_height);
-                                                if online_status != OnlineStatus::Online {
-                                                    online_status = OnlineStatus::Online;
-                                                    self.connectivity_status_changed(online_status);
-                                                }
-                                                base_node_state.best_block_height = final_height;
-                                                base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
-                                                self.base_node_state_changed(base_node_state);
-                                            },
-                                            _ => {}
-                                        }
-                                    },
-                                    Err(e) => {
-                                        error!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
-                                    },
-                            },
-
-                            result = self.dht_event_stream.recv() => {
-                                match result {
-                                    Ok(msg) => {
-                                        trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
-                                        if let DhtEvent::StoreAndForwardMessagesReceived = *msg {
-                                            self.saf_messages_received_event();
-                                        }
-                                    },
-                                    Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
-                                }
+                result = self.transaction_service_event_stream.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
+                            match (*msg).clone() {
+                                TransactionEvent::ReceivedTransaction(tx_id) => {
+                                    self.receive_transaction_event(tx_id);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::ReceivedTransactionReply(tx_id) => {
+                                    self.receive_transaction_reply_event(tx_id);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                                    self.receive_finalized_transaction_event(tx_id);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionSendResult(tx_id, status) => {
+                                    self.receive_transaction_send_result(tx_id, status);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionCancelled(tx_id, reason) => {
+                                    self.receive_transaction_cancellation(tx_id, reason as u64);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionBroadcast(tx_id) => {
+                                    self.receive_transaction_broadcast_event(tx_id);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
+                                    self.receive_transaction_mined_event(tx_id);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                    self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::DetectedTransactionConfirmed{tx_id, is_valid: _} => {
+                                    self.receive_faux_transaction_confirmed_event(tx_id);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::DetectedTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                    self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionValidationCompleted(request_key)  => {
+                                    self.transaction_validation_complete_event(request_key.as_u64(), 0);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionValidationFailed(request_key, reason)  => {
+                                    self.transaction_validation_complete_event(request_key.as_u64(), reason);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionCompletedImmediately(_tx_id)
+                                => {
+                                    self.trigger_balance_refresh().await;
+                                },
+                                // Only the above variants are mapped to callbacks
+                                _ => (),
                             }
-            ,
+                        },
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
+                    }
+                },
 
-                            event = self.contacts_liveness_events.recv() => {
-                                match event {
-                                    Ok(liveness_event) => {
-                                        match liveness_event.deref() {
-                                            ContactsLivenessEvent::StatusUpdated(data) => {
-                                                trace!(target: LOG_TARGET,
-                                                    "Contacts Liveness Service Callback Handler event 'StatusUpdated'"
-                                                );
-                                                self.trigger_contacts_refresh(data.deref().clone());
-                                            }
-                                            ContactsLivenessEvent::NetworkSilence => {},
-                                        }
-                                    }
-                                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                                        warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
-                                    }
-                                    Err(broadcast::error::RecvError::Closed) => {}
-                                }
+                result = self.output_manager_service_event_stream.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                            match (*msg).clone() {
+                                OutputManagerEvent::TxoValidationSuccess(request_key) => {
+                                    self.output_validation_complete_event(request_key,  0);
+                                    self.trigger_balance_refresh().await;
+                                },
+                                OutputManagerEvent::TxoValidationAlreadyBusy(request_key) => {
+                                    self.output_validation_complete_event(request_key,  1);
+                                },
+                                OutputManagerEvent::TxoValidationInternalFailure(request_key) => {
+                                    self.output_validation_complete_event(request_key,  2);
+                                },
+                                OutputManagerEvent::TxoValidationCommunicationFailure(request_key) => {
+                                    self.output_validation_complete_event(request_key,  3);
+                                },
                             }
-                             _ = shutdown_signal.wait() => {
-                                info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
-                                break;
-                            },
+                        },
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
+                    }
+                },
+
+                result = self.utxo_scanner_service_events.recv() => match result {
+                        Ok(event) => {
+                            match event {
+                                UtxoScannerEvent::Progress {
+                                    current_height,
+                                    latency,
+                                    tip_height,
+                                    ..
+                                }=> {
+                                    self.scanned_height_changed(current_height);
+                                    if online_status != OnlineStatus::Online {
+                                        online_status = OnlineStatus::Online;
+                                        self.connectivity_status_changed(online_status);
+                                    }
+                                    self.connectivity_status_changed(online_status);
+                                    base_node_state.best_block_height = tip_height;
+                                    base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+                                    self.base_node_state_changed(base_node_state);
+                                }
+                                UtxoScannerEvent::Completed {
+                                    final_height,
+                                    latency,
+                                    ..
+                                }=> {
+                                self.scanned_height_changed(final_height);
+                                    if online_status != OnlineStatus::Online {
+                                        online_status = OnlineStatus::Online;
+                                        self.connectivity_status_changed(online_status);
+                                    }
+                                    base_node_state.best_block_height = final_height;
+                                    base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+                                    self.base_node_state_changed(base_node_state);
+                                },
+                                _ => {}
+                            }
+                        },
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
+                        },
+                },
+
+                result = self.dht_event_stream.recv() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
+                            if let DhtEvent::StoreAndForwardMessagesReceived = *msg {
+                                self.saf_messages_received_event();
+                            }
+                        },
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
+                    }
+                },
+
+                event = self.contacts_liveness_events.recv() => {
+                    match event {
+                        Ok(liveness_event) => {
+                            match liveness_event.deref() {
+                                ContactsLivenessEvent::StatusUpdated(data) => {
+                                    trace!(target: LOG_TARGET,
+                                        "Contacts Liveness Service Callback Handler event 'StatusUpdated'"
+                                    );
+                                    self.trigger_contacts_refresh(data.deref().clone());
+                                }
+                                ContactsLivenessEvent::NetworkSilence => {},
+                            }
                         }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {}
+                    }
+                }
+                 _ = shutdown_signal.wait() => {
+                    info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
+                    break;
+                },
+            }
         }
     }
 
