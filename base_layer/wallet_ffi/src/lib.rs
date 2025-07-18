@@ -80,7 +80,6 @@ use log4rs::{
 };
 use minotari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::WalletConnectivityInterface,
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -6856,7 +6855,6 @@ pub unsafe extern "C" fn wallet_create(
             let callback_handler = CallbackHandler::new(
                 context,
                 TransactionDatabase::new(transaction_backend),
-                w.base_node_service.get_event_stream(),
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
                 w.output_manager_service.clone(),
@@ -6864,7 +6862,6 @@ pub unsafe extern "C" fn wallet_create(
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 wallet_address,
-                w.wallet_connectivity.get_connectivity_status_watch(),
                 w.contacts_service.get_contacts_liveness_event_stream(),
                 callback_received_transaction,
                 callback_received_transaction_reply,

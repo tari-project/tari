@@ -39,10 +39,6 @@ use std::{ffi::c_void, ops::Deref, sync::Arc};
 
 use log::*;
 use minotari_wallet::{
-    base_node_service::{
-        handle::{BaseNodeEvent, BaseNodeEventReceiver},
-        service::BaseNodeState,
-    },
     connectivity_service::OnlineStatus,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
@@ -57,11 +53,11 @@ use minotari_wallet::{
     },
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
+use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 
 use crate::ffi_basenode_state::TariBaseNodeState;
 
@@ -95,7 +91,6 @@ where TBackend: TransactionBackend + 'static
     callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
     db: TransactionDatabase<TBackend>,
-    base_node_service_event_stream: BaseNodeEventReceiver,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
     output_manager_service: OutputManagerHandle,
@@ -104,7 +99,6 @@ where TBackend: TransactionBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
     comms_address: TariAddress,
     balance_cache: Balance,
-    connectivity_status_watch: watch::Receiver<OnlineStatus>,
     contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
 }
 
@@ -116,7 +110,6 @@ where TBackend: TransactionBackend + 'static
     pub fn new(
         context: Context,
         db: TransactionDatabase<TBackend>,
-        base_node_service_event_stream: BaseNodeEventReceiver,
         transaction_service_event_stream: TransactionEventReceiver,
         output_manager_service_event_stream: OutputManagerEventReceiver,
         output_manager_service: OutputManagerHandle,
@@ -124,7 +117,6 @@ where TBackend: TransactionBackend + 'static
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_address: TariAddress,
-        connectivity_status_watch: watch::Receiver<OnlineStatus>,
         contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut InboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
@@ -243,7 +235,6 @@ where TBackend: TransactionBackend + 'static
             callback_wallet_scanned_height,
             callback_base_node_state,
             db,
-            base_node_service_event_stream,
             transaction_service_event_stream,
             output_manager_service_event_stream,
             output_manager_service,
@@ -252,7 +243,6 @@ where TBackend: TransactionBackend + 'static
             shutdown_signal: Some(shutdown_signal),
             comms_address,
             balance_cache: Balance::zero(),
-            connectivity_status_watch,
             contacts_liveness_events,
         }
     }
@@ -265,6 +255,8 @@ where TBackend: TransactionBackend + 'static
             .expect("Callback Handler started without shutdown signal");
 
         info!(target: LOG_TARGET, "Transaction Service Callback Handler starting");
+        let mut online_status = OnlineStatus::Offline;
+        let mut base_node_state = TariBaseNodeState::default();
 
         loop {
             tokio::select! {
@@ -364,15 +356,34 @@ where TBackend: TransactionBackend + 'static
                         Ok(event) => {
                             match event {
                                 UtxoScannerEvent::Progress {
-                                    current_height,..
+                                    current_height,
+                                    latency,
+                                    tip_height,
+                                    ..
                                 }=> {
                                     self.scanned_height_changed(current_height);
+                                    if online_status != OnlineStatus::Online {
+                                        online_status = OnlineStatus::Online;
+                                        self.connectivity_status_changed(online_status);
+                                    }
+                                    self.connectivity_status_changed(online_status);
+                                    base_node_state.best_block_height = tip_height;
+                                    base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+                                    self.base_node_state_changed(base_node_state);
                                 }
                                 UtxoScannerEvent::Completed {
                                     final_height,
+                                    latency,
                                     ..
                                 }=> {
                                 self.scanned_height_changed(final_height);
+                                    if online_status != OnlineStatus::Online {
+                                        online_status = OnlineStatus::Online;
+                                        self.connectivity_status_changed(online_status);
+                                    }
+                                    base_node_state.best_block_height = final_height;
+                                    base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+                                    self.base_node_state_changed(base_node_state);
                                 },
                                 _ => {}
                             }
@@ -391,28 +402,6 @@ where TBackend: TransactionBackend + 'static
                             }
                         },
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
-                    }
-                }
-
-                Ok(_) = self.connectivity_status_watch.changed() => {
-                    let status  = *self.connectivity_status_watch.borrow();
-                    trace!(target: LOG_TARGET, "Connectivity status change detected: {:?}", status);
-                    self.connectivity_status_changed(status);
-                },
-
-                event = self.base_node_service_event_stream.recv() => {
-                    match event {
-                        Ok(msg) => {
-                            trace!(target: LOG_TARGET, "Base Node Service Callback Handler event {:?}", msg);
-                            match (*msg).clone() {
-                                BaseNodeEvent::BaseNodeStateChanged(state) => {
-                                    trace!("base node state changed: {:#?}", state);
-                                    self.base_node_state_changed(state);
-                                },
-
-                            }
-                        },
-                        Err(_e) => error!(target: LOG_TARGET, "failed to receive base node state event"),
                     }
                 },
 
@@ -709,32 +698,8 @@ where TBackend: TransactionBackend + 'static
 
     // casting here is okay as we dont care about the super high latency
     #[allow(clippy::cast_possible_truncation)]
-    fn base_node_state_changed(&mut self, state: BaseNodeState) {
+    fn base_node_state_changed(&mut self, state: TariBaseNodeState) {
         debug!(target: LOG_TARGET, "Calling Base Node State changed callback function");
-
-        let state = match state.chain_metadata {
-            None => TariBaseNodeState {
-                best_block_height: 0,
-                best_block_hash: BlockHash::zero(),
-                best_block_timestamp: 0,
-                pruning_horizon: 0,
-                pruned_height: 0,
-                is_node_synced: false,
-                updated_at: 0,
-                latency: 0,
-            },
-
-            Some(chain_metadata) => TariBaseNodeState {
-                best_block_height: chain_metadata.best_block_height(),
-                best_block_hash: *chain_metadata.best_block_hash(),
-                best_block_timestamp: chain_metadata.timestamp(),
-                pruning_horizon: chain_metadata.pruning_horizon(),
-                pruned_height: chain_metadata.pruned_height(),
-                is_node_synced: state.is_synced.unwrap_or(false),
-                updated_at: state.updated.map(|ts| ts.timestamp_millis() as u64).unwrap_or(0),
-                latency: state.latency.map(|d| d.as_millis() as u64).unwrap_or(0),
-            },
-        };
 
         unsafe {
             (self.callback_base_node_state)(self.context.0, Box::into_raw(Box::new(state)));
