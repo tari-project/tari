@@ -192,7 +192,12 @@ impl WalletDebouncer {
                                     self.set_refresh_needed(true).await;
                                     if faux {
                                         let mut intial = self.initial_validation_done.lock().await;
-                                        *intial = true;
+                                        if !(*intial) {
+                                            if self.intial_scanning_done.lock().await{
+                                                // we should only set this after we completed initial scanning and then completed faux tx validation
+                                                *intial = true;
+                                            }
+                                        }
                                     }
                                 },
                                 _ => (),
