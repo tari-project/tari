@@ -94,9 +94,9 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, amount: u64
     while ffi_balance.get_available() < amount && cnt < 10 {
         if cnt % 3 == 0 {
             cucumber_steps_log(format!(
-                "wallet {}, port {}, needs available {}, has balance: available {} incoming {} time locked {}",
+                "wallet {}:{}, needs available {}, has balance: available {} incoming {} time locked {}",
                 ffi_wallet.name,
-                ffi_wallet.port,
+                ffi_wallet.id,
                 amount,
                 ffi_balance.get_available(),
                 ffi_balance.get_pending_incoming(),
@@ -111,7 +111,7 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, amount: u64
         ffi_balance.get_available() >= amount,
         "Wallet {}:{} doesn't have enough available funds: available {} incoming {} time locked {}",
         ffi_wallet.name,
-        ffi_wallet.port,
+        ffi_wallet.id,
         ffi_balance.get_available(),
         ffi_balance.get_pending_incoming(),
         ffi_balance.get_time_locked()
@@ -137,13 +137,13 @@ async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: Str
         if &ffi_wallet_balance == balance {
             cucumber_steps_log(format!(
                 "Wallet {}:{} waiting for balance to be {:?} (DONE), current {:?}",
-                ffi_wallet.name, ffi_wallet.port, balance, ffi_wallet_balance
+                ffi_wallet.name, ffi_wallet.id, balance, ffi_wallet_balance
             ));
             return;
         } else if i % 3 == 0 {
             cucumber_steps_log(format!(
                 "Wallet {}:{} waiting for balance to be {:?}, current {:?}",
-                ffi_wallet.name, ffi_wallet.port, balance, ffi_wallet_balance
+                ffi_wallet.name, ffi_wallet.id, balance, ffi_wallet_balance
             ))
         } else {
             // Nothing here
@@ -153,7 +153,7 @@ async fn ffi_has_balance(world: &mut TariWorld, wallet: String, balance_key: Str
     }
     panic!(
         "Wallet {}:{} doesn't have the correct balance: expected {:?} current {:?}",
-        ffi_wallet.name, ffi_wallet.port, balance, ffi_wallet_balance
+        ffi_wallet.name, ffi_wallet.id, balance, ffi_wallet_balance
     );
 }
 

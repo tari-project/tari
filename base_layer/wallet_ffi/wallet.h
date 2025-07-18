@@ -143,8 +143,6 @@ struct TransactionKernel;
 
 struct TransactionSendStatus;
 
-struct TransportConfig;
-
 /**
  * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
  * build both inputs and outputs (every input comes from an output). This is only used for import and export where
@@ -236,8 +234,6 @@ typedef struct OutboundTransaction TariPendingOutboundTransaction;
 typedef struct InboundTransaction TariPendingInboundTransaction;
 
 typedef struct TransactionSendStatus TariTransactionSendStatus;
-
-typedef struct TransportConfig TariTransportConfig;
 
 typedef struct P2pConfig TariCommsConfig;
 
@@ -3029,112 +3025,6 @@ void transaction_send_status_destroy(TariTransactionSendStatus *status);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Transport Types -----------------------------------------///
- * Creates a memory transport type
- *
- * ## Arguments
- * `()` - Does not take any arguments
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
- *
- * # Safety
- * The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
- * leak
- */
-TariTransportConfig *transport_memory_create(void);
-
-/**
- * Creates a tcp transport type
- *
- * ## Arguments
- * `listener_address` - The pointer to a char array
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
- *
- * # Safety
- * The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
- * leak
- */
-TariTransportConfig *transport_tcp_create(const char *listener_address,
-                                          int *error_out);
-
-/**
- * Creates a tor transport type
- *
- * ## Arguments
- * `control_server_address` - The pointer to a char array
- * `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
- * `tor_port` - The tor port
- * `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
- * the tor proxy if tcp is available, if not it has no effect
- * `socks_password` - The pointer to a char array containing the socks password, can be null
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
- *
- * # Safety
- * The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
- * memory leak
- */
-TariTransportConfig *transport_tor_create(const char *control_server_address,
-                                          const struct ByteVector *tor_cookie,
-                                          unsigned short tor_port,
-                                          bool tor_proxy_bypass_for_outbound,
-                                          const char *socks_username,
-                                          const char *socks_password,
-                                          int *error_out);
-
-/**
- * Gets the address for a memory transport type
- *
- * ## Arguments
- * `transport` - Pointer to a TariTransportConfig
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer is null.
- *
- * ## Returns
- * `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
- *
- * # Safety
- * Can only be used with a memory transport type, will crash otherwise
- */
-char *transport_memory_get_address(const TariTransportConfig *transport,
-                                   int *error_out);
-
-/**
- * Frees memory for a TariTransportConfig
- *
- * ## Arguments
- * `transport` - The pointer to a TariTransportConfig
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- */
-void transport_type_destroy(TariTransportConfig *transport);
-
-/**
- * Frees memory for a TariTransportConfig
- *
- * ## Arguments
- * `transport` - The pointer to a TariTransportConfig
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- */
-void transport_config_destroy(TariTransportConfig *transport);
-
-/**
- * ---------------------------------------------------------------------------------------------///
  * ----------------------------------- CommsConfig ---------------------------------------------///
  * Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
  *
@@ -3160,12 +3050,8 @@ void transport_config_destroy(TariTransportConfig *transport);
  * # Safety
  * The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
  */
-TariCommsConfig *comms_config_create(const char *public_address,
-                                     const TariTransportConfig *transport,
-                                     const char *database_name,
+TariCommsConfig *comms_config_create(const char *database_name,
                                      const char *datastore_path,
-                                     unsigned long long discovery_timeout_in_secs,
-                                     bool exclude_dial_test_addresses,
                                      int *error_out);
 
 /**
@@ -3263,6 +3149,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * If this is null, then a new master key is created for the wallet.
  * `dns_seed_name_servers_str` - An optional list of DNS servers to query to get hold of the seed peer list.
  * `use_dns_sec` - Use DNSSEC when querying the DNS servers.
+ * `wallet_birthday_offset` - The offest that the wallet should use to start scanning is starting from its birthday.
  * `callback_received_transaction` - The callback function pointer matching the function signature. This will be
  * called when an inbound transaction is received.
  * `callback_received_transaction_reply` - The callback function
@@ -3356,6 +3243,7 @@ struct TariWallet *wallet_create(void *context,
                                  const char *dns_seed_name_servers_str,
                                  bool use_dns_sec,
                                  const char *http_base_node,
+                                 int wallet_birthday_offset,
                                  void (*callback_received_transaction)(void *context,
                                                                        TariPendingInboundTransaction*),
                                  void (*callback_received_transaction_reply)(void *context,
