@@ -162,7 +162,7 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportConfig, TransportType};
+use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
@@ -197,7 +197,6 @@ mod consts {
 
 const LOG_TARGET: &str = "wallet_ffi";
 
-pub type TariTransportConfig = TransportConfig;
 pub type TariPublicKey = CompressedPublicKey;
 pub type UncompressedTariPublicKey = UncompressedPublicKey;
 pub type TariWalletAddress = TariAddress;
@@ -5923,17 +5922,10 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 /// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
 ///
 /// ## Arguments
-/// `public_address` - The public address char array pointer. This is the address that the wallet advertises publicly to
-/// peers
-/// `transport` - TariTransportConfig that specifies the type of comms transport to be used.
-/// connections are moved to after initial connection. Default if null is 0.0.0.0:7898 which will accept connections
-/// from all IP address on port 7898
 /// `database_name` - The database name char array pointer. This is the unique name of this
 /// wallet's database
 /// `database_path` - The database path char array pointer which. This is the folder path where the
 /// database files will be created and the application has write access to
-/// `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
-/// `exclude_dial_test_addresses`: exclude dialing of test addresses; this should be 'true' for production wallets
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
@@ -6013,7 +6005,6 @@ pub unsafe extern "C" fn comms_config_create(
             },
             ..Default::default()
         },
-        allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
         rpc_max_simultaneous_sessions: 0,
