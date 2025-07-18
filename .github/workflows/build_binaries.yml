@@ -457,6 +457,14 @@ jobs:
           # )
           # ARRAY_FILES+=(${FILES_DIAG_UTILS[@]})
 
+          FILES_LIBRARY=( \
+            $(find "${{ env.MTS_SOURCE }}" \
+                -name "*${LIB_EXT}" -type f \
+                  -exec sh -c 'echo "$(basename "{}")"' \; \
+              ) \
+          )
+          ARRAY_FILES+=(${FILES_LIBRARY[@]})
+
           # Codesign all files in ARRAY_FILES
           for FILE in "${ARRAY_FILES[@]}"; do
             # Codesign
@@ -789,6 +797,13 @@ jobs:
           # ./create_osx_install_zip.sh unused nozip
 
           ARRAY_FILES=( $(echo ${TS_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
+          FILES_LIBRARY=( \
+            $(find "${{ github.workspace }}/osxuni/macos-universal/" \
+                -name "*.dylib" -type f \
+                  -exec sh -c 'echo "$(basename "{}")"' \; \
+              ) \
+          )
+          ARRAY_FILES+=(${FILES_LIBRARY[@]})
 
           # Codesign all files in ARRAY_FILES
           for FILE in "${ARRAY_FILES[@]}"; do
