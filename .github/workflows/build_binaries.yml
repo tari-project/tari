@@ -417,7 +417,7 @@ jobs:
           path: "${{ env.MTS_SOURCE }}/*"
 
       - name: Sign macOS Artifacts
-        if: startsWith(runner.os,'macOS')
+        if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
         continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
@@ -428,7 +428,7 @@ jobs:
           MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
           MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
         run: |
-          # set -xo pipefail
+          set -xo pipefail
           echo "${MACOS_APPLICATION_CERT}" | base64 --decode > application.p12
           security create-keychain -p ${MACOS_KEYCHAIN_PASS} build.keychain
           security default-keychain -s build.keychain
@@ -439,10 +439,10 @@ jobs:
             -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ${MACOS_KEYCHAIN_PASS} build.keychain
 
-          if [[ "${{ matrix.builds.name }}" == "macos-arm64" ]]; then
-            echo "Add codesign extra args for ${{ matrix.builds.name }}"
-            OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
-          fi
+          # if [[ "${{ matrix.builds.name }}" == "macos-arm64" ]]; then
+          #   echo "Add codesign extra args for ${{ matrix.builds.name }}"
+          #   OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
+          # fi
 
           ARRAY_FILES=( $(echo ${TS_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
 
@@ -455,13 +455,16 @@ jobs:
           #         -exec sh -c 'echo "$(basename "{}")"' \; \
           #     ) \
           # )
-
           # ARRAY_FILES+=(${FILES_DIAG_UTILS[@]})
 
+          # Codesign all files in ARRAY_FILES
           for FILE in "${ARRAY_FILES[@]}"; do
             # Codesign
+            # codesign --options runtime --force --verify --verbose --timestamp ${OSX_CODESIGN_EXTRAS} \
+            #   --prefix "${{ env.TS_BUNDLE_ID_BASE }}.${{ env.TS_FILENAME }}." \
+            #   --sign "Developer ID Application: ${MACOS_APPLICATION_ID}" \
+            #   "${{ env.MTS_SOURCE }}/${FILE}"
             codesign --options runtime --force --verify --verbose --timestamp ${OSX_CODESIGN_EXTRAS} \
-              --prefix "${{ env.TS_BUNDLE_ID_BASE }}.${{ env.TS_FILENAME }}." \
               --sign "Developer ID Application: ${MACOS_APPLICATION_ID}" \
               "${{ env.MTS_SOURCE }}/${FILE}"
 
