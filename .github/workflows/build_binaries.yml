@@ -100,7 +100,7 @@ jobs:
       TARI_NETWORK_DIR: ${{ steps.set-tari-network.outputs.TARI_NETWORK_DIR }}
       TARI_VERSION: ${{ steps.set-tari-vars.outputs.TARI_VERSION }}
       VSHA_SHORT: ${{ steps.set-tari-vars.outputs.VSHA_SHORT }}
-      BINFILE: ${{ steps.set-tari-vars.outputs.BINFILE }}
+      SBINFN: ${{ steps.set-tari-vars.outputs.SBINFN }}
 
     strategy:
       fail-fast: false
@@ -180,7 +180,7 @@ jobs:
           echo "TS_EXT=${{ matrix.builds.ts_ext }}" >> $GITHUB_ENV
           BINFILE="${TS_FILENAME}-${TARI_VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${{ matrix.builds.ts_ext }}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
-          echo "BINFILE=${BINFILE}" >> $GITHUB_OUTPUT
+          echo "SBINFN=${TS_FILENAME}-${TARI_VERSION}-${VSHA_SHORT}" >> $GITHUB_OUTPUT
 
       - name: Scheduled Destination Folder Override
         if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
@@ -418,7 +418,7 @@ jobs:
 
       - name: Sign macOS Artifacts
         if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
-        continue-on-error: true
+        # continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
           MACOS_APPLICATION_ID: ${{ secrets.MACOS_APPLICATION_ID }}
@@ -698,7 +698,7 @@ jobs:
     env:
       TARI_VERSION: ${{ needs.builds.outputs.TARI_VERSION }}
       VSHA_SHORT: ${{ needs.builds.outputs.VSHA_SHORT }}
-      BINFN: ${{ needs.builds.outputs.BINFILE }}
+      SBINFN: ${{ needs.builds.outputs.SBINFN }}
 
       SHARUN: "shasum --algorithm 256"
 
@@ -727,18 +727,18 @@ jobs:
         shell: bash
         working-directory: osxuni
         run: |
-          echo "BINFILE=${BINFN}-macos-universal" >> $GITHUB_ENV
+          echo "BINFILE=${SBINFN}-macos-universal" >> $GITHUB_ENV
           ls -alhtR
           ${SHARUN} --ignore-missing --check \
-            "${{ env.BINFN }}-macos-x86_64.zip.sha256"
+            "${{ env.SBINFN }}-macos-x86_64.zip.sha256"
           ${SHARUN} --ignore-missing --check \
-            "${{ env.BINFN }}-macos-arm64.zip.sha256"
+            "${{ env.SBINFN }}-macos-arm64.zip.sha256"
           ls -alhtR
           mkdir macos-universal macos-x86_64 macos-arm64
           cd macos-x86_64
-          7z e "../${{ env.BINFN }}-macos-x86_64.zip"
+          7z e "../${{ env.SBINFN }}-macos-x86_64.zip"
           cd ../macos-arm64
-          7z e "../${{ env.BINFN }}-macos-arm64.zip"
+          7z e "../${{ env.SBINFN }}-macos-arm64.zip"
 
       - name: Assemble macOS universal binaries
         shell: bash
@@ -763,7 +763,7 @@ jobs:
 
       - name: Build the macOS universal Archive and code-sign
         if: ${{ ( startsWith(runner.os,'macOS') ) && ( env.MACOS_NOTARIZE_USERNAME != '' ) }}
-        continue-on-error: true
+        # continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
           MACOS_APPLICATION_ID: ${{ secrets.MACOS_APPLICATION_ID }}
@@ -812,6 +812,7 @@ jobs:
               --prefix "${{ env.TS_BUNDLE_ID_BASE }}.${{ env.TS_FILENAME }}." \
               --sign "Developer ID Application: $MACOS_APPLICATION_ID" \
               "${{ github.workspace }}/osxuni/macos-universal/${FILE}"
+
             # Verify codesign
             codesign --verify --deep --display --verbose=4 \
               "${{ github.workspace }}/osxuni/macos-universal/${FILE}"
