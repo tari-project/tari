@@ -410,7 +410,7 @@ jobs:
         # Disabled
         if: ${{ false }}
         # if: startsWith(runner.os,'macOS')
-        continue-on-error: true
+        # continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TS_FILENAME }}_unsigned-archive-${{ matrix.builds.name }}
@@ -439,10 +439,10 @@ jobs:
             -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ${MACOS_KEYCHAIN_PASS} build.keychain
 
-          # if [[ "${{ matrix.builds.name }}" == "macos-arm64" ]]; then
-          #   echo "Add codesign extra args for ${{ matrix.builds.name }}"
-          #   OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
-          # fi
+          if [[ "${{ matrix.builds.name }}" == "macos-arm64" ]]; then
+            echo "Add codesign extra args for ${{ matrix.builds.name }}"
+            OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
+          fi
 
           ARRAY_FILES=( $(echo ${TS_FILES} | jq --raw-output '.[]' | awk '{ print $1 }') )
 
@@ -460,11 +460,8 @@ jobs:
           # Codesign all files in ARRAY_FILES
           for FILE in "${ARRAY_FILES[@]}"; do
             # Codesign
-            # codesign --options runtime --force --verify --verbose --timestamp ${OSX_CODESIGN_EXTRAS} \
-            #   --prefix "${{ env.TS_BUNDLE_ID_BASE }}.${{ env.TS_FILENAME }}." \
-            #   --sign "Developer ID Application: ${MACOS_APPLICATION_ID}" \
-            #   "${{ env.MTS_SOURCE }}/${FILE}"
             codesign --options runtime --force --verify --verbose --timestamp ${OSX_CODESIGN_EXTRAS} \
+              --prefix "${{ env.TS_BUNDLE_ID_BASE }}.${{ env.TS_FILENAME }}." \
               --sign "Developer ID Application: ${MACOS_APPLICATION_ID}" \
               "${{ env.MTS_SOURCE }}/${FILE}"
 
@@ -482,6 +479,13 @@ jobs:
           echo "Checksum verification for files is "
           ${SHARUN} --check "${{ env.BINFILE }}.sha256"
           7z a "${{ env.BINFILE }}.zip" *
+
+          echo "Compute archive shasum"
+          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.zip.sha256"
+          echo "Checksum verification archive is "
+          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
           echo -e "Submitting to Apple...\n\n"
           xcrun notarytool submit \
@@ -503,13 +507,6 @@ jobs:
             # xcrun stapler staple -v \
             #   "${distDirPKG}/${{ env.TS_FILENAME }}-${{ matrix.builds.name }}-${{ env.TARI_VERSION }}.pkg"
           fi
-
-          echo "Compute archive shasum"
-          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
-          echo "Show the shasum"
-          cat "${{ env.BINFILE }}.zip.sha256"
-          echo "Checksum verification archive is "
-          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
       - name: Artifact upload for macOS pkg
         # Disabled
@@ -778,6 +775,7 @@ jobs:
             -P ${MACOS_APPLICATION_PASS} \
             -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ${MACOS_KEYCHAIN_PASS} build.keychain
+
           OSX_CODESIGN_EXTRAS="--entitlements ${GITHUB_WORKSPACE}/applications/minotari_node/osx-pkg/entitlements.xml"
 
           # cd buildtools
@@ -831,6 +829,13 @@ jobs:
           ${SHARUN} --check "${{ env.BINFILE }}.sha256"
           7z a "${{ env.BINFILE }}.zip" *
 
+          echo "Compute archive shasum"
+          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.zip.sha256"
+          echo "Checksum verification archive is "
+          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
+
           echo -e "Submitting to Apple...\n\n"
           xcrun notarytool submit \
             "${{ env.BINFILE }}.zip" \
@@ -860,13 +865,6 @@ jobs:
           # echo "Checksum verification for pkg is "
           # ${SHARUN} --check "${{ env.TS_FILENAME }}-macos-universal-${{ env.TARI_VERSION }}.pkg.sha256"
   
-          echo "Compute archive shasum"
-          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
-          echo "Show the shasum"
-          cat "${{ env.BINFILE }}.zip.sha256"
-          echo "Checksum verification archive is "
-          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
-
       - name: Artifact upload for macOS universal archive
         if: startsWith(runner.os,'macOS')
         continue-on-error: true
