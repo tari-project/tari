@@ -487,6 +487,12 @@ where
                     }
 
                     let block_hash: FixedHash = current_header_hash.try_into()?;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Scanned block at height {} with header hash {}, :{:?}",
+                        current_height,
+                        block_hash.to_hex(), prev_scanned_block
+                    );
                     if let Some(scanned_block) = prev_scanned_block {
                         if block_hash != scanned_block.header_hash {
                             debug!(
