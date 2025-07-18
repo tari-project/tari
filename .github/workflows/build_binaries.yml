@@ -113,7 +113,7 @@ jobs:
           echo $matrix | json2yaml
 
   builds:
-    name: Building ${{ matrix.builds.name }} on ${{ matrix.builds.runs-on }}
+    name: ${{ matrix.builds.name }} for ${{ matrix.builds.tari_network }} on ${{ matrix.builds.runs-on }}
     needs: matrix-prep
     continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') || matrix.builds.best_effort || false }}
     outputs:
@@ -124,6 +124,7 @@ jobs:
 
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix: ${{ fromJson(needs.matrix-prep.outputs.matrix) }}
 
     runs-on: ${{ matrix.builds.runs-on }}
@@ -675,7 +676,7 @@ jobs:
       - name: Artifact upload for Archive
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.TS_FILENAME }}_archive-${{ matrix.builds.name }}
+          name: ${{ env.TS_FILENAME }}-${{ matrix.builds.tari_network }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TS_DIST }}/${{ env.BINFILE }}.zip*"
 
       - name: Prep diag-utils archive for upload
