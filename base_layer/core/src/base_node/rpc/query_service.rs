@@ -293,7 +293,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             }
         }
 
-        let has_next_page = (end_height - current_header.height) > 0;
+        let has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
 
         Ok(SyncUtxosByBlockResponse {
             blocks: utxos,
