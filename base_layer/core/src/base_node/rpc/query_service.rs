@@ -1,8 +1,6 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::cmp;
-
 use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
@@ -176,15 +174,8 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             .await?
             .ok_or_else(|| Error::StartHeaderHashNotFound)?;
 
-        let tip_header = self.db.fetch_tip_header().await?;
-        // we only allow wallets to ask for a max of 10 blocks at a time and we want to cache the queries to ensure they
-        // are in batch of 10 and we want to ensure they request goes to the nearest 10 block height so we can
-        // cache all wallet's queries
-        let increase = ((start_header.height + 10) / 10) * 10;
-        let end_height = cmp::min(tip_header.header().height, increase);
 
-        // pagination
-        let start_header_height = start_header.height + (request.page * request.limit);
+        let start_header_height = start_header.height;
         let start_header = self
             .db
             .fetch_header(start_header_height)
@@ -193,111 +184,79 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 height: start_header_height,
             })?;
 
-        if start_header.height > tip_header.header().height {
-            return Err(Error::HeaderHeightMismatch {
-                start_height: start_header.height,
-                end_height: tip_header.header().height,
-            });
-        }
-
         // fetch utxos
         let mut utxos = vec![];
-        let mut current_header = start_header;
-        let mut fetched_utxos = 0;
-        let next_header_to_request;
-        loop {
-            let current_header_hash = current_header.hash();
+        let current_header = start_header;
+        let current_header_hash = current_header.hash();
+        let next_header_to_request = match self.db.fetch_header(start_header_height).await? {
+            Some(header) => header.hash().to_vec(),
+            None => vec![],
+        };
 
-            trace!(
-                target: LOG_TARGET,
-                "current header = {} ({})",
-                current_header.height,
-                current_header_hash.to_hex()
-            );
+        trace!(
+            target: LOG_TARGET,
+            "current header = {} ({})",
+            current_header.height,
+            current_header_hash.to_hex()
+        );
 
-            let outputs_with_statuses = self
-                .db
-                .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
-                .await?;
-            let mut inputs = self
-                .db
-                .fetch_inputs_in_block(current_header.hash())
-                .await?
-                .into_iter()
-                .map(|input| input.output_hash().to_vec())
-                .collect::<Vec<Vec<u8>>>();
+        let outputs_with_statuses = self
+            .db
+            .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
+            .await?;
+        let mut inputs = self
+            .db
+            .fetch_inputs_in_block(current_header.hash())
+            .await?
+            .into_iter()
+            .map(|input| input.output_hash().to_vec())
+            .collect::<Vec<Vec<u8>>>();
 
-            let outputs = outputs_with_statuses
-                .into_iter()
-                .map(|(output, _spent)| output)
-                .collect::<Vec<TransactionOutput>>();
+        let outputs = outputs_with_statuses
+            .into_iter()
+            .map(|(output, _spent)| output)
+            .collect::<Vec<TransactionOutput>>();
 
-            for output_chunk in outputs.chunks(2000) {
-                let inputs_to_send = if inputs.is_empty() {
-                    Vec::new()
-                } else {
-                    let num_to_drain = inputs.len().min(2000);
-                    inputs.drain(..num_to_drain).collect()
-                };
+        for output_chunk in outputs.chunks(2000) {
+            let inputs_to_send = if inputs.is_empty() {
+                Vec::new()
+            } else {
+                let num_to_drain = inputs.len().min(2000);
+                inputs.drain(..num_to_drain).collect()
+            };
 
-                let output_block_response = BlockUtxoInfo {
-                    outputs: output_chunk
-                        .iter()
-                        .map(|output| MinimalUtxoSyncInfo {
-                            output_hash: output.hash().to_vec(),
-                            commitment: output.commitment().to_vec(),
-                            encrypted_data: output.encrypted_data().as_bytes().to_vec(),
-                            sender_offset_public_key: output.sender_offset_public_key.to_vec(),
-                        })
-                        .collect(),
-                    inputs: inputs_to_send,
-                    height: current_header.height,
-                    header_hash: current_header_hash.to_vec(),
-                    mined_timestamp: current_header.timestamp.as_u64(),
-                };
-                utxos.push(output_block_response);
-            }
-            // We might still have inputs left to send if they are more than the outputs
-            for input_chunk in inputs.chunks(2000) {
-                let output_block_response = BlockUtxoInfo {
-                    outputs: Vec::new(),
-                    inputs: input_chunk.to_vec(),
-                    height: current_header.height,
-                    header_hash: current_header_hash.to_vec(),
-                    mined_timestamp: current_header.timestamp.as_u64(),
-                };
-                utxos.push(output_block_response);
-            }
-
-            fetched_utxos += 1;
-
-            if current_header.height >= tip_header.header().height {
-                next_header_to_request = vec![];
-                break;
-            }
-            if fetched_utxos >= request.limit {
-                next_header_to_request = current_header.hash().to_vec();
-                break;
-            }
-
-            current_header =
-                self.db
-                    .fetch_header(current_header.height + 1)
-                    .await?
-                    .ok_or_else(|| Error::HeaderNotFound {
-                        height: current_header.height + 1,
-                    })?;
-            if current_header.height == end_height {
-                next_header_to_request = current_header.hash().to_vec();
-                break; // Stop if we reach the end height}
-            }
+            let output_block_response = BlockUtxoInfo {
+                outputs: output_chunk
+                    .iter()
+                    .map(|output| MinimalUtxoSyncInfo {
+                        output_hash: output.hash().to_vec(),
+                        commitment: output.commitment().to_vec(),
+                        encrypted_data: output.encrypted_data().as_bytes().to_vec(),
+                        sender_offset_public_key: output.sender_offset_public_key.to_vec(),
+                    })
+                    .collect(),
+                inputs: inputs_to_send,
+                height: current_header.height,
+                header_hash: current_header_hash.to_vec(),
+                mined_timestamp: current_header.timestamp.as_u64(),
+            };
+            utxos.push(output_block_response);
         }
-
-        let has_next_page = (end_height - current_header.height) > 0;
+        // We might still have inputs left to send if they are more than the outputs
+        for input_chunk in inputs.chunks(2000) {
+            let output_block_response = BlockUtxoInfo {
+                outputs: Vec::new(),
+                inputs: input_chunk.to_vec(),
+                height: current_header.height,
+                header_hash: current_header_hash.to_vec(),
+                mined_timestamp: current_header.timestamp.as_u64(),
+            };
+            utxos.push(output_block_response);
+        }
 
         Ok(SyncUtxosByBlockResponse {
             blocks: utxos,
-            has_next_page,
+            has_next_page: false,
             next_header_to_scan: next_header_to_request,
         })
     }
