@@ -1148,16 +1148,219 @@ service Wallet {
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
 
+// Estimates the transaction fee based on amount, fee rate, and number of outputs.
+  //
+  // The `GetFeeEstimate` call allows clients to calculate the expected transaction fee before sending funds.
+  // This is useful for presenting fee information to the user or for ensuring sufficient funds are available.
+  //
+  // ### Request Parameters:
+  // - **amount** (required): The amount to send, in microTari. (1 Tari = 1,000,000 µT).
+  // - **fee_per_gram** (required): The fee per gram (weight unit) to use for the estimate. Higher values may improve priority.
+  // - **output_count** (required): The number of outputs to create in the transaction (e.g., 2 = recipient + change).
+  //
+  // ### Input Validation:
+  // - `amount` must be a non-zero `uint64` representing the amount to transfer.
+  // - `fee_per_gram` must be a non-zero `uint64`; zero or low fees may result in delayed confirmation or failure.
+  // - `output_count` must be convertible to a valid `usize`; large values may increase the fee significantly.
+  //
+  // ### Response Fields:
+  // - **estimated_fee**: A `uint64` value representing the estimated total transaction fee in microTari.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   amount: 1000000,         // Sending 1 Tari
+  //   fee_per_gram: 5,         // Fee rate of 5 µT/g
+  //   output_count: 2          // One recipient + one change output
+  // };
+  // client.getFeeEstimate(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else console.log("Estimated fee:", response.estimated_fee);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "estimated_fee": 12345
+  // }
+  // ```
   rpc GetFeeEstimate(GetFeeEstimateRequest) returns (GetFeeEstimateResponse);
 
+  // Retrieves fee-per-gram statistics over recent blocks.
+  //
+  // The `GetFeePerGramStats` call returns aggregated fee rate information to help clients
+  // understand recent network fee trends. This can be used for setting appropriate fees
+  // when constructing transactions.
+  //
+  // ### Request Parameters:
+  // - **block_count** (optional): The number of recent blocks to include in the statistics.
+  //   If not specified or zero, a default number of blocks will be used.
+  //
+  // ### Input Validation:
+  // - `block_count` must be a non-negative `uint64`. Large values may increase query time.
+  //
+  // ### Response Fields:
+  // - **fee_per_gram_stats**: A list of `FeePerGramStat` objects summarizing fee data over the specified blocks.
+  //
+  // Each `FeePerGramStat` contains:
+  // - **average_fee_per_gram**: Average fee per gram observed over the blocks.
+  // - **min_fee_per_gram**: Minimum fee per gram observed.
+  // - **max_fee_per_gram**: Maximum fee per gram observed.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   block_count: 10 // Consider fees over the last 10 blocks
+  // };
+  // client.getFeePerGramStats(request, (err, response) => {
+  //   if (err) console.error(err);
+  //   else response.fee_per_gram_stats.forEach(stat => {
+  //     console.log(`Avg: ${stat.average_fee_per_gram}, Min: ${stat.min_fee_per_gram}, Max: ${stat.max_fee_per_gram}`);
+  //   });
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "fee_per_gram_stats": [
+  //     {
+  //       "average_fee_per_gram": 5,
+  //       "min_fee_per_gram": 3,
+  //       "max_fee_per_gram": 10
+  //     }
+  //   ]
+  // }
+  // ```
   rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
 
+ // Attempts to replace an existing transaction with a new one that has a higher fee.
+  //
+  // The `ReplaceByFee` call enables clients to increase the fee of a pending transaction,
+  // potentially speeding up its confirmation by incentivizing miners to prioritize it.
+  //
+  // ### Request Parameters:
+  // - **transaction_id** (required): The ID of the original transaction to replace.
+  // - **fee_increase** (required): The additional fee amount to add, specified in microTari.
+  //   Must be greater than zero.
+  //
+  // ### Input Validation:
+  // - `transaction_id` must correspond to a currently unconfirmed transaction.
+  // - `fee_increase` must be a non-zero `uint64`. Zero or negative values are invalid.
+  //
+  // ### Response Fields:
+  // - **transaction_id**: The transaction ID of the new replacement transaction.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   transaction_id: 123456,
+  //   fee_increase: 5000  // Increase fee by 5,000 microTari
+  // };
+  // client.replaceByFee(request, (err, response) => {
+  //   if (err) console.error("Failed to replace by fee:", err);
+  //   else console.log("Replacement transaction ID:", response.transaction_id);
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "transaction_id": 7891011
+  // }
+  // ```
   rpc ReplaceByFee(ReplaceByFeeRequest) returns (ReplaceByFeeResponse);
 
+  // Allows users to pay a specified fee for spending transaction outputs to given recipients.
+  //
+  // The `UserPayForFee` call enables clients to request that the wallet pays the fee
+  // for one or more transactions identified by their IDs, sending funds to the specified recipients.
+  // This is useful for fee bumping or covering transaction fees on behalf of recipients.
+  //
+  // ### Request Parameters:
+  // - **recipients** (required): A list of transfers, each specifying:
+  //    - `tx_id`: The transaction ID whose outputs will be spent.
+  //    - `fee`: The fee amount in microTari to pay for this transfer.
+  //    - `destination`: The Base58-encoded Tari address of the recipient.
+  //
+  // ### Input Validation:
+  // - Each `tx_id` must correspond to a valid transaction whose outputs can be spent.
+  // - Each `fee` must be a non-negative uint64 specifying the fee to pay.
+  // - Each `destination` must be a valid Base58 Tari address.
+  //
+  // ### Response Fields:
+  // - **results**: A list of `TransferResult` objects, one per requested recipient, each containing:
+  //    - `address`: The recipient address as a string.
+  //    - `transaction_id`: The ID of the newly created transaction (or zero if failed).
+  //    - `is_success`: Boolean indicating if the fee payment transaction succeeded.
+  //    - `failure_message`: A string describing the error if the transaction failed.
+  //    - `transaction_info`: Detailed transaction metadata if available.
+  //
+  // ### Example JavaScript gRPC client usage:
+  // ```javascript
+  // const request = {
+  //   recipients: [
+  //     {
+  //       tx_id: 123,
+  //       fee: 1000,
+  //       destination: "tari1qxyz..."
+  //     },
+  //     {
+  //       tx_id: 456,
+  //       fee: 2000,
+  //       destination: "tari1qabcd..."
+  //     }
+  //   ]
+  // };
+  // client.userPayForFee(request, (err, response) => {
+  //   if (err) console.error("Fee payment failed:", err);
+  //   else {
+  //     response.results.forEach(result => {
+  //       if (result.is_success) {
+  //         console.log(`Fee paid successfully to ${result.address} in tx ${result.transaction_id}`);
+  //       } else {
+  //         console.error(`Failed to pay fee for ${result.address}: ${result.failure_message}`);
+  //       }
+  //     });
+  //   }
+  // });
+  // ```
+  //
+  // ### Sample JSON Response:
+  // ```json
+  // {
+  //   "results": [
+  //     {
+  //       "address": "tari1qxyz...",
+  //       "transaction_id": 789,
+  //       "is_success": true,
+  //       "failure_message": "",
+  //       "transaction_info": {
+  //         "tx_id": 789,
+  //         "source_address": "...",
+  //         "dest_address": "...",
+  //         "status": "Completed",
+  //         "direction": "Outbound",
+  //         "amount": 50000,
+  //         "fee": 1000,
+  //         "is_cancelled": false,
+  //         "timestamp": 1620000000
+  //       }
+  //     },
+  //     {
+  //       "address": "tari1qabcd...",
+  //       "transaction_id": 0,
+  //       "is_success": false,
+  //       "failure_message": "Invalid destination address",
+  //       "transaction_info": null
+  //     }
+  //   ]
+  // }
+  // ```
   rpc UserPayForFee(UserPayForFeeRequest) returns (UserPayForFeeResponse);
 
   rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
-
   rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
   rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
 }
