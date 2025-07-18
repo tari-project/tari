@@ -1,6 +1,29 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+## [4.10.0](https://github.com/tari-project/tari/compare/v4.9.1...v4.10.0) (2025-07-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* only scan in 100 block sections (#7344)
+* remove wallet ffi transport (#7347)
+* add birthday offset to wallet create (#7345)
+* add initial validation flag to wallet state (#7341)
+
+### Features
+
+* add birthday offset to wallet create ([#7345](https://github.com/tari-project/tari/issues/7345)) ([68c996e](https://github.com/tari-project/tari/commit/68c996e66c50022e4f05c35c11f909c77c834b17))
+* add initial validation flag to wallet state ([#7341](https://github.com/tari-project/tari/issues/7341)) ([323e308](https://github.com/tari-project/tari/commit/323e3080548e28961296b03050130a00b3aae8eb))
+* add output hash of inputs to scanning stream ([#7334](https://github.com/tari-project/tari/issues/7334)) ([3ceac84](https://github.com/tari-project/tari/commit/3ceac84bab363db69b98fd6563423f1d55e80ae0))
+* only scan in 10 block sections ([#7344](https://github.com/tari-project/tari/issues/7344)) ([d2e6df9](https://github.com/tari-project/tari/commit/d2e6df99d4b2330fe2131b2cea723cf43bbfa853))
+* remove wallet ffi transport ([#7347](https://github.com/tari-project/tari/issues/7347)) ([422af03](https://github.com/tari-project/tari/commit/422af038d6cc5ebec1ce8fa3a10b06ecdf7be70c))
+
+
+### Bug Fixes
+
+* coinbase detection ([#7337](https://github.com/tari-project/tari/issues/7337)) ([9eb66d4](https://github.com/tari-project/tari/commit/9eb66d40705cfd5024644abc84a8f581a316b185))
+* ffi callbacks ([#7340](https://github.com/tari-project/tari/issues/7340)) ([c83ff6a](https://github.com/tari-project/tari/commit/c83ff6acd3eb1fe77e10f3ee495cf6405be91376))
 
 ### [4.9.1](https://github.com/tari-project/tari/compare/v4.9.0...v4.9.1) (2025-07-16)
 
