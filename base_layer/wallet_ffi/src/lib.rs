@@ -13160,9 +13160,6 @@ mod test {
             let node_identity =
                 NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
             let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
-            let base_node_peer_address_ptr =
-                CString::into_raw(CString::new(node_identity.first_public_address().unwrap().to_string()).unwrap())
-                    as *const c_char;
 
             let source_address_ptr = Box::into_raw(Box::default());
             let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
@@ -13375,7 +13372,6 @@ mod test {
             unblinded_outputs_destroy(unspent_outputs_ptr);
 
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
-            string_destroy(base_node_peer_address_ptr as *mut c_char);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_str as *mut c_char);
@@ -13594,12 +13590,6 @@ mod test {
             // - Wallet peer for Bob (add Alice as a base node peer; same as above)
             let alice_wallet_comms = (*alice_wallet_ptr).wallet.comms.clone();
             let alice_node_identity = alice_wallet_comms.node_identity();
-            let alice_peer_public_key_ptr = Box::into_raw(Box::new(alice_node_identity.public_key().clone()));
-            let alice_peer_address_ptr = CString::into_raw(
-                CString::new(alice_node_identity.first_public_address().unwrap().to_string()).unwrap(),
-            ) as *const c_char;
-            string_destroy(alice_peer_address_ptr as *mut c_char);
-            let _destroyed = Box::from_raw(alice_peer_public_key_ptr);
 
             // Add some contacts
             // - Contact for Alice
