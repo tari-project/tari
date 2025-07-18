@@ -19,6 +19,7 @@ pub struct SyncUtxosByBlockRequest {
 pub struct SyncUtxosByBlockResponse {
     pub blocks: Vec<BlockUtxoInfo>,
     pub has_next_page: bool,
+    pub next_header_to_scan: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Debug, Clone)]
