@@ -213,6 +213,8 @@ impl Wallet {
                 CString::new("").unwrap().into_raw(),
                 ptr::null(),
                 false,
+                CString::new("").unwrap().into_raw(),
+                0,
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,

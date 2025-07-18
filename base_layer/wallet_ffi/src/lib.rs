@@ -6703,6 +6703,7 @@ pub(crate) fn get_wallet_database_path(config: TariCommsConfig) -> PathBuf {
 /// If this is null, then a new master key is created for the wallet.
 /// `dns_seed_name_servers_str` - An optional list of DNS servers to query to get hold of the seed peer list.
 /// `use_dns_sec` - Use DNSSEC when querying the DNS servers.
+/// `wallet_birthday_offset` - The offest that the wallet should use to start scanning is starting from its birthday.
 /// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
 /// called when an inbound transaction is received.
 /// `callback_received_transaction_reply` - The callback function
@@ -6799,6 +6800,7 @@ pub unsafe extern "C" fn wallet_create(
     dns_seed_name_servers_str: *const c_char,
     use_dns_sec: bool,
     http_base_node: *const c_char,
+    wallet_birthday_offset: c_int,
     callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
@@ -7051,6 +7053,11 @@ pub unsafe extern "C" fn wallet_create(
             return ptr::null_mut();
         },
     };
+    let wallet_birthday_offset = if wallet_birthday_offset < 0 {
+        0
+    } else {
+        u16::try_from(wallet_birthday_offset as u64).unwrap_or(2)
+    };
 
     let shutdown = Shutdown::new();
     let wallet_config = WalletConfig {
@@ -7063,6 +7070,7 @@ pub unsafe extern "C" fn wallet_create(
         base_node_service_config: BaseNodeServiceConfig { ..Default::default() },
         network,
         http_server_url: http_base_node,
+        birthday_offset: wallet_birthday_offset,
         ..Default::default()
     };
 
@@ -11772,6 +11780,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11827,6 +11836,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -11950,6 +11960,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12187,6 +12198,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12261,6 +12273,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12347,6 +12360,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12568,6 +12582,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12714,6 +12729,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -12867,6 +12883,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13141,6 +13158,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13422,6 +13440,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -13692,6 +13711,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -14073,6 +14093,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -14144,6 +14165,7 @@ mod test {
                 ptr::null(),
                 true,
                 http_base_node_address,
+                0,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,

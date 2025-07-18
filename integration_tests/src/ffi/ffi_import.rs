@@ -424,7 +424,8 @@ extern "C" {
         dns_seeds_str: *const c_char,
         dns_seed_name_servers_str: *const c_char,
         use_dns_sec: bool,
-
+        http_base_node: *const c_char,
+        wallet_birthday_offset: c_int,
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(
