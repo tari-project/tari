@@ -145,9 +145,10 @@ impl ProcessSupervisor {
             restart_attempts += 1;
             if restart_attempts > self.max_restart_attempts {
                 log::error!("Maximum restart attempts reached, giving up");
-                drop(self
-                    .status_tx
-                    .send(ProcessStatus::Failed("Max restarts exceeded".to_string())));
+                drop(
+                    self.status_tx
+                        .send(ProcessStatus::Failed("Max restarts exceeded".to_string())),
+                );
                 break;
             }
 

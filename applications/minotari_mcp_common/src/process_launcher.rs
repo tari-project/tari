@@ -148,12 +148,14 @@ impl ProcessLauncher {
 
         // Launch the process
         log::debug!("About to spawn process: {:?}", command);
-        let mut child = command
-            .spawn()
-            .map_err(|e| {
-                log::error!("Failed to spawn process: {} (executable: {})", e, executable_path.display());
-                McpError::server_error(format!("Failed to launch process: {}", e))
-            })?;
+        let mut child = command.spawn().map_err(|e| {
+            log::error!(
+                "Failed to spawn process: {} (executable: {})",
+                e,
+                executable_path.display()
+            );
+            McpError::server_error(format!("Failed to launch process: {}", e))
+        })?;
 
         let pid = child.id();
 
@@ -203,10 +205,10 @@ impl ProcessLauncher {
             } else {
                 output.join("\n")
             };
-            
+
             log::error!("Process crashed immediately after launch. PID was: {:?}", pid);
             log::error!("Process output: {}", output_summary);
-            
+
             let error_msg = format!("Process crashed immediately after launch. Output:\n{}", output_summary);
             drop(self.status_tx.send(ProcessLaunchStatus::Failed(error_msg.clone())));
             return Err(McpError::server_error(error_msg));
@@ -468,7 +470,11 @@ impl TariProcessLauncher {
             "-p".to_string(),
             format!("base_node.grpc_address={}", multiaddr_format),
             "-p".to_string(),
-            "base_node.grpc_server_allow_methods=get_version,get_tip_info,get_sync_info,get_network_status,get_peers,get_header_by_hash,get_blocks,get_network_difficulty,get_tokens_in_circulation,get_mempool_stats,get_mempool_transactions,get_new_block_template,get_new_block_template_with_coinbases,submit_transaction,submit_block".to_string(),
+            "base_node.grpc_server_allow_methods=get_version,get_tip_info,get_sync_info,get_network_status,get_peers,\
+             get_header_by_hash,get_blocks,get_network_difficulty,get_tokens_in_circulation,get_mempool_stats,\
+             get_mempool_transactions,get_new_block_template,get_new_block_template_with_coinbases,submit_transaction,\
+             submit_block"
+                .to_string(),
             "--non-interactive-mode".to_string(),
         ];
 
