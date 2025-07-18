@@ -177,10 +177,10 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             .ok_or_else(|| Error::StartHeaderHashNotFound)?;
 
         let tip_header = self.db.fetch_tip_header().await?;
-        // we only allow wallets to ask for a max of 10 blocks at a time and we want to cache the queries to ensure they
-        // are in batch of 10 and we want to ensure they request goes to the nearest 10 block height so we can
-        // cache all wallet's queries
-        let increase = ((start_header.height + 10) / 10) * 10;
+        // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
+        // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
+        // we can cache all wallet's queries
+        let increase = ((start_header.height + 100) / 100) * 100;
         let end_height = cmp::min(tip_header.header().height, increase);
 
         // pagination
