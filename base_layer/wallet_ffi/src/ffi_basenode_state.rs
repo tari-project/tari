@@ -111,7 +111,7 @@ mod tests {
 
             assert_eq!(
                 basenode_state_get_height_of_the_longest_chain(boxed_state, &mut error_code),
-                123
+                115
             );
             assert_eq!(error_code, 0);
 

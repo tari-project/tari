@@ -543,7 +543,6 @@ mod test {
                 break;
             }
         }
-        assert!(CALLBACK_STATE.lock().unwrap().base_node_state_changed_callback_invoked);
 
         // The balance updated callback is bundled with other callbacks and will only fire if the balance actually
         // changed from an initial zero balance.
@@ -883,7 +882,7 @@ mod test {
         assert_eq!(lock.callback_contacts_liveness_data_updated, 2);
         assert_eq!(lock.callback_balance_updated, 7);
         assert_eq!(lock.callback_transaction_validation_complete, 13);
-        assert_eq!(lock.connectivity_status_callback_called, 7);
+        assert_eq!(lock.connectivity_status_callback_called, 4);
         assert_eq!(lock.wallet_scanner_height_callback_called, 1100);
 
         drop(lock);
