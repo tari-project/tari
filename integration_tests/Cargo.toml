@@ -11,7 +11,7 @@ minotari_app_grpc = { path = "../applications/minotari_app_grpc" }
 minotari_app_utilities = { path = "../applications/minotari_app_utilities" }
 minotari_node = { path = "../applications/minotari_node", features = ["metrics"] }
 minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
-tari_crypto = { version = "0.22.0" }
+tari_crypto = { version = "0.22.1" }
 tari_common = { path = "../common" }
 tari_common_sqlite = { path = "../common_sqlite" }
 tari_common_types = { path = "../base_layer/common_types" }

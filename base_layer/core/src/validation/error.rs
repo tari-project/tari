@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::HashOutput;
+use tari_common_types::{epoch::VnEpoch, types::HashOutput};
+use tari_sidechain::SidechainProofValidationError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
@@ -124,8 +125,16 @@ pub enum ValidationError {
     ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
+    #[error("Sidechain ID knowledge proof not valid for template registration")]
+    TemplateInvalidSidechainIdKnowledgeProof,
+    #[error("Author signature not valid for template registration")]
+    TemplateAuthorSignatureNotValid,
+    #[error("Sidechain ID knowledge proof not valid for confidential output")]
+    ConfidentialOutputSidechainIdKnowledgeProofNotValid,
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
+    #[error("Sidechain ID knowledge proof not valid for validator node registration")]
+    ValidatorNodeInvalidSidechainIdKnowledgeProof,
     #[error(
         "An unexpected number of timestamps were provided to the header validator. THIS IS A BUG. Expected \
          {expected}, got {actual}"
@@ -137,6 +146,28 @@ pub enum ValidationError {
     CovenantTooLarge { max_size: usize, actual_size: usize },
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
+    #[error("Sidechain proof invalid: `{0}`")]
+    SidechainProofInvalid(#[from] SidechainProofValidationError),
+    #[error("Sidechain eviction proof submitted for unregistered validator {validator_pk}")]
+    SidechainEvictionProofValidatorNotFound { validator_pk: String },
+    #[error(
+        "Sidechain eviction proof invalid: given epoch {epoch} is greater than the epoch at tip height {tip_height}"
+    )]
+    SidechainEvictionProofInvalidEpoch { epoch: VnEpoch, tip_height: u64 },
+    #[error("Validator node already registered: {public_key}")]
+    ValidatorNodeAlreadyRegistered { public_key: String },
+    #[error("Validator node {public_key} not registered: {details}")]
+    ValidatorNodeNotRegistered { public_key: String, details: String },
+    #[error("Validator registration {public_key} invalid: max epoch {max_epoch} < current epoch {current_epoch}")]
+    ValidatorNodeRegistrationMaxEpoch {
+        public_key: String,
+        current_epoch: VnEpoch,
+        max_epoch: VnEpoch,
+    },
+    #[error("{output_type} output rule disallows the spend: {details}")]
+    OutputSpendRuleDisallow { output_type: OutputType, details: String },
+    #[error("Output type '{output_type}' does not match sidechain data")]
+    OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -191,10 +222,22 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
             err @ ValidationError::InvalidValidatorNodeSignature |
+            err @ ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof |
+            err @ ValidationError::TemplateInvalidSidechainIdKnowledgeProof |
+            err @ ValidationError::TemplateAuthorSignatureNotValid |
+            err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } |
-            err @ ValidationError::InvalidSerializedPublicKey(_) => Some(BanReason {
+            err @ ValidationError::InvalidSerializedPublicKey(_) |
+            err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
+            err @ ValidationError::SidechainProofInvalid(_) |
+            err @ ValidationError::SidechainEvictionProofInvalidEpoch { .. } |
+            err @ ValidationError::ValidatorNodeAlreadyRegistered { .. } |
+            err @ ValidationError::ValidatorNodeNotRegistered { .. } |
+            err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
+            err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
+            err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),

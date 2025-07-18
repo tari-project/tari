@@ -148,30 +148,18 @@ impl TransactionInput {
     }
 
     /// Populate the spent output data fields
-    pub fn add_output_data(
-        &mut self,
-        version: TransactionOutputVersion,
-        features: OutputFeatures,
-        commitment: CompressedCommitment,
-        script: TariScript,
-        sender_offset_public_key: CompressedPublicKey,
-        covenant: Covenant,
-        encrypted_data: EncryptedData,
-        metadata_signature: ComAndPubSignature,
-        rangeproof_hash: FixedHash,
-        minimum_value_promise: MicroMinotari,
-    ) {
+    pub fn add_output_data(&mut self, output: TransactionOutput) {
         self.spent_output = SpentOutput::OutputData {
-            version,
-            features,
-            commitment,
-            script,
-            sender_offset_public_key,
-            covenant,
-            encrypted_data,
-            metadata_signature,
-            rangeproof_hash,
-            minimum_value_promise,
+            version: output.version,
+            features: output.features,
+            commitment: output.commitment,
+            script: output.script,
+            sender_offset_public_key: output.sender_offset_public_key,
+            covenant: output.covenant,
+            encrypted_data: output.encrypted_data,
+            metadata_signature: output.metadata_signature,
+            rangeproof_hash: output.proof.map(|p| p.hash()).unwrap_or_else(FixedHash::zero),
+            minimum_value_promise: output.minimum_value_promise,
         };
     }
 

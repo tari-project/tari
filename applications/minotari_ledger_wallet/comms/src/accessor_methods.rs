@@ -589,13 +589,35 @@ pub fn ledger_get_one_sided_metadata_signature(
         ));
     }
 
+    // Check for integrated address support
+    if receiver_address
+        .features()
+        .contains(tari_common_types::tari_address::TariAddressFeatures::PAYMENT_ID)
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Processing integrated address with embedded payment ID"
+        );
+    }
+
     let mut data = Vec::new();
     data.extend_from_slice(&u64::from(network.as_byte()).to_le_bytes());
     data.extend_from_slice(&u64::from(txo_version).to_le_bytes());
     data.extend_from_slice(&sender_offset_key_index.to_le_bytes());
     data.extend_from_slice(&value.to_le_bytes());
     data.extend_from_slice(&commitment_mask.to_vec());
-    data.extend_from_slice(&receiver_address.to_vec());
+
+    // Add address size prefix and address data
+    let address_bytes = receiver_address.to_vec();
+    let address_size = u16::try_from(address_bytes.len()).map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "Address size {} exceeds maximum u16 value",
+            address_bytes.len()
+        ))
+    })?;
+    data.extend_from_slice(&address_size.to_le_bytes());
+    data.extend_from_slice(&address_bytes);
+
     data.extend_from_slice(&message.to_vec());
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetOneSidedMetadataSignature, data).execute() {

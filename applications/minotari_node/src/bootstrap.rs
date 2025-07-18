@@ -278,6 +278,7 @@ where B: BlockchainBackend + 'static
             wallet_query_service_config.port,
             db.clone(),
             handles.expect_handle::<StateMachineHandle>(),
+            handles.expect_handle::<MempoolHandle>(),
             shutdown_signal.clone(),
         );
         match wallet_http_server.start::<B>().await {

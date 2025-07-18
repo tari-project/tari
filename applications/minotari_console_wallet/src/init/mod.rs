@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// This is here because this crate is used as a lib and a binary, mainly to support Cucumber tests. In future, something
+// should be done so this is not needed.
 #![allow(dead_code, unused)]
-
-use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
+use std::{fs, io, path::PathBuf, sync::Arc, time::Instant};
 
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
 use dialoguer::Input as InputPrompt;
-use digest::crypto_common::rand_core::OsRng;
 use log::*;
-use minotari_app_utilities::{consts, identity_management::setup_node_identity};
+use minotari_app_utilities::consts;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_spend_key, ledger_get_view_key};
 use minotari_wallet::{
@@ -38,58 +38,30 @@ use minotari_wallet::{
         database::{WalletBackend, WalletDatabase},
         sqlite_utilities::initialize_sqlite_database_backends,
     },
-    wallet::{derive_comms_secret_key, read_or_create_master_seed, read_or_create_wallet_type},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
 };
-use rand::prelude::SliceRandom;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_common::{
-    configuration::{
-        bootstrap::{grpc_default_port, prompt, ApplicationType},
-        MultiaddrList,
-        Network,
-    },
+    configuration::{bootstrap::prompt, MultiaddrList},
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
-    key_branches::TransactionKeyManagerBranch,
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{Peer, PeerFeatures},
-    types::CommsPublicKey,
-    NodeIdentity,
-};
-use tari_core::{
-    consensus::ConsensusManager,
-    transactions::{
-        transaction_components::TransactionError,
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, LEDGER_NOT_SUPPORTED},
-        CryptoFactories,
-    },
-};
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInterface},
-    mnemonic::MnemonicLanguage,
-};
-use tari_p2p::{auto_update::AutoUpdateConfig, peer_seeds::SeedPeer, PeerSeedsConfig, TransportType};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
+use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
 
-use crate::{
-    cli::Cli,
-    utils::db::{get_custom_base_node_peer_from_db, set_custom_base_node_peer_in_db},
-    wallet_modes::{PeerConfig, WalletMode},
-    ApplicationConfig,
-};
+use crate::{cli::Cli, wallet_modes::WalletMode, ApplicationConfig};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
 const TARI_WALLET_PASSWORD: &str = "MINOTARI_WALLET_PASSWORD";
@@ -156,7 +128,7 @@ fn get_new_passphrase(prompt: &str, confirm: &str) -> Result<SafePassword, ExitE
             println!("  Enter anything else if you changed your mind and want to cancel");
 
             let mut input = "".to_string();
-            std::io::stdin().read_line(&mut input);
+            let _unused = std::io::stdin().read_line(&mut input);
 
             match input.trim().to_lowercase().as_str() {
                 // Choose a different passphrase
@@ -224,33 +196,6 @@ fn display_password_feedback(passphrase: &SafePassword) -> bool {
     }
 }
 
-/// Gets the password provided by command line argument or environment variable if available.
-/// Otherwise prompts for the password to be typed in.
-pub fn get_or_prompt_password(
-    arg_password: Option<SafePassword>,
-    config_password: Option<SafePassword>,
-) -> Result<SafePassword, ExitError> {
-    if let Some(passphrase) = arg_password {
-        return Ok(passphrase);
-    }
-
-    let env = std::env::var_os(TARI_WALLET_PASSWORD);
-    if let Some(p) = env {
-        let env_password = p
-            .into_string()
-            .map_err(|_| ExitError::new(ExitCode::IOError, "Failed to convert OsString into String"))?;
-        return Ok(env_password.into());
-    }
-
-    if let Some(passphrase) = config_password {
-        return Ok(passphrase);
-    }
-
-    let password = prompt_password("Wallet password: ")?;
-
-    Ok(password)
-}
-
 fn prompt_password(prompt: &str) -> Result<SafePassword, ExitError> {
     let password = prompt_password_stdout(prompt).map_err(|e| ExitError::new(ExitCode::IOError, e))?;
 
@@ -289,85 +234,6 @@ pub async fn change_password(
     })
 }
 
-/// Populates the PeerConfig struct from:
-/// 1. The custom peer in the wallet config if it exists
-/// 2. The custom peer in the wallet db if it exists
-/// 3. The detected local base node if any
-/// 4. The service peers defined in config they exist
-/// 5. The peer seeds defined in config
-pub async fn set_peer_and_get_base_node_peer_config(
-    config: &WalletConfig,
-    wallet: &mut WalletSqlite,
-    non_interactive_mode: bool,
-) -> Result<PeerConfig, ExitError> {
-    let mut use_custom_base_node_peer = false;
-    let mut selected_base_node = match config.custom_base_node {
-        Some(ref custom) => SeedPeer::from_str(custom)
-            .map(|node| Some(Peer::from(node)))
-            .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed custom base node: {}", err)))?,
-        None => {
-            if let Some(custom_base_node_peer) = get_custom_base_node_peer_from_db(wallet) {
-                use_custom_base_node_peer = true;
-                Some(custom_base_node_peer)
-            } else {
-                None
-            }
-        },
-    };
-
-    // If the user has not explicitly set a base node in the config, we try detect one
-    if !non_interactive_mode && config.custom_base_node.is_none() && !use_custom_base_node_peer {
-        if let Some(detected_node) = detect_local_base_node(config.network).await {
-            match selected_base_node {
-                Some(ref base_node) if base_node.public_key == detected_node.public_key => {
-                    // Skip asking because it's already set
-                },
-                Some(_) | None => {
-                    println!(
-                        "Local Base Node detected with public key {} and address {}",
-                        detected_node.public_key,
-                        detected_node
-                            .addresses
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    );
-                    if prompt(
-                        "Would you like to use this base node? IF YOU DID NOT START THIS BASE NODE YOU SHOULD SELECT \
-                         NO (Y/n)",
-                    ) {
-                        let address = detected_node.addresses.first().ok_or_else(|| {
-                            ExitError::new(ExitCode::ConfigError, "No address found for detected base node")
-                        })?;
-                        set_custom_base_node_peer_in_db(wallet, &detected_node.public_key, address)?;
-                        selected_base_node = Some(detected_node.into());
-                    }
-                },
-            }
-        }
-    }
-    let peer_seeds = wallet.comms.peer_manager().get_seed_peers().await.map_err(|err| {
-        ExitError::new(
-            ExitCode::InterfaceError,
-            format!("Could not get seed peers from peer manager: {}", err),
-        )
-    })?;
-    // config
-    let base_node_peers = config
-        .base_node_service_peers
-        .iter()
-        .map(|s| SeedPeer::from_str(s))
-        .map(|r| r.map(Peer::from))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| ExitError::new(ExitCode::ConfigError, format!("Malformed base node peer: {}", err)))?;
-
-    let peer_config = PeerConfig::new(selected_base_node, base_node_peers, peer_seeds);
-    debug!(target: LOG_TARGET, "base node peer config: {:?}", peer_config);
-
-    Ok(peer_config)
-}
-
 /// Determines which mode the wallet should run in.
 pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
     // Recovery mode
@@ -403,7 +269,7 @@ pub async fn init_wallet(
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
-    non_interactive_mode: bool,
+    _non_interactive_mode: bool,
     wallet_type: Option<WalletType>,
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
@@ -478,7 +344,7 @@ pub async fn init_wallet(
         e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
 
-    info!(
+    debug!(
         target: LOG_TARGET,
         "Wallet started in {}ms", now.elapsed().as_millis()
     );
@@ -500,38 +366,6 @@ pub async fn init_wallet(
     };
 
     Ok(wallet)
-}
-
-async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
-    use minotari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, Empty};
-    let addr = format!(
-        "http://127.0.0.1:{}",
-        grpc_default_port(ApplicationType::BaseNode, network)
-    );
-    debug!(target: LOG_TARGET, "Checking for local base node at {}", addr);
-
-    let mut node_conn = match BaseNodeClient::connect(addr).await.ok() {
-        Some(conn) => conn,
-        None => {
-            debug!(target: LOG_TARGET, "No local base node detected");
-            return None;
-        },
-    };
-    let resp = node_conn.identify(Empty {}).await.ok()?;
-    let identity = resp.get_ref();
-    let public_key = CommsPublicKey::from_canonical_bytes(&identity.public_key).ok()?;
-    let addresses = identity
-        .public_addresses
-        .iter()
-        .filter_map(|s| Multiaddr::from_str(s).ok())
-        .collect::<Vec<_>>();
-    debug!(
-        target: LOG_TARGET,
-        "Local base node found with pk={} and addresses={}",
-        public_key.to_hex(),
-        addresses.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",")
-    );
-    Some(SeedPeer::new(public_key, addresses))
 }
 
 fn setup_identity_from_db<D: WalletBackend + 'static>(
@@ -579,47 +413,9 @@ fn setup_identity_from_db<D: WalletBackend + 'static>(
 }
 
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
-pub async fn start_wallet(
-    wallet: &mut WalletSqlite,
-    base_nodes: &[Peer],
-    wallet_mode: &WalletMode,
-) -> Result<(), ExitError> {
-    debug!(target: LOG_TARGET, "Setting base node peer");
-
-    if base_nodes.is_empty() {
-        return Err(ExitError::new(
-            ExitCode::WalletError,
-            "No base nodes configured to connect to",
-        ));
-    }
-    let selected_base_node = base_nodes.choose(&mut OsRng).expect("base_nodes is not empty");
-    let net_address = selected_base_node
-        .addresses
-        .best()
-        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node has no address!"))?;
-
-    wallet
-        .set_base_node_peer(
-            selected_base_node.public_key.clone(),
-            Some(net_address.address().clone()),
-            Some(base_nodes.to_vec()),
-        )
-        .await
-        .map_err(|e| {
-            ExitError::new(
-                ExitCode::WalletError,
-                format!("Error setting wallet base node peer. {}", e),
-            )
-        })?;
-
+pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -> Result<(), ExitError> {
     // Restart transaction protocols if not running in script or command modes
     if !matches!(wallet_mode, WalletMode::Command(_)) && !matches!(wallet_mode, WalletMode::Script(_)) {
-        // NOTE: https://github.com/tari-project/tari/issues/5227
-        debug!("revalidating all transactions");
-        if let Err(e) = wallet.transaction_service.revalidate_rejected_transactions().await {
-            error!(target: LOG_TARGET, "Failed to revalidate rejected transactions: {}", e);
-        }
-
         debug!("restarting transaction protocols");
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
             error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);

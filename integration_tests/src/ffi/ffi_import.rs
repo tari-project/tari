@@ -317,10 +317,7 @@ extern "C" {
         error_out: *mut c_int,
     ) -> c_uint;
     pub fn completed_transaction_is_outbound(tx: *mut TariCompletedTransaction, error_out: *mut c_int) -> bool;
-    pub fn completed_transaction_get_confirmations(
-        tx: *mut TariCompletedTransaction,
-        error_out: *mut c_int,
-    ) -> c_ulonglong;
+
     pub fn completed_transaction_get_cancellation_reason(
         tx: *mut TariCompletedTransaction,
         error_out: *mut c_int,
@@ -516,12 +513,6 @@ extern "C" {
         msg: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
-    pub fn wallet_set_base_node_peer(
-        wallet: *mut TariWallet,
-        public_key: *mut TariPublicKey,
-        address: *const c_char,
-        error_out: *mut c_int,
-    ) -> bool;
     pub fn wallet_upsert_contact(wallet: *mut TariWallet, contact: *mut TariContact, error_out: *mut c_int) -> bool;
     pub fn wallet_remove_contact(wallet: *mut TariWallet, contact: *mut TariContact, error_out: *mut c_int) -> bool;
     pub fn balance_get_available(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong;
@@ -614,9 +605,7 @@ extern "C" {
     pub fn wallet_is_recovery_in_progress(wallet: *mut TariWallet, error_out: *mut c_int) -> bool;
     pub fn wallet_start_recovery(
         wallet: *mut TariWallet,
-        base_node_public_keys: *mut TariPublicKeys,
         recovery_progress_callback: unsafe extern "C" fn(context: *mut c_void, u8, u64, u64),
-        recovered_output_message: *const c_char,
         error_out: *mut c_int,
     ) -> bool;
     pub fn wallet_set_one_sided_payment_message(

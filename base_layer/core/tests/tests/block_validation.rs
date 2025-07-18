@@ -262,7 +262,7 @@ fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
 
 #[tokio::test]
 async fn inputs_are_not_malleable() {
-    let _ = env_logger::try_init();
+    // let _ = env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let mut blockchain = TestBlockchain::with_genesis("GB").await;
     let blocks = blockchain.builder();
 
@@ -940,7 +940,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::BlockTooLarge { actual_weight, max_weight } if
-            actual_weight == 405 && max_weight == 400
+            actual_weight == 414 && max_weight == 400
         ),
         "{}",
         err

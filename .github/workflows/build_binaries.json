@@ -9,10 +9,10 @@
   },
   {
     "name": "linux-arm64",
-    "runs-on": "ubuntu-latest",
+    "runs-on": "ubuntu-22.04-arm",
     "rust": "stable",
     "target": "aarch64-unknown-linux-gnu",
-    "cross": true,
+    "cross": false,
     "flags": "--features libtor --workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests",
     "build_metric": true
   },

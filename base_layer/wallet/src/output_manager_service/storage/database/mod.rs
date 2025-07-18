@@ -134,6 +134,10 @@ where T: OutputManagerBackend + 'static
         Self { db: Arc::new(db) }
     }
 
+    pub fn get_last_scanned_height(&self) -> Result<Option<u64>, OutputManagerStorageError> {
+        self.db.get_last_scanned_height()
+    }
+
     pub fn add_unspent_output(&self, output: DbWalletOutput) -> Result<(), OutputManagerStorageError> {
         self.db.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
             output.commitment.clone(),
@@ -207,8 +211,12 @@ where T: OutputManagerBackend + 'static
 
     /// This method is called when a transaction is finished being negotiated. This will fully encumber the outputs
     /// against a pending transaction.
-    pub fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        self.db.confirm_encumbered_outputs(tx_id)
+    pub fn confirm_encumbered_outputs(
+        &self,
+        tx_id: TxId,
+        change_outputs: Vec<DbWalletOutput>,
+    ) -> Result<(), OutputManagerStorageError> {
+        self.db.confirm_encumbered_outputs(tx_id, &change_outputs)
     }
 
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
@@ -497,7 +505,7 @@ fn log_error<T>(req: DbKey, err: OutputManagerStorageError) -> Result<T, OutputM
         target: LOG_TARGET,
         "Database access error on request: {}: {}",
         req,
-        err.to_string()
+        err
     );
     Err(err)
 }

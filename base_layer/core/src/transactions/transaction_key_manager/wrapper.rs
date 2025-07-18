@@ -38,14 +38,13 @@ use tokio::sync::RwLock;
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        encrypted_data::PaymentId,
+        payment_id::PaymentId,
         EncryptedData,
         KernelFeatures,
         RangeProofType,
         TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
-        TransactionOutput,
         TransactionOutputVersion,
     },
     transaction_key_manager::{
@@ -410,13 +409,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     async fn try_output_key_recovery(
         &self,
-        output: &TransactionOutput,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .try_output_key_recovery(output, custom_recovery_key_id)
+            .try_output_key_recovery(commitment, encrypted_data, custom_recovery_key_id)
             .await
     }
 
@@ -592,6 +592,30 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .read()
             .await
             .stealth_address_script_spending_key(commitment_mask_key_id, spend_key)
+            .await
+    }
+
+    async fn encrypted_key(
+        &self,
+        key_id: &TariKeyId,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<Vec<u8>, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .encrypted_key(key_id, encryption_key_id)
+            .await
+    }
+
+    async fn import_encrypted_key(
+        &self,
+        encrypted: Vec<u8>,
+        encryption_key_id: Option<&TariKeyId>,
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .import_encrypted_key(encrypted, encryption_key_id)
             .await
     }
 }

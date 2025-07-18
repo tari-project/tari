@@ -28,7 +28,14 @@ use std::{
 use config::Config;
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{serializers, CommonConfig, ConfigList, Network, StringList},
+    configuration::{
+        bootstrap::wallet_http_service_default_port,
+        serializers,
+        CommonConfig,
+        ConfigList,
+        Network,
+        StringList,
+    },
     ConfigurationError,
     DefaultConfigLoader,
     SubConfigPath,
@@ -168,19 +175,10 @@ impl Default for WalletHttpServiceConfig {
         let port = wallet_http_service_default_port(Network::get_current());
         Self {
             port,
-            external_address: Some(Url::parse(format!("http://127.0.0.1:{port}").as_str()).unwrap()),
+            external_address: Some(
+                Url::parse(format!("http://127.0.0.1:{port}").as_str()).expect("This should be a valid URL"),
+            ),
         }
-    }
-}
-
-pub fn wallet_http_service_default_port(network: Network) -> u16 {
-    match network {
-        Network::MainNet => 9000,
-        Network::StageNet => 9001,
-        Network::NextNet => 9002,
-        Network::LocalNet => 9003,
-        Network::Igor => 9004,
-        Network::Esmeralda => 9005,
     }
 }
 

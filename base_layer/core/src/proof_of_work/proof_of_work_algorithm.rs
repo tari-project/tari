@@ -27,7 +27,6 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 /// Indicates the algorithm used to mine a block
 #[repr(u8)]
@@ -61,13 +60,6 @@ impl PowAlgorithm {
     }
 }
 
-/// Parse error for `PowAlgorithm`
-#[derive(Debug, Error)]
-pub enum PowAlgorithmParseError {
-    #[error("unknown pow algorithm type {0}")]
-    UnknownType(String),
-}
-
 impl TryFrom<u64> for PowAlgorithm {
     type Error = String;
 
@@ -82,14 +74,17 @@ impl TryFrom<u64> for PowAlgorithm {
 }
 
 impl FromStr for PowAlgorithm {
-    type Err = PowAlgorithmParseError;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "RandomX" | "randomx" | "random_x" | "RandomXM" | "randomxm" | "monero_random_x" => Ok(Self::RandomXM),
-            "sha" | "sha3" | "SHA3" | "sha3X" | "Sha3X" | "SHA3X" => Ok(Self::Sha3x),
-            "RandomXT" | "randomxt" | "tari_random_x" => Ok(Self::RandomXT),
-            other => Err(PowAlgorithmParseError::UnknownType(other.into())),
+        let s_trimmed = s.replace("\"", "").replace("\'", "").replace(" ", "").to_uppercase();
+        match s_trimmed.as_str() {
+            "RANDOMXM" | "RANDOM_XM" | "MONERO_RANDOM_X" | "RANDOMX" | "RANDOM_X" | "RANDOMXMONERO" => {
+                Ok(Self::RandomXM)
+            },
+            "SHA" | "SHA3" | "SHA3X" => Ok(Self::Sha3x),
+            "RANDOMXT" | "RANDOM_XT" | "TARI_RANDOM_X" | "RANDOMXTARI" => Ok(Self::RandomXT),
+            _ => Err(anyhow::Error::msg(format!("Unknown pow algorithm type: {}", s))),
         }
     }
 }
@@ -102,5 +97,65 @@ impl Display for PowAlgorithm {
             PowAlgorithm::RandomXT => "RandomXTari",
         };
         fmt.write_str(algo)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json;
+
+    use super::*;
+
+    #[test]
+    fn test_pow_algorithm_from_str_variants() {
+        // Test valid variants for RandomXM
+        let randomxm_variants = vec![
+            "RandomXM",
+            "RandomX",
+            "randomx",
+            "random_x",
+            "randomxm",
+            "RANDOM_XM",
+            "monero_random_x",
+        ];
+        for variant in randomxm_variants {
+            let algo = PowAlgorithm::from_str(variant).expect("Failed to parse RandomXM variant");
+            assert_eq!(algo, PowAlgorithm::RandomXM);
+        }
+
+        // Test valid variants for Sha3x
+        let sha3x_variants = vec![
+            "Sha3x",
+            "\"Sha3x\"",
+            "\'Sha3x\'",
+            "Sha 3 x",
+            "sha",
+            "sha3",
+            "SHA3",
+            "sha3X",
+            "Sha3X",
+            "SHA3X",
+        ];
+        for variant in sha3x_variants {
+            let algo = PowAlgorithm::from_str(variant).expect("Failed to parse Sha3x variant");
+            assert_eq!(algo, PowAlgorithm::Sha3x);
+        }
+
+        // Test valid variants for RandomXT
+        let randomxt_variants = vec!["RandomXT", "randomxt", "tari_random_x", "RANDOM_XT"];
+        for variant in randomxt_variants {
+            let algo = PowAlgorithm::from_str(variant).expect("Failed to parse RandomXT variant");
+            assert_eq!(algo, PowAlgorithm::RandomXT);
+        }
+    }
+
+    #[test]
+    fn test_pow_algorithm_serialization() {
+        for algo in [PowAlgorithm::Sha3x, PowAlgorithm::RandomXM, PowAlgorithm::RandomXT] {
+            let serialized = serde_json::to_string(&algo).expect("Failed to serialize PowAlgorithm");
+            let deserialized: PowAlgorithm =
+                serde_json::from_str(&serialized).expect("Failed to deserialize PowAlgorithm");
+            assert_eq!(deserialized, algo);
+        }
     }
 }

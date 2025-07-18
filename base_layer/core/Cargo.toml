@@ -19,8 +19,9 @@ base_node = [
     "base_node_proto",
     "monero",
     "randomx-rs",
+    "tari_comms/rpc",
 ]
-base_node_proto = []
+base_node_proto = ["tari_comms/rpc"]
 benches = ["base_node"]
 ledger = ["minotari_ledger_wallet_comms"]
 metrics = ["tari_metrics"]
@@ -46,6 +47,8 @@ tari_utilities = { workspace = true, features = ["borsh"] }
 tari_key_manager = { workspace = true, features = ["key_manager_service"] }
 tari_common_sqlite = { workspace = true }
 tari_hashing = { workspace = true }
+tari_sidechain = { workspace = true }
+
 async-trait = { version = "0.1.50" }
 bincode = "1.1.4"
 bitflags = { version = "2.4", features = ["serde"] }
@@ -95,10 +98,13 @@ tiny-keccak = { package = "tari-tiny-keccak", version = "2.0.2", features = [
     "keccak",
 ] }
 dirs-next = "1.0.2"
-hickory-proto = { version = "0.25.2" }
+hickory-proto = { version = "0.26.0-alpha.1" }
 anyhow = "1.0.53"
 jmt = { version = "0.11.0", features = ["mocks"] }
 url = "2.5.4"
+serde_valid = "1.0.5"
+utoipa = "5.3.1"
+
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }

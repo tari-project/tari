@@ -40,7 +40,7 @@ use crate::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -430,6 +430,7 @@ where KM: TransactionKeyManagerInterface
                                 .as_ref()
                                 .map(|pay_id| pay_id.user_data_as_bytes())
                                 .unwrap_or_default(),
+                            sent_output_hashes: Vec::new(),
                         };
                         if let Some(recipient) = self.recipient.clone() {
                             payment_id.transaction_info_set_amount(recipient.amount);

@@ -22,22 +22,13 @@
 
 use std::time::Duration;
 
-use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroMinotari;
-use tokio::sync::{broadcast, watch};
+use tokio::sync::broadcast;
 
 use crate::util::watch::Watch;
 
 #[derive(Debug, Clone)]
 pub enum UtxoScannerEvent {
-    ConnectingToBaseNode(NodeId),
-    ConnectedToBaseNode(NodeId, Duration),
-    ConnectionFailedToBaseNode {
-        peer: NodeId,
-        num_retries: usize,
-        retry_limit: usize,
-        error: String,
-    },
     ScanningRoundFailed {
         num_retries: usize,
         retry_limit: usize,
@@ -47,6 +38,8 @@ pub enum UtxoScannerEvent {
     Progress {
         current_height: u64,
         tip_height: u64,
+        latency: Duration,
+        current_node: String,
     },
     /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
     Completed {
@@ -54,9 +47,9 @@ pub enum UtxoScannerEvent {
         num_recovered: u64,
         value_recovered: MicroMinotari,
         time_taken: Duration,
+        latency: Duration,
+        current_node: String,
     },
-    /// Scanning process has failed and scanning process has exited
-    ScanningFailed,
 }
 
 #[derive(Clone)]
@@ -89,13 +82,5 @@ impl UtxoScannerHandle {
 
     pub fn set_recovery_message(&mut self, note: String) {
         self.recovery_message_watch.send(note);
-    }
-
-    pub(crate) fn get_one_sided_payment_message_watcher(&self) -> watch::Receiver<String> {
-        self.one_sided_message_watch.get_receiver()
-    }
-
-    pub(crate) fn get_recovery_message_watcher(&self) -> watch::Receiver<String> {
-        self.recovery_message_watch.get_receiver()
     }
 }

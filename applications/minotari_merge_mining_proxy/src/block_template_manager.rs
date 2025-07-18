@@ -34,7 +34,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             TransactionKernel,
             TransactionOutput,
@@ -130,7 +130,7 @@ impl BlockTemplateManager<'_> {
                         b
                     },
                     Err(err) => {
-                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err.to_string());
+                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err);
                         return Err(err);
                     },
                 }
@@ -166,7 +166,7 @@ impl BlockTemplateManager<'_> {
                     val
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err.to_string());
+                    error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err);
                     return Err(err);
                 },
             };

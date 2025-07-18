@@ -342,11 +342,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: proto::types::OutputFeatures) -> Result<Self, Self::Error> {
-        let sidechain_feature = features
-            .sidechain_feature
-            .and_then(|features| features.side_chain_feature)
-            .map(SideChainFeature::try_from)
-            .transpose()?;
+        let sidechain_feature = features.sidechain_feature.map(SideChainFeature::try_from).transpose()?;
 
         let output_type = features
             .output_type

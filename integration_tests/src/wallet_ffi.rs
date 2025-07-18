@@ -30,7 +30,7 @@ use std::{
 use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::encrypted_data::PaymentId;
+use tari_core::transactions::transaction_components::payment_id::PaymentId;
 
 use super::ffi::{
     Balance,
@@ -96,11 +96,6 @@ impl WalletFFI {
         let tari_address = self.get_address();
         let emoji_id = tari_address.emoji_id();
         emoji_id.as_string()
-    }
-
-    pub fn add_base_node(&self, public_key: String, address: String) {
-        let node_public_key = ffi::PublicKey::from_hex(public_key);
-        self.wallet.lock().unwrap().add_base_node_peer(node_public_key, address);
     }
 
     pub fn destroy(&mut self) {

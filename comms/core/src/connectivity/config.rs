@@ -52,6 +52,24 @@ pub struct ConnectivityConfig {
     /// The closest number of peer connections to maintain; connections above the threshold will be removed
     /// (default: disabled)
     pub maintain_n_closest_connections_only: Option<usize>,
+    /// Target number of active peer connections to maintain
+    /// Default: 8
+    pub target_connection_count: usize,
+    /// Enable proactive peer dialing to maintain target connections
+    /// Default: true
+    pub proactive_dialing_enabled: bool,
+    /// Multiplier for calculating how many peers to dial based on success rate
+    /// Default: 2.5
+    pub dialing_multiplier: f32,
+    /// Window for tracking connection success rates for adaptive dialing
+    /// Default: 5 minutes
+    pub success_rate_tracking_window: Duration,
+    /// Number of consecutive failures before activating circuit breaker
+    /// Default: 3
+    pub circuit_breaker_failure_threshold: usize,
+    /// Time to wait before retrying a circuit-broken peer
+    /// Default: 2 minutes
+    pub circuit_breaker_retry_interval: Duration,
 }
 
 impl Default for ConnectivityConfig {
@@ -66,6 +84,12 @@ impl Default for ConnectivityConfig {
             connection_tie_break_linger: Duration::from_secs(2),
             expire_peer_last_seen_duration: Duration::from_secs(24 * 60 * 60),
             maintain_n_closest_connections_only: None,
+            target_connection_count: 8,
+            proactive_dialing_enabled: true,
+            dialing_multiplier: 2.5,
+            success_rate_tracking_window: Duration::from_secs(5 * 60),
+            circuit_breaker_failure_threshold: 3,
+            circuit_breaker_retry_interval: Duration::from_secs(2 * 60),
         }
     }
 }

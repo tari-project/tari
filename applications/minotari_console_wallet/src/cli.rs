@@ -31,9 +31,9 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Parser, Subcommand};
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{epoch::VnEpoch, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
+use tari_core::transactions::tari_amount::{self, MicroMinotari};
 use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
@@ -104,6 +104,9 @@ pub struct Cli {
     /// Path to the libtor data directory
     #[clap(short = 'z', long, parse(from_os_str))]
     pub libtor_data_dir: Option<PathBuf>,
+    /// Skip wallet recovery
+    #[clap(long)]
+    pub skip_recovery: bool,
 }
 
 impl ConfigOverrideProvider for Cli {
@@ -153,6 +156,8 @@ pub enum CliCommands {
     PreMineSpendTx(PreMineSpendAggregateTransactionArgs),
     PreMineSpendBackupUtxo(PreMineSpendBackupUtxoArgs),
     SendOneSidedToStealthAddress(SendMinotariArgs),
+    ReplaceByFee(ReplaceByFeeArgs),
+    UserPayForFee(UserPayForFeeArgs),
     MakeItRain(MakeItRainArgs),
     CoinSplit(CoinSplitArgs),
     DiscoverPeer(DiscoverPeerArgs),
@@ -162,13 +167,9 @@ pub enum CliCommands {
     ImportTx(ImportTxArgs),
     ExportSpentUtxos(ExportUtxosArgs),
     CountUtxos,
-    SetBaseNode(SetBaseNodeArgs),
-    SetCustomBaseNode(SetBaseNodeArgs),
-    ClearCustomBaseNode,
     InitShaAtomicSwap(SendMinotariArgs),
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
-    RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
     CreateTlsCerts,
     Sync(SyncArgs),
@@ -177,6 +178,9 @@ pub enum CliCommands {
     ShowPayRef(ShowPayRefArgs),
     FindPayRef(FindPayRefArgs),
     ListTx,
+    PrepareOneSidedTransactionForSigning(PrepareOneSidedTransactionForSigningArgs),
+    SignOneSidedTransaction(SignOneSidedTransactionArgs),
+    BroadcastSignedOneSidedTransaction(BroadcastSignedOneSidedTransactionArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -185,11 +189,51 @@ pub struct DiscoverPeerArgs {
 }
 
 #[derive(Debug, Args, Clone)]
+pub struct PrepareOneSidedTransactionForSigningArgs {
+    pub amount: MicroMinotari,
+    pub destination: TariAddress,
+    #[clap(short, long, default_value = "<No message>")]
+    pub payment_id: String,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct SignOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+    #[clap(short, long)]
+    pub output_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct BroadcastSignedOneSidedTransactionArgs {
+    #[clap(short, long)]
+    pub input_file: PathBuf,
+}
+
+#[derive(Debug, Args, Clone)]
 pub struct SendMinotariArgs {
     pub amount: MicroMinotari,
     pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
     pub payment_id: String,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct ReplaceByFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    #[clap(short, long)]
+    pub fee_increase: MicroMinotari,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UserPayForFeeArgs {
+    #[clap(short, long)]
+    pub tx_id: u64,
+    pub fee: MicroMinotari,
+    pub destination: TariAddress,
 }
 
 #[derive(Debug, Args, Clone)]
@@ -465,7 +509,12 @@ pub struct RegisterValidatorNodeArgs {
     pub amount: MicroMinotari,
     pub validator_node_public_key: UniPublicKey,
     pub validator_node_public_nonce: UniPublicKey,
-    pub validator_node_signature: Vec<u8>,
+    #[clap(long, parse(try_from_str = parse_hex), required = true)]
+    pub validator_node_signature: Vec<Vec<u8>>,
+    pub validator_node_claim_public_key: UniPublicKey,
+    pub epoch: VnEpoch,
+    #[clap(long, parse(try_from_str = parse_hex), required = false)]
+    pub sidechain_deployment_key: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Registering VN")]
     pub payment_id: String,
 }

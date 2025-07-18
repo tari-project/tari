@@ -36,7 +36,9 @@ use tari_crypto::hash_domain;
 mod error;
 pub use error::BlockError;
 
+#[cfg(feature = "base_node")]
 mod block;
+#[cfg(feature = "base_node")]
 pub use block::{Block, BlockBuilder, BlockValidationError, NewBlock};
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]

@@ -23,22 +23,33 @@
 use std::collections::HashSet;
 
 use log::*;
-use tari_common_types::types::FixedHash;
+use tari_common_types::epoch::VnEpoch;
 use tari_utilities::hex::Hex;
 
 use crate::{
+    blocks::BlockHeader,
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{TransactionError, TransactionInput, TransactionOutput},
+        transaction_components::{
+            OutputType,
+            SideChainId,
+            SpentOutput,
+            TransactionError,
+            TransactionInput,
+            ValidatorNodeRegistration,
+        },
     },
     validation::{
         helpers::{
+            check_eviction_proof,
             check_input_is_utxo,
             check_not_duplicate_txo,
             check_tari_encrypted_data_byte_size,
             check_tari_script_byte_size,
+            check_validator_node_exit,
+            check_validator_node_registration,
         },
         ValidationError,
     },
@@ -60,38 +71,28 @@ impl AggregateBodyChainLinkedValidator {
     pub fn validate<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
-        height: u64,
+        header: &BlockHeader,
         db: &B,
     ) -> Result<AggregateBody, ValidationError> {
-        let constants = self.consensus_manager.consensus_constants(height);
+        let constants = self.consensus_manager.consensus_constants(header.height);
 
-        self.validate_consensus(body, db, constants)?;
-        let body = self.validate_input_and_maturity(body, db, constants, height)?;
+        self.validate_consensus(body, db)?;
+        let body = self.validate_body(body, db, constants, header)?;
 
         Ok(body)
     }
 
-    fn validate_consensus<B: BlockchainBackend>(
-        &self,
-        body: &AggregateBody,
-        db: &B,
-        constants: &ConsensusConstants,
-    ) -> Result<(), ValidationError> {
+    fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
         validate_excess_sig_not_in_db(body, db)?;
-
-        for output in body.outputs() {
-            check_validator_node_registration_utxo(constants, output)?;
-        }
-
         Ok(())
     }
 
-    fn validate_input_and_maturity<B: BlockchainBackend>(
+    fn validate_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
-        height: u64,
+        header: &BlockHeader,
     ) -> Result<AggregateBody, ValidationError> {
         // inputs may be "slim", only containing references to outputs
         // so we need to resolve those references, creating a new body in the process
@@ -99,12 +100,12 @@ impl AggregateBodyChainLinkedValidator {
         // UNCHECKED: sorting has been checked by the AggregateBodyInternalConsistencyValidator
         let body = AggregateBody::new_sorted_unchecked(inputs, body.outputs().to_vec(), body.kernels().to_vec());
 
-        validate_input_maturity(&body, height)?;
-        check_inputs_are_utxos(db, &body)?;
-        check_outputs(db, constants, &body)?;
+        validate_input_maturity(&body, header.height)?;
+        check_inputs_are_spendable(db, constants, header.height, &body)?;
+        check_outputs(db, constants, &body, header.height)?;
         verify_no_duplicated_inputs_outputs(&body)?;
         check_total_burned(&body)?;
-        verify_timelocks(&body, height)?;
+        verify_timelocks(&body, header.height)?;
 
         Ok(body)
     }
@@ -117,18 +118,23 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
     let mut inputs: Vec<TransactionInput> = body.inputs().clone();
     for input in &mut inputs {
         if input.is_compact() {
-            let output = match db.fetch_output(&input.output_hash()) {
+            let input_output_hash = input.output_hash();
+            // TODO: we clone the block body 3 times in validation and the inputs 1 more time here. We also discard
+            //      the hydrated block in all cases expect block sync. This is unnecessarily slow and wasteful.
+            //      SIMPLE REFACTOR: populate/hydrate the block inputs (which is owned, no cloning necessary) before
+            //      performing validation. If hydration fails with UnknownInput, the block is invalid.
+            let output = match db.fetch_output(&input_output_hash) {
                 Ok(val) => match val {
                     Some(output_mined_info) => output_mined_info.output,
                     None => {
-                        let input_output_hash = input.output_hash();
+                        // Input is found in this block
                         if let Some(found) = body.outputs().iter().find(|o| o.hash() == input_output_hash) {
                             found.clone()
                         } else {
                             debug!(
                                 target: LOG_TARGET,
                                 "Input not found in database or block, commitment: {}, hash: {}",
-                                input.commitment()?.to_hex(), input_output_hash.to_hex()
+                                input.commitment()?.to_hex(), input_output_hash,
                             );
                             return Err(ValidationError::UnknownInput);
                         }
@@ -137,22 +143,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                 Err(e) => return Err(ValidationError::from(e)),
             };
 
-            let rp_hash = match output.proof {
-                Some(proof) => proof.hash(),
-                None => FixedHash::zero(),
-            };
-            input.add_output_data(
-                output.version,
-                output.features,
-                output.commitment,
-                output.script,
-                output.sender_offset_public_key,
-                output.covenant,
-                output.encrypted_data,
-                output.metadata_signature,
-                rp_hash,
-                output.minimum_value_promise,
-            );
+            input.add_output_data(output);
         }
     }
 
@@ -187,33 +178,13 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
     Ok(())
 }
 
-fn check_validator_node_registration_utxo(
-    consensus_constants: &ConsensusConstants,
-    utxo: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    if let Some(reg) = utxo.features.validator_node_registration() {
-        if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
-                min: consensus_constants.validator_node_registration_min_deposit_amount(),
-                actual: utxo.minimum_value_promise,
-            });
-        }
-        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
-            return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
-                min: consensus_constants.validator_node_registration_min_lock_height(),
-                actual: utxo.features.maturity,
-            });
-        }
-
-        if !reg.is_valid_signature_for(&[]) {
-            return Err(ValidationError::InvalidValidatorNodeSignature);
-        }
-    }
-    Ok(())
-}
-
 /// This function checks that all inputs in the blocks are valid UTXO's to be spent
-fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
+fn check_inputs_are_spendable<B: BlockchainBackend>(
+    db: &B,
+    constants: &ConsensusConstants,
+    current_height: u64,
+    body: &AggregateBody,
+) -> Result<(), ValidationError> {
     let mut not_found_inputs = Vec::new();
     let mut output_hashes = None;
 
@@ -243,6 +214,8 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) ->
                 return Err(err);
             },
         }
+
+        check_output_feature_rules_for_input(db, constants, current_height, input)?;
     }
 
     if !not_found_inputs.is_empty() {
@@ -260,14 +233,18 @@ pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
     body: &AggregateBody,
+    height: u64,
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     let max_encrypted_data_size = constants.max_extra_encrypted_data_byte_size();
     for output in body.outputs() {
+        let epoch = constants.block_height_to_epoch(height);
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
         check_not_duplicate_txo(db, output)?;
-        check_validator_node_registration_utxo(constants, output)?;
+        check_validator_node_registration(db, output, epoch)?;
+        check_validator_node_exit(db, output, epoch)?;
+        check_eviction_proof(db, output, constants)?;
     }
     Ok(())
 }
@@ -327,6 +304,87 @@ fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), Val
             "AggregateBody has a min spend height higher than the current tip"
         );
         return Err(ValidationError::MaturityError);
+    }
+    Ok(())
+}
+
+/// If applicable, check any spend rules for output features including sidechain features
+fn check_output_feature_rules_for_input<B: BlockchainBackend>(
+    db: &B,
+    constants: &ConsensusConstants,
+    current_height: u64,
+    input: &TransactionInput,
+) -> Result<(), ValidationError> {
+    match &input.spent_output {
+        SpentOutput::OutputHash(_) => unreachable!("check_output_feature_rules_for_input: SpentOutput not hydrated"),
+        SpentOutput::OutputData { features, .. } => {
+            match features.output_type {
+                OutputType::Standard | OutputType::Coinbase => {
+                    // no special spend rules
+                },
+
+                OutputType::ValidatorNodeRegistration => {
+                    // Prevents validator node registration output from being spent if the validator is still active.
+                    // Effectively locking the funds in the UTXO until the validator exits/is evicted.
+                    let reg = features.validator_node_registration().ok_or_else(|| {
+                        ValidationError::OutputTypeNotMatchSidechainData {
+                            output_type: features.output_type,
+                            details: "Expected OutputType::ValidatorNodeRegistration to have validator node \
+                                      registration sidechain data"
+                                .to_string(),
+                        }
+                    })?;
+                    let epoch = constants.block_height_to_epoch(current_height);
+                    check_validator_node_registration_spend(db, reg, features.sidechain_id(), epoch)?
+                },
+                OutputType::ValidatorNodeExit => {
+                    // should we disallow this? Since this UTXO has been processed w.r.t the active validator set, there
+                    // is no reason to keep it in the UTXO set
+                },
+                OutputType::Burn => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "Burn outputs cannot be spent".to_string(),
+                    });
+                },
+                OutputType::CodeTemplateRegistration => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "CodeTemplateRegistration cannot be spent".to_string(),
+                    });
+                },
+                OutputType::SidechainCheckpoint => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "SidechainCheckpoint cannot be spent".to_string(),
+                    });
+                },
+                OutputType::SidechainProof => {
+                    return Err(ValidationError::OutputSpendRuleDisallow {
+                        output_type: features.output_type,
+                        details: "SidechainProof cannot be spent".to_string(),
+                    });
+                },
+            }
+        },
+    }
+    Ok(())
+}
+
+fn check_validator_node_registration_spend<B: BlockchainBackend>(
+    db: &B,
+    reg: &ValidatorNodeRegistration,
+    sidechain_id: Option<&SideChainId>,
+    epoch: VnEpoch,
+) -> Result<(), ValidationError> {
+    if db.validator_node_is_active(sidechain_id.map(|id| id.public_key()), epoch, reg.public_key())? {
+        return Err(ValidationError::OutputSpendRuleDisallow {
+            output_type: OutputType::ValidatorNodeRegistration,
+            details: format!(
+                "Validator node registration {} is active and cannot be spent",
+                reg.public_key()
+            ),
+        });
     }
     Ok(())
 }

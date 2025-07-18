@@ -11,26 +11,34 @@ name: Build docker images
       - 'build-all-*'
       - 'build-dockers-*'
   schedule:
-    - cron: '05 00 * * *'
+    - cron: '05 00 * * 0-5'  # Nightly build, 5min past midnight, Sunday to Friday
+    - cron: '23 01 * * 0-5'  # MainNet Debug - Nightly build at 01h23, Sunday to Friday
   workflow_dispatch:
     inputs:
-#      toolchain:
-#        type: string
-#        description: 'Rust toolchain'
       version:
         type: string
-        description: 'override image tag/version'
+        description: 'override minotari image tag/version'
       tag_alias:
+        default: latest-adhoc
         type: string
-        description: 'image tag alias'
+        description: 'minotari image tag alias'
       platforms:
         default: linux/amd64
-        description: 'docker platform(s)'
+        description: 'docker target build platform(s)'
         type: choice
         options:
           - linux/amd64
           - linux/arm64
-          - linux/arm64, linux/amd64
+          - linux/arm64,linux/amd64
+      tari_network:
+        default: esmeralda
+        description: 'target testNet'
+        type: choice
+        options:
+          - esmeralda
+          - nextnet
+          - mainnet
+          - igor
       build_items:
         default: minotari_all
         description: 'image(s) to build'
@@ -59,18 +67,21 @@ permissions:
   contents: read
 
 jobs:
-  builds_envs_setup:
+  base_builds_envs_setup:
     runs-on: ubuntu-latest
     outputs:
       toolchain: ${{ steps.envs_setup.outputs.toolchain }}
       platforms: ${{ steps.envs_setup.outputs.platforms }}
       version: ${{ steps.envs_setup.outputs.version }}
       tag_alias: ${{ steps.envs_setup.outputs.tag_alias }}
+      tari_network: ${{ steps.envs_setup.outputs.tari_network }}
       build_items: ${{ steps.envs_setup.outputs.build_items }}
 
     steps:
       - name: envs setup
         id: envs_setup
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
         shell: bash
         run: |
           echo "Workflow triggered by ${{ github.actor }} for ${{ github.event_name }}"
@@ -82,53 +93,67 @@ jobs:
           echo "toolchain=${TOOLCHAIN:-${{ env.toolchain_default }}}" >> $GITHUB_OUTPUT
           if [[ "${{ github.ref }}" =~ ^refs/tags/v* ]] && [ "${{ github.event_name }}" != "workflow_dispatch" ] ; then
             echo "Tagged Build - Build everything"
-            VERSION="${{ github.ref_name }}_$(date -u '+%Y%m%d')_${VSHA_SHORT}"
+            #VERSION="${{ github.ref_name }}_$(date -u '+%Y%m%d')_${VSHA_SHORT}"
+            VERSION="${{ github.ref_name }}"
             echo "Version used - ${VERSION}"
-            echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
+            echo "platforms=linux/arm64,linux/amd64" >> $GITHUB_OUTPUT
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "tag_alias=latest" >> $GITHUB_OUTPUT
             echo "build_items=all" >> $GITHUB_OUTPUT
           fi
           if [[ "${{ github.ref }}" =~ ^refs/heads/build-dockers-* ]] || [[ "${{ github.ref }}" =~ ^refs/heads/build-all-* ]] ; then
             echo "Branch Build - limited dual arch"
-            echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
-            echo "tag_alias=latest-testing" >> $GITHUB_OUTPUT
+            echo "platforms=linux/arm64,linux/amd64" >> $GITHUB_OUTPUT
+            echo "tag_alias=latest-adhoc" >> $GITHUB_OUTPUT
+            echo "tari_network=esmeralda" >> $GITHUB_OUTPUT
             #echo "build_items=xmrig" >> $GITHUB_OUTPUT
             #echo "build_items=3rdparty" >> $GITHUB_OUTPUT
-            #echo "build_items=minotari_all" >> $GITHUB_OUTPUT
-            echo "build_items=all" >> $GITHUB_OUTPUT
+            echo "build_items=minotari_all" >> $GITHUB_OUTPUT
           fi
           if [ "${{ github.event_name }}" == "workflow_dispatch" ] ; then
             echo "Manual Build - selective"
             echo "platforms=${{ github.event.inputs.platforms }}" >> $GITHUB_OUTPUT
             echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
             echo "tag_alias=${{ github.event.inputs.tag_alias }}" >> $GITHUB_OUTPUT
+            echo "tari_network=${{ github.event.inputs.tari_network }}" >> $GITHUB_OUTPUT
             echo "build_items=${{ github.event.inputs.build_items }}" >> $GITHUB_OUTPUT
           fi
           if [ "${{ github.event_name }}" == "schedule" ] ; then
+            echo "Scheduled builds"
             if [[ $(date +%u) -eq 7 ]] ; then
-              echo "Weekly Build - limited dual arch"
-              echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
+              echo "Weekly Build - limited dual arch - esmeralda"
+              echo "platforms=linux/arm64,linux/amd64" >> $GITHUB_OUTPUT
               echo "tag_alias=latest-weekly" >> $GITHUB_OUTPUT
+              echo "tari_network=esmeralda" >> $GITHUB_OUTPUT
               echo "build_items=minotari_all" >> $GITHUB_OUTPUT
             else
-              echo "Daily Build - limited"
+              echo "Nightly Build - limited amd64 - esmeralda"
               echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-              echo "tag_alias=latest-daily" >> $GITHUB_OUTPUT
+              echo "tag_alias=latest-nightly" >> $GITHUB_OUTPUT
+              echo "tari_network=esmeralda" >> $GITHUB_OUTPUT
               echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+            fi
+            echo "Schedule: ${SCHEDULE} - $(date)"
+            if [[ "${SCHEDULE}" == "23 01 * * 0-5" ]]; then
+              echo "Nightly CI Build - limited amd64 - mainNet - minotari_node"
+              echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+              echo "tag_alias=nightly-ci-node" >> $GITHUB_OUTPUT
+              echo "tari_network=mainnet" >> $GITHUB_OUTPUT
+              echo "build_items=minotari_node" >> $GITHUB_OUTPUT
             fi
           fi
 
   builds_run:
-    needs: builds_envs_setup
+    needs: base_builds_envs_setup
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/build_dockers_workflow.yml
     secrets: inherit
     with:
-      toolchain: ${{ needs.builds_envs_setup.outputs.toolchain }}
-      platforms: ${{ needs.builds_envs_setup.outputs.platforms }}
-      version: ${{ needs.builds_envs_setup.outputs.version }}
-      tag_alias: ${{ needs.builds_envs_setup.outputs.tag_alias }}
-      build_items: ${{ needs.builds_envs_setup.outputs.build_items }}
+      toolchain: ${{ needs.base_builds_envs_setup.outputs.toolchain }}
+      platforms: ${{ needs.base_builds_envs_setup.outputs.platforms }}
+      version: ${{ needs.base_builds_envs_setup.outputs.version }}
+      tag_alias: ${{ needs.base_builds_envs_setup.outputs.tag_alias }}
+      tari_network: ${{ needs.base_builds_envs_setup.outputs.tari_network }}
+      build_items: ${{ needs.base_builds_envs_setup.outputs.build_items }}

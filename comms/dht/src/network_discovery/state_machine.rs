@@ -513,8 +513,6 @@ pub struct DhtNetworkDiscoveryRoundInfo {
     pub sync_peers: Vec<NodeId>,
     // New fields:
     pub phase: DiscoveryPhase,
-    pub round_number: Option<usize>, // Current round/iteration number if applicable
-    pub total_rounds: Option<usize>, // Total rounds/iterations planned for this phase, if applicable
 }
 
 impl DhtNetworkDiscoveryRoundInfo {

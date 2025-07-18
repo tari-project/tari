@@ -2,6 +2,143 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [4.9.1](https://github.com/tari-project/tari/compare/v4.9.0...v4.9.1) (2025-07-16)
+
+
+### Features
+
+* add transport dial timeout ([#7312](https://github.com/tari-project/tari/issues/7312)) ([0ab5252](https://github.com/tari-project/tari/commit/0ab52522c85fd35b5ccaf17f9a99611d340c77f3))
+* enable caching of http requests ([#7325](https://github.com/tari-project/tari/issues/7325)) ([db97351](https://github.com/tari-project/tari/commit/db973514ddd55475e8091e1e14abaec65b500b04))
+* replace by fee and user pay for fee commands ([#7284](https://github.com/tari-project/tari/issues/7284)) ([a877048](https://github.com/tari-project/tari/commit/a877048936562b305429d477a8deda0369cb85c6))
+* update search-utxo with payref info ([#7319](https://github.com/tari-project/tari/issues/7319)) ([24ae263](https://github.com/tari-project/tari/commit/24ae263755ca60929d0df13150754e0d9b05e3bf))
+
+
+### Bug Fixes
+
+* blocking main tokio thread when reading last latency ([#7320](https://github.com/tari-project/tari/issues/7320)) ([4b8745e](https://github.com/tari-project/tari/commit/4b8745ed5a671227281b2ef0dff7dab4feef22b5))
+* http wallet json_rpc route size limit ([#7324](https://github.com/tari-project/tari/issues/7324)) ([5dcaccd](https://github.com/tari-project/tari/commit/5dcaccdea535a06f89412cc69194844e44b11ff1))
+
+
+## [4.9.0](https://github.com/tari-project/tari/compare/v4.8.0...v4.9.0) (2025-07-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* full http wallet refactor (#7215)
+
+### Features
+
+* add concurrency when contacting seed peers while performing seed strap ([#7294](https://github.com/tari-project/tari/issues/7294)) ([453ebb6](https://github.com/tari-project/tari/commit/453ebb691c9b64877c1325d049e628cb6517f11d))
+* add minotari_utils ([#7157](https://github.com/tari-project/tari/issues/7157)) ([1ffeef7](https://github.com/tari-project/tari/commit/1ffeef769c41c5f73cdc8b7ce0ca8a5cea3d4f72))
+* message signing exposed via gRPC ([#7299](https://github.com/tari-project/tari/issues/7299)) ([2493ee3](https://github.com/tari-project/tari/commit/2493ee36ff7b3577901ff81d0e52d66e1369edb9))
+* modify soft disconnect criteria ([#7307](https://github.com/tari-project/tari/issues/7307)) ([35b5db7](https://github.com/tari-project/tari/commit/35b5db767c893f860a8ebc661526227c8299b9b1))
+* full http wallet refactor ([#7215](https://github.com/tari-project/tari/issues/7215)) ([482a70e](https://github.com/tari-project/tari/commit/482a70e41cf06d7c2e09014a90f9f39510c0d807))
+
+
+### Bug Fixes
+
+* dont start second utxo scanner for recovery ([#7298](https://github.com/tari-project/tari/issues/7298)) ([32dbe08](https://github.com/tari-project/tari/commit/32dbe082b2c23d50b48886f89ec03508d1a5385e))
+* freebsd build process failure ([#7302](https://github.com/tari-project/tari/issues/7302)) ([e3891f1](https://github.com/tari-project/tari/commit/e3891f1c1b5226b8f9b8d81991031f55b5aef21d))
+* increase http server limit ([#7314](https://github.com/tari-project/tari/issues/7314)) ([433942a](https://github.com/tari-project/tari/commit/433942ae40b22adfe5b7381bc2debf2020495479))
+* scanned height tracking ([#7301](https://github.com/tari-project/tari/issues/7301)) ([e0cc004](https://github.com/tari-project/tari/commit/e0cc004acc24ad58706bf5ad89b6f2b1460e3374))
+* seed peers being disconnected while seedstrap is in progress ([#7303](https://github.com/tari-project/tari/issues/7303)) ([ea52f7f](https://github.com/tari-project/tari/commit/ea52f7f97309e6206e09d9eecee460f07de030aa))
+* view wallet scan height ([#7313](https://github.com/tari-project/tari/issues/7313)) ([adbfcef](https://github.com/tari-project/tari/commit/adbfcef2858ad7e1d21001ecf7ae75331ef3c3a2))
+* wallet sync command ([#7305](https://github.com/tari-project/tari/issues/7305)) ([081969a](https://github.com/tari-project/tari/commit/081969a339cb2b79695f094eae38baf6fc320910))
+
+
+## [4.8.0](https://github.com/tari-project/tari/compare/v4.7.0...v4.8.0) (2025-07-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* expand gRPC readiness status to contain current processed block info (#7262)
+* payref migration and indexes, add grpc query via output hash (#7266)
+* improve grpc token supply (#7261)
+
+### Features
+
+* add payref background task ([#7280](https://github.com/tari-project/tari/issues/7280)) ([a2b8a93](https://github.com/tari-project/tari/commit/a2b8a93d256759169db183e254e930051cd382bb))
+* auto zero value coinbase reward calculation ([#7259](https://github.com/tari-project/tari/issues/7259)) ([607729a](https://github.com/tari-project/tari/commit/607729a6b7d5791f023803c2724b3311aa4d98c7))
+* expand gRPC readiness status to contain current processed block info ([#7262](https://github.com/tari-project/tari/issues/7262)) ([ee9f76d](https://github.com/tari-project/tari/commit/ee9f76da2cf5d7b6cd6d14492e5267429b7dc137))
+* improve connection stats ([#7285](https://github.com/tari-project/tari/issues/7285)) ([bf3cc16](https://github.com/tari-project/tari/commit/bf3cc164c99c9e32fc42ac31d3dae91919260aa5))
+* improve grpc token supply ([#7261](https://github.com/tari-project/tari/issues/7261)) ([b072a6f](https://github.com/tari-project/tari/commit/b072a6f6c13ff489248355fc01e034a20043f128))
+* new ffi method to get payment_id from tari address ([#7282](https://github.com/tari-project/tari/issues/7282)) ([37fd3e4](https://github.com/tari-project/tari/commit/37fd3e48d7f31a1180912c04ee6277e9f664f474))
+
+
+### Bug Fixes
+
+* correctly validate coinbase transactions for recovered wallets ([#7278](https://github.com/tari-project/tari/issues/7278)) ([3d5a043](https://github.com/tari-project/tari/commit/3d5a0439d1cfb43e39355d34ecdf5af90c50fc14))
+* payref migration and indexes, add grpc query via output hash ([#7266](https://github.com/tari-project/tari/issues/7266)) ([3ceea6e](https://github.com/tari-project/tari/commit/3ceea6e738a2e027ed83c7992c8d40f9c8a2b825))
+
+
+### [4.7.0](https://github.com/tari-project/tari/compare/v4.6.2...v4.7.0) (2025-06-26)
+
+
+### Features
+
+* offline signing ([#7122](https://github.com/tari-project/tari/issues/7122)) ([86539c8](https://github.com/tari-project/tari/commit/86539c858cd452a3194267f97c34f2a2324d9659))
+
+
+### Bug Fixes
+
+* get_all_completed_transactions limit issues ([#7267](https://github.com/tari-project/tari/issues/7267)) ([da3f82d](https://github.com/tari-project/tari/commit/da3f82db3108357adb34bcacaf240be9bf9a8bbd))
+* ledger builds ([#7260](https://github.com/tari-project/tari/issues/7260)) ([d3676ef](https://github.com/tari-project/tari/commit/d3676ef8a921c50968bc57bbfded8c77e072c565))
+
+### [4.6.2](https://github.com/tari-project/tari/compare/v4.6.1...v4.6.2) (2025-06-24)
+
+
+### Bug Fixes
+
+* remove long timeout in interactive_tx till tx is persisted into db ([#7252](https://github.com/tari-project/tari/issues/7252)) ([3a78aba](https://github.com/tari-project/tari/commit/3a78aba2a5ed8c764525687ede683cc726ac880a))
+
+### [4.6.1](https://github.com/tari-project/tari/compare/v4.6.0...v4.6.1) (2025-06-23)
+
+
+### Features
+
+* readiness status during initialization ([#7240](https://github.com/tari-project/tari/issues/7240)) ([078cad8](https://github.com/tari-project/tari/commit/078cad82efab14e79df411fa00c350b909402bda))
+
+
+### Bug Fixes
+
+* database cannot resize on jmt write ([#7244](https://github.com/tari-project/tari/issues/7244)) ([1df5cfe](https://github.com/tari-project/tari/commit/1df5cfeb91472cac482169b2e18605b540242845))
+* minotari_merge_mining_proxy returns Tari block hash even if submit_to_origin is disabled ([#7242](https://github.com/tari-project/tari/issues/7242)) ([d21f99c](https://github.com/tari-project/tari/commit/d21f99ce982b534b976f08c0808bd59c6d3aff54))
+* 
+## [4.6.0](https://github.com/tari-project/tari/compare/v4.5.0...v4.6.0) (2025-06-20)
+
+
+### Features
+
+* add gprc methods to get fees ([#7235](https://github.com/tari-project/tari/issues/7235)) ([83969f3](https://github.com/tari-project/tari/commit/83969f3a46f92fe6cab59b0ae035a34dc8a46853))
+* limit txs searches ([#7236](https://github.com/tari-project/tari/issues/7236)) ([6c6f47f](https://github.com/tari-project/tari/commit/6c6f47f2d2da250e077c8c88722ad6148b166e00))
+
+
+### Bug Fixes
+
+* grpc interactive transaction transfer ([#7234](https://github.com/tari-project/tari/issues/7234)) ([15471bc](https://github.com/tari-project/tari/commit/15471bc981be9f3c5493e747aaf32f2600ce665d))
+* imported transaction directions ([#7233](https://github.com/tari-project/tari/issues/7233)) ([5de7d7d](https://github.com/tari-project/tari/commit/5de7d7dcfc4c28677a673938097f14989db55b48))
+* peer dialling ([#7218](https://github.com/tari-project/tari/issues/7218)) ([5a2b934](https://github.com/tari-project/tari/commit/5a2b934cd5c886dd495edc296adff4c4bd6476d2))
+
+
+## [4.5.0](https://github.com/tari-project/tari/compare/v4.4.1...v4.5.0) (2025-06-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* ensure payref persists during recovery (#7225)
+
+### Features
+
+* add payref to grpc outputs ([#7216](https://github.com/tari-project/tari/issues/7216)) ([0e322e1](https://github.com/tari-project/tari/commit/0e322e1f160811a676f64e784ede7983abcddcca))
+* ensure payref persists during recovery ([#7225](https://github.com/tari-project/tari/issues/7225)) ([2737a14](https://github.com/tari-project/tari/commit/2737a1404753cb416400a76e122f4839a7625dda))
+* integrated address support for Ledger ([#7198](https://github.com/tari-project/tari/issues/7198)) ([7ab0cd5](https://github.com/tari-project/tari/commit/7ab0cd5f2e440a4d42b5385d544f85253c805339))
+
+
+### Bug Fixes
+
+* fix scanner service when connectivity offline ([#7223](https://github.com/tari-project/tari/issues/7223)) ([e0ab8d1](https://github.com/tari-project/tari/commit/e0ab8d15df31520e1723d0000f555470d745a333))
+
+
 ### [4.1.1](https://github.com/tari-project/tari/compare/v4.4.0...v4.1.1) (2025-06-12)
 
 

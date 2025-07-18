@@ -29,7 +29,8 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             status: completed.status.to_string(),
             direction: completed.direction.to_string(),
             amount: completed.amount.as_u64(),
-            payment_id: completed.payment_id.to_bytes(),
+            raw_payment_id: completed.payment_id.to_bytes(),
+            user_payment_id: completed.payment_id.user_data_as_bytes(),
         },
         TransactionWrapper::Outbound(outbound) => TransactionEvent {
             event,
@@ -39,7 +40,8 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             status: outbound.status.to_string(),
             direction: "outbound".to_string(),
             amount: outbound.amount.as_u64(),
-            payment_id: vec![],
+            raw_payment_id: outbound.payment_id.to_bytes(),
+            user_payment_id: outbound.payment_id.user_data_as_bytes(),
         },
         TransactionWrapper::Inbound(inbound) => TransactionEvent {
             event,
@@ -49,7 +51,8 @@ pub fn convert_to_transaction_event(event: String, source: TransactionWrapper) -
             status: inbound.status.to_string(),
             direction: "inbound".to_string(),
             amount: inbound.amount.as_u64(),
-            payment_id: vec![],
+            raw_payment_id: inbound.payment_id.to_bytes(),
+            user_payment_id: inbound.payment_id.user_data_as_bytes(),
         },
     }
 }

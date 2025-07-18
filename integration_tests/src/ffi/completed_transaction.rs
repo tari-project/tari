@@ -184,19 +184,6 @@ impl CompletedTransaction {
         is_outbound
     }
 
-    pub fn get_confirmations(&self) -> u64 {
-        let confirmations_cnt;
-        let mut error = 0;
-        unsafe {
-            confirmations_cnt = ffi_import::completed_transaction_get_confirmations(self.ptr, &mut error);
-            if error > 0 {
-                println!("completed_transaction_get_confirmations error {}", error);
-                panic!("completed_transaction_get_confirmations error");
-            }
-        }
-        confirmations_cnt
-    }
-
     pub fn get_cancellation_reason(&self) -> i32 {
         let reason;
         let mut error = 0;

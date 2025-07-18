@@ -21,48 +21,44 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryInto,
     time::{Duration, Instant},
 };
 
+use anyhow::anyhow;
 use chrono::{DateTime, Utc};
-use futures::StreamExt;
 use log::*;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::HashOutput,
+    types::{BlockHash, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::RpcClientLease,
-    traits::OrOptional,
-    types::CommsPublicKey,
-    Minimized,
-    PeerConnection,
-};
 use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcClient,
-    blocks::BlockHeader,
-    proto::base_node::SyncUtxosByBlockRequest,
+    base_node::rpc::models::MinimalUtxoSyncInfo,
+    one_sided::shared_secret_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{encrypted_data::PaymentId, TransactionOutput, WalletOutput},
+        transaction_components::{payment_id::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
+        transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
+use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
-use tokio::sync::broadcast;
+use tari_utilities::{hex::Hex, ByteArray};
+use tokio::{sync::broadcast, time::sleep};
 
 use crate::{
-    connectivity_service::WalletConnectivityInterface,
+    client::http_client_factory::HttpClientFactory,
     error::WalletError,
     storage::database::WalletBackend,
-    transaction_service::error::{TransactionServiceError, TransactionStorageError},
+    transaction_service::{
+        error::{TransactionServiceError, TransactionStorageError},
+        protocols::check_faux_transaction_status::SAFETY_HEIGHT_MARGIN,
+    },
     utxo_scanner_service::{
-        error::UtxoScannerError,
         handle::UtxoScannerEvent,
         service::{ScannedBlock, UtxoScannerResources, SCANNED_BLOCK_CACHE_SIZE},
         uxto_scanner_service_builder::UtxoScannerMode,
@@ -72,103 +68,106 @@ use crate::{
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
-pub struct UtxoScannerTask<TBackend, TWalletConnectivity> {
-    pub(crate) resources: UtxoScannerResources<TBackend, TWalletConnectivity>,
+struct SyncResult {
+    final_height: u64,
+    num_recovered: u64,
+    scanned_blocks: u64,
+    value_recovered: MicroMinotari,
+    elapsed: Duration,
+    latency: Duration,
+    node: String,
+}
+
+pub struct UtxoScannerTask<
+    TBackend,
+    TKeyManager,
+    TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
+> {
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
-    pub(crate) peer_seeds: Vec<CommsPublicKey>,
-    pub(crate) peer_index: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
     pub birthday_offset: u16,
+    pub key_manager: TKeyManager,
 }
-impl<TBackend, TWalletConnectivity> UtxoScannerTask<TBackend, TWalletConnectivity>
+impl<TBackend, TKeyManager, TWalletClientFactory> UtxoScannerTask<TBackend, TKeyManager, TWalletClientFactory>
 where
     TBackend: WalletBackend + 'static,
-    TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManager: TransactionKeyManagerInterface,
+    TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 {
-    pub async fn run(mut self) -> Result<(), UtxoScannerError> {
+    pub async fn run(mut self) -> Result<(), anyhow::Error> {
         if self.mode == UtxoScannerMode::Recovery {
-            self.set_recovery_mode().await?;
+            self.set_recovery_mode()?;
         }
 
         loop {
             if self.shutdown_signal.is_triggered() {
                 return Ok(());
             }
-            if self.check_recovery_mode().await? && self.mode != UtxoScannerMode::Recovery {
-                warn!(
-                    target: LOG_TARGET,
-                    "{:?}: Scanning round aborted as a Recovery is in progress", self.mode
-                );
-                return Ok(());
-            }
-            match self.get_next_peer() {
-                Some(peer) => match self.attempt_sync(peer.clone()).await {
-                    Ok((num_outputs_recovered, final_height, final_amount, elapsed)) => {
-                        debug!(target: LOG_TARGET, "{:?}: Scanned to height #{}", self.mode, final_height);
-                        self.finalize(num_outputs_recovered, final_height, final_amount, elapsed)
-                            .await?;
-                        return Ok(());
-                    },
-                    Err(e) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "{:?}: Failed to scan UTXO's from base node {}: {}", self.mode, peer, e
-                        );
-                        self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
-                            num_retries: self.num_retries,
-                            retry_limit: self.retry_limit,
-                            error: e.to_string(),
-                        });
-                        continue;
-                    },
+            match self.attempt_sync().await {
+                Ok(sync_result) => {
+                    debug!(target: LOG_TARGET, "Scanned to height #{}", sync_result.final_height);
+                    if sync_result.scanned_blocks > SAFETY_HEIGHT_MARGIN {
+                        // if the TMS validates the transactions before the OMS does, it can invalidate some
+                        // transactions, so we need to reset them to ensure we can revalidate them
+                        let _result = self
+                            .resources
+                            .transaction_service
+                            .revalidate_rejected_transactions()
+                            .await;
+                    }
+                    self.finalize(sync_result).await?;
+
+                    return Ok(());
                 },
-                None => {
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to scan UTXO's from base node: {}", e
+                    );
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                         num_retries: self.num_retries,
                         retry_limit: self.retry_limit,
-                        error: "No new peers to try after this round".to_string(),
+                        error: e.to_string(),
                     });
-
-                    if self.num_retries >= self.retry_limit {
-                        self.publish_event(UtxoScannerEvent::ScanningFailed);
-                        return Err(UtxoScannerError::UtxoScanningError(format!(
-                            "{:?}: Failed to scan UTXO's after {} attempt(s) using sync peer(s). Aborting...",
-                            self.mode, self.num_retries,
-                        )));
-                    }
-
-                    self.num_retries += 1;
-                    // Reset peer index to try connect to the first peer again
-                    self.peer_index = 0;
+                    // Wait a bit of time otherwise we spam the node with requests
+                    sleep(Duration::from_secs(5)).await;
+                    continue;
                 },
-            }
+            };
         }
     }
 
-    async fn finalize(
-        &mut self,
-        num_outputs_recovered: u64,
-        final_height: u64,
-        total_value: MicroMinotari,
-        elapsed: Duration,
-    ) -> Result<(), UtxoScannerError> {
-        if num_outputs_recovered > 0 {
-            // This is a best effort, if this fails, its very likely that it's already busy with a validation.
-            let _result = self.resources.output_manager_service.validate_txos().await;
-            let _result = self.resources.transaction_service.validate_transactions().await;
-        }
+    async fn finalize(&mut self, sync_result: SyncResult) -> Result<(), anyhow::Error> {
+        // this is a best effort, if this fails, its very likely that it's already busy with a validation. We have
+        // updated the scanned, so we need to update txns
+        let _result = self.resources.output_manager_service.validate_txos().await;
+        let _result = self.resources.transaction_service.validate_transactions().await;
+        let SyncResult {
+            final_height,
+            num_recovered,
+            value_recovered,
+            elapsed,
+            latency,
+            node: current_node,
+            scanned_blocks: _,
+        } = sync_result;
         self.publish_event(UtxoScannerEvent::Progress {
             current_height: final_height,
             tip_height: final_height,
+            current_node: current_node.clone(),
+            latency,
         });
         self.publish_event(UtxoScannerEvent::Completed {
             final_height,
-            num_recovered: num_outputs_recovered,
-            value_recovered: total_value,
+            num_recovered,
+            value_recovered,
             time_taken: elapsed,
+            latency,
+            current_node,
         });
         debug!(
             target: LOG_TARGET,
@@ -178,68 +177,76 @@ where
 
         if self.mode == UtxoScannerMode::Recovery {
             // Presence of scanning keys are used to determine if a wallet is busy with recovery or not.
-            self.clear_recovery_mode().await?;
+            self.clear_recovery_mode()?;
         }
         Ok(())
     }
 
-    async fn new_connection_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
-        debug!(
-            target: LOG_TARGET,
-            "{:?}: Attempting UTXO sync with seed peer {} ({})", self.mode, self.peer_index, peer,
-        );
-        match self.resources.comms_connectivity.dial_peer(peer.clone()).await {
-            Ok(conn) => Ok(conn),
-            Err(e) => {
-                self.publish_event(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                    peer: peer.clone(),
-                    num_retries: self.num_retries,
-                    retry_limit: self.retry_limit,
-                    error: e.to_string(),
-                });
+    /// Try to instantiate a Base Node Wallet Service client.
+    fn base_node_wallet_service_client(&self) -> Result<TWalletClientFactory::Client, anyhow::Error> {
+        Ok(self.resources.client_factory.create_http_client())
+    }
 
-                if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
-                    if connection.clone().disconnect(Minimized::No).await.is_ok() {
-                        debug!(target: LOG_TARGET, "{:?}: Disconnected base node peer {}", self.mode, peer);
-                    }
+    async fn determine_next_block_to_scan(
+        &self,
+        last_scanned_block: &Option<ScannedBlock>,
+        wallet_service_client: &TWalletClientFactory::Client,
+    ) -> Result<ScannedBlock, anyhow::Error> {
+        if let Some(last_scanned_block) = last_scanned_block {
+            let mut height = last_scanned_block.height;
+            let mut next_header;
+            // Keep going backwards until we find a header that is known to the base node
+            loop {
+                next_header = wallet_service_client.get_header_by_height(height + 1).await?;
+                if next_header.is_some() {
+                    break;
                 }
+                height = height.saturating_sub(1);
+            }
+            let next_header = next_header.expect("we check this above");
+            let next_header_hash = next_header.hash;
 
-                Err(e.into())
-            },
+            Ok(ScannedBlock {
+                height: next_header.height,
+                header_hash: next_header_hash,
+                timestamp: Utc::now().naive_utc(),
+            })
+        } else {
+            // The node does not know of any of our cached headers so we will start the scan anew from the
+            // wallet birthday
+            self.resources.db.clear_scanned_blocks()?;
+            let wallet_birthday = match self.resources.db.get_wallet_type()? {
+                Some(WalletType::ProvidedKeys(wallet)) => Some(wallet.birthday.unwrap_or_default()),
+                _ => None,
+            };
+            let scanning_start_height_hash = self
+                .get_scanning_start_header_height_hash(wallet_service_client, wallet_birthday)
+                .await?;
+
+            Ok(ScannedBlock {
+                height: scanning_start_height_hash.height,
+                header_hash: scanning_start_height_hash.header_hash,
+                timestamp: Utc::now().naive_utc(),
+            })
         }
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
-        self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
-        let selected_peer = self.resources.wallet_connectivity.get_current_base_node_peer_node_id();
+    async fn attempt_sync(&mut self) -> Result<SyncResult, anyhow::Error> {
+        info!(target: LOG_TARGET, "Starting UTXO scanning task");
 
-        let mut client = if selected_peer.map(|p| p == peer).unwrap_or(false) {
-            // Use the wallet connectivity service so that RPC pools are correctly managed
-            self.resources
-                .wallet_connectivity
-                .obtain_base_node_wallet_rpc_client()
-                .await
-                .ok_or(UtxoScannerError::ConnectivityShutdown)?
-        } else {
-            self.establish_new_rpc_connection(&peer).await?
-        };
-
-        let latency = client.get_last_request_latency();
-        self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
-            peer.clone(),
-            latency.unwrap_or_default(),
-        ));
+        let wallet_service_client = self.base_node_wallet_service_client()?;
 
         let timer = Instant::now();
+        let mut total_num_recovered = 0;
+        let mut total_value_recovered = MicroMinotari::zero();
+        let mut scanned_blocks = 0;
         loop {
-            let tip_header = self.get_chain_tip_header(&mut client).await?;
-            let tip_header_hash = tip_header.hash();
-            let last_scanned_block = self.get_last_scanned_block(tip_header.height, &mut client).await?;
-
-            let next_block_to_scan = if let Some(last_scanned_block) = last_scanned_block {
-                // If we have scanned to the tip and are told to start beyond the tip we are done
-                if last_scanned_block.height >= tip_header.height {
+            let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
+            let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
+            // check if we are already synced.
+            if let Some(last_scanned_block) = &last_scanned_block {
+                if last_scanned_block.header_hash == tip_hash {
                     debug!(
                         target: LOG_TARGET,
                         "{:?}: Scanning complete to current tip (height: {}) in {:.2?}",
@@ -247,127 +254,83 @@ where
                         last_scanned_block.height,
                         timer.elapsed()
                     );
-                    return Ok((
-                        last_scanned_block.num_outputs.unwrap_or(0),
-                        last_scanned_block.height,
-                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
-                        timer.elapsed(),
-                    ));
+                    let latency = wallet_service_client
+                        .get_last_request_latency()
+                        .await
+                        .unwrap_or_default();
+                    let node = wallet_service_client.get_address().await;
+                    return Ok(SyncResult {
+                        final_height: last_scanned_block.height,
+                        num_recovered: total_num_recovered,
+                        value_recovered: total_value_recovered,
+                        scanned_blocks,
+                        elapsed: timer.elapsed(),
+                        latency,
+                        node,
+                    });
                 }
-
-                let next_header =
-                    BlockHeader::try_from(client.get_header_by_height(last_scanned_block.height + 1).await?)
-                        .map_err(UtxoScannerError::ConversionError)?;
-                let next_header_hash = next_header.hash();
-
-                ScannedBlock {
-                    height: next_header.height,
-                    num_outputs: last_scanned_block.num_outputs,
-                    amount: last_scanned_block.amount,
-                    header_hash: next_header_hash,
-                    timestamp: Utc::now().naive_utc(),
-                }
-            } else {
-                // The node does not know of any of our cached headers so we will start the scan anew from the
-                // wallet birthday
-                self.resources.db.clear_scanned_blocks()?;
-                let scanning_start_height_hash = match self.resources.db.get_wallet_type()? {
-                    Some(WalletType::ProvidedKeys(wallet)) => {
-                        self.get_scanning_start_header_height_hash(&mut client, wallet.birthday)
-                            .await?
-                    },
-                    _ => self.get_scanning_start_header_height_hash(&mut client, None).await?,
-                };
-
-                ScannedBlock {
-                    height: scanning_start_height_hash.height,
-                    num_outputs: None,
-                    amount: None,
-                    header_hash: scanning_start_height_hash.header_hash,
-                    timestamp: Utc::now().naive_utc(),
-                }
-            };
-
-            if self.shutdown_signal.is_triggered() ||
-                self.check_recovery_mode().await? && self.mode != UtxoScannerMode::Recovery
-            {
-                if !self.shutdown_signal.is_triggered() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "{:?}: Scanning round aborted as a Recovery is in progress", self.mode
-                    );
-                }
-                return Ok((
-                    next_block_to_scan.num_outputs.unwrap_or(0),
-                    next_block_to_scan.height,
-                    next_block_to_scan.amount.unwrap_or_else(|| MicroMinotari::from(0)),
-                    timer.elapsed(),
-                ));
             }
 
-            debug!(
+            // Otherwise choose a starting point for the scan
+            let next_block_to_scan = self
+                .determine_next_block_to_scan(&last_scanned_block, &wallet_service_client)
+                .await?;
+
+            if self.shutdown_signal.is_triggered() {
+                return Err(anyhow!("Shutdown signal received, stopping UTXO scanning task"));
+            }
+
+            info!(
                 target: LOG_TARGET,
                 "{:?}: Scanning UTXO's from height = {} to current tip_height = {} (starting header_hash: {})",
                 self.mode,
                 next_block_to_scan.height,
-                tip_header.height,
+                tip_height,
                 next_block_to_scan.header_hash.to_hex(),
             );
 
-            let (num_recovered, num_scanned, amount) = self
+            let scan_result = self
                 .scan_utxos(
-                    &mut client,
+                    &wallet_service_client,
                     next_block_to_scan.header_hash,
-                    tip_header_hash,
-                    tip_header.height,
+                    tip_hash,
+                    tip_height,
                 )
                 .await?;
-            if num_scanned == 0 {
-                return Err(UtxoScannerError::UtxoScanningError(
-                    "Peer returned 0 UTXOs to scan".to_string(),
-                ));
-            }
+            scanned_blocks += scan_result.blocks_scanned;
+            total_num_recovered += scan_result.total_num_recovered;
+            total_value_recovered += scan_result.total_value_recovered;
             debug!(
                 target: LOG_TARGET,
-                "{:?}: Scanning round completed up to height {} in {:.2?} ({} outputs scanned, {} recovered with value {})",
-                self.mode,
-                tip_header.height,
+                "Scanning round completed up to height {} in {:.2?} ({} outputs scanned)",
+                tip_height,
                 timer.elapsed(),
-                num_scanned,
-                num_recovered,
-                amount
+                scan_result.total_scanned,
             );
         }
     }
 
-    async fn establish_new_rpc_connection(
-        &mut self,
-        peer: &NodeId,
-    ) -> Result<RpcClientLease<BaseNodeWalletRpcClient>, UtxoScannerError> {
-        let mut connection = self.new_connection_to_peer(peer.clone()).await?;
-        let client = connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(Duration::from_secs(60)))
-            .await?;
-        Ok(RpcClientLease::new(client))
-    }
-
     async fn get_chain_tip_header(
         &self,
-        client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<BlockHeader, UtxoScannerError> {
+        client: &TWalletClientFactory::Client,
+    ) -> Result<(BlockHash, u64), anyhow::Error> {
         let tip_info = client.get_tip_info().await?;
-        let chain_height = tip_info.metadata.map(|m| m.best_block_height()).unwrap_or(0);
-        let end_header = client.get_header_by_height(chain_height).await?;
-        let end_header = BlockHeader::try_from(end_header).map_err(UtxoScannerError::ConversionError)?;
 
-        Ok(end_header)
+        Ok((
+            tip_info
+                .metadata
+                .as_ref()
+                .map(|m| *m.best_block_hash())
+                .unwrap_or_else(FixedHash::default),
+            tip_info.metadata.as_ref().map(|m| m.best_block_height()).unwrap_or(0),
+        ))
     }
 
     async fn get_last_scanned_block(
         &self,
+        client: &TWalletClientFactory::Client,
         current_tip_height: u64,
-        client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<Option<ScannedBlock>, UtxoScannerError> {
+    ) -> Result<Option<ScannedBlock>, anyhow::Error> {
         let scanned_blocks = self.resources.db.get_scanned_blocks()?;
         debug!(
             target: LOG_TARGET,
@@ -386,8 +349,6 @@ where
         // valid block the blocks before it are also valid and don't need to be checked
         let mut last_missing_scanned_block = None;
         let mut found_scanned_block = None;
-        let mut num_outputs = 0u64;
-        let mut amount = MicroMinotari::from(0);
         for sb in scanned_blocks {
             // The scanned block has a higher height than the current tip, meaning the previously scanned block was
             // reorged out.
@@ -397,15 +358,10 @@ where
             }
 
             if found_scanned_block.is_none() {
-                let header = client.get_header_by_height(sb.height).await.or_optional()?;
-                let header = header
-                    .map(BlockHeader::try_from)
-                    .transpose()
-                    .map_err(UtxoScannerError::ConversionError)?;
-
+                let header = client.get_header_by_height(sb.height).await?;
                 match header {
                     Some(header) => {
-                        let header_hash = header.hash();
+                        let header_hash = header.hash;
                         if header_hash == sb.header_hash {
                             found_scanned_block = Some(sb.clone());
                         } else {
@@ -416,13 +372,6 @@ where
                         last_missing_scanned_block = Some(sb.clone());
                     },
                 }
-            }
-            // Sum up the number of outputs recovered starting from the first found block
-            if found_scanned_block.is_some() {
-                num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
-                amount = amount
-                    .checked_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)))
-                    .ok_or(UtxoScannerError::OverflowError)?;
             }
         }
 
@@ -444,8 +393,6 @@ where
             );
             Ok(Some(ScannedBlock {
                 height: sb.height,
-                num_outputs: Some(num_outputs),
-                amount: Some(amount),
                 header_hash: sb.header_hash,
                 timestamp: Utc::now().naive_utc(),
             }))
@@ -460,104 +407,133 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    // converting u64 to i64 is its only used for timestamps
-    #[allow(clippy::cast_possible_wrap)]
     async fn scan_utxos(
         &mut self,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletClientFactory::Client,
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(u64, u64, MicroMinotari), UtxoScannerError> {
-        // Setting how often the progress event and log should occur during scanning. Defined in blocks
-        const PROGRESS_REPORT_INTERVAL: u64 = 100;
-
-        let mut num_recovered = 0u64;
-        let mut total_amount = MicroMinotari::from(0);
-        let mut total_scanned = 0;
-
-        let request = SyncUtxosByBlockRequest {
-            start_header_hash: start_header_hash.to_vec(),
-            end_header_hash: end_header_hash.to_vec(),
-        };
-
-        let start = Instant::now();
-        let mut utxo_stream = client.sync_utxos_by_block(request).await?;
-        trace!(
+    ) -> Result<ScanUtxosResult, anyhow::Error> {
+        info!(
             target: LOG_TARGET,
-            "{:?}: bulletproof rewind profile - UTXO stream request time {} ms",
-            self.mode,
-            start.elapsed().as_millis(),
+            "Starting UTXO scanning from header hash {} to header hash {} at tip height {}",
+            start_header_hash.to_hex(),
+            end_header_hash.to_hex(),
+            tip_height
         );
+        // Setting how often the progress event and log should occur during scanning. Defined in blocks
+        const PROGRESS_REPORT_INTERVAL: u64 = 10;
 
-        let mut utxo_next_await_profiling = Vec::new();
-        let mut scan_for_outputs_profiling = Vec::new();
+        let mut total_scanned = 0;
+        let mut total_num_recovered = 0;
+        let mut total_value_recovered = MicroMinotari::zero();
+        let mut blocks_scanned = 0;
+
+        let mut utxo_stream = client
+            .sync_utxos_by_block(
+                start_header_hash.to_vec(),
+                end_header_hash.to_vec(),
+                self.shutdown_signal.clone(),
+            )
+            .await?;
+
         let mut prev_scanned_block: Option<ScannedBlock> = None;
-        while let Some(response) = {
-            let start = Instant::now();
-            let utxo_stream_next = utxo_stream.next().await;
-            utxo_next_await_profiling.push(start.elapsed());
-            utxo_stream_next
-        } {
+        while let Some(response) = utxo_stream.recv().await {
             if self.shutdown_signal.is_triggered() {
-                // if running is set to false, we know its been canceled upstream so lets exit the loop
-                return Ok((num_recovered, total_scanned as u64, total_amount));
+                let result = ScanUtxosResult {
+                    total_scanned,
+                    total_num_recovered,
+                    total_value_recovered,
+                    blocks_scanned,
+                };
+                return Ok(result);
             }
 
-            let response = response.map_err(|e| UtxoScannerError::RpcStatus(e.to_string()))?;
-            let current_height = response.height;
-            let current_header_hash = response.header_hash;
-            let mined_timestamp =
-                DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0).unwrap_or(DateTime::<Utc>::MIN_UTC);
-            let outputs = response
-                .outputs
-                .into_iter()
-                .map(|utxo| TransactionOutput::try_from(utxo).map_err(UtxoScannerError::ConversionError))
-                .collect::<Result<Vec<_>, _>>()?;
-            total_scanned += outputs.len();
+            let response = response?;
+            #[allow(clippy::cast_possible_wrap)]
+            for response in response.blocks {
+                blocks_scanned += 1;
+                let current_height = response.height;
+                let current_header_hash = response.header_hash;
+                let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
+                    .unwrap_or(DateTime::<Utc>::MIN_UTC);
+                let outputs = response.outputs;
+                total_scanned += outputs.len();
 
-            let start = Instant::now();
-            let found_outputs = self.scan_for_outputs(outputs).await?;
-            scan_for_outputs_profiling.push(start.elapsed());
+                let found_outputs = self.search_for_owned_outputs(outputs).await?;
 
-            let (mut count, mut amount) = self
-                .import_utxos_to_transaction_service(found_outputs, current_height, mined_timestamp)
-                .await?;
-            let block_hash = current_header_hash.try_into()?;
-            if let Some(scanned_block) = prev_scanned_block {
-                if block_hash == scanned_block.header_hash {
-                    count += scanned_block.num_outputs.unwrap_or(0);
-                    amount += scanned_block.amount.unwrap_or_else(|| 0.into())
+                if found_outputs.is_empty() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "No recoverable outputs found in block at height {} with header hash {}",
+                        current_height,
+                        current_header_hash.to_hex()
+                    );
                 } else {
-                    self.resources.db.save_scanned_block(scanned_block)?;
-                    self.resources.db.clear_scanned_blocks_before_height(
-                        current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
-                        true,
-                    )?;
+                    // Now download the whole block and import the outputs
+                    info!(
+                        target: LOG_TARGET,
+                        "Found {} recoverable outputs in block at height {} with header hash {}",
+                        found_outputs.len(),
+                        current_height,
+                        current_header_hash.to_hex()
+                    );
+                    let block = client.get_utxos_by_block(current_header_hash.to_vec()).await?;
 
-                    if current_height % PROGRESS_REPORT_INTERVAL == 0 {
+                    let outputs = block
+                        .outputs
+                        .iter()
+                        .filter(|o| found_outputs.iter().any(|f| f.commitment == o.commitment.as_bytes()))
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    let imported_outputs = self.scan_for_outputs(outputs).await?;
+
+                    let (num_recovered, amount) = self
+                        .import_utxos_to_transaction_service(&imported_outputs, current_height, mined_timestamp)
+                        .await?;
+                    total_num_recovered += num_recovered;
+                    total_value_recovered += amount;
+                }
+
+                let block_hash: FixedHash = current_header_hash.try_into()?;
+                if let Some(scanned_block) = prev_scanned_block {
+                    if block_hash != scanned_block.header_hash {
                         debug!(
                             target: LOG_TARGET,
-                            "{:?}: Scanned up to block {} with a current tip_height of {}",
-                            self.mode, current_height, tip_height
-                        );
-                        self.publish_event(UtxoScannerEvent::Progress {
+                            "Saving scanned block at height {} with header hash {}",
                             current_height,
-                            tip_height,
-                        });
-                    }
+                            block_hash.to_hex()
+                        );
+                        self.resources.db.save_scanned_block(scanned_block)?;
+                        self.resources.db.clear_scanned_blocks_before_height(
+                            current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
+                            true,
+                        )?;
 
-                    num_recovered = num_recovered.saturating_add(count);
-                    total_amount += amount;
+                        if current_height % PROGRESS_REPORT_INTERVAL == 0 {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
+                            );
+
+                            let latency = client.get_last_request_latency().await.unwrap_or_default();
+                            let node = client.get_address().await;
+                            self.publish_event(UtxoScannerEvent::Progress {
+                                current_height,
+                                tip_height,
+                                current_node: node,
+                                latency,
+                            });
+                        }
+                    }
                 }
+                prev_scanned_block = Some(ScannedBlock {
+                    header_hash: block_hash,
+                    height: current_height,
+                    timestamp: Utc::now().naive_utc(),
+                });
             }
-            prev_scanned_block = Some(ScannedBlock {
-                header_hash: block_hash,
-                height: current_height,
-                num_outputs: Some(count),
-                amount: Some(amount),
-                timestamp: Utc::now().naive_utc(),
-            });
         }
         // We need to update the last one
         if let Some(scanned_block) = prev_scanned_block {
@@ -567,28 +543,72 @@ where
             )?;
             self.resources.db.save_scanned_block(scanned_block)?;
         }
-        trace!(
-            target: LOG_TARGET,
-            "{:?}: bulletproof rewind profile - streamed {} outputs in {} ms",
-            self.mode,
+        let result = ScanUtxosResult {
             total_scanned,
-            utxo_next_await_profiling.iter().fold(0, |acc, &x| acc + x.as_millis()),
-        );
-        trace!(
-            target: LOG_TARGET,
-            "{:?}: bulletproof rewind profile - scanned {} outputs in {} ms",
-            self.mode,
-            total_scanned,
-            scan_for_outputs_profiling.iter().fold(0, |acc, &x| acc + x.as_millis()),
-        );
+            total_num_recovered,
+            total_value_recovered,
+            blocks_scanned,
+        };
+        Ok(result)
+    }
 
-        Ok((num_recovered, total_scanned as u64, total_amount))
+    async fn search_for_owned_outputs(
+        &mut self,
+        outputs: Vec<MinimalUtxoSyncInfo>,
+    ) -> Result<Vec<MinimalUtxoSyncInfo>, anyhow::Error> {
+        let mut found_outputs: Vec<MinimalUtxoSyncInfo> = Vec::new();
+        let start = Instant::now();
+        let view_key = self.key_manager.get_view_key().await?;
+        for output in outputs {
+            let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
+                .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
+            let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
+
+            // Change outputs just use the view key.
+            if self
+                .key_manager
+                .try_output_key_recovery(&commitment, &encrypted, None)
+                .await
+                .ok()
+                .is_some()
+            {
+                found_outputs.push(output.clone());
+                continue;
+            }
+
+            // Received output use the DH of view key and sender offset.
+            let offset_pub_key = CompressedKey::from_canonical_bytes(&output.sender_offset_public_key)
+                .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
+            let shared_secret = self
+                .key_manager
+                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)
+                .await?;
+            let recovery_key = shared_secret_to_output_encryption_key(&shared_secret)
+                .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
+            if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
+                .ok()
+                .is_some()
+            {
+                found_outputs.push(output.clone());
+            }
+        }
+        let scanned_time = start.elapsed();
+        let start = Instant::now();
+
+        let one_sided_time = start.elapsed();
+        trace!(
+            target: LOG_TARGET,
+            "Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            scanned_time.as_millis(),
+            one_sided_time.as_millis(),
+        );
+        Ok(found_outputs)
     }
 
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
+    ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
         let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = Vec::new();
         let start = Instant::now();
         found_outputs.append(
@@ -598,15 +618,16 @@ where
                 .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
-                .map(|ro| -> Result<_, UtxoScannerError> {
+                .map(|ro| -> Result<_, anyhow::Error> {
                     let status = if ro.output.features.is_coinbase() {
                         ImportStatus::CoinbaseUnconfirmed
                     } else {
                         ImportStatus::Imported
                     };
-                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                        UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
-                    })?;
+                    let output = outputs
+                        .iter()
+                        .find(|o| o.hash() == ro.hash)
+                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
@@ -621,15 +642,16 @@ where
                 .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
                 .await?
                 .into_iter()
-                .map(|ro| -> Result<_, UtxoScannerError> {
+                .map(|ro| -> Result<_, anyhow::Error> {
                     let status = if ro.output.features.is_coinbase() {
                         ImportStatus::CoinbaseUnconfirmed
                     } else {
                         ImportStatus::OneSidedUnconfirmed
                     };
-                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
-                        UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
-                    })?;
+                    let output = outputs
+                        .iter()
+                        .find(|o| o.hash() == ro.hash)
+                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
                     Ok((ro.output, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
@@ -647,10 +669,10 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>,
+        utxos: &[(WalletOutput, ImportStatus, TxId, TransactionOutput)],
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
-    ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
+    ) -> Result<(u64, MicroMinotari), anyhow::Error> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
         for (wo, import_status, tx_id, to) in utxos {
@@ -671,8 +693,8 @@ where
                 .import_key_manager_utxo_to_transaction_service(
                     wo.clone(),
                     source_address,
-                    import_status,
-                    tx_id,
+                    import_status.clone(),
+                    *tx_id,
                     current_height,
                     mined_timestamp,
                     to.clone(),
@@ -694,28 +716,20 @@ where
                         tx_id
                     );
                 },
-                Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
+                Err(e) => return Err(e.into()),
             }
         }
         Ok((num_recovered, total_amount))
     }
 
-    async fn set_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn set_recovery_mode(&self) -> Result<(), anyhow::Error> {
         self.resources
             .db
             .set_client_key_value(RECOVERY_KEY.to_owned(), Utc::now().to_string())?;
         Ok(())
     }
 
-    pub async fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
-        self.resources
-            .db
-            .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
-            .map(|x| x.is_some())
-            .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
-    }
-
-    async fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
+    fn clear_recovery_mode(&self) -> Result<(), anyhow::Error> {
         let _ = self.resources.db.clear_client_value(RECOVERY_KEY.to_owned())?;
         Ok(())
     }
@@ -760,31 +774,22 @@ where
         Ok(tx_id)
     }
 
-    fn get_next_peer(&mut self) -> Option<NodeId> {
-        let peer = self.peer_seeds.get(self.peer_index).map(NodeId::from_public_key);
-        self.peer_index += 1;
-        peer
-    }
-
     async fn get_scanning_start_header_height_hash(
         &self,
-        client: &mut BaseNodeWalletRpcClient,
+        client: &TWalletClientFactory::Client,
         option_birthday: Option<u16>,
-    ) -> Result<HeightHash, UtxoScannerError> {
+    ) -> Result<HeightHash, anyhow::Error> {
         let birthday = match option_birthday {
             Some(birthday) => birthday,
             None => self.resources.db.get_wallet_birthday()?,
         };
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
-        let block_height_birthday = client
-            .get_height_at_time(epoch_time_birthday)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
-                0
-            });
-        // Calculate the unix epoch time of 2 days, in seconds, before the
-        // wallet birthday. The latter avoids any possible issues with reorgs.
+        debug!(
+            target: LOG_TARGET,
+            "Wallet birthday is {} at epoch time {}",
+            birthday,
+            epoch_time_birthday
+        );
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
         let block_height_scanning_start = client
             .get_height_at_time(epoch_time_scanning_start)
@@ -793,17 +798,25 @@ where
                 warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
                 0
             });
-        let header = client.get_header_by_height(block_height_scanning_start).await?;
-        let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
-        let header_hash_scanning_start = header.hash();
+        let header = match client.get_header_by_height(block_height_scanning_start).await? {
+            Some(header) => header,
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    "No block header found at height {} for birthday {}",
+                    block_height_scanning_start,
+                    birthday
+                );
+                return Err(anyhow!("No block header found at scanning start height"));
+            },
+        };
+        let header_hash_scanning_start = header.hash;
         info!(
             target: LOG_TARGET,
-            "{:?}: Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' with block height '{}', \
-            scanning from epoch time '{}' at block height '{}' with header hash '{}'",
-            self.mode,
+            "Fresh wallet recovery/scanning: Wallet birthday '{}' at epoch time '{}' , scanning \
+            from epoch time '{}' at block height '{}' with header hash '{}'",
             birthday,
             epoch_time_birthday,
-            block_height_birthday,
             epoch_time_scanning_start,
             block_height_scanning_start,
             header_hash_scanning_start.to_hex(),
@@ -818,4 +831,11 @@ where
 struct HeightHash {
     height: u64,
     header_hash: HashOutput,
+}
+
+struct ScanUtxosResult {
+    total_scanned: usize,
+    total_num_recovered: u64,
+    blocks_scanned: u64,
+    total_value_recovered: MicroMinotari,
 }

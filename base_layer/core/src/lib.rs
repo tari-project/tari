@@ -63,12 +63,11 @@ mod domain_hashing {
     use digest::consts::U32;
     use tari_common_types::types::{FixedHash, FixedHashSizeError};
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-    use tari_hashing::ValidatorNodeBmtHashDomain;
+    use tari_hashing::ValidatorNodeMerkleHashDomain;
     use tari_mmr::{
         error::MerkleMountainRangeError,
         pruned_hashset::PrunedHashSet,
         sparse_merkle_tree::SparseMerkleTree,
-        BalancedBinaryMerkleTree,
         Hash,
         MerkleMountainRange,
     };
@@ -89,8 +88,7 @@ mod domain_hashing {
 
     pub type OutputSmt = SparseMerkleTree<OutputSmtHasherBlake256>;
 
-    pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeBmtHashDomain>;
-    pub type ValidatorNodeBMT = BalancedBinaryMerkleTree<ValidatorNodeBmtHasherBlake256>;
+    pub type ValidatorNodeMerkleHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeMerkleHashDomain>;
 
     #[inline]
     pub fn kernel_mr_hash_from_mmr(kernel_mmr: &KernelMmr) -> Result<FixedHash, MrHashError> {

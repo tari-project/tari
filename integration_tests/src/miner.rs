@@ -20,15 +20,11 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, time::Duration};
+use std::{str::FromStr, time::Duration};
 
-use minotari_app_grpc::tari_rpc::{
-    pow_algo::PowAlgos,
-    Block,
-    NewBlockTemplate,
-    NewBlockTemplateRequest,
-    PowAlgo,
-    TransactionOutput as GrpcTransactionOutput,
+use minotari_app_grpc::{
+    conversions::transaction_output::grpc_output_with_payref,
+    tari_rpc::{pow_algo::PowAlgos, Block, NewBlockTemplate, NewBlockTemplateRequest, PowAlgo},
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{run_miner, Cli};
@@ -38,11 +34,12 @@ use tari_common::{configuration::Network, network_check::set_network_if_choice_v
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     consensus::ConsensusManager,
+    proof_of_work::PowAlgorithm,
     transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             RangeProofType,
             WalletOutput,
@@ -63,6 +60,7 @@ pub struct MinerProcess {
     pub wallet_name: String,
     pub mine_until_height: u64,
     pub stealth: bool,
+    pub pow_algo: PowAlgorithm,
 }
 
 pub fn register_miner_process(
@@ -71,13 +69,20 @@ pub fn register_miner_process(
     base_node_name: String,
     wallet_name: String,
     stealth: bool,
+    pow_algo: String,
 ) {
+    let pow_algo = PowAlgorithm::from_str(&pow_algo).unwrap();
+    eprintln!(
+        "Registering miner process '{}' on '{}' and '{}' with pow algo '{:?}'",
+        miner_name, base_node_name, wallet_name, pow_algo
+    );
     let miner = MinerProcess {
         name: miner_name.clone(),
         base_node_name,
         wallet_name,
         mine_until_height: 100_000,
         stealth,
+        pow_algo,
     };
 
     world.miners.insert(miner_name, miner);
@@ -95,6 +100,13 @@ impl MinerProcess {
             std::env::set_var("TARI_NETWORK", "localnet");
         }
         set_network_if_choice_valid(Network::LocalNet).unwrap();
+        let pow_algo = match self.pow_algo {
+            PowAlgorithm::RandomXM => {
+                panic!("RandomXM is not supported in the minotari_miner");
+            },
+            _ => serde_json::to_string(&self.pow_algo).unwrap(),
+        };
+        eprintln!("Using pow algo: {}", pow_algo);
 
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
@@ -136,6 +148,7 @@ impl MinerProcess {
                         "miner.wallet_payment_address".to_string(),
                         wallet_payment_address.to_base58(),
                     ),
+                    ("miner.proof_of_work_algo".to_string(), pow_algo),
                 ],
                 network: Some(Network::LocalNet),
             },
@@ -312,7 +325,7 @@ async fn create_block_template_with_coinbase(
     .unwrap();
     let body = block_template.body.as_mut().unwrap();
 
-    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output).unwrap();
+    let grpc_output = grpc_output_with_payref(coinbase_output, None).unwrap();
     body.outputs.push(grpc_output);
     body.kernels.push(coinbase_kernel.into());
 

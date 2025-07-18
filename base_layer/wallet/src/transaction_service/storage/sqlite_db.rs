@@ -56,14 +56,14 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::encrypted_data::PaymentId};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::payment_id::PaymentId};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
 use zeroize::Zeroize;
 
 use crate::{
-    schema::{completed_transactions, inbound_transactions, outbound_transactions, payrefs},
+    schema::{completed_transactions, inbound_transactions, outbound_transactions, payrefs, scanned_blocks},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     transaction_service::{
         error::{TransactionKeyError, TransactionStorageError},
@@ -177,10 +177,10 @@ impl TransactionServiceSqliteDatabase {
             },
             DbKey::PendingOutboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::PendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
-            DbKey::CompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CompletedTransactions(_) => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingOutboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
-            DbKey::CancelledCompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
+            DbKey::CancelledCompletedTransactions(_) => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingOutboundTransaction(k) => {
                 conn.transaction::<_, _, _>(|conn| match OutboundTransactionSql::find_by_cancelled(k, true, conn) {
                     Ok(v) => {
@@ -294,9 +294,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
-            DbKey::CompletedTransactions => {
+            DbKey::CompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false)? {
+                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false, *max_limit)? {
                     result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
@@ -318,9 +318,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
-            DbKey::CancelledCompletedTransactions => {
+            DbKey::CancelledCompletedTransactions(max_limit) => {
                 let mut result = Vec::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true)? {
+                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true, *max_limit)? {
                     result.push(CompletedTransaction::try_from((c).clone(), &cipher)?);
                 }
 
@@ -374,10 +374,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::CompletedTransaction(k) => CompletedTransactionSql::find(*k, &mut conn).is_ok(),
             DbKey::PendingOutboundTransactions => false,
             DbKey::PendingInboundTransactions => false,
-            DbKey::CompletedTransactions => false,
+            DbKey::CompletedTransactions(_) => false,
             DbKey::CancelledPendingOutboundTransactions => false,
             DbKey::CancelledPendingInboundTransactions => false,
-            DbKey::CancelledCompletedTransactions => false,
+            DbKey::CancelledCompletedTransactions(_) => false,
             DbKey::CancelledPendingOutboundTransaction(k) => {
                 OutboundTransactionSql::find_by_cancelled(*k, true, &mut conn).is_ok()
             },
@@ -478,6 +478,29 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             );
         }
         Ok(())
+    }
+
+    fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        let result = scanned_blocks::table
+            .select(scanned_blocks::height)
+            .order(scanned_blocks::height.desc())
+            .first::<i64>(&mut conn)
+            .optional()?
+            .map(|h| h as u64);
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_last_scanned_height: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(result)
     }
 
     fn get_pending_transaction_counterparty_address_by_tx_id(
@@ -807,7 +830,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         mined_height: u64,
         mined_in_block: BlockHash,
         mined_timestamp: u64,
-        num_confirmations: u64,
         must_be_confirmed: bool,
         status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError> {
@@ -822,7 +844,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         match CompletedTransactionSql::update_mined_height(
             tx_id,
-            num_confirmations,
             status,
             mined_height,
             mined_in_block,
@@ -880,7 +901,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
-    // This method returns completed but unconfirmed transactions that were not imported
+    /// This method returns completed but unconfirmed transactions that were not imported
     fn fetch_unconfirmed_transactions_info(&self) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -970,9 +991,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    // Exclude coinbases as they are validated from the OMS service, and we use these fields to know which tx to
-    // extract, thus we should not wipe it out. Coinbases can also not be mined in a different height so the data will
-    // never be wrong.
+    // We look at all rejected transactions and set them to be revalidated, we dont reset the coinbase transactions's
+    // mined_height as this can never change.
     fn mark_all_rejected_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -983,6 +1003,16 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+            ))
+            .execute(&mut conn)?;
+        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        // we want to double check unmined coinbases again, so lets set those
+        let result = diesel::update(completed_transactions::table)
+            .filter(completed_transactions::status.eq(TransactionStatus::CoinbaseNotInBlockChain as i32))
+            .set((
+                completed_transactions::cancelled.eq::<Option<i32>>(None),
+                completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+                completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32),
             ))
             .execute(&mut conn)?;
         trace!(target: LOG_TARGET, "rows updated: {:?}", result);
@@ -1144,7 +1174,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         payment_id: Option<Vec<u8>>,
         block_hash: Option<FixedHash>,
         block_height: Option<u64>,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let limit = if max_limit == 0 { i64::MAX } else { max_limit as i64 };
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
@@ -1160,6 +1192,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         query
+            .limit(limit)
             .load::<CompletedTransactionSql>(&mut conn)?
             .into_iter()
             .map(|ct: CompletedTransactionSql| {
@@ -1569,7 +1602,6 @@ struct OutboundTransactionSql {
     last_send_timestamp: Option<NaiveDateTime>,
     payment_id: Option<Vec<u8>>,
     sent_output_hashes: Option<Vec<u8>>,
-    change_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
 }
 
@@ -1750,7 +1782,6 @@ impl OutboundTransactionSql {
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
             sent_output_hashes: Some(fixedhash_vec_to_bytes(&o.sent_output_hashes)),
-            change_output_hashes: Some(fixedhash_vec_to_bytes(&o.change_output_hashes)),
         };
 
         outbound_tx.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -1804,7 +1835,6 @@ impl OutboundTransaction {
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
             payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
             sent_output_hashes: bytes_to_fixedhash_vec(&o.sent_output_hashes.unwrap_or_default()),
-            change_output_hashes: bytes_to_fixedhash_vec(&o.change_output_hashes.unwrap_or_default()),
         };
 
         // zeroize decrypted data
@@ -1869,7 +1899,9 @@ impl CompletedTransactionSql {
     pub fn index_by_cancelled(
         conn: &mut SqliteConnection,
         cancelled: bool,
+        max_limit: u64,
     ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        let max_limit_i64 = if max_limit == 0 { i64::MAX } else { max_limit as i64 };
         let mut query = completed_transactions::table.into_boxed();
 
         query = if cancelled {
@@ -1880,6 +1912,7 @@ impl CompletedTransactionSql {
 
         Ok(query
             .order_by(completed_transactions::mined_timestamp.desc())
+            .limit(max_limit_i64)
             .load::<CompletedTransactionSql>(conn)?)
     }
 
@@ -2055,7 +2088,6 @@ impl CompletedTransactionSql {
 
     pub fn update_mined_height(
         tx_id: TxId,
-        num_confirmations: u64,
         status: TransactionStatus,
         mined_height: u64,
         mined_in_block: BlockHash,
@@ -2075,18 +2107,16 @@ impl CompletedTransactionSql {
         })?;
         trace!(
             target: LOG_TARGET,
-            "update_mined_height: tx_id '{}', status '{:?}', confirmations '{}', mined height '{}', \
+            "update_mined_height: tx_id '{}', status '{:?}', mined height '{}', \
             mined timestamp '{}', mined block hash '{}'",
             tx_id,
             status,
-            num_confirmations,
             mined_height,
             timestamp,
             mined_in_block.to_hex(),
         );
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
-                confirmations: Some(Some(num_confirmations as i64)),
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
@@ -2248,7 +2278,7 @@ impl CompletedTransactionSql {
             direction: Some(c.direction as i32),
             send_count: c.send_count as i32,
             last_send_timestamp: c.last_send_timestamp.map(|t| t.naive_utc()),
-            confirmations: c.confirmations.map(|ic| ic as i64),
+            confirmations: None, // To be removed in future
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block.map(|v| v.to_vec()),
             mined_timestamp: c.mined_timestamp.map(|t| t.naive_utc()),
@@ -2348,7 +2378,6 @@ impl CompletedTransaction {
             send_count: c.send_count as u32,
             last_send_timestamp: c.last_send_timestamp.map(|t| t.and_utc()),
             transaction_signature,
-            confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
@@ -2535,7 +2564,7 @@ mod test {
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             OutputFeatures,
             Transaction,
         },
@@ -2662,7 +2691,6 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: vec![],
-            change_output_hashes: vec![],
         };
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2684,7 +2712,6 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 sent_output_hashes: vec![],
-                change_output_hashes: vec![],
             },
             &cipher,
         )
@@ -2839,7 +2866,6 @@ mod test {
             received_output_hashes: vec![],
             change_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -2874,7 +2900,6 @@ mod test {
             received_output_hashes: vec![],
             change_output_hashes: vec![],
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -2895,7 +2920,7 @@ mod test {
             .commit(&mut conn)
             .unwrap();
 
-        let completed_txs = CompletedTransactionSql::index_by_cancelled(&mut conn, false).unwrap();
+        let completed_txs = CompletedTransactionSql::index_by_cancelled(&mut conn, false, 0).unwrap();
         assert_eq!(completed_txs.len(), 2);
 
         let returned_completed_tx = CompletedTransaction::try_from(
@@ -3076,7 +3101,6 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             sent_output_hashes: vec![],
-            change_output_hashes: vec![],
         };
 
         let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone(), &cipher).unwrap();
@@ -3123,7 +3147,6 @@ mod test {
             received_output_hashes: vec![],
             change_output_hashes: vec![],
             transaction_signature: Signature::default(),
-            confirmations: None,
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -3224,7 +3247,6 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 sent_output_hashes: vec![],
-                change_output_hashes: vec![],
             };
             let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx, &cipher).unwrap();
 
@@ -3265,7 +3287,6 @@ mod test {
                 received_output_hashes: vec![],
                 change_output_hashes: vec![],
                 transaction_signature: Signature::default(),
-                confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
@@ -3284,7 +3305,7 @@ mod test {
 
         assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
-        assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
+        assert!(db2.fetch(&DbKey::CompletedTransactions(0)).is_ok());
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
@@ -3294,7 +3315,7 @@ mod test {
         let db3 = TransactionServiceSqliteDatabase::new(connection, new_cipher);
         assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
-        assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
+        assert!(db3.fetch(&DbKey::CompletedTransactions(0)).is_err());
     }
 
     #[test]
@@ -3412,7 +3433,6 @@ mod test {
                 received_output_hashes: vec![],
                 change_output_hashes: vec![],
                 transaction_signature: Signature::default(),
-                confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,

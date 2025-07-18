@@ -44,7 +44,7 @@ use crate::{
     transactions::{
         tari_amount::{MicroMinotari, Minotari},
         transaction_components::{
-            encrypted_data::PaymentId,
+            payment_id::PaymentId,
             CoinBaseExtra,
             KernelFeatures,
             OutputFeatures,

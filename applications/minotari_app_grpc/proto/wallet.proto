@@ -113,7 +113,7 @@ service Wallet {
   //
   // Example usage (JavaScript):
   // ```javascript
- // // Call the Identify RPC method
+  // // Call the Identify RPC method
   // client.Identify({}, (error, response) => {
   //   if (error) {
   //     console.error('Error:', error);
@@ -223,6 +223,10 @@ service Wallet {
   // }
   // ```
   rpc GetCompleteAddress (Empty) returns (GetCompleteAddressResponse);
+
+  rpc PrepareOneSidedTransactionForSigning (PrepareOneSidedTransactionForSigningRequest)  returns (PrepareOneSidedTransactionForSigningResponse);
+
+  rpc BroadcastSignedOneSidedTransaction  (BroadcastSignedOneSidedTransactionRequest)  returns (BroadcastSignedOneSidedTransactionResponse);
 
   // This call supports standard interactive transactions (Mimblewimble),
   // one-sided transactions, and one-sided-to-stealth-address transactions.
@@ -989,40 +993,51 @@ service Wallet {
   // Creates a transaction with a template registration output
   rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
 
-  // The SetBaseNode call configures the base node peer for the wallet.
+  // Signs a message using the wallet's node identity private key.
   //
-  // This RPC sets the public key and network address of the base node peer that the wallet should communicate with.
+  // The `SignMessage` call creates a Schnorr signature over a message using the wallet's node identity private key.
+  // This signature can be used to prove ownership of the wallet or authenticate messages.
+  // The signature is returned as separate components (signature and public nonce) for verification.
   //
-  // ### Request Fields:
-  // - `public_key_hex` (string): The public key of the base node, provided as a hex string.
-  // - `net_address` (string): The multiaddress of the base node (e.g., `/ip4/127.0.0.1/tcp/18141`).
+  // ### Request Parameters:
+  //
+  // - `message` (required):
+  //   - **Type**: `bytes`
+  //   - **Description**: The message to be signed (arbitrary bytes).
+  //   - **Restrictions**: Can be any byte sequence.
+  //
+  // ### Response Fields:
+  //
+  // - **signature**: The Schnorr signature as hex-encoded bytes.
+  // - **public_nonce**: The public nonce component of the signature as hex-encoded bytes.
   //
   // ### Example JavaScript gRPC client usage:
   //
   // ```javascript
   // const request = {
-  //   public_key_hex: "0281bdfc...",
-  //   net_address: "/ip4/127.0.0.1/tcp/18141"
+  //   message: Buffer.from("Hello Tari!", "utf-8")
   // };
-  // client.setBaseNode(request, (err, response) => {
+  // client.signMessage(request, (err, response) => {
   //   if (err) console.error(err);
-  //   else console.log("Base node set successfully");
+  //   else console.log("Signature:", response.signature, "Nonce:", response.public_nonce);
   // });
   // ```
   //
-  // ### Sample JSON Request:
+  // ### Sample JSON Response:
+  //
   // ```json
   // {
-  //   "public_key_hex": "0281bdfc...",
-  //   "net_address": "/ip4/127.0.0.1/tcp/18141"
+  //   "signature": "a1b2c3d4e5f6...",
+  //   "public_nonce": "f6e5d4c3b2a1..."
   // }
   // ```
   //
-  // ### Sample JSON Response:
-  // ```json
-  // {}
-  // ```
-  rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
+  // ### Security Notes:
+  //
+  // - This signs with the wallet's node identity private key.
+  // - The signature can be verified using the wallet's public key.
+  // - Use this for authentication and ownership proofs only.
+  rpc SignMessage (SignMessageRequest) returns (SignMessageResponse);
 
   // Streams real-time wallet transaction events to the client.
   //
@@ -1082,8 +1097,6 @@ service Wallet {
   // ```
   rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
 
-  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
-
   rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponse);
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
@@ -1134,6 +1147,19 @@ service Wallet {
   // }
   // ```
   rpc GetPaymentByReference(GetPaymentByReferenceRequest) returns (GetPaymentByReferenceResponse);
+
+  rpc GetFeeEstimate(GetFeeEstimateRequest) returns (GetFeeEstimateResponse);
+
+  rpc GetFeePerGramStats(GetFeePerGramStatsRequest) returns (GetFeePerGramStatsResponse);
+
+  rpc ReplaceByFee(ReplaceByFeeRequest) returns (ReplaceByFeeResponse);
+
+  rpc UserPayForFee(UserPayForFeeRequest) returns (UserPayForFeeResponse);
+
+  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
+
+  rpc SubmitValidatorEvictionProof(SubmitValidatorEvictionProofRequest) returns (SubmitValidatorEvictionProofResponse);
+  rpc SubmitValidatorNodeExit(SubmitValidatorNodeExitRequest) returns (SubmitValidatorNodeExitResponse);
 }
 
 
@@ -1168,6 +1194,28 @@ message GetCompleteAddressResponse {
   string one_sided_address_emoji = 6;
 }
 
+// A request to preapre a one sided transaction for offline signing
+message PrepareOneSidedTransactionForSigningRequest {
+  PaymentRecipient recipient = 1;
+}
+
+message PrepareOneSidedTransactionForSigningResponse {
+  bool is_success = 1;
+  string result = 2;
+  string failure_message = 3;
+}
+
+// A request to broadcast a signed one sided transaction
+message BroadcastSignedOneSidedTransactionRequest {
+  string request = 1;
+}
+
+message BroadcastSignedOneSidedTransactionResponse {
+  bool is_success = 1;
+  uint64 transaction_id = 2;
+  string failure_message = 3;
+}
+
 // A request to send funds to one or more recipients.
 message TransferRequest {
   repeated PaymentRecipient recipients = 1;
@@ -1182,6 +1230,7 @@ message CreateBurnTransactionRequest{
   uint64 fee_per_gram = 2;
   bytes claim_public_key = 4;
   bytes payment_id = 5;
+  bytes sidechain_deployment_key = 6;
 }
 
 // A recipient for a transfer, including address, amount, fee, and optional payment ID.
@@ -1190,7 +1239,7 @@ message PaymentRecipient {
   string address = 1;
   // Amount to send in microTari (1 T = 1_000_000 µT).
   uint64 amount = 2;
-   // Fee rate per gram.
+  // Fee rate per gram.
   uint64 fee_per_gram = 3;
   enum PaymentType {
     // Default Mimblewimble-style transaction.
@@ -1414,8 +1463,14 @@ message ImportUtxosResponse {
 }
 
 message CreateTemplateRegistrationRequest {
-  TemplateRegistration template_registration = 1;
-  uint64 fee_per_gram = 2;
+  uint64 fee_per_gram = 1;
+  string template_name = 2;
+  uint32 template_version = 3;
+  TemplateType template_type = 4;
+  BuildInfo build_info = 5;
+  bytes binary_sha = 6;
+  string binary_url = 7;
+  bytes sidechain_deployment_key = 8;
 }
 
 message CreateTemplateRegistrationResponse {
@@ -1483,7 +1538,8 @@ message TransactionEvent {
   string status = 5;
   string direction = 6;
   uint64 amount = 7;
-  bytes payment_id = 9;
+  bytes raw_payment_id = 9;
+  bytes user_payment_id = 10;
 }
 
 message TransactionEventResponse {
@@ -1493,11 +1549,40 @@ message TransactionEventResponse {
 message RegisterValidatorNodeRequest {
   bytes validator_node_public_key = 1;
   Signature validator_node_signature = 2;
-  uint64 fee_per_gram = 3;
-  bytes payment_id = 5;
+  bytes validator_node_claim_public_key = 3;
+  uint64 max_epoch = 4;
+  uint64 fee_per_gram = 5;
+  bytes payment_id = 6;
+  bytes sidechain_deployment_key = 7;
 }
 
 message RegisterValidatorNodeResponse {
+  uint64 transaction_id = 1;
+  bool is_success = 2;
+  string failure_message = 3;
+}
+
+message SubmitValidatorEvictionProofRequest {
+  EvictionProof proof = 1;
+  uint64 fee_per_gram = 2;
+  string message = 3;
+  bytes sidechain_deployment_key = 4;
+}
+
+message SubmitValidatorEvictionProofResponse {
+  uint64 tx_id = 1;
+}
+
+message SubmitValidatorNodeExitRequest {
+  bytes validator_node_public_key = 1;
+  Signature validator_node_signature = 2;
+  uint64 max_epoch = 3;
+  uint64 fee_per_gram = 4;
+  bytes message = 5;
+  bytes sidechain_deployment_key = 6;
+}
+
+message SubmitValidatorNodeExitResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
@@ -1508,7 +1593,7 @@ message ImportTransactionsRequest {
 }
 
 message ImportTransactionsResponse {
-    repeated uint64 tx_ids = 1;
+  repeated uint64 tx_ids = 1;
 }
 
 message GetAllCompletedTransactionsRequest {
@@ -1579,4 +1664,79 @@ enum PaymentDirection {
   PAYMENT_DIRECTION_INBOUND = 1;
   // Payment sent from this wallet
   PAYMENT_DIRECTION_OUTBOUND = 2;
+}
+
+message GetFeeEstimateRequest {
+  // The amount to send in microTari (1 T = 1_000_000 µT).
+  uint64 amount = 1;
+  // fee per gram to use for the estimate
+  uint64 fee_per_gram = 2;
+  // number of outputs to create in the transaction
+  uint64 output_count = 3;
+}
+
+message GetFeeEstimateResponse {
+  // Estimated fee for the transaction in microTari
+  uint64 estimated_fee = 1;
+}
+
+message GetFeePerGramStatsRequest {
+  // Optional: The number of recent blocks to consider for fee statistics.
+  uint64 block_count = 1;
+}
+
+message GetFeePerGramStatsResponse {
+  repeated FeePerGramStat fee_per_gram_stats = 1;
+}
+
+message ReplaceByFeeRequest {
+  // The transaction id of the transaction to replace
+  uint64 transaction_id = 1;
+  // The amount to increase the fee by in microTari. Must be greater than zero.
+  uint64 fee_increase = 2;
+}
+
+message ReplaceByFeeResponse {
+  // Transaction id of the new transaction
+  uint64 transaction_id = 1;
+}
+
+message UserPayForFeeRequest {
+    repeated TxOutputsToSpendTransfer recipients = 1;
+}
+
+message TxOutputsToSpendTransfer {
+    // Id of the transaction to spend outputs from.
+    uint64 tx_id = 1;
+    // Fee to pay for the transaction in microTari.
+    uint64 fee = 2;
+    // Base58 Tari address of the recipient.
+    string destination = 3;
+}
+
+message UserPayForFeeResponse {
+  repeated TransferResult results = 1;
+}
+
+message FeePerGramStat {
+  // The average fee per gram over the specified number of blocks.
+  uint64 average_fee_per_gram = 1;
+  // The minimum fee per gram observed in the recent blocks.
+  uint64 min_fee_per_gram = 2;
+  // The maximum fee per gram observed in the recent blocks.
+  uint64 max_fee_per_gram = 3;
+}
+
+// Request message for SignMessage RPC
+message SignMessageRequest {
+  // The message to be signed (arbitrary bytes)
+  bytes message = 1;
+}
+
+// Response message for SignMessage RPC
+message SignMessageResponse {
+  // The Schnorr signature as hex-encoded string
+  string signature = 1;
+  // The public nonce component as hex-encoded string
+  string public_nonce = 2;
 }

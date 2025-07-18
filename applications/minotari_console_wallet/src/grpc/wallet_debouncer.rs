@@ -25,7 +25,6 @@ use std::sync::Arc;
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::Balance,
@@ -51,7 +50,6 @@ pub struct WalletDebouncer {
     refresh_needed: Arc<Mutex<bool>>,
     output_manager_service: OutputManagerHandle,
     transaction_service: TransactionServiceHandle,
-    wallet_connectivity: WalletConnectivityHandle,
     utxo_scanner_handle: UtxoScannerHandle,
     shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<Mutex<bool>>,
@@ -62,9 +60,9 @@ impl WalletDebouncer {
     pub fn new(
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
-        wallet_connectivity: WalletConnectivityHandle,
         utxo_scanner_handle: UtxoScannerHandle,
         shutdown_signal: ShutdownSignal,
+        scanned_height: u64,
     ) -> Self {
         Self {
             balance: Arc::new(Mutex::new(Balance {
@@ -74,10 +72,9 @@ impl WalletDebouncer {
                 time_locked_balance: None,
             })),
             refresh_needed: Arc::new(Mutex::new(true)),
-            scanned_height: Arc::new(Mutex::new(0)),
+            scanned_height: Arc::new(Mutex::new(scanned_height)),
             output_manager_service,
             transaction_service,
-            wallet_connectivity,
             utxo_scanner_handle,
             shutdown_signal,
             event_monitor_started: Arc::new(Mutex::new(false)),
@@ -160,7 +157,6 @@ impl WalletDebouncer {
     async fn monitor_events(&self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
         let mut transaction_service_events = self.transaction_service.get_event_stream();
-        let mut base_node_changed = self.wallet_connectivity.clone().get_current_base_node_watcher();
         let mut output_manager_service_events = self.output_manager_service.get_event_stream();
         let mut utxo_scanner_events = self.utxo_scanner_handle.clone().get_event_receiver();
 
@@ -193,10 +189,7 @@ impl WalletDebouncer {
                         },
                     }
                 },
-                _ = base_node_changed.changed() => {
-                    self.set_refresh_needed(true).await;
-                },
-                result = output_manager_service_events.recv() => {
+               result = output_manager_service_events.recv() => {
                     match result {
                         Ok(msg) => {
                             if let OutputManagerEvent::TxoValidationSuccess(_) = &*msg {

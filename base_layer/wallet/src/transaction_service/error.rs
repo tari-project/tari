@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{io, path::PathBuf};
+
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -200,6 +202,24 @@ pub enum TransactionServiceError {
     ScriptError(#[from] ScriptError),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
+    #[error("Other error: `{0}`")]
+    Other(String),
+    #[error("Could not read file {file_path} - {err}.")]
+    FileReadError { file_path: PathBuf, err: io::Error },
+    #[error("Failed to write to file {file_path} - {err}.")]
+    FileWriteError { file_path: PathBuf, err: io::Error },
+    #[error("Transaction with id {0} has been already mined")]
+    TransactionAlreadyMined(String),
+    #[error("Transaction inputs were invalid")]
+    InvalidTransactionInputs,
+    #[error("Fee increase is zero")]
+    ZeroFeeIncrease,
+    #[error("Error signing sidechain data: `{0}`")]
+    SidechainSigningError(String),
+    #[error("Invalid data for a burn transaction: `{0}`")]
+    InvalidBurnTransaction(String),
+    #[error("Invalid validator node signature")]
+    InvalidValidatorNodeSignature,
 }
 
 impl From<RangeProofError> for TransactionServiceError {
@@ -286,6 +306,8 @@ pub enum TransactionStorageError {
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Coinbase transactions are not supported in the wallet")]
     CoinbaseNotSupported,
+    #[error("Failed to calculate transaction fee: {0}")]
+    FailedToCalculateTransactionFee(String),
 }
 
 impl From<ByteArrayError> for TransactionStorageError {

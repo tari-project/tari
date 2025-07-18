@@ -181,6 +181,29 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
     );
 }
 
+#[then(expr = "all nodes are on the same network difficulty")]
+async fn all_nodes_on_same_network_difficulty(world: &mut TariWorld) {
+    let mut all_nodes_metadata = Vec::new();
+    for (name, _) in &world.base_nodes {
+        let mut client = world.get_node_client(name).await.unwrap();
+        let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
+        all_nodes_metadata.push(chain_tip.metadata.unwrap());
+    }
+    let first_metadata = all_nodes_metadata.first().unwrap();
+    if all_nodes_metadata
+        .iter()
+        .any(|v| v.best_block_height != first_metadata.best_block_height)
+    {
+        panic!("base nodes not successfully synchronized at the same height");
+    }
+    if all_nodes_metadata
+        .iter()
+        .any(|v| v.accumulated_difficulty != first_metadata.accumulated_difficulty)
+    {
+        panic!("base nodes synchronized at the same height do all not have the same accumulated difficulty");
+    }
+}
+
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
 async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
@@ -980,6 +1003,125 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
 
     assert_eq!(num_6154266699, 1);
     assert_eq!(num_12308533399, 1);
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {}", e),
+    }
+}
+
+#[then(expr = "generate a block with zero value coinbase as a single request from node {word}")]
+async fn generate_block_as_single_request_with_zero_coinbase(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    let template_req = GetNewBlockTemplateWithCoinbasesRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+        coinbases: vec![NewBlockCoinbase {
+            address: TariAddress::from_base58(
+                "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+            )
+            .unwrap()
+            .to_base58(),
+            value: 0,
+            stealth_payment: false,
+            revealed_value_proof: true,
+            coinbase_extra: Vec::new(),
+        }],
+    };
+    let new_block = client
+        .get_new_block_template_with_coinbases(template_req)
+        .await
+        .unwrap()
+        .into_inner();
+
+    let new_block = new_block.block.unwrap();
+    let mut coinbase_kernel_count = 0;
+    let mut coinbase_utxo_count = 0;
+    let body: AggregateBody = new_block.body.clone().unwrap().try_into().unwrap();
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            coinbase_kernel_count += 1;
+        }
+    }
+    println!("{}", body);
+    for utxo in body.outputs() {
+        if utxo.is_coinbase() {
+            coinbase_utxo_count += 1;
+        }
+    }
+    assert_eq!(coinbase_kernel_count, 1);
+    assert_eq!(coinbase_utxo_count, 1);
+
+    // Verify that the zero coinbase was automatically set to the full block reward
+    let coinbase_output = body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+    assert!(
+        coinbase_output.minimum_value_promise.as_u64() > 0,
+        "Zero coinbase should have been automatically set to block reward"
+    );
+
+    match client.submit_block(new_block).await {
+        Ok(_) => (),
+        Err(e) => panic!("The block should have been valid, {}", e),
+    }
+}
+
+#[then(expr = "generate a block with zero value coinbase from node {word}")]
+async fn generate_block_with_zero_coinbase(world: &mut TariWorld, node: String) {
+    let mut client = world.get_node_client(&node).await.unwrap();
+
+    let template_req = NewBlockTemplateRequest {
+        algo: Some(PowAlgo {
+            pow_algo: PowAlgos::Sha3x.into(),
+        }),
+        max_weight: 0,
+    };
+
+    let template_response = client.get_new_block_template(template_req).await.unwrap().into_inner();
+
+    let block_template = template_response.new_block_template.clone().unwrap();
+    let request = GetNewBlockWithCoinbasesRequest {
+        new_template: Some(block_template),
+        coinbases: vec![NewBlockCoinbase {
+            address: TariAddress::from_base58(
+                "f4L8GRWsXqz26DM3qAGErLtVknYzmTe2fYP2yKFn4biFXYJMP61W9MeD726QJ7ytWhRGyewTZzTzjZ7tEPskDptwRub",
+            )
+            .unwrap()
+            .to_base58(),
+            value: 0,
+            stealth_payment: false,
+            revealed_value_proof: true,
+            coinbase_extra: Vec::new(),
+        }],
+    };
+
+    let new_block = client.get_new_block_with_coinbases(request).await.unwrap().into_inner();
+
+    let new_block = new_block.block.unwrap();
+    let mut coinbase_kernel_count = 0;
+    let mut coinbase_utxo_count = 0;
+    let body: AggregateBody = new_block.body.clone().unwrap().try_into().unwrap();
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            coinbase_kernel_count += 1;
+        }
+    }
+    for utxo in body.outputs() {
+        if utxo.is_coinbase() {
+            coinbase_utxo_count += 1;
+        }
+    }
+    assert_eq!(coinbase_kernel_count, 1);
+    assert_eq!(coinbase_utxo_count, 1);
+
+    // Verify that the zero coinbase was automatically set to the full block reward
+    let coinbase_output = body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+    assert!(
+        coinbase_output.minimum_value_promise.as_u64() > 0,
+        "Zero coinbase should have been automatically set to block reward"
+    );
 
     match client.submit_block(new_block).await {
         Ok(_) => (),

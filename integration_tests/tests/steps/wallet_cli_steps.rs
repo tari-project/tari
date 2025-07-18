@@ -34,11 +34,9 @@ use minotari_console_wallet::{
     ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
     SendMinotariArgs,
-    SetBaseNodeArgs,
     WhoisArgs,
 };
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
@@ -48,69 +46,6 @@ use tari_key_manager::SeedWords;
 use tari_utilities::hex::Hex;
 
 use crate::steps::get_saved_seed_words;
-
-#[then(expr = "I change base node of {word} to {word} via command line")]
-async fn change_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let mut cli = get_default_cli();
-
-    let mut node_client = world.get_node_client(&node).await.unwrap();
-    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
-
-    let args = SetBaseNodeArgs {
-        public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
-        address: Multiaddr::from_str(node_identity.public_addresses[0].as_str()).unwrap(),
-    };
-
-    cli.command2 = Some(CliCommands::SetBaseNode(args));
-
-    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet, Some(node.clone()), seed_nodes, None, Some(cli)).await;
-}
-
-#[then(expr = "I set custom base node of {word} to {word} via command line")]
-async fn change_custom_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let mut cli = get_default_cli();
-
-    let mut node_client = world.get_node_client(&node).await.unwrap();
-    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
-
-    let args = SetBaseNodeArgs {
-        public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
-        address: Multiaddr::from_str(node_identity.public_addresses[0].as_str()).unwrap(),
-    };
-
-    cli.command2 = Some(CliCommands::SetCustomBaseNode(args));
-
-    let seed_nodes = world.base_nodes.get(&node).unwrap().seed_nodes.clone();
-    spawn_wallet(world, wallet, Some(node.clone()), seed_nodes, None, Some(cli)).await;
-}
-
-#[when(expr = "I clear custom base node of wallet {word} via command line")]
-async fn clear_custom_base_node(world: &mut TariWorld, wallet: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
-    wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let mut cli = get_default_cli();
-
-    cli.command2 = Some(CliCommands::ClearCustomBaseNode);
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
-    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-
-    spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
-}
 
 #[then(expr = "the password of wallet {word} is not {word}")]
 async fn password_is(world: &mut TariWorld, wallet: String, _password: String) {
@@ -368,15 +303,6 @@ async fn recover_wallet_via_cli(
     }
 
     let mut cli = get_default_cli();
-
-    let mut node_client = world.get_node_client(&node).await.unwrap();
-    let node_identity = node_client.identify(Empty {}).await.unwrap().into_inner();
-
-    let args = SetBaseNodeArgs {
-        public_key: UniPublicKey::from_str(node_identity.public_key.to_hex().as_str()).unwrap(),
-        address: Multiaddr::from_str(node_identity.public_addresses[0].as_str()).unwrap(),
-    };
-    cli.command2 = Some(CliCommands::SetCustomBaseNode(args));
 
     cli.recovery = true;
     let saved_seed_words = get_saved_seed_words(world, &source_wallet_name);

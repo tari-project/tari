@@ -23,23 +23,21 @@
 use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
-use futures::{future, StreamExt};
+use futures::StreamExt;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::RwLock;
 
 use super::{
-    config::BaseNodeServiceConfig,
     error::BaseNodeServiceError,
     handle::{BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
 };
 use crate::{
     base_node_service::monitor::BaseNodeMonitor,
+    client::http_client_factory::HttpClientFactory,
     connectivity_service::WalletConnectivityHandle,
-    storage::database::{WalletBackend, WalletDatabase},
 };
 
 const LOG_TARGET: &str = "wallet::base_node_service::service";
@@ -47,7 +45,6 @@ const LOG_TARGET: &str = "wallet::base_node_service::service";
 /// State determined from Base Node Service Requests
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BaseNodeState {
-    pub node_id: Option<NodeId>,
     pub chain_metadata: Option<ChainMetadata>,
     pub is_synced: Option<bool>,
     pub updated: Option<DateTime<Utc>>,
@@ -55,37 +52,31 @@ pub struct BaseNodeState {
 }
 
 /// The base node service is responsible for handling requests to be sent to the connected base node.
-pub struct BaseNodeService<T>
-where T: WalletBackend + 'static
+pub struct BaseNodeService<TClientFactory>
+where TClientFactory: HttpClientFactory
 {
-    config: BaseNodeServiceConfig,
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
-    wallet_connectivity: WalletConnectivityHandle,
+    wallet_connectivity: WalletConnectivityHandle<TClientFactory>,
     event_publisher: BaseNodeEventSender,
     shutdown_signal: ShutdownSignal,
     state: Arc<RwLock<BaseNodeState>>,
-    db: WalletDatabase<T>,
 }
 
-impl<T> BaseNodeService<T>
-where T: WalletBackend + 'static
+impl<TClientFactory> BaseNodeService<TClientFactory>
+where TClientFactory: HttpClientFactory
 {
     pub fn new(
-        config: BaseNodeServiceConfig,
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
-        wallet_connectivity: WalletConnectivityHandle,
+        wallet_connectivity: WalletConnectivityHandle<TClientFactory>,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
-        db: WalletDatabase<T>,
     ) -> Self {
         Self {
-            config,
             request_stream: Some(request_stream),
             wallet_connectivity,
             event_publisher,
             shutdown_signal,
             state: Default::default(),
-            db,
         }
     }
 
@@ -126,18 +117,14 @@ where T: WalletBackend + 'static
 
     fn spawn_monitor(&self) {
         let monitor = BaseNodeMonitor::new(
-            self.config.base_node_monitor_max_refresh_interval,
             self.state.clone(),
-            self.db.clone(),
             self.wallet_connectivity.clone(),
             self.event_publisher.clone(),
         );
 
         let shutdown_signal = self.shutdown_signal.clone();
         tokio::spawn(async move {
-            let monitor_fut = monitor.run();
-            futures::pin_mut!(monitor_fut);
-            future::select(shutdown_signal, monitor_fut).await;
+            monitor.run(shutdown_signal.clone()).await;
         });
     }
 
@@ -151,14 +138,6 @@ where T: WalletBackend + 'static
             "Handling Wallet Base Node Service Request: {:?}", request
         );
         match request {
-            BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata {
-                Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
-                None => {
-                    // if we don't have live state, check if we've previously stored state in the wallet db
-                    let metadata = self.db.get_chain_metadata()?;
-                    Ok(BaseNodeServiceResponse::ChainMetadata(metadata))
-                },
-            },
             BaseNodeServiceRequest::GetBaseNodeLatency => {
                 Ok(BaseNodeServiceResponse::Latency(self.state.read().await.latency))
             },

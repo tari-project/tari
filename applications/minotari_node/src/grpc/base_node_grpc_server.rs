@@ -27,16 +27,24 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use chrono::Utc;
 use either::Either;
 use futures::{channel::mpsc, SinkExt};
 use log::*;
 use minotari_app_grpc::{
-    tari_rpc,
-    tari_rpc::{CalcType, Sorting},
+    conversions::transaction_output::grpc_output_with_payref,
+    tari_rpc::{
+        self,
+        readiness_status::{State as ReadinessState, Status as ReadinessStatusEnum},
+        CalcType,
+        ReadinessStatus,
+        Sorting,
+    },
 };
-use minotari_app_utilities::consts;
 use tari_common_types::{
+    epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     types::{
         CompressedCommitment,
@@ -58,7 +66,7 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
     consensus::{ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
@@ -66,7 +74,7 @@ use tari_core::{
     transactions::{
         generate_coinbase_with_wallet_output,
         transaction_components::{
-            encrypted_data::{PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             CoinBaseExtra,
             KernelBuilder,
             RangeProofType,
@@ -170,8 +178,10 @@ impl BaseNodeGrpcServer {
             GrpcMethod::GetVersion,
             GrpcMethod::GetConstants,
             GrpcMethod::GetMempoolTransactions,
+            GrpcMethod::GetMempoolStats,
             GrpcMethod::GetTipInfo,
             GrpcMethod::GetActiveValidatorNodes,
+            GrpcMethod::GetValidatorNodeChanges,
             GrpcMethod::GetShardKey,
             GrpcMethod::GetTemplateRegistrations,
             GrpcMethod::GetHeaderByHash,
@@ -234,6 +244,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeaderResponse, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchPaymentReferencesStream = mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
+    type SearchPaymentReferencesViaOutputHashStream =
+        mpsc::Receiver<Result<tari_rpc::PaymentReferenceResponse, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     #[allow(clippy::too_many_lines)]
@@ -399,7 +411,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             warn!(
                 target: LOG_TARGET,
                 "Could not get node tip: {}",
-                e.to_string()
+                e
             );
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
@@ -422,7 +434,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Sha3x: {}",
-                            e.to_string()
+                            e
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
@@ -449,7 +461,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Monero RandomX: {}",
-                            e.to_string()
+                            e
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
@@ -477,7 +489,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Tari RandomX: {}",
-                            e.to_string()
+                            e
                         );
                         obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
@@ -523,6 +535,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             tari_randomx_estimated_hash_rate,
             num_connections: connected_peers.len() as u64,
             liveness_results: liveness,
+            readiness_status: Some(ReadinessStatus {
+                status: Some(ReadinessStatusEnum::State(ReadinessState::Ready.into())),
+                timestamp: Utc::now().timestamp_millis() as u64,
+            }),
         };
         trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");
         Ok(Response::new(response))
@@ -793,7 +809,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             warn!(
                 target: LOG_TARGET,
                 "Could not get node tip: {}",
-                e.to_string()
+                e
             );
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
@@ -815,7 +831,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                     warn!(
                                         target: LOG_TARGET,
                                         "Could not get new block template: {}",
-                                        e.to_string()
+                                        e
                                     );
                                     obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                                 })?;
@@ -842,7 +858,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                     warn!(
                                         target: LOG_TARGET,
                                         "Could not get new block template: {}",
-                                        e.to_string()
+                                        e
                                     );
                                     obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                                 })?;
@@ -869,7 +885,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                     warn!(
                                         target: LOG_TARGET,
                                         "Could not get new block template: {}",
-                                        e.to_string()
+                                        e
                                     );
                                     obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                                 })?;
@@ -985,7 +1001,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             warn!(
                 target: LOG_TARGET,
                 "Could not get new block template: {}",
-                e.to_string()
+                e
             );
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
@@ -1082,7 +1098,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             warn!(
                 target: LOG_TARGET,
                 "Could not get new block template: {}",
-                e.to_string()
+                e
             );
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
@@ -1120,6 +1136,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 })?
                 .as_u64(),
         );
+
+        // assume full coinbase reward in case of single coinbase with zero value
+        if coinbases.len() == 1 && coinbases[0].value == 0 {
+            coinbases[0].value = 1;
+        }
+
         let mut total_shares = 0u128;
         for coinbase in &coinbases {
             total_shares += u128::from(coinbase.value);
@@ -1352,7 +1374,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::invalid_argument(format!("Malformed block template provided: {}", s)),
                 )
             })?;
-        let coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
+        let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
         if coinbases.len() as u64 >
             self.consensus_rules
                 .consensus_constants(block_template.header.height)
@@ -1376,6 +1398,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Status::internal("Could not calculate the amount of fees in the block".to_string()),
                 )
             })?;
+
+        // assume full coinbase reward in case of single coinbase with zero value
+        if coinbases.len() == 1 && coinbases[0].value == 0 {
+            coinbases[0].value = reward.as_u64();
+        }
+
         let mut amount = 0u64;
         for coinbase in &coinbases {
             amount += coinbase.value;
@@ -1546,7 +1574,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             warn!(
                 target: LOG_TARGET,
                 "Could not get new block template: {}",
-                e.to_string()
+                e
             );
             obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
         })?;
@@ -2170,7 +2198,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
             for output in outputs {
-                match output.try_into() {
+                match grpc_output_with_payref(output, None) {
                     Ok(output) => {
                         let resp = tari_rpc::FetchMatchingUtxosResponse { output: Some(output) };
                         if tx.send(Ok(resp)).await.is_err() {
@@ -2305,9 +2333,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         .await
     }
 
-    async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
+    async fn get_version(
+        &self,
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::BaseNodeGetVersionResponse>, Status> {
         self.check_method_enabled(GrpcMethod::GetVersion)?;
-        Ok(Response::new(consts::APP_VERSION.to_string().into()))
+        let resp = tari_rpc::BaseNodeGetVersionResponse {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            network: u32::from(self.network.as_network().as_byte()),
+        };
+        Ok(Response::new(resp))
     }
 
     async fn check_for_updates(
@@ -2365,17 +2400,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .clone()
                     .into_iter()
                     .map(|height| {
+                        let circulating_supply = consensus_manager.total_tokens_circulating_at_height(height)?.into();
                         let mined_rewards = consensus_manager.block_rewards_mined_at_height(height)?.into();
                         let spendable_rewards = consensus_manager.block_rewards_spendable_at_height(height)?.into();
                         let spendable_pre_mine = consensus_manager.pre_mine_spendable_at_height(height)?.into();
                         let total_spendable = consensus_manager.total_tokens_spendable_at_height(height)?.into();
+                        let total_pre_mine = consensus_manager.total_pre_mine_in_genesis_block().into();
+                        let time_locked_pre_mine = consensus_manager.time_locked_pre_mine(height)?.into();
 
                         Ok(tari_rpc::ValueAtHeightResponse {
+                            circulating_supply,
                             height,
                             mined_rewards,
                             spendable_rewards,
                             spendable_pre_mine,
                             total_spendable,
+                            total_pre_mine,
+                            time_locked_pre_mine,
                         })
                     })
                     .collect::<Result<Vec<tari_rpc::ValueAtHeightResponse>, String>>();
@@ -2677,21 +2718,26 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let public_key = CompressedPublicKey::from_canonical_bytes(&request.public_key)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e.to_string())))?;
 
-        let shard_key = handler.get_shard_key(request.height, public_key).await.map_err(|e| {
-            error!(target: LOG_TARGET, "Error {}", e);
-            obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
-        })?;
-        if let Some(shard_key) = shard_key {
-            Ok(Response::new(tari_rpc::GetShardKeyResponse {
-                shard_key: shard_key.to_vec(),
-                found: true,
-            }))
-        } else {
-            Ok(Response::new(tari_rpc::GetShardKeyResponse {
-                shard_key: vec![],
-                found: false,
-            }))
+        let epoch = request.epoch;
+
+        let validator_node = handler
+            .get_validator_node(None, public_key)
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error {}", e);
+                obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+            })?
+            .ok_or_else(|| Status::not_found("Validator node not found"))?;
+
+        if validator_node.activation_epoch.as_u64() > epoch {
+            return Err(Status::not_found(format!(
+                "Validator node found but not active for epoch {epoch}"
+            )));
         }
+
+        Ok(Response::new(tari_rpc::GetShardKeyResponse {
+            shard_key: validator_node.shard_key.to_vec(),
+        }))
     }
 
     async fn get_active_validator_nodes(
@@ -2705,8 +2751,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(1000);
 
+        let sidechain_id = if request.sidechain_id.is_empty() {
+            None
+        } else {
+            Some(
+                CompressedPublicKey::from_canonical_bytes(&request.sidechain_id)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid sidechain_id '{}'", e)))?,
+            )
+        };
+
         task::spawn(async move {
-            let active_validator_nodes = match handler.get_active_validator_nodes(request.height).await {
+            let active_validator_nodes = match handler.get_active_validator_nodes(request.height, sidechain_id).await {
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Base node service error: {}", err,);
                     return;
@@ -2714,10 +2769,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
 
-            for (public_key, shard_key) in active_validator_nodes {
+            for ValidatorNodeRegistrationInfo {
+                public_key,
+                sidechain_id,
+                shard_key,
+                ..
+            } in active_validator_nodes
+            {
                 let active_validator_node = tari_rpc::GetActiveValidatorNodesResponse {
                     public_key: public_key.to_vec(),
                     shard_key: shard_key.to_vec(),
+                    sidechain_id: sidechain_id.as_ref().map(|n| n.to_vec()).unwrap_or(vec![0u8; 32]),
                 };
 
                 if tx.send(Ok(active_validator_node)).await.is_err() {
@@ -2794,7 +2856,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             };
 
             for template_registration in template_registrations {
-                let registration = template_registration.registration_data.into();
+                let registration = template_registration.registration_data().into();
 
                 let resp = tari_rpc::GetTemplateRegistrationResponse {
                     utxo_hash: template_registration.output_hash.to_vec(),
@@ -2833,12 +2895,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .filter(|x| !x.is_empty())
             .map(FixedHash::try_from)
             .transpose()
-            .map_err(|e| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument(format!("Invalid start_hash '{}'", e)),
-                )
-            })?;
+            .map_err(|e| Status::invalid_argument(format!("Invalid start_hash '{}'", e)))?;
 
         let mut node_service = self.node_service.clone();
 
@@ -2847,14 +2904,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .get_header_by_hash(hash)
                 .await
                 .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?
-                .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::not_found("Start hash not found")))?,
+                .ok_or_else(|| Status::not_found("Start hash not found"))?,
             None => node_service
                 .get_header(0)
                 .await
                 .map_err(|err| obscure_error_if_true(self.report_grpc_error, Status::internal(err.to_string())))?
-                .ok_or_else(|| {
-                    obscure_error_if_true(report_error_flag, Status::unavailable("Genesis block not available"))
-                })?,
+                .ok_or_else(|| Status::unavailable("Genesis block not available"))?,
         };
 
         if request.count == 0 {
@@ -2862,12 +2917,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
 
         let start_height = start_header.height();
-        let end_height = start_height.checked_add(request.count - 1).ok_or_else(|| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("Request start height + count overflows u64"),
-            )
-        })?;
+        let end_height = start_height
+            .checked_add(request.count - 1)
+            .ok_or_else(|| Status::invalid_argument("Request start height + count overflows u64"))?;
 
         task::spawn(async move {
             let mut current_header = start_header;
@@ -2895,8 +2947,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
                 let sidechain_outputs = utxos
                     .into_iter()
-                    .filter(|u| u.features.output_type.is_sidechain_type())
-                    .map(TryInto::try_into)
+                    .filter(|u| u.features.output_type.is_sidechain_type() || u.is_burned_to_sidechain())
+                    .map(|o| grpc_output_with_payref(o, Some(header_hash)))
                     .collect::<Result<Vec<_>, _>>();
 
                 match sidechain_outputs {
@@ -2948,6 +3000,94 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::too_many_lines)]
+    async fn search_payment_references_via_output_hash(
+        &self,
+        request: Request<tari_rpc::FetchMatchingUtxosRequest>,
+    ) -> Result<Response<Self::SearchPaymentReferencesViaOutputHashStream>, Status> {
+        self.check_method_enabled(GrpcMethod::SearchPaymentReferencesViaOutputHash)?;
+        let report_error_flag = self.report_error_flag();
+        let request = request.into_inner();
+        trace!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for SearchPaymentReferencesViaOutputHash: {} hashes",
+            request.hashes.len()
+        );
+
+        let hashes = request
+            .hashes
+            .into_iter()
+            .map(|s| s.try_into())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Invalid hashes provided '{}'", e)),
+                )
+            })?;
+
+        let mut node_service = self.node_service.clone();
+
+        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        task::spawn(async move {
+            for output_hash in &hashes {
+                let mut response = tari_rpc::PaymentReferenceResponse::default();
+                match node_service.fetch_mined_info_by_output_hash(output_hash).await {
+                    Ok(mined_info) => {
+                        let has_output = mined_info.output.is_some();
+                        let has_input = mined_info.input.is_some();
+                        if let Some(output_info) = mined_info.output {
+                            response.payment_reference_hex =
+                                generate_payment_reference(&output_info.header_hash, output_hash).to_hex();
+                            response.block_height = output_info.mined_height;
+                            response.block_hash = output_info.header_hash.to_vec();
+                            response.mined_timestamp = output_info.mined_timestamp;
+                            response.commitment = output_info.output.commitment.to_vec();
+                            response.min_value_promise = output_info.output.minimum_value_promise.as_u64();
+                            response.output_hash = output_info.output.hash().to_vec();
+                        }
+                        if let Some(input_info) = mined_info.input {
+                            response.is_spent = true;
+                            response.spent_height = input_info.spent_height;
+                            response.spent_block_hash = input_info.header_hash.to_vec();
+                            response.spent_timestamp = input_info.spent_timestamp;
+                            if response.output_hash.is_empty() {
+                                response.output_hash = input_info.input.output_hash().to_vec();
+                            }
+                        }
+                        if has_output || has_input {
+                            trace!(
+                                target: LOG_TARGET,
+                                "GRPC request SearchPaymentReferencesViaOutputHash for {} found",
+                                output_hash
+                            );
+                            if tx.send(Ok(response)).await.is_err() {
+                                return;
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Error looking up mined info via output hash {}: {}", output_hash, e);
+                        let error = obscure_error_if_true(
+                            report_error_flag,
+                            Status::internal(format!("Mined info via output hash  lookup error: {}", e)),
+                        );
+                        if tx.send(Err(error)).await.is_err() {
+                            break;
+                        }
+                    },
+                }
+            }
+        });
+
+        trace!(
+            target: LOG_TARGET,
+            "Sending SearchPaymentReferencesViaOutputHash response stream to client"
+        );
+        Ok(Response::new(rx))
+    }
+
+    #[allow(clippy::too_many_lines)]
     async fn search_payment_references(
         &self,
         request: Request<tari_rpc::SearchPaymentReferencesRequest>,
@@ -3013,38 +3153,35 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 payrefs.push(payref_fixed_hash);
             }
             for payref in payrefs {
-                match node_service.fetch_output_by_payref(&payref).await {
-                    Ok(Some(output_info)) => {
-                        // Check if output is spent
-                        let output_hash = output_info.output.hash();
-                        let (is_spent, spent_height, spent_block_hash) = match node_service
-                            .check_output_spent_status(output_hash)
-                            .await
-                        {
-                            Ok(Some(input_info)) => (true, input_info.spent_height, input_info.header_hash.to_vec()),
-                            Ok(None) => (false, 0, vec![]),
-                            Err(_) => (false, 0, vec![]), // Default to not spent on error
-                        };
-
-                        let response = tari_rpc::PaymentReferenceResponse {
-                            payment_reference_hex: payref.to_hex(),
-                            block_height: output_info.mined_height,
-                            block_hash: output_info.header_hash.to_vec(),
-                            mined_timestamp: output_info.mined_timestamp,
-                            commitment: output_info.output.commitment.to_vec(),
-                            is_spent,
-                            spent_height,
-                            spent_block_hash,
-                            min_value_promise: output_info.output.minimum_value_promise.as_u64(),
-                        };
-
-                        if tx.send(Ok(response)).await.is_err() {
-                            return;
+                let mut response = tari_rpc::PaymentReferenceResponse::default();
+                match node_service.fetch_mined_info_by_payref(&payref).await {
+                    Ok(mined_info) => {
+                        let has_output = mined_info.output.is_some();
+                        let has_input = mined_info.input.is_some();
+                        if let Some(output_info) = mined_info.output {
+                            response.payment_reference_hex = payref.to_hex();
+                            response.block_height = output_info.mined_height;
+                            response.block_hash = output_info.header_hash.to_vec();
+                            response.mined_timestamp = output_info.mined_timestamp;
+                            response.commitment = output_info.output.commitment.to_vec();
+                            response.min_value_promise = output_info.output.minimum_value_promise.as_u64();
+                            response.output_hash = output_info.output.hash().to_vec();
                         }
-                    },
-                    Ok(None) => {
-                        // PayRef not found - no error, just no results for this PayRef
-                        continue;
+                        if let Some(input_info) = mined_info.input {
+                            response.is_spent = true;
+                            response.spent_height = input_info.spent_height;
+                            response.spent_block_hash = input_info.header_hash.to_vec();
+                            response.spent_timestamp = input_info.spent_timestamp;
+                            if response.output_hash.is_empty() {
+                                response.output_hash = input_info.input.output_hash().to_vec();
+                            }
+                        }
+                        if has_output || has_input {
+                            trace!(target: LOG_TARGET, "GRPC request SearchPaymentReferences for {} found", payref);
+                            if tx.send(Ok(response)).await.is_err() {
+                                return;
+                            }
+                        }
                     },
                     Err(e) => {
                         warn!(target: LOG_TARGET, "Error looking up PayRef {}: {}", payref, e);
@@ -3061,6 +3198,38 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         });
 
         Ok(Response::new(rx))
+    }
+
+    async fn get_validator_node_changes(
+        &self,
+        request: Request<tari_rpc::GetValidatorNodeChangesRequest>,
+    ) -> Result<Response<tari_rpc::GetValidatorNodeChangesResponse>, Status> {
+        self.check_method_enabled(GrpcMethod::GetValidatorNodeChanges)?;
+        let request = request.into_inner();
+        trace!(target: LOG_TARGET, "Incoming GRPC request for GetValidatorNodeChanges");
+
+        let mut handler = self.node_service.clone();
+
+        let sidechain_id = Some(request.sidechain_id)
+            .filter(|id| !id.is_empty())
+            .map(|id| {
+                CompressedPublicKey::from_canonical_bytes(&id)
+                    .map_err(|e| Status::invalid_argument(format!("Invalid sidechain_id '{}'", e)))
+            })
+            .transpose()?;
+
+        let changes = handler
+            .get_validator_node_changes(sidechain_id, VnEpoch(request.epoch))
+            .await
+            .map_err(|error| {
+                warn!(target: LOG_TARGET, "Base node service error: {}", error);
+                Status::internal("Internal error!")
+            })?
+            .iter()
+            .map(|node_change| node_change.into())
+            .collect();
+
+        Ok(Response::new(tari_rpc::GetValidatorNodeChangesResponse { changes }))
     }
 }
 
