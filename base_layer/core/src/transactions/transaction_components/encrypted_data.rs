@@ -31,10 +31,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, Error, OsRng},
-    KeyInit,
-    Tag,
-    XChaCha20Poly1305,
-    XNonce,
+    KeyInit, Tag, XChaCha20Poly1305, XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use primitive_types::U256;
@@ -46,8 +43,7 @@ use tari_max_size::MaxSizeBytes;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
-    ByteArray,
-    ByteArrayError,
+    ByteArray, ByteArrayError,
 };
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
@@ -62,7 +58,7 @@ const SIZE_MASK: usize = PrivateKey::KEY_LEN;
 const SIZE_TAG: usize = size_of::<Tag>();
 pub const SIZE_U256: usize = size_of::<U256>();
 pub const STATIC_ENCRYPTED_DATA_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
-const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
+pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
 
 // Number of hex characters of encrypted data to display on each side of ellipsis when truncating
 const DISPLAY_CUTOFF: usize = 16;

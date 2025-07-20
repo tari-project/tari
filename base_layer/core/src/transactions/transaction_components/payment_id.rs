@@ -36,12 +36,9 @@ use tari_utilities::hex::Hex;
 
 use crate::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
+    transaction_components::encrypted_data::{MAX_ENCRYPTED_DATA_SIZE, SIZE_U256, SIZE_VALUE},
 };
-
-// Maximum size for a PaymentID in bytes (256 bytes)
-const MAX_PAYMENT_ID_SIZE: usize = 256;
-
+//
 // We pad the bytes to min this size, so that we can use the same size for AddressAndData and TransactionInfo
 const PADDING_SIZE: usize = 130;
 const PADDING_SIZE_NO_TAG: usize = 129;
@@ -215,14 +212,14 @@ impl PaymentId {
         sent_output_hashes_len: usize,
         user_data_len: usize,
     ) -> usize {
-        let base_size = 1 +
-            1 +
-            address.get_size() +
-            PaymentId::SIZE_VALUE_AND_META_DATA +
-            1 +
-            (sent_output_hashes_len * FixedHash::byte_size()) +
-            1 +
-            user_data_len;
+        let base_size = 1
+            + 1
+            + address.get_size()
+            + PaymentId::SIZE_VALUE_AND_META_DATA
+            + 1
+            + (sent_output_hashes_len * FixedHash::byte_size())
+            + 1
+            + user_data_len;
         std::cmp::max(base_size, PADDING_SIZE)
     }
 
@@ -236,11 +233,11 @@ impl PaymentId {
         // Calculate the actual size this PaymentId would occupy (including any nested PaymentIds in the address)
         let total_size = Self::calculate_address_and_data_size(&sender_address, user_data.len());
 
-        if total_size > MAX_PAYMENT_ID_SIZE {
+        if total_size > MAX_ENCRYPTED_DATA_SIZE {
             return Err(format!(
                 "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, user_data: {} bytes, overhead: {} \
                  bytes)",
-                MAX_PAYMENT_ID_SIZE,
+                MAX_ENCRYPTED_DATA_SIZE,
                 total_size,
                 sender_address.get_size(),
                 user_data.len(),
@@ -272,19 +269,19 @@ impl PaymentId {
         let total_size =
             Self::calculate_transaction_info_size(&recipient_address, sent_output_hashes.len(), user_data.len());
 
-        if total_size > MAX_PAYMENT_ID_SIZE {
+        if total_size > MAX_ENCRYPTED_DATA_SIZE {
             return Err(format!(
                 "PaymentId exceeds {}-byte limit: {} bytes (address: {} bytes, hashes: {} bytes, user_data: {} bytes, \
                  overhead: {} bytes)",
-                MAX_PAYMENT_ID_SIZE,
+                MAX_ENCRYPTED_DATA_SIZE,
                 total_size,
                 recipient_address.get_size(),
                 sent_output_hashes.len() * FixedHash::byte_size(),
                 user_data.len(),
-                total_size -
-                    recipient_address.get_size() -
-                    (sent_output_hashes.len() * FixedHash::byte_size()) -
-                    user_data.len()
+                total_size
+                    - recipient_address.get_size()
+                    - (sent_output_hashes.len() * FixedHash::byte_size())
+                    - user_data.len()
             ));
         }
 
@@ -311,10 +308,10 @@ impl PaymentId {
         // Raw PaymentId: 1 byte for tag + data.len() bytes for data
         let total_size = 1 + data.len();
 
-        if total_size > MAX_PAYMENT_ID_SIZE {
+        if total_size > MAX_ENCRYPTED_DATA_SIZE {
             return Err(format!(
                 "PaymentId exceeds {}-byte limit: {} bytes (data: {} bytes, tag: 1 byte)",
-                MAX_PAYMENT_ID_SIZE,
+                MAX_ENCRYPTED_DATA_SIZE,
                 total_size,
                 data.len()
             ));
@@ -337,10 +334,10 @@ impl PaymentId {
         // Open PaymentId: 1 byte for tag + user_data.len() bytes + 1 byte for tx_type
         let total_size = 1 + user_data.len() + 1;
 
-        if total_size > MAX_PAYMENT_ID_SIZE {
+        if total_size > MAX_ENCRYPTED_DATA_SIZE {
             return Err(format!(
                 "PaymentId exceeds {}-byte limit: {} bytes (user_data: {} bytes, tag: 1 byte, tx_type: 1 byte)",
-                MAX_PAYMENT_ID_SIZE,
+                MAX_ENCRYPTED_DATA_SIZE,
                 total_size,
                 user_data.len()
             ));
@@ -416,14 +413,14 @@ impl PaymentId {
                 // - (sent_output_hashes.len() * FixedHash::byte_size()) bytes for output hashes (32 bytes per hash)
                 // - 1 byte for user_data length
                 // - user_data.len() bytes for the variable-length user data
-                let len = 1 +
-                    1 +
-                    recipient_address.get_size() +
-                    PaymentId::SIZE_VALUE_AND_META_DATA +
-                    1 +
-                    (sent_output_hashes.len() * FixedHash::byte_size()) +
-                    1 +
-                    user_data.len();
+                let len = 1
+                    + 1
+                    + recipient_address.get_size()
+                    + PaymentId::SIZE_VALUE_AND_META_DATA
+                    + 1
+                    + (sent_output_hashes.len() * FixedHash::byte_size())
+                    + 1
+                    + user_data.len();
                 // Ensure minimum size of PADDING_SIZE (130 bytes) for consistent serialization
                 if len < PADDING_SIZE {
                     PADDING_SIZE
@@ -464,9 +461,9 @@ impl PaymentId {
 
     pub fn get_type(&self) -> TxType {
         match &self.inner {
-            InnerPaymentId::Open { tx_type, .. } |
-            InnerPaymentId::AddressAndData { tx_type, .. } |
-            InnerPaymentId::TransactionInfo { tx_type, .. } => *tx_type,
+            InnerPaymentId::Open { tx_type, .. }
+            | InnerPaymentId::AddressAndData { tx_type, .. }
+            | InnerPaymentId::TransactionInfo { tx_type, .. } => *tx_type,
             _ => TxType::default(),
         }
     }
@@ -500,27 +497,19 @@ impl PaymentId {
         sender_one_sided: bool,
         fee: MicroMinotari,
         tx_type: Option<TxType>,
-    ) -> PaymentId {
+    ) -> Result<PaymentId, String> {
         match self.inner {
             InnerPaymentId::Open { user_data, tx_type } => {
-                match PaymentId::new_address_and_data(sender_address, fee, sender_one_sided, tx_type, user_data) {
-                    Ok(payment_id) => payment_id,
-                    Err(e) => panic!("Cannot create AddressAndData PaymentId: {}", e),
-                }
+                PaymentId::new_address_and_data(sender_address, fee, sender_one_sided, tx_type, user_data)
             },
-            InnerPaymentId::Empty => {
-                match PaymentId::new_address_and_data(
-                    sender_address,
-                    fee,
-                    sender_one_sided,
-                    tx_type.unwrap_or_default(),
-                    vec![],
-                ) {
-                    Ok(payment_id) => payment_id,
-                    Err(e) => panic!("Cannot create AddressAndData PaymentId: {}", e),
-                }
-            },
-            _ => self,
+            InnerPaymentId::Empty => PaymentId::new_address_and_data(
+                sender_address,
+                fee,
+                sender_one_sided,
+                tx_type.unwrap_or_default(),
+                vec![],
+            ),
+            _ => Ok(self),
         }
     }
 
@@ -532,8 +521,8 @@ impl PaymentId {
                 sender_one_sided,
                 tx_type,
                 ..
-            } |
-            InnerPaymentId::AddressAndData {
+            }
+            | InnerPaymentId::AddressAndData {
                 fee,
                 sender_one_sided,
                 tx_type,
@@ -972,9 +961,9 @@ impl PaymentId {
     /// Returns empty Vec for other variants
     pub fn get_user_data(&self) -> Vec<u8> {
         match &self.inner {
-            InnerPaymentId::Open { user_data, .. } |
-            InnerPaymentId::AddressAndData { user_data, .. } |
-            InnerPaymentId::TransactionInfo { user_data, .. } => user_data.clone(),
+            InnerPaymentId::Open { user_data, .. }
+            | InnerPaymentId::AddressAndData { user_data, .. }
+            | InnerPaymentId::TransactionInfo { user_data, .. } => user_data.clone(),
             _ => Vec::new(),
         }
     }
@@ -983,9 +972,9 @@ impl PaymentId {
     /// Returns None for variants without tx_type
     pub fn get_tx_type(&self) -> Option<TxType> {
         match &self.inner {
-            InnerPaymentId::Open { tx_type, .. } |
-            InnerPaymentId::AddressAndData { tx_type, .. } |
-            InnerPaymentId::TransactionInfo { tx_type, .. } => Some(*tx_type),
+            InnerPaymentId::Open { tx_type, .. }
+            | InnerPaymentId::AddressAndData { tx_type, .. }
+            | InnerPaymentId::TransactionInfo { tx_type, .. } => Some(*tx_type),
             _ => None,
         }
     }
@@ -1021,8 +1010,8 @@ impl PaymentId {
     /// Returns None for other variants
     pub fn get_sender_one_sided(&self) -> Option<bool> {
         match &self.inner {
-            InnerPaymentId::AddressAndData { sender_one_sided, .. } |
-            InnerPaymentId::TransactionInfo { sender_one_sided, .. } => Some(*sender_one_sided),
+            InnerPaymentId::AddressAndData { sender_one_sided, .. }
+            | InnerPaymentId::TransactionInfo { sender_one_sided, .. } => Some(*sender_one_sided),
             _ => None,
         }
     }
@@ -1740,9 +1729,13 @@ mod test {
                 vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
             )
             .unwrap(),
-            PaymentId::new_address_and_data(pay_id_address, MicroMinotari::from(123), false, TxType::Burn, vec![
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-            ])
+            PaymentId::new_address_and_data(
+                pay_id_address,
+                MicroMinotari::from(123),
+                false,
+                TxType::Burn,
+                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            )
             .unwrap(),
         ];
         fn old_to_bytes(payment_id: &PaymentId) -> Vec<u8> {
@@ -1943,16 +1936,16 @@ mod test {
         assert_eq!(open_payment_id.get_size(), 1 + small_user_data.len() + 1); // tag + data + tx_type
 
         // Test Open PaymentId validation - too large
-        let large_user_data = vec![0u8; MAX_PAYMENT_ID_SIZE]; // 256 bytes
+        let large_user_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE]; // 256 bytes
         let result = PaymentId::new_open(large_user_data, TxType::PaymentToOther);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
 
         // Test Open PaymentId validation - maximum valid size
-        let max_valid_open_data = vec![0u8; MAX_PAYMENT_ID_SIZE - 2]; // 254 bytes (256 - 1 tag - 1 tx_type)
+        let max_valid_open_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE - 2]; // 254 bytes (256 - 1 tag - 1 tx_type)
         let max_open_payment_id = PaymentId::new_open(max_valid_open_data.clone(), TxType::PaymentToOther)
             .expect("Maximum valid Open PaymentId should be valid");
-        assert_eq!(max_open_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
+        assert_eq!(max_open_payment_id.get_size(), MAX_ENCRYPTED_DATA_SIZE);
 
         // Test Raw PaymentId validation - valid case
         let raw_data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -1960,16 +1953,16 @@ mod test {
         assert_eq!(raw_payment_id.get_size(), 1 + raw_data.len()); // tag + data
 
         // Test Raw PaymentId validation - too large
-        let large_raw_data = vec![0u8; MAX_PAYMENT_ID_SIZE]; // 256 bytes
+        let large_raw_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE]; // 256 bytes
         let result = PaymentId::new_raw(large_raw_data);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
 
         // Test Raw PaymentId validation - maximum valid size
-        let max_valid_raw_data = vec![0u8; MAX_PAYMENT_ID_SIZE - 1]; // 255 bytes (256 - 1 tag)
+        let max_valid_raw_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE - 1]; // 255 bytes (256 - 1 tag)
         let max_raw_payment_id =
             PaymentId::new_raw(max_valid_raw_data.clone()).expect("Maximum valid Raw PaymentId should be valid");
-        assert_eq!(max_raw_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
+        assert_eq!(max_raw_payment_id.get_size(), MAX_ENCRYPTED_DATA_SIZE);
     }
 
     #[test]
@@ -1992,10 +1985,10 @@ mod test {
         // Verify the size calculation
         let expected_size = PaymentId::calculate_address_and_data_size(&single_address, small_user_data.len());
         assert_eq!(address_and_data.get_size(), expected_size);
-        assert!(address_and_data.get_size() <= MAX_PAYMENT_ID_SIZE);
+        assert!(address_and_data.get_size() <= MAX_ENCRYPTED_DATA_SIZE);
 
         // Test AddressAndData with user data that would exceed limit
-        let large_user_data = vec![0u8; MAX_PAYMENT_ID_SIZE];
+        let large_user_data = vec![0u8; MAX_ENCRYPTED_DATA_SIZE];
         let result = PaymentId::new_address_and_data(
             single_address.clone(),
             fee,
@@ -2033,7 +2026,7 @@ mod test {
         let expected_size =
             PaymentId::calculate_transaction_info_size(&single_address, sent_hashes.len(), small_user_data.len());
         assert_eq!(transaction_info.get_size(), expected_size);
-        assert!(transaction_info.get_size() <= MAX_PAYMENT_ID_SIZE);
+        assert!(transaction_info.get_size() <= MAX_ENCRYPTED_DATA_SIZE);
 
         // Test TransactionInfo with too many hashes
         let many_hashes = vec![create_random_fixed_hash(); 10]; // 10 * 32 = 320 bytes just for hashes
@@ -2144,7 +2137,7 @@ mod test {
         let nested_payment_id = result.unwrap();
         let total_size = nested_payment_id.get_size();
         assert!(
-            total_size <= MAX_PAYMENT_ID_SIZE,
+            total_size <= MAX_ENCRYPTED_DATA_SIZE,
             "Total nested PaymentId size should not exceed 256 bytes"
         );
 
@@ -2163,7 +2156,7 @@ mod test {
         let nested_transaction_info = result.unwrap();
         let total_size = nested_transaction_info.get_size();
         assert!(
-            total_size <= MAX_PAYMENT_ID_SIZE,
+            total_size <= MAX_ENCRYPTED_DATA_SIZE,
             "Total nested TransactionInfo size should not exceed 256 bytes"
         );
 
@@ -2193,7 +2186,7 @@ mod test {
         // Verify the error shows the actual calculated size
         let calculated_size = PaymentId::calculate_address_and_data_size(&large_nested_address, 5);
         assert!(
-            calculated_size > MAX_PAYMENT_ID_SIZE,
+            calculated_size > MAX_ENCRYPTED_DATA_SIZE,
             "Calculated size should exceed the limit"
         );
     }
@@ -2214,16 +2207,16 @@ mod test {
         }
 
         // Test string that would exceed size limit
-        let large_string = "x".repeat(MAX_PAYMENT_ID_SIZE); // 256 chars
+        let large_string = "x".repeat(MAX_ENCRYPTED_DATA_SIZE); // 256 chars
         let result = PaymentId::new_open_from_string(&large_string, TxType::PaymentToOther);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds 256-byte limit"));
 
         // Test maximum valid string size
-        let max_valid_string = "x".repeat(MAX_PAYMENT_ID_SIZE - 2); // 254 chars (256 - 1 tag - 1 tx_type)
+        let max_valid_string = "x".repeat(MAX_ENCRYPTED_DATA_SIZE - 2); // 254 chars (256 - 1 tag - 1 tx_type)
         let max_open_payment_id = PaymentId::new_open_from_string(&max_valid_string, TxType::PaymentToOther)
             .expect("Maximum valid string should create Open PaymentId");
-        assert_eq!(max_open_payment_id.get_size(), MAX_PAYMENT_ID_SIZE);
+        assert_eq!(max_open_payment_id.get_size(), MAX_ENCRYPTED_DATA_SIZE);
     }
 
     #[test]

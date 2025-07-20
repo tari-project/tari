@@ -39,8 +39,7 @@ use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
 use crate::{
-    base_node_service::error::BaseNodeServiceError,
-    error::WalletStorageError,
+    base_node_service::error::BaseNodeServiceError, error::WalletStorageError,
     output_manager_service::UtxoSelectionCriteria,
 };
 
@@ -155,6 +154,8 @@ pub enum OutputManagerError {
     TariAddressError(#[from] TariAddressError),
     #[error("Base node client error: `{0}`")]
     BaseNodeClientError(String),
+    #[error("Invalid payment ID format: `{0}`")]
+    InvalidPaymentIdFormat(String),
 }
 
 impl From<RangeProofError> for OutputManagerError {
