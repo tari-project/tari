@@ -22,7 +22,6 @@
 
 use std::{
     convert::TryInto,
-    ops::Deref,
     time::{Duration, Instant},
 };
 
@@ -41,7 +40,7 @@ use tari_core::{
     one_sided::shared_secret_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{payment_id::InnerPaymentId, EncryptedData, TransactionOutput, WalletOutput},
+        transaction_components::{EncryptedData, TransactionOutput, WalletOutput},
         transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
@@ -680,15 +679,12 @@ where
             let source_address = if wo.features.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
+            } else if let Some(address) = wo.payment_id.get_sender_address() {
+                address
+            } else if wo.payment_id.is_transaction_info() {
+                self.resources.one_sided_tari_address.clone()
             } else {
-                match &wo.payment_id.deref() {
-                    InnerPaymentId::AddressAndData {
-                        sender_address: address,
-                        ..
-                    } => address.clone(),
-                    InnerPaymentId::TransactionInfo { .. } => self.resources.one_sided_tari_address.clone(),
-                    _ => TariAddress::default(),
-                }
+                TariAddress::default()
             };
             match self
                 .import_key_manager_utxo_to_transaction_service(

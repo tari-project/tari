@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::Deref, str::FromStr, time::Instant};
+use std::{str::FromStr, time::Instant};
 
 use log::*;
 use tari_common_types::{
@@ -29,13 +29,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{
-        payment_id::{InnerPaymentId, PaymentId},
-        OutputType,
-        TransactionError,
-        TransactionOutput,
-        WalletOutput,
-    },
+    transaction_components::{payment_id::PaymentId, OutputType, TransactionError, TransactionOutput, WalletOutput},
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 use tari_crypto::keys::SecretKey;
@@ -96,9 +90,9 @@ where
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
         for (output, tx_id) in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
-            if output.script != script!(Nop)? &&
-                known_script_index.is_none() &&
-                !output.script.pattern_match(&push_pub_key_script)
+            if output.script != script!(Nop)?
+                && known_script_index.is_none()
+                && !output.script.pattern_match(&push_pub_key_script)
             {
                 continue;
             }
@@ -165,16 +159,8 @@ where
                         // code is here as a hacky fix to attempt to find the tx if TU already imported it. This will be
                         // low-volume so we can afford to do this. Scanning during recovery for higher output wallets,
                         // this becomes a massive bottleneck.
-                        let (source_address, recipient_address) = match db_output.payment_id.deref() {
-                            InnerPaymentId::AddressAndData { sender_address, .. } => {
-                                (Some(sender_address.clone()), None)
-                            },
-                            InnerPaymentId::TransactionInfo { recipient_address, .. } => {
-                                (None, Some(recipient_address.clone()))
-                            },
-                            _ => (None, None),
-                        };
-
+                        let source_address = db_output.payment_id.get_sender_address();
+                        let recipient_address = db_output.payment_id.get_recipient_address();
                         if source_address.is_some() || recipient_address.is_some() {
                             related_txs = self
                                 .transaction_service_handle

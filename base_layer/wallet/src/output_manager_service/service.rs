@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, convert::TryInto, fmt, ops::Deref, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
@@ -49,7 +49,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{InnerPaymentId, PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             EncryptedData, KernelFeatures, OutputFeatures, RangeProofType, Transaction, TransactionError,
             TransactionOutput, TransactionOutputVersion, WalletOutput, WalletOutputBuilder,
         },
@@ -1251,21 +1251,9 @@ where
         payment_id: PaymentId,
         tx_id: TxId,
     ) -> Result<TariKeyAndId, OutputManagerError> {
-        let index = match payment_id.deref() {
-            InnerPaymentId::U256(index) => u64::try_from(index.to_owned()).expect("we dont go over u64"),
-            InnerPaymentId::Open { user_data: data, .. } => {
-                let bytes: [u8; size_of::<u64>()] = data.to_owned().try_into().map_err(|_| {
-                    OutputManagerError::ServiceError(format!("Invalid payment id (TxId: {}): expected", tx_id))
-                })?;
-                u64::from_le_bytes(bytes)
-            },
-            _ => {
-                return Err(OutputManagerError::ServiceError(format!(
-                    "Invalid payment id (TxId: {}): expected 'PaymentId as u64', received {:?}",
-                    tx_id, payment_id
-                )))
-            },
-        };
+        let index = payment_id
+            .get_u64_data()
+            .map_err(|e| OutputManagerError::InvalidPaymentIdFormat(format!("TxId: {}, {}", tx_id, e)))?;
         let script_key_id = TariKeyId::Managed {
             branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
             index,

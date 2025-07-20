@@ -23,7 +23,6 @@
 use std::{
     collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
-    ops::Deref,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -59,7 +58,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{InnerPaymentId, PaymentId, TxType},
+            payment_id::{PaymentId, TxType},
             BuildInfo, CodeTemplateRegistration, EncryptedData, KernelFeatures, OutputFeatures, TemplateType,
             Transaction, TransactionOutput, ValidatorNodeSignature, WalletOutputBuilder,
         },
@@ -3521,61 +3520,48 @@ where
                         for ro in recovered {
                             if source_address.is_none() {
                                 payment_id = Some(ro.output.payment_id.clone());
-                                match &ro.output.payment_id.deref() {
-                                    InnerPaymentId::AddressAndData {
-                                        sender_address: address,
-                                        tx_type: _,
-                                        user_data: _,
-                                        ..
-                                    } => {
-                                        source_address = Some(address.clone());
-                                        destination_address = Some(self.resources.one_sided_tari_address.clone());
-                                        amount = Some(ro.output.value);
-                                    },
-                                    InnerPaymentId::TransactionInfo {
-                                        recipient_address,
-                                        amount: tx_amount,
-                                        tx_type,
-                                        sender_one_sided,
-                                        ..
-                                    } => {
-                                        amount = Some(*tx_amount);
-                                        let own_address = if *sender_one_sided {
-                                            self.resources.one_sided_tari_address.clone()
-                                        } else {
-                                            self.resources.interactive_tari_address.clone()
-                                        };
-                                        match tx_type {
-                                            TxType::PaymentToOther => {
-                                                source_address = Some(own_address.clone());
-                                                destination_address = Some(recipient_address.clone());
-                                            },
-                                            TxType::Burn => {
-                                                source_address = Some(own_address.clone());
-                                                destination_address = Some(TariAddress::default());
-                                            },
-                                            TxType::PaymentToSelf
-                                            | TxType::CoinSplit
-                                            | TxType::CoinJoin
-                                            | TxType::ValidatorNodeRegistration
-                                            | TxType::CodeTemplateRegistration
-                                            | TxType::ClaimAtomicSwap
-                                            | TxType::HtlcAtomicSwapRefund
-                                            | TxType::Coinbase => {
-                                                source_address = Some(own_address.clone());
-                                                destination_address = Some(own_address.clone());
-                                            },
-                                            TxType::ImportedUtxoNoneRewindable => {
-                                                source_address = Some(TariAddress::default());
-                                                destination_address = Some(recipient_address.clone());
-                                            },
-                                        }
-                                    },
-                                    _ => {
-                                        payment_id = Some(ro.output.payment_id.clone());
-                                        amount = Some(ro.output.value);
-                                    },
-                                };
+                                if let Some(address) = ro.output.payment_id.get_sender_address() {
+                                    source_address = Some(address);
+                                    destination_address = Some(self.resources.one_sided_tari_address.clone());
+                                    amount = Some(ro.output.value);
+                                } else if let Some((recipient_address, tx_amount, tx_type, sender_one_sided)) =
+                                    ro.output.payment_id.get_transaction_info_details()
+                                {
+                                    amount = Some(tx_amount);
+                                    let own_address = if sender_one_sided {
+                                        self.resources.one_sided_tari_address.clone()
+                                    } else {
+                                        self.resources.interactive_tari_address.clone()
+                                    };
+                                    match tx_type {
+                                        TxType::PaymentToOther => {
+                                            source_address = Some(own_address.clone());
+                                            destination_address = Some(recipient_address.clone());
+                                        },
+                                        TxType::Burn => {
+                                            source_address = Some(own_address.clone());
+                                            destination_address = Some(TariAddress::default());
+                                        },
+                                        TxType::PaymentToSelf
+                                        | TxType::CoinSplit
+                                        | TxType::CoinJoin
+                                        | TxType::ValidatorNodeRegistration
+                                        | TxType::CodeTemplateRegistration
+                                        | TxType::ClaimAtomicSwap
+                                        | TxType::HtlcAtomicSwapRefund
+                                        | TxType::Coinbase => {
+                                            source_address = Some(own_address.clone());
+                                            destination_address = Some(own_address.clone());
+                                        },
+                                        TxType::ImportedUtxoNoneRewindable => {
+                                            source_address = Some(TariAddress::default());
+                                            destination_address = Some(recipient_address.clone());
+                                        },
+                                    }
+                                } else {
+                                    payment_id = Some(ro.output.payment_id.clone());
+                                    amount = Some(ro.output.value);
+                                }
                             }
                             received_hashes
                                 .push(ro.output.hash(&self.resources.transaction_key_manager_service).await?);
@@ -4030,41 +4016,36 @@ where
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
 
         // Faux transactions for scanned change outputs must correspond to the original transaction
-        let (direction, amount, destination_address) = if let InnerPaymentId::TransactionInfo {
-            recipient_address,
-            amount,
-            tx_type,
-            ..
-        } = payment_id.deref().clone()
-        {
-            (
-                match tx_type {
-                    TxType::PaymentToOther
-                    | TxType::Burn
-                    | TxType::CodeTemplateRegistration
-                    | TxType::ValidatorNodeRegistration
-                    | TxType::CoinSplit
-                    | TxType::PaymentToSelf => TransactionDirection::Outbound,
-                    TxType::CoinJoin
-                    | TxType::ClaimAtomicSwap
-                    | TxType::HtlcAtomicSwapRefund
-                    | TxType::ImportedUtxoNoneRewindable
-                    | TxType::Coinbase => TransactionDirection::Inbound,
-                },
-                amount,
-                if tx_type == TxType::Burn {
-                    TariAddress::default()
-                } else {
-                    recipient_address.clone()
-                },
-            )
-        } else {
-            (
-                TransactionDirection::Inbound,
-                value,
-                self.resources.one_sided_tari_address.clone(),
-            )
-        };
+        let (direction, amount, destination_address) =
+            if let Some((recipient_address, amount, tx_type, _)) = payment_id.get_transaction_info_details() {
+                (
+                    match tx_type {
+                        TxType::PaymentToOther
+                        | TxType::Burn
+                        | TxType::CodeTemplateRegistration
+                        | TxType::ValidatorNodeRegistration
+                        | TxType::CoinSplit
+                        | TxType::PaymentToSelf => TransactionDirection::Outbound,
+                        TxType::CoinJoin
+                        | TxType::ClaimAtomicSwap
+                        | TxType::HtlcAtomicSwapRefund
+                        | TxType::ImportedUtxoNoneRewindable
+                        | TxType::Coinbase => TransactionDirection::Inbound,
+                    },
+                    amount,
+                    if tx_type == TxType::Burn {
+                        TariAddress::default()
+                    } else {
+                        recipient_address.clone()
+                    },
+                )
+            } else {
+                (
+                    TransactionDirection::Inbound,
+                    value,
+                    self.resources.one_sided_tari_address.clone(),
+                )
+            };
 
         self.db.add_utxo_import_transaction_with_status(
             tx_id,

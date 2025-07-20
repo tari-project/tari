@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
-use std::{
-    fmt::{self, Display, Formatter},
-    ops::Deref,
-};
+use std::fmt::{self, Display, Formatter};
 
 use log::debug;
 use primitive_types::U256;
@@ -125,16 +122,8 @@ pub struct PaymentId {
     inner: InnerPaymentId,
 }
 
-impl Deref for PaymentId {
-    type Target = InnerPaymentId;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
-pub enum InnerPaymentId {
+enum InnerPaymentId {
     /// No payment ID.
     #[default]
     Empty,
@@ -981,18 +970,18 @@ impl PaymentId {
 
     /// Get the sender address from AddressAndData variant
     /// Returns None for other variants
-    pub fn get_sender_address(&self) -> Option<&TariAddress> {
+    pub fn get_sender_address(&self) -> Option<TariAddress> {
         match &self.inner {
-            InnerPaymentId::AddressAndData { sender_address, .. } => Some(sender_address),
+            InnerPaymentId::AddressAndData { sender_address, .. } => Some(sender_address.to_owned()),
             _ => None,
         }
     }
 
     /// Get the recipient address from TransactionInfo variant
     /// Returns None for other variants
-    pub fn get_recipient_address(&self) -> Option<&TariAddress> {
+    pub fn get_recipient_address(&self) -> Option<TariAddress> {
         match &self.inner {
-            InnerPaymentId::TransactionInfo { recipient_address, .. } => Some(recipient_address),
+            InnerPaymentId::TransactionInfo { recipient_address, .. } => Some(recipient_address.to_owned()),
             _ => None,
         }
     }
@@ -1031,6 +1020,43 @@ impl PaymentId {
         match &self.inner {
             InnerPaymentId::Raw(bytes) => Some(bytes),
             _ => None,
+        }
+    }
+
+    /// Get open payment ID user data
+    /// Returns None for other variants
+    pub fn get_open_user_data(&self) -> Option<&[u8]> {
+        match &self.inner {
+            InnerPaymentId::Open { user_data, .. } => Some(user_data),
+            _ => None,
+        }
+    }
+
+    /// Get u64 data from U256 or Open variants
+    /// Returns Err for other variants
+    pub fn get_u64_data(&self) -> Result<u64, String> {
+        match &self.inner {
+            InnerPaymentId::U256(index) => {
+                u64::try_from(*index).map_err(|_| "U256 value exceeds u64 range".to_string())
+            },
+            InnerPaymentId::Open { user_data, .. } => {
+                if user_data.len() != std::mem::size_of::<u64>() {
+                    return Err(format!(
+                        "Invalid payment id: expected {} bytes, got {}",
+                        std::mem::size_of::<u64>(),
+                        user_data.len()
+                    ));
+                }
+                let bytes: [u8; std::mem::size_of::<u64>()] = user_data
+                    .clone()
+                    .try_into()
+                    .map_err(|_| "Invalid payment id: expected u64 bytes".to_string())?;
+                Ok(u64::from_le_bytes(bytes))
+            },
+            _ => Err(format!(
+                "Invalid payment id: expected 'PaymentId as u64', received {:?}",
+                self.inner
+            )),
         }
     }
 
@@ -1095,6 +1121,52 @@ impl PaymentId {
                 sent_output_hashes,
                 user_data,
             },
+        }
+    }
+
+    /// Extract transaction information for wallet transaction processing
+    /// Returns (sender_address, recipient_address, amount, tx_type, sender_one_sided) if available
+    pub fn get_transaction_info(&self) -> Option<(TariAddress, TariAddress, MicroMinotari, TxType, bool)> {
+        match &self.inner {
+            InnerPaymentId::AddressAndData {
+                sender_address,
+                tx_type,
+                ..
+            } => Some((
+                sender_address.clone(),
+                TariAddress::default(), // Will be set by caller based on context
+                MicroMinotari::zero(),  // Amount not available in AddressAndData
+                *tx_type,
+                false, // Default for AddressAndData
+            )),
+            InnerPaymentId::TransactionInfo {
+                recipient_address,
+                amount,
+                tx_type,
+                sender_one_sided,
+                ..
+            } => Some((
+                TariAddress::default(), // Will be set by caller based on context
+                recipient_address.clone(),
+                *amount,
+                *tx_type,
+                *sender_one_sided,
+            )),
+            _ => None,
+        }
+    }
+
+    /// Get transaction info details from TransactionInfo payment ID
+    pub fn get_transaction_info_details(&self) -> Option<(TariAddress, MicroMinotari, TxType, bool)> {
+        match &self.inner {
+            InnerPaymentId::TransactionInfo {
+                recipient_address,
+                amount,
+                tx_type,
+                sender_one_sided,
+                ..
+            } => Some((recipient_address.clone(), *amount, *tx_type, *sender_one_sided)),
+            _ => None,
         }
     }
 }
@@ -1176,10 +1248,9 @@ mod test {
             "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
         )
         .unwrap();
-        pay_id_address = pay_id_address.with_payment_id_user_data(vec![11u8; 50]).unwrap();
-        // pay_id_address = pay_id_address
-        //     .with_payment_id_user_data(vec![0, 1, 2, 3, 4, 5])
-        //     .unwrap();
+        pay_id_address = pay_id_address
+            .with_payment_id_user_data(vec![0, 1, 2, 3, 4, 5])
+            .unwrap();
         let sent_output_hashes = vec![create_random_fixed_hash()];
         vec![
             PaymentId::new_empty(),
