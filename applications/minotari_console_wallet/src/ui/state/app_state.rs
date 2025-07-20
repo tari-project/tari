@@ -54,7 +54,7 @@ use tari_contacts::contacts_service::types::Contact;
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
-        payment_id::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         OutputFeatures,
         TemplateType,
         TransactionError,
@@ -248,7 +248,7 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
         let inner = self.inner.write().await;
@@ -279,7 +279,7 @@ impl AppState {
         amount: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         sidechain_deployment_key: Option<String>,
         result_tx: watch::Sender<UiTransactionBurnStatus>,
     ) -> Result<(), UiError> {
@@ -1019,7 +1019,7 @@ pub struct CompletedTransactionInfo {
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
-    pub payment_id: Option<PaymentId>,
+    pub payment_id: Option<MemoField>,
     pub coinbase: bool,
     pub burn: bool,
     pub payment_reference_hex: Option<String>,

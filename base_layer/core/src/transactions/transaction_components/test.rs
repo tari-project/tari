@@ -41,7 +41,7 @@ use crate::{
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             transaction_output::batch_verify_range_proofs,
             OutputFeatures,
         },
@@ -136,7 +136,7 @@ async fn range_proof_verification() {
     )
     .with_features(OutputFeatures::default())
     .with_script(script![Nop].unwrap())
-    .encrypt_data_for_recovery(&key_manager, None, PaymentId::new_empty())
+    .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
     .await
     .unwrap()
     .with_input_data(input_data)

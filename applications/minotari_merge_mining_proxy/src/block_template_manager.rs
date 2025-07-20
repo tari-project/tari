@@ -34,7 +34,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             CoinBaseExtra,
             TransactionKernel,
             TransactionOutput,
@@ -251,7 +251,7 @@ impl BlockTemplateManager<'_> {
             true,
             self.consensus_manager.consensus_constants(tari_height),
             self.config.range_proof_type,
-            PaymentId::open_unchecked(vec![], TxType::Coinbase),
+            MemoField::open_unchecked(vec![], TxType::Coinbase),
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))

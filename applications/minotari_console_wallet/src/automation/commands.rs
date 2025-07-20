@@ -87,7 +87,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroMinotari, Minotari},
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             EncryptedData,
             OutputFeatures,
             Transaction,
@@ -164,7 +164,7 @@ pub async fn send_tari(
     fee_per_gram: u64,
     amount: MicroMinotari,
     destination: TariAddress,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_transaction(
@@ -183,7 +183,7 @@ pub async fn burn_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
     sidechain_deployment_key: Option<PrivateKey>,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
@@ -214,7 +214,7 @@ async fn encumber_aggregate_utxo(
     recipient_address: TariAddress,
     original_maturity: u64,
     use_output: UseOutput,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<
     (
         TxId,
@@ -251,7 +251,7 @@ async fn spend_backup_pre_mine_utxo(
     output_hash: HashOutput,
     expected_commitment: CompressedCommitment,
     recipient_address: TariAddress,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .spend_backup_pre_mine_utxo(
@@ -303,7 +303,7 @@ pub async fn init_sha_atomic_swap(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<(TxId, CompressedPublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
         .send_sha_atomic_swap_transaction(dest_address, amount, selection_criteria, fee_per_gram * uT, payment_id)
@@ -319,7 +319,7 @@ pub async fn finalise_sha_atomic_swap(
     output_hash: FixedHash,
     pre_image: CompressedPublicKey,
     fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
         .create_claim_sha_atomic_swap_transaction(output_hash, pre_image, fee_per_gram)
@@ -336,7 +336,7 @@ pub async fn claim_htlc_refund(
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
     fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
         .create_htlc_refund_transaction(output_hash, fee_per_gram)
@@ -357,7 +357,7 @@ pub async fn register_validator_node(
     epoch: VnEpoch,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .register_validator_node(
@@ -381,7 +381,7 @@ pub async fn send_one_sided_to_stealth_address(
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
         .send_one_sided_to_stealth_address_transaction(
@@ -400,7 +400,7 @@ pub async fn coin_split(
     amount_per_split: MicroMinotari,
     num_splits: usize,
     fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
@@ -451,7 +451,7 @@ pub async fn make_it_rain(
     start_time: DateTime<Utc>,
     destination: TariAddress,
     transaction_type: MakeItRainTransactionType,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<(), CommandError> {
     // Limit the transactions per second to a reasonable range
     // Notes:
@@ -468,7 +468,7 @@ pub async fn make_it_rain(
             println!(
                 "`make-it-rain` scheduled to start at {}: payment_id \"{}\"",
                 start_time,
-                payment_id.user_data_as_string()
+                payment_id.payment_id_as_string()
             );
             (start_time - now).num_milliseconds() as u64
         } else {
@@ -494,7 +494,7 @@ pub async fn make_it_rain(
             "\n`make-it-rain` starting {} {} transactions \"{}\"\n",
             num_txs,
             transaction_type,
-            payment_id.user_data_as_string()
+            payment_id.payment_id_as_string()
         );
         let payment_id_clone = payment_id.clone();
         let (sender, mut receiver) = mpsc::channel(num_txs);
@@ -613,7 +613,7 @@ pub async fn make_it_rain(
             "\n`make-it-rain` concluded {} {} transactions (\"{}\") at {}",
             num_txs,
             transaction_type,
-            payment_id_clone.user_data_as_string(),
+            payment_id_clone.payment_id_as_string(),
             Utc::now(),
         );
     });
@@ -760,7 +760,7 @@ pub async fn command_runner(
                     transaction_service.clone(),
                     config.fee_per_gram,
                     args.amount,
-                    PaymentId::open_from_string(&args.payment_id, TxType::Burn),
+                    MemoField::open_from_string(&args.payment_id, TxType::Burn),
                     None,
                 )
                 .await
@@ -939,7 +939,7 @@ pub async fn command_runner(
                     output_hash,
                     commitment.clone(),
                     args.recipient_address.clone(),
-                    PaymentId::open_from_string(
+                    MemoField::open_from_string(
                         &args.payment_id,
                         detect_tx_metadata(&wallet, args.recipient_address).await,
                     ),
@@ -1301,7 +1301,7 @@ pub async fn command_runner(
                         } else {
                             UseOutput::FromBlockchain(embedded_output.hash())
                         },
-                        PaymentId::open_from_string(
+                        MemoField::open_from_string(
                             &args.payment_id,
                             detect_tx_metadata(&wallet, current_recipient_address).await,
                         ),
@@ -1810,7 +1810,7 @@ pub async fn command_runner(
                     config.fee_per_gram,
                     args.amount,
                     args.destination.clone(),
-                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -1828,7 +1828,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination.clone(),
-                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -1855,7 +1855,7 @@ pub async fn command_runner(
                     args.start_time.unwrap_or_else(Utc::now),
                     args.destination.clone(),
                     transaction_type,
-                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
+                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
                 )
                 .await
                 {
@@ -1867,7 +1867,7 @@ pub async fn command_runner(
                     args.amount_per_split,
                     args.num_splits,
                     args.fee_per_gram,
-                    PaymentId::open_from_string(&args.payment_id, TxType::CoinSplit),
+                    MemoField::open_from_string(&args.payment_id, TxType::CoinSplit),
                     &mut output_service,
                     &mut transaction_service.clone(),
                 )
@@ -2027,7 +2027,7 @@ pub async fn command_runner(
                     args.amount,
                     UtxoSelectionCriteria::default(),
                     args.destination,
-                    PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
+                    MemoField::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                 )
                 .await
                 {
@@ -2050,7 +2050,7 @@ pub async fn command_runner(
                         hash,
                         args.pre_image.into(),
                         config.fee_per_gram.into(),
-                        PaymentId::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
+                        MemoField::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
                     )
                     .await
                     {
@@ -2070,7 +2070,7 @@ pub async fn command_runner(
                         transaction_service.clone(),
                         hash,
                         config.fee_per_gram.into(),
-                        PaymentId::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
+                        MemoField::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                     {
@@ -2103,7 +2103,7 @@ pub async fn command_runner(
                     args.epoch,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
-                    PaymentId::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
+                    MemoField::open_from_string(&args.payment_id, TxType::ValidatorNodeRegistration),
                 )
                 .await?;
                 debug!(target: LOG_TARGET, "Registering VN tx_id {}", tx_id);
@@ -2509,7 +2509,7 @@ pub async fn command_runner(
             PrepareOneSidedTransactionForSigning(args) => {
                 let destination = args.destination.clone();
                 let payment_id =
-                    PaymentId::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await);
+                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await);
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
                     .prepare_one_sided_transaction_for_signing(

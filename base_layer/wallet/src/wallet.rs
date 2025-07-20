@@ -61,7 +61,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             EncryptedData,
             OutputFeatures,
             UnblindedOutput,
@@ -501,7 +501,7 @@ where
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
         range_proof: Option<RangeProof>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -529,11 +529,11 @@ where
         &mut self,
         unblinded_output: UnblindedOutput,
         source_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, WalletError> {
         let value = unblinded_output.value;
         let wallet_output = unblinded_output
-            .to_wallet_output(&self.key_manager_service, PaymentId::new_empty())
+            .to_wallet_output(&self.key_manager_service, MemoField::new_empty())
             .await?;
 
         let tx_id = self
@@ -617,7 +617,7 @@ where
         amount_per_split: MicroMinotari,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -645,7 +645,7 @@ where
         commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -673,7 +673,7 @@ where
         commitments: Vec<CompressedCommitment>,
         split_count: usize,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
             .output_manager_service
@@ -699,9 +699,9 @@ where
         &mut self,
         commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
-        payment_id: Option<PaymentId>,
+        payment_id: Option<MemoField>,
     ) -> Result<TxId, WalletError> {
-        let payment_id = payment_id.unwrap_or(PaymentId::open_from_string(
+        let payment_id = payment_id.unwrap_or(MemoField::open_from_string(
             &format!("Coin join {} outputs", commitments.len()),
             TxType::CoinJoin,
         ));

@@ -7,7 +7,7 @@ use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::payment_id::{PaymentId, TxType},
+    transaction_components::memo_field::{MemoField, TxType},
 };
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -333,8 +333,8 @@ impl BurnTab {
                                     amount.into(),
                                     UtxoSelectionCriteria::default(),
                                     fee_per_gram,
-                                    PaymentId::new_open_from_string(&self.payment_id_field, TxType::Burn)
-                                        .unwrap_or_else(|_| PaymentId::new_empty()),
+                                    MemoField::new_open_from_string(&self.payment_id_field, TxType::Burn)
+                                        .unwrap_or_else(|_| MemoField::new_empty()),
                                     sidechain_key,
                                     tx,
                                 ),

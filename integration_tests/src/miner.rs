@@ -39,7 +39,7 @@ use tari_core::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             CoinBaseExtra,
             RangeProofType,
             WalletOutput,
@@ -316,7 +316,7 @@ async fn create_block_template_with_coinbase(
         stealth_payment,
         consensus_manager.consensus_constants(height),
         RangeProofType::BulletProofPlus,
-        PaymentId::new_open(vec![], TxType::Coinbase).unwrap(),
+        MemoField::new_open(vec![], TxType::Coinbase).unwrap(),
     )
     .await
     .unwrap();

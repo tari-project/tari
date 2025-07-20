@@ -31,7 +31,10 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, Error, OsRng},
-    KeyInit, Tag, XChaCha20Poly1305, XNonce,
+    KeyInit,
+    Tag,
+    XChaCha20Poly1305,
+    XNonce,
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use primitive_types::U256;
@@ -43,13 +46,14 @@ use tari_max_size::MaxSizeBytes;
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
-    ByteArray, ByteArrayError,
+    ByteArray,
+    ByteArrayError,
 };
 use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::transactions::{tari_amount::MicroMinotari, transaction_components::payment_id::PaymentId};
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
 
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();
@@ -58,7 +62,7 @@ const SIZE_MASK: usize = PrivateKey::KEY_LEN;
 const SIZE_TAG: usize = size_of::<Tag>();
 pub const SIZE_U256: usize = size_of::<U256>();
 pub const STATIC_ENCRYPTED_DATA_SIZE_TOTAL: usize = SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_TAG;
-pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
+const MAX_ENCRYPTED_DATA_SIZE: usize = 256 + STATIC_ENCRYPTED_DATA_SIZE_TOTAL;
 
 // Number of hex characters of encrypted data to display on each side of ellipsis when truncating
 const DISPLAY_CUTOFF: usize = 16;
@@ -82,7 +86,7 @@ impl EncryptedData {
         commitment: &CompressedCommitment,
         value: MicroMinotari,
         mask: &PrivateKey,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
         let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + payment_id.get_size()]);
@@ -119,7 +123,7 @@ impl EncryptedData {
         encryption_key: &PrivateKey,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-    ) -> Result<(MicroMinotari, PrivateKey, PaymentId), EncryptedDataError> {
+    ) -> Result<(MicroMinotari, PrivateKey, MemoField), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
         let tag = Tag::from_slice(&encrypted_data.as_bytes()[..SIZE_TAG]);
         let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[SIZE_TAG..SIZE_TAG + SIZE_NONCE]);
@@ -146,7 +150,7 @@ impl EncryptedData {
         Ok((
             u64::from_le_bytes(value_bytes).into(),
             PrivateKey::from_canonical_bytes(&bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK])?,
-            PaymentId::from_bytes(&bytes[SIZE_VALUE + SIZE_MASK..]),
+            MemoField::from_bytes(&bytes[SIZE_VALUE + SIZE_MASK..]),
         ))
     }
 
@@ -315,7 +319,7 @@ mod test {
         assert_eq!(amount, decrypted_value);
         assert_eq!(mask, decrypted_mask);
         if decrypted_payment_id.is_open() {
-            let data = decrypted_payment_id.get_user_data();
+            let data = decrypted_payment_id.get_payment_id();
             let bytes: [u8; SIZE_VALUE] = data.try_into().unwrap();
             let v = u64::from_le_bytes(bytes);
             assert_eq!(v, id);

@@ -38,7 +38,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{payment_id::PaymentId, OutputFeatures},
+        transaction_components::{memo_field::MemoField, OutputFeatures},
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::{
             proto::protocol as proto,
@@ -92,7 +92,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInt
     dest_address: TariAddress,
     amount: MicroMinotari,
     fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
@@ -118,7 +118,7 @@ where
         dest_address: TariAddress,
         amount: MicroMinotari,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         tx_meta: TransactionMetadata,
         service_request_reply_channel: Option<
             oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,

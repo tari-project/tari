@@ -60,7 +60,7 @@ use crate::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             CoinBaseExtra,
             RangeProofType,
             Transaction,
@@ -142,7 +142,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
         false,
         rules.consensus_constants(header.height),
         range_proof_type.unwrap_or(RangeProofType::BulletProofPlus),
-        PaymentId::new_open(vec![], TxType::Coinbase).expect("Should never fail since the vector is empty"),
+        MemoField::new_open(vec![], TxType::Coinbase).expect("Should never fail since the vector is empty"),
     )
     .await
     .unwrap();

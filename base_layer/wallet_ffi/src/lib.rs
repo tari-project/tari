@@ -106,7 +106,9 @@ use minotari_wallet::{
     },
     utxo_scanner_service::RECOVERY_KEY,
     wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
-    Wallet, WalletConfig, WalletSqlite,
+    Wallet,
+    WalletConfig,
+    WalletSqlite,
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
@@ -121,7 +123,12 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
-        ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, RangeProof, SignatureWithDomain,
+        ComAndPubSignature,
+        CompressedCommitment,
+        CompressedPublicKey,
+        FixedHash,
+        RangeProof,
+        SignatureWithDomain,
         UncompressedPublicKey,
     },
     wallet_types::WalletType,
@@ -141,8 +148,13 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
-            CoinBaseExtra, OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput,
+            memo_field::{MemoField, TxType},
+            CoinBaseExtra,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         CryptoFactories,
@@ -158,8 +170,16 @@ use tari_key_manager::{
     SeedWords,
 };
 use tari_p2p::{
-    auto_update::AutoUpdateConfig, transport::MemoryTransportConfig, Network, PeerSeedsConfig, SocksAuthentication,
-    TcpTransportConfig, TorControlAuthentication, TorTransportConfig, TransportConfig, TransportType,
+    auto_update::AutoUpdateConfig,
+    transport::MemoryTransportConfig,
+    Network,
+    PeerSeedsConfig,
+    SocksAuthentication,
+    TcpTransportConfig,
+    TorControlAuthentication,
+    TorTransportConfig,
+    TransportConfig,
+    TransportType,
 };
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
@@ -348,7 +368,7 @@ impl From<DbWalletOutput> for TariUtxo {
             raw_payment_id: CString::new(format!("{}", x.payment_id))
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
-            user_payment_id: CString::new(x.payment_id.user_data_as_string())
+            user_payment_id: CString::new(x.payment_id.payment_id_as_string())
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
             mined_in_block: CString::new(x.mined_in_block.unwrap_or_default().to_hex())
@@ -1514,7 +1534,7 @@ pub unsafe extern "C" fn tari_address_create_with_payment_id_bytes(
         return ptr::null_mut();
     }
     let v = (*bytes).0.clone();
-    let new_address = (*address).with_payment_id_user_data(v);
+    let new_address = (*address).with_memo_field_payment_id(v);
     match new_address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
@@ -1569,7 +1589,7 @@ pub unsafe extern "C" fn tari_address_create_with_payment_id_utf8(
     };
 
     let v = utf8_str.as_bytes().to_vec();
-    let new_address = (*address).with_payment_id_user_data(v);
+    let new_address = (*address).with_memo_field_payment_id(v);
     match new_address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
@@ -1962,7 +1982,7 @@ pub unsafe extern "C" fn tari_address_get_user_payment_id(
         *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
         return result.into_raw();
     }
-    let payment_id = (*address).get_payment_id_user_data_bytes();
+    let payment_id = (*address).get_memo_field_payment_id_bytes();
     match CString::new(payment_id) {
         Ok(v) => result = v,
         Err(e) => {
@@ -2001,7 +2021,7 @@ pub unsafe extern "C" fn tari_address_get_user_payment_id_as_bytes(
         *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
         return ptr::null_mut();
     }
-    let payment_id = (*address).get_payment_id_user_data_bytes();
+    let payment_id = (*address).get_memo_field_payment_id_bytes();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id;
 
@@ -2697,7 +2717,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
             (*output).clone(),
             source_address,
-            PaymentId::open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
+            MemoField::open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
         )) {
         Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
@@ -4920,7 +4940,7 @@ pub unsafe extern "C" fn completed_transaction_get_user_payment_id(
         return result.into_raw();
     }
     let payment_id = (*transaction).payment_id.clone();
-    match CString::new(payment_id.user_data_as_string()) {
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
             *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
@@ -4960,7 +4980,7 @@ pub unsafe extern "C" fn completed_transaction_get_user_payment_id_as_bytes(
     }
     let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
-    bytes.0 = payment_id.user_data_as_bytes();
+    bytes.0 = payment_id.payment_id_as_bytes();
 
     Box::into_raw(Box::new(bytes))
 }
@@ -5416,7 +5436,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id(
     }
 
     let payment_id = (*transaction).payment_id.clone();
-    match CString::new(payment_id.user_data_as_string()) {
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
             *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
@@ -5456,7 +5476,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_user_payment_id_as_byt
     }
     let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
-    bytes.0 = payment_id.user_data_as_bytes();
+    bytes.0 = payment_id.payment_id_as_bytes();
 
     Box::into_raw(Box::new(bytes))
 }
@@ -5704,7 +5724,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id(
     }
     let payment_id = (*transaction).payment_id.clone();
 
-    match CString::new(payment_id.user_data_as_string()) {
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
             *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
@@ -5744,7 +5764,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_user_payment_id_as_byte
     }
     let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
-    bytes.0 = payment_id.user_data_as_bytes();
+    bytes.0 = payment_id.payment_id_as_bytes();
 
     Box::into_raw(Box::new(bytes))
 }
@@ -7567,7 +7587,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         commitments,
         number_of_splits,
         MicroMinotari(fee_per_gram),
-        PaymentId::open_from_string(
+        MemoField::open_from_string(
             &format!("{} even coin splits", number_of_splits),
             if number_of_splits > 1 {
                 TxType::CoinSplit
@@ -7643,7 +7663,7 @@ pub unsafe extern "C" fn wallet_coin_join(
     match (*wallet).runtime.block_on((*wallet).wallet.coin_join(
         commitments,
         fee_per_gram.into(),
-        Some(PaymentId::open_from_string(
+        Some(MemoField::open_from_string(
             &format!("Coin join {} outputs", commitments_len),
             TxType::CoinJoin,
         )),
@@ -8380,10 +8400,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     let payment_id = if payment_id_string.is_null() {
-        PaymentId::open_from_string("", TxType::PaymentToOther)
+        MemoField::open_from_string("", TxType::PaymentToOther)
     } else {
         match CStr::from_ptr(payment_id_string).to_str() {
-            Ok(v) => PaymentId::open_from_string(v, TxType::PaymentToOther),
+            Ok(v) => MemoField::open_from_string(v, TxType::PaymentToOther),
             _ => {
                 *error_out = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
                 return 0;
@@ -8789,9 +8809,9 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 for ct in completed_txs
                     .iter()
                     .filter(|ct| {
-                        ct.status == TransactionStatus::Completed
-                            || ct.status == TransactionStatus::Broadcast
-                            || ct.status == TransactionStatus::Imported
+                        ct.status == TransactionStatus::Completed ||
+                            ct.status == TransactionStatus::Broadcast ||
+                            ct.status == TransactionStatus::Imported
                     })
                     .filter(|ct| ct.direction == TransactionDirection::Inbound)
                 {
@@ -9022,8 +9042,8 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transaction) => {
-            if completed_transaction.status != TransactionStatus::Completed
-                && completed_transaction.status != TransactionStatus::Broadcast
+            if completed_transaction.status != TransactionStatus::Completed &&
+                completed_transaction.status != TransactionStatus::Broadcast
             {
                 let completed = completed_transaction.clone();
                 return Box::into_raw(Box::new(completed));
@@ -9088,8 +9108,8 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                    && tx.direction == TransactionDirection::Inbound
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Inbound
                 {
                     let completed = tx.clone();
                     let pending_tx = TariPendingInboundTransaction::from(completed);
@@ -9169,8 +9189,8 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed)
-                    && tx.direction == TransactionDirection::Outbound
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Outbound
                 {
                     let completed = tx.clone();
                     let pending_tx = TariPendingOutboundTransaction::from(completed);
@@ -10291,9 +10311,9 @@ pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
         w.runtime.block_on(w.wallet.wait_until_shutdown());
         // The wallet should be shutdown by now; these are just additional confirmations
         loop {
-            if w.shutdown.is_triggered()
-                && wallet_comms.shutdown_signal().is_triggered()
-                && w.runtime
+            if w.shutdown.is_triggered() &&
+                wallet_comms.shutdown_signal().is_triggered() &&
+                w.runtime
                     .block_on(wallet_comms.connectivity().get_connectivity_status())
                     .is_err()
             {
@@ -10743,7 +10763,8 @@ mod test {
 
     use minotari_wallet::{
         storage::{
-            sqlite_db::wallet::WalletSqliteDatabase, sqlite_utilities::run_migration_and_create_sqlite_connection,
+            sqlite_db::wallet::WalletSqliteDatabase,
+            sqlite_utilities::run_migration_and_create_sqlite_connection,
         },
         transaction_service::handle::TransactionSendStatus,
     };
@@ -11458,7 +11479,7 @@ mod test {
                 &commitment,
                 amount,
                 &spending_key,
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
@@ -12388,8 +12409,8 @@ mod test {
                         alice_wallet_runtime
                             .block_on(val.commitment(key_manager))
                             .unwrap()
-                            .to_hex()
-                            == CStr::from_ptr(utxo.commitment).to_str().unwrap()
+                            .to_hex() ==
+                            CStr::from_ptr(utxo.commitment).to_str().unwrap()
                     })
                     .unwrap();
                 assert_eq!(output.value.as_u64(), utxo.value);
@@ -12725,8 +12746,8 @@ mod test {
                 TxType::ImportedUtxoNoneRewindable,
             ] {
                 for payment_id in [
-                    PaymentId::new_open("hallo world".as_bytes().to_vec(), tx_type).unwrap(),
-                    PaymentId::new_address_and_data(
+                    MemoField::new_open("hallo world".as_bytes().to_vec(), tx_type).unwrap(),
+                    MemoField::new_address_and_data(
                         TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                         MicroMinotari::from(123),
                         false,
@@ -12734,7 +12755,7 @@ mod test {
                         vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
                     )
                     .unwrap(),
-                    PaymentId::new_transaction_info(
+                    MemoField::new_transaction_info(
                         TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
                         MicroMinotari::from(123456),
                         MicroMinotari::from(123),

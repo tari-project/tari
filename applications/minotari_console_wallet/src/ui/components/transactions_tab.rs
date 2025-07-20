@@ -10,7 +10,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus},
 };
-use tari_core::transactions::transaction_components::payment_id::TxType;
+use tari_core::transactions::transaction_components::memo_field::TxType;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -155,7 +155,7 @@ impl TransactionsTab {
             )));
 
             column3_items.push(ListItem::new(Span::styled(
-                t.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                t.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                 Style::default().fg(text_color),
             )));
         }
@@ -405,7 +405,7 @@ impl TransactionsTab {
                         tx.weight,
                         tx.inputs_count,
                         tx.outputs_count,
-                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                         tx.source_address.clone(),
                         tx.destination_address.clone(),
                     )
@@ -418,7 +418,7 @@ impl TransactionsTab {
                         tx.weight,
                         tx.inputs_count,
                         tx.outputs_count,
-                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                         tx.source_address.clone(),
                         tx.destination_address.clone(),
                     )

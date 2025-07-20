@@ -38,7 +38,7 @@ use crate::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             EncryptedData,
             OutputFeatures,
             TransactionError,
@@ -148,7 +148,7 @@ impl UnblindedOutput {
     pub async fn to_wallet_output<KM: TransactionKeyManagerInterface>(
         self,
         key_manager: &KM,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<WalletOutput, TransactionError> {
         let spending_key_id = key_manager.import_key(self.spending_key).await?;
         let script_key_id = key_manager.import_key(self.script_private_key).await?;

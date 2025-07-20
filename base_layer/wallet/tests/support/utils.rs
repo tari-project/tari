@@ -27,7 +27,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             OutputFeatures,
             RangeProofType,
             TransactionOutput,
@@ -77,7 +77,7 @@ pub async fn create_wallet_output_from_sender_data(
             &test_params.commitment_mask_key_id,
             None,
             sender_data.amount.as_u64(),
-            PaymentId::new_empty(),
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -95,7 +95,7 @@ pub async fn create_wallet_output_from_sender_data(
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
-        PaymentId::new_empty(),
+        MemoField::new_empty(),
         key_manager,
     )
     .await

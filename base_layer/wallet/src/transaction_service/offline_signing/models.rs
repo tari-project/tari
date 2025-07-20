@@ -24,7 +24,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, OutputFeatures, Transaction, WalletOutput},
+    transaction_components::{memo_field::MemoField, OutputFeatures, Transaction, WalletOutput},
     transaction_protocol::TransactionMetadata,
 };
 
@@ -81,7 +81,7 @@ pub struct PaymentRecipient {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OneSidedTransactionInfo {
     /// Payment ID
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
     /// Recipient
     pub recipient: PaymentRecipient,
     /// The change output details. This may be None if no change is required.

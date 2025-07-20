@@ -43,7 +43,7 @@ use crate::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -77,7 +77,7 @@ pub async fn create_test_input<
     maturity: u64,
     key_manager: &TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<TKeyManagerDbConnection>>,
     coinbase_extra: Vec<u8>,
-    payment_id: Option<PaymentId>,
+    payment_id: Option<MemoField>,
 ) -> WalletOutput {
     let params = TestParams::new(key_manager).await;
     params
@@ -217,7 +217,7 @@ pub struct UtxoTestParams {
     pub covenant: Covenant,
     pub output_version: Option<TransactionOutputVersion>,
     pub minimum_value_promise: MicroMinotari,
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
 }
 
 impl UtxoTestParams {
@@ -751,7 +751,7 @@ pub async fn create_stx_protocol_internal(
         let output = WalletOutputBuilder::new(val, commitment_mask.key_id)
             .with_features(schema.features.clone())
             .with_script(schema.script.clone())
-            .encrypt_data_for_recovery(key_manager, None, PaymentId::new_empty())
+            .encrypt_data_for_recovery(key_manager, None, MemoField::new_empty())
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -859,7 +859,7 @@ pub async fn create_utxo(
         .await
         .unwrap();
     let encrypted_data = key_manager
-        .encrypt_data_for_recovery(&commitment_mask.key_id, None, value.into(), PaymentId::new_empty())
+        .encrypt_data_for_recovery(&commitment_mask.key_id, None, value.into(), MemoField::new_empty())
         .await
         .unwrap();
     let sender_offset = key_manager

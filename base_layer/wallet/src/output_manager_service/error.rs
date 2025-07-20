@@ -39,7 +39,8 @@ use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
 use crate::{
-    base_node_service::error::BaseNodeServiceError, error::WalletStorageError,
+    base_node_service::error::BaseNodeServiceError,
+    error::WalletStorageError,
     output_manager_service::UtxoSelectionCriteria,
 };
 

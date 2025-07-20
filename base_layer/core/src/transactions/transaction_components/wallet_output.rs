@@ -40,7 +40,7 @@ use crate::{
         tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             EncryptedData,
@@ -72,7 +72,7 @@ pub struct WalletOutput {
     pub encrypted_data: EncryptedData,
     pub minimum_value_promise: MicroMinotari,
     pub range_proof: Option<RangeProof>,
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
 }
 
 impl WalletOutput {
@@ -92,7 +92,7 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         let range_proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
@@ -139,7 +139,7 @@ impl WalletOutput {
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
         rangeproof: Option<RangeProof>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Self {
         Self {
             version,
@@ -174,7 +174,7 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         Self::new(

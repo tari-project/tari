@@ -32,7 +32,7 @@ use crate::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             EncryptedData,
             OutputFeatures,
             TransactionError,
@@ -63,7 +63,7 @@ pub struct WalletOutputBuilder {
     encrypted_data: EncryptedData,
     custom_recovery_key_id: Option<TariKeyId>,
     minimum_value_promise: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 }
 
 #[allow(dead_code)]
@@ -86,7 +86,7 @@ impl WalletOutputBuilder {
             encrypted_data: EncryptedData::default(),
             custom_recovery_key_id: None,
             minimum_value_promise: MicroMinotari::zero(),
-            payment_id: PaymentId::new_empty(),
+            payment_id: MemoField::new_empty(),
         }
     }
 
@@ -124,7 +124,7 @@ impl WalletOutputBuilder {
         mut self,
         key_manager: &KM,
         custom_recovery_key_id: Option<&TariKeyId>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<Self, TransactionError> {
         self.payment_id = payment_id.clone();
         self.encrypted_data = key_manager
@@ -377,7 +377,7 @@ mod test {
         let kmob = kmob.with_script_key(script_key_id.key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
-            .encrypt_data_for_recovery(&key_manager, None, PaymentId::new_empty())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .await
             .unwrap()
             .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)
@@ -419,7 +419,7 @@ mod test {
         let kmob = kmob.with_script_key(script_key.key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
         let kmob = kmob
-            .encrypt_data_for_recovery(&key_manager, None, PaymentId::new_empty())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
             .await
             .unwrap()
             .sign_as_sender_and_receiver(&key_manager, &sender_offset.key_id)

@@ -40,7 +40,7 @@ use crate::{
         test_helpers::schema_to_transaction,
         transaction_components::{
             encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-            payment_id::PaymentId,
+            memo_field::MemoField,
             EncryptedData,
             RangeProofType,
             TransactionError,
@@ -254,7 +254,7 @@ async fn it_allows_multiple_coinbases() {
         .build_with_reward(
             blockchain.rules().consensus_constants(1),
             coinbase.value,
-            PaymentId::new_empty(),
+            MemoField::new_empty(),
         )
         .await
         .unwrap();

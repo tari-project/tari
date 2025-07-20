@@ -25,7 +25,7 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{then, when};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::payment_id::{PaymentId, TxType};
+use tari_core::transactions::transaction_components::memo_field::{MemoField, TxType};
 use tari_integration_tests::{
     wallet_ffi::{create_contact, get_mnemonic_word_list_for_language},
     TariWorld,
@@ -219,7 +219,7 @@ async fn ffi_check_no_contact(world: &mut TariWorld, alias: String, wallet: Stri
 async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let payment_id = PaymentId::open_from_string(
+    let payment_id = MemoField::open_from_string(
         &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
         TxType::PaymentToOther,
     );
@@ -232,7 +232,7 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
-    let payment_id = PaymentId::open_from_string(
+    let payment_id = MemoField::open_from_string(
         &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
         TxType::PaymentToOther,
     );

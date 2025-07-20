@@ -140,7 +140,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             OutputFeatures,
             UnblindedOutput,
         },
@@ -313,7 +313,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let interactive_address = interactive_address
-            .with_payment_id_user_data(message.payment_id.clone())
+            .with_memo_field_payment_id(message.payment_id.clone())
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let one_sided_address = self
             .wallet
@@ -321,7 +321,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let one_sided_address = one_sided_address
-            .with_payment_id_user_data(message.payment_id)
+            .with_memo_field_payment_id(message.payment_id)
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         Ok(Response::new(GetCompleteAddressResponse {
             interactive_address: interactive_address.to_vec(),
@@ -484,7 +484,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let payment_id = if !message.raw_payment_id.is_empty() {
-            PaymentId::from_bytes(&message.raw_payment_id)
+            MemoField::from_bytes(&message.raw_payment_id)
         } else if let Some(user_pay_id) = message.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -500,9 +500,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            PaymentId::open_unchecked(bytes, TxType::ClaimAtomicSwap)
+            MemoField::open_unchecked(bytes, TxType::ClaimAtomicSwap)
         } else {
-            PaymentId::new_empty()
+            MemoField::new_empty()
         };
         let mut transaction_service = self.get_transaction_service();
         let response = match transaction_service
@@ -571,7 +571,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        PaymentId::open_from_string(
+                        MemoField::open_from_string(
                             "Claiming HTLC transaction with pre-image",
                             TxType::ClaimAtomicSwap,
                         ),
@@ -651,7 +651,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        PaymentId::open_from_string("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
+                        MemoField::open_from_string("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                 {
@@ -718,7 +718,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("Destination address is malformed"))?;
 
         let payment_id = if !recipient.raw_payment_id.is_empty() {
-            PaymentId::from_bytes(&recipient.raw_payment_id)
+            MemoField::from_bytes(&recipient.raw_payment_id)
         } else if let Some(user_pay_id) = recipient.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -734,9 +734,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            PaymentId::open_unchecked(bytes, TxType::PaymentToOther)
+            MemoField::open_unchecked(bytes, TxType::PaymentToOther)
         } else {
-            PaymentId::new_empty()
+            MemoField::new_empty()
         };
 
         let mut transaction_service = self.get_transaction_service();
@@ -835,7 +835,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
             let payment_id = if !raw_payment_id.is_empty() {
-                PaymentId::open_unchecked(raw_payment_id.to_vec(), TxType::PaymentToOther)
+                MemoField::open_unchecked(raw_payment_id.to_vec(), TxType::PaymentToOther)
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
@@ -851,9 +851,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         ));
                     },
                 };
-                PaymentId::open_unchecked(bytes, TxType::PaymentToOther)
+                MemoField::open_unchecked(bytes, TxType::PaymentToOther)
             } else {
-                PaymentId::new_empty()
+                MemoField::new_empty()
             };
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
@@ -972,7 +972,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                PaymentId::from_bytes(&message.payment_id),
+                MemoField::from_bytes(&message.payment_id),
                 if message.claim_public_key.is_empty() {
                     None
                 } else {
@@ -1225,7 +1225,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
-                        user_payment_id: txn.payment_id.user_data_as_bytes(),
+                        user_payment_id: txn.payment_id.payment_id_as_bytes(),
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
@@ -1365,7 +1365,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .get_signature()
                     .to_vec(),
                 raw_payment_id: txn.payment_id.to_bytes(),
-                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                user_payment_id: txn.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
@@ -1460,7 +1460,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .get_signature()
                     .to_vec(),
                 raw_payment_id: txn.payment_id.to_bytes(),
-                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                user_payment_id: txn.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
@@ -1501,7 +1501,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroMinotari::from(message.fee_per_gram),
-                PaymentId::open_from_string("Creating coin-split transaction", TxType::CoinSplit),
+                MemoField::open_from_string("Creating coin-split transaction", TxType::CoinSplit),
             )
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
@@ -1531,7 +1531,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
-                        PaymentId::from_bytes(&message.payment_id),
+                        MemoField::from_bytes(&message.payment_id),
                     )
                     .await
                     .map_err(|e| Status::internal(format!("{:?}", e)))?
@@ -1738,7 +1738,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                PaymentId::from_bytes(&request.payment_id),
+                MemoField::from_bytes(&request.payment_id),
             )
             .await
         {
@@ -1796,7 +1796,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                PaymentId::open_unchecked(request.message, TxType::PaymentToSelf),
+                MemoField::open_unchecked(request.message, TxType::PaymentToSelf),
             )
             .await
         {
@@ -1850,7 +1850,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 proof,
                 request.fee_per_gram.into(),
                 sidechain_key,
-                PaymentId::open_unchecked(request.message.into_bytes(), TxType::PaymentToSelf),
+                MemoField::open_unchecked(request.message.into_bytes(), TxType::PaymentToSelf),
             )
             .await
         {
@@ -1947,7 +1947,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),
-                    user_payment_id: txn.payment_id.user_data_as_bytes(),
+                    user_payment_id: txn.payment_id.payment_id_as_bytes(),
                     mined_in_block_height: txn.mined_height.unwrap_or(0),
                     output_commitments,
                     input_commitments,
@@ -2329,7 +2329,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 excess_sig: Default::default(),
                 timestamp: tx.timestamp.timestamp() as u64,
                 raw_payment_id: tx.payment_id.to_bytes(),
-                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
@@ -2365,7 +2365,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 excess_sig: Default::default(),
                 timestamp: tx.timestamp.timestamp() as u64,
                 raw_payment_id: tx.payment_id.to_bytes(),
-                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
@@ -2411,7 +2411,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                     .map(|s| s.get_signature().to_vec())
                     .unwrap_or_default(),
                 raw_payment_id: tx.payment_id.to_bytes(),
-                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
                 output_commitments: output_commitments.clone(),
                 input_commitments,

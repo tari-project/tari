@@ -41,7 +41,7 @@ use crate::{
     transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             CoinBaseExtra,
             KernelBuilder,
             KernelFeatures,
@@ -236,7 +236,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self,
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
@@ -253,7 +253,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self,
         constants: &ConsensusConstants,
         block_reward: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
@@ -405,7 +405,7 @@ pub async fn generate_coinbase(
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
     range_proof_type: RangeProofType,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<(TransactionOutput, TransactionKernel), CoinbaseBuildError> {
     // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
     let script_key_id = TariKeyId::default();
@@ -439,7 +439,7 @@ pub async fn generate_coinbase_with_wallet_output(
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
     range_proof_type: RangeProofType,
-    payment_id: PaymentId,
+    payment_id: MemoField,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
     if !wallet_payment_address
         .features()
@@ -450,11 +450,11 @@ pub async fn generate_coinbase_with_wallet_output(
         ));
     }
     // Override payment id if the wallet address contains a payment id
-    let payment_id = if wallet_payment_address.get_payment_id_user_data_bytes().is_empty() {
+    let payment_id = if wallet_payment_address.get_memo_field_payment_id_bytes().is_empty() {
         payment_id
     } else {
-        PaymentId::new_open(
-            wallet_payment_address.get_payment_id_user_data_bytes(),
+        MemoField::new_open(
+            wallet_payment_address.get_memo_field_payment_id_bytes(),
             TxType::Coinbase,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {}, size too large", e)))?
@@ -561,7 +561,7 @@ mod test {
                 .build(
                     rules.consensus_constants(0),
                     rules.emission_schedule(),
-                    PaymentId::new_empty()
+                    MemoField::new_empty()
                 )
                 .await
                 .unwrap_err(),
@@ -578,7 +578,7 @@ mod test {
                 .build(
                     rules.consensus_constants(42),
                     rules.emission_schedule(),
-                    PaymentId::new_empty()
+                    MemoField::new_empty()
                 )
                 .await
                 .unwrap_err(),
@@ -597,7 +597,7 @@ mod test {
                 .build(
                     rules.consensus_constants(42),
                     rules.emission_schedule(),
-                    PaymentId::new_empty()
+                    MemoField::new_empty()
                 )
                 .await
                 .unwrap_err(),
@@ -623,7 +623,7 @@ mod test {
             .build(
                 rules.consensus_constants(42),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -679,7 +679,7 @@ mod test {
             .build(
                 rules.consensus_constants(42),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -719,7 +719,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -738,7 +738,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -775,7 +775,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -799,7 +799,7 @@ mod test {
             generate_coinbase_with_wallet_output,
             tari_amount::MicroMinotari,
             transaction_components::{
-                payment_id::{PaymentId, TxType},
+                memo_field::{MemoField, TxType},
                 CoinBaseExtra,
                 KernelBuilder,
                 RangeProofType,
@@ -839,7 +839,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -860,7 +860,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -983,7 +983,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -1004,7 +1004,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -1129,7 +1129,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -1150,7 +1150,7 @@ mod test {
             .build(
                 rules.consensus_constants(0),
                 rules.emission_schedule(),
-                PaymentId::new_empty(),
+                MemoField::new_empty(),
             )
             .await
             .unwrap();
@@ -1248,11 +1248,11 @@ mod test {
                 Network::LocalNet,
             )
             .unwrap()
-            .with_payment_id_user_data(payment_id_user_data.to_vec())
+            .with_memo_field_payment_id(payment_id_user_data.to_vec())
             .unwrap();
         assert_eq!(
-            PaymentId::stringify_bytes(&wallet_payment_address.get_payment_id_user_data_bytes()),
-            PaymentId::stringify_bytes(payment_id_user_data)
+            MemoField::stringify_bytes(&wallet_payment_address.get_memo_field_payment_id_bytes()),
+            MemoField::stringify_bytes(payment_id_user_data)
         );
 
         let reward = MicroMinotari::from(1000);
@@ -1270,14 +1270,14 @@ mod test {
             false,
             &create_consensus_constants(header_height),
             range_proof_type,
-            PaymentId::new_open(vec![], TxType::Coinbase).expect("Should create payment ID since data is empty"),
+            MemoField::new_open(vec![], TxType::Coinbase).expect("Should create payment ID since data is empty"),
         )
         .await
         .unwrap();
 
         assert_eq!(
-            coinbase_wallet_output.payment_id.user_data_as_string(),
-            PaymentId::stringify_bytes(payment_id_user_data)
+            coinbase_wallet_output.payment_id.payment_id_as_string(),
+            MemoField::stringify_bytes(payment_id_user_data)
         );
     }
 }

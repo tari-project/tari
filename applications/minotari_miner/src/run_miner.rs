@@ -63,7 +63,7 @@ use tari_core::{
         generate_coinbase,
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             CoinBaseExtra,
         },
         transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
@@ -447,7 +447,7 @@ async fn get_new_block_base_node(
         true,
         consensus_manager.consensus_constants(height),
         config.range_proof_type,
-        PaymentId::open_unchecked(vec![], TxType::Coinbase),
+        MemoField::open_unchecked(vec![], TxType::Coinbase),
     )
     .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;

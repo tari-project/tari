@@ -176,7 +176,7 @@ mod test {
             tari_amount::*,
             test_helpers::{TestParams, UtxoTestParams},
             transaction_components::{
-                payment_id::PaymentId,
+                memo_field::MemoField,
                 OutputFeatures,
                 TransactionKernelVersion,
                 TransactionOutputVersion,
@@ -205,7 +205,7 @@ mod test {
             public_excess: sender_test_params.kernel_nonce_key_pk, // any random key will do
             public_nonce: sender_test_params.public_nonce_key_pk,  // any random key will do
             metadata: m.clone(),
-            payment_id: PaymentId::new_empty(),
+            payment_id: MemoField::new_empty(),
             features,
             script,
             sender_offset_public_key: sender_test_params.sender_offset_key_pk,
