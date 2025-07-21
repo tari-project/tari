@@ -535,7 +535,7 @@ where
                     scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
                     true,
                 )?;
-                if !last_saved_hash.map_or(false, |h| h == scanned_block.header_hash) {
+                if last_saved_hash != Some(scanned_block.header_hash) {
                     self.resources.db.save_scanned_block(scanned_block)?;
                 }
             }
