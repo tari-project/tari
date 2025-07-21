@@ -1749,7 +1749,13 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
             quality_score: address.quality_score(),
             source: Some({
                 let mut serialized_data = Vec::new();
-                BorshSerialize::serialize(address.source(), &mut serialized_data).unwrap_or_default();
+                if let Err(e) = BorshSerialize::serialize(address.source(), &mut serialized_data) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not serialize address source '{}', using default: {}",
+                        address.source(), e,
+                    );
+                }
                 serialized_data
             }),
         }
