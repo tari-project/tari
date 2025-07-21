@@ -252,18 +252,16 @@ impl BaseNodeWalletClient for Client {
     async fn sync_utxos_by_block(
         &self,
         start_header_hash: Vec<u8>,
-        end_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, anyhow::Error>>, anyhow::Error> {
         debug!(
             target: LOG_TARGET,
-            "Starting UTXO sync from {} to {}",
-            start_header_hash.to_hex(), end_header_hash.to_hex()
+            "Starting UTXO sync from {}",
+            start_header_hash.to_hex()
         );
         let mut target_url = self.http_server_address().await?.join("/sync_utxos_by_block")?;
         let (resp_tx, resp_rx) = mpsc::channel(1000);
         let start_header_hash_hex = start_header_hash.to_hex();
-        let end_header_hash_hex = end_header_hash.to_hex();
         let client = self.http_client.clone();
 
         let limit = 10;
@@ -277,8 +275,8 @@ impl BaseNodeWalletClient for Client {
                 }
                 target_url.set_query(Some(
                     format!(
-                        "start_header_hash={}&end_header_hash={}&limit={}&page={}",
-                        &start_header_hash_hex, &end_header_hash_hex, limit, page
+                        "start_header_hash={}&limit={}&page={}",
+                        &start_header_hash_hex, limit, page
                     )
                     .as_str(),
                 ));

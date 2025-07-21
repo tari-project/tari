@@ -1,7 +1,7 @@
 ---
-name: Integration tests
+name: 'Integration Tests'
 
-"on":
+'on':
   pull_request:
     types:
       - opened
@@ -25,6 +25,8 @@ name: Integration tests
         default: ci
         description: 'ci profile to run'
         type: string
+
+permissions: {}
 
 env:
   toolchain: stable

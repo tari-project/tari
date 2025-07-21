@@ -32,10 +32,6 @@ pub struct SyncUtxosByBlockQueryParams {
     #[param(value_type = String, example = "1a8da4213566e3cda06958c7ee46b87870a587fabb1c7f050f553b6da36cccb3"
     )]
     pub start_header_hash: Vec<u8>,
-    #[serde(deserialize_with = "from_hex")]
-    #[param(value_type = String, example = "7e0b29c48e46ca6805ef4593219641badc08f6c278e768e54220ecaa4a68e2a5"
-    )]
-    pub end_header_hash: Vec<u8>,
     #[param(value_type = u64, example = 5)]
     pub limit: u64,
     #[param(value_type = u64, example = 0)]
@@ -46,7 +42,6 @@ impl From<SyncUtxosByBlockQueryParams> for SyncUtxosByBlockRequest {
     fn from(params: SyncUtxosByBlockQueryParams) -> Self {
         Self {
             start_header_hash: params.start_header_hash,
-            end_header_hash: params.end_header_hash,
             limit: params.limit,
             page: params.page,
         }

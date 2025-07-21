@@ -20,11 +20,11 @@ Want to contribute? Start by reading the [Contributing Guide](Contributing.md) a
 ### Versions
 The recommended running versions of each network are:
 
-| Network   | Version     |
-|-----------|-------------|
-| Mainnet   | 4.9.1       |
-| Nextnet   | 4.9.1-rc.0  |
-| Esmeralda | 4.9.1-pre.0 |
+| Network   | Version      |
+|-----------|--------------|
+| Mainnet   | 4.10.0       |
+| Nextnet   | 4.9.1-rc.0   |
+| Esmeralda | 4.10.0-pre.0 |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 

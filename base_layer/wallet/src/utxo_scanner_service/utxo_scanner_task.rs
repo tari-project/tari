@@ -244,7 +244,6 @@ where
         loop {
             let (tip_hash, tip_height) = self.get_chain_tip_header(&wallet_service_client).await?;
             let last_scanned_block = self.get_last_scanned_block(&wallet_service_client, tip_height).await?;
-
             // check if we are already synced.
             if let Some(last_scanned_block) = &last_scanned_block {
                 if last_scanned_block.header_hash == tip_hash {
@@ -290,23 +289,18 @@ where
                 next_block_to_scan.header_hash.to_hex(),
             );
 
-            let (num_scanned, num_recovered, amount_recovered) = self
-                .scan_utxos(
-                    &wallet_service_client,
-                    next_block_to_scan.header_hash,
-                    tip_hash,
-                    tip_height,
-                )
+            let scan_result = self
+                .scan_utxos_to_tip(&wallet_service_client, next_block_to_scan.header_hash, tip_height)
                 .await?;
-            scanned_blocks += 1;
-            total_num_recovered += num_recovered;
-            total_value_recovered += amount_recovered;
+            scanned_blocks += scan_result.blocks_scanned;
+            total_num_recovered += scan_result.total_num_recovered;
+            total_value_recovered += scan_result.total_value_recovered;
             debug!(
                 target: LOG_TARGET,
                 "Scanning round completed up to height {} in {:.2?} ({} outputs scanned)",
                 tip_height,
                 timer.elapsed(),
-                num_scanned,
+                scan_result.total_scanned,
             );
         }
     }
@@ -408,18 +402,16 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn scan_utxos(
+    async fn scan_utxos_to_tip(
         &mut self,
         client: &TWalletClientFactory::Client,
         start_header_hash: HashOutput,
-        end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(usize, u64, MicroMinotari), anyhow::Error> {
+    ) -> Result<ScanUtxosResult, anyhow::Error> {
         info!(
             target: LOG_TARGET,
-            "Starting UTXO scanning from header hash {} to header hash {} at tip height {}",
+            "Starting UTXO scanning from header hash {} to tip height {}",
             start_header_hash.to_hex(),
-            end_header_hash.to_hex(),
             tip_height
         );
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
@@ -428,116 +420,138 @@ where
         let mut total_scanned = 0;
         let mut total_num_recovered = 0;
         let mut total_value_recovered = MicroMinotari::zero();
+        let mut blocks_scanned = 0;
+        let mut starting_header_vec = start_header_hash.to_vec();
+        loop {
+            let mut utxo_stream = client
+                .sync_utxos_by_block(starting_header_vec.clone(), self.shutdown_signal.clone())
+                .await?;
 
-        let mut utxo_stream = client
-            .sync_utxos_by_block(
-                start_header_hash.to_vec(),
-                end_header_hash.to_vec(),
-                self.shutdown_signal.clone(),
-            )
-            .await?;
-
-        let mut prev_scanned_block: Option<ScannedBlock> = None;
-        while let Some(response) = utxo_stream.recv().await {
-            if self.shutdown_signal.is_triggered() {
-                return Ok((total_scanned, total_num_recovered, total_value_recovered));
-            }
-
-            let response = response?;
-            #[allow(clippy::cast_possible_wrap)]
-            for response in response.blocks {
-                let current_height = response.height;
-                let current_header_hash = response.header_hash;
-                let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
-                    .unwrap_or(DateTime::<Utc>::MIN_UTC);
-                let outputs = response.outputs;
-                total_scanned += outputs.len();
-
-                let found_outputs = self.search_for_owned_outputs(outputs).await?;
-
-                if found_outputs.is_empty() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "No recoverable outputs found in block at height {} with header hash {}",
-                        current_height,
-                        current_header_hash.to_hex()
-                    );
-                } else {
-                    // Now download the whole block and import the outputs
-                    info!(
-                        target: LOG_TARGET,
-                        "Found {} recoverable outputs in block at height {} with header hash {}",
-                        found_outputs.len(),
-                        current_height,
-                        current_header_hash.to_hex()
-                    );
-                    let block = client.get_utxos_by_block(current_header_hash.to_vec()).await?;
-
-                    let outputs = block
-                        .outputs
-                        .iter()
-                        .filter(|o| found_outputs.iter().any(|f| f.commitment == o.commitment.as_bytes()))
-                        .cloned()
-                        .collect::<Vec<_>>();
-
-                    let imported_outputs = self.scan_for_outputs(outputs).await?;
-
-                    let (num_recovered, amount) = self
-                        .import_utxos_to_transaction_service(&imported_outputs, current_height, mined_timestamp)
-                        .await?;
-                    total_num_recovered += num_recovered;
-                    total_value_recovered += amount;
+            let mut prev_scanned_block: Option<ScannedBlock> = None;
+            while let Some(response) = utxo_stream.recv().await {
+                if self.shutdown_signal.is_triggered() {
+                    let result = ScanUtxosResult {
+                        total_scanned,
+                        total_num_recovered,
+                        total_value_recovered,
+                        blocks_scanned,
+                    };
+                    return Ok(result);
                 }
 
-                let block_hash: FixedHash = current_header_hash.try_into()?;
-                if let Some(scanned_block) = prev_scanned_block {
-                    if block_hash != scanned_block.header_hash {
+                let response = response?;
+                #[allow(clippy::cast_possible_wrap)]
+                for response in response.blocks {
+                    blocks_scanned += 1;
+                    let current_height = response.height;
+                    let current_header_hash = response.header_hash;
+                    let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
+                        .unwrap_or(DateTime::<Utc>::MIN_UTC);
+                    let outputs = response.outputs;
+                    total_scanned += outputs.len();
+
+                    let found_outputs = self.search_for_owned_outputs(outputs).await?;
+
+                    if found_outputs.is_empty() {
                         debug!(
                             target: LOG_TARGET,
-                            "Saving scanned block at height {} with header hash {}",
+                            "No recoverable outputs found in block at height {} with header hash {}",
                             current_height,
-                            block_hash.to_hex()
+                            current_header_hash.to_hex()
                         );
-                        self.resources.db.save_scanned_block(scanned_block)?;
-                        self.resources.db.clear_scanned_blocks_before_height(
-                            current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
-                            true,
-                        )?;
+                    } else {
+                        // Now download the whole block and import the outputs
+                        info!(
+                            target: LOG_TARGET,
+                            "Found {} recoverable outputs in block at height {} with header hash {}",
+                            found_outputs.len(),
+                            current_height,
+                            current_header_hash.to_hex()
+                        );
+                        let block = client.get_utxos_by_block(current_header_hash.to_vec()).await?;
 
-                        if current_height % PROGRESS_REPORT_INTERVAL == 0 {
+                        let outputs = block
+                            .outputs
+                            .iter()
+                            .filter(|o| found_outputs.iter().any(|f| f.commitment == o.commitment.as_bytes()))
+                            .cloned()
+                            .collect::<Vec<_>>();
+
+                        let imported_outputs = self.scan_for_outputs(outputs).await?;
+
+                        let (num_recovered, amount) = self
+                            .import_utxos_to_transaction_service(&imported_outputs, current_height, mined_timestamp)
+                            .await?;
+                        total_num_recovered += num_recovered;
+                        total_value_recovered += amount;
+                    }
+
+                    let block_hash: FixedHash = current_header_hash.try_into()?;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Scanned block at height {} with header hash {}, :{:?}",
+                        current_height,
+                        block_hash.to_hex(), prev_scanned_block
+                    );
+                    if let Some(scanned_block) = prev_scanned_block {
+                        if block_hash != scanned_block.header_hash {
                             debug!(
                                 target: LOG_TARGET,
-                                "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
-                            );
-
-                            let latency = client.get_last_request_latency().await.unwrap_or_default();
-                            let node = client.get_address().await;
-                            self.publish_event(UtxoScannerEvent::Progress {
+                                "Saving scanned block at height {} with header hash {}",
                                 current_height,
-                                tip_height,
-                                current_node: node,
-                                latency,
-                            });
+                                block_hash.to_hex()
+                            );
+                            self.resources.db.save_scanned_block(scanned_block)?;
+                            self.resources.db.clear_scanned_blocks_before_height(
+                                current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
+                                true,
+                            )?;
+
+                            if current_height % PROGRESS_REPORT_INTERVAL == 0 {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
+                                );
+
+                                let latency = client.get_last_request_latency().await.unwrap_or_default();
+                                let node = client.get_address().await;
+                                self.publish_event(UtxoScannerEvent::Progress {
+                                    current_height,
+                                    tip_height,
+                                    current_node: node,
+                                    latency,
+                                });
+                            }
                         }
                     }
+                    prev_scanned_block = Some(ScannedBlock {
+                        header_hash: block_hash,
+                        height: current_height,
+                        timestamp: Utc::now().naive_utc(),
+                    });
                 }
-                prev_scanned_block = Some(ScannedBlock {
-                    header_hash: block_hash,
-                    height: current_height,
-                    timestamp: Utc::now().naive_utc(),
-                });
+                starting_header_vec = response.next_header_to_scan;
+            }
+            // We need to update the last one
+            if let Some(scanned_block) = prev_scanned_block {
+                self.resources.db.clear_scanned_blocks_before_height(
+                    scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
+                    true,
+                )?;
+                self.resources.db.save_scanned_block(scanned_block)?;
+            }
+            if starting_header_vec.is_empty() {
+                // No more blocks to scan
+                break;
             }
         }
-        // We need to update the last one
-        if let Some(scanned_block) = prev_scanned_block {
-            self.resources.db.clear_scanned_blocks_before_height(
-                scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
-                true,
-            )?;
-            self.resources.db.save_scanned_block(scanned_block)?;
-        }
-
-        Ok((total_scanned, total_num_recovered, total_value_recovered))
+        let result = ScanUtxosResult {
+            total_scanned,
+            total_num_recovered,
+            total_value_recovered,
+            blocks_scanned,
+        };
+        Ok(result)
     }
 
     async fn search_for_owned_outputs(
@@ -819,4 +833,11 @@ where
 struct HeightHash {
     height: u64,
     header_hash: HashOutput,
+}
+
+struct ScanUtxosResult {
+    total_scanned: usize,
+    total_num_recovered: u64,
+    blocks_scanned: u64,
+    total_value_recovered: MicroMinotari,
 }

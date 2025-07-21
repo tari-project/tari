@@ -48,6 +48,8 @@ pub struct WalletDebouncer {
     balance: Arc<Mutex<Balance>>,
     scanned_height: Arc<Mutex<u64>>,
     refresh_needed: Arc<Mutex<bool>>,
+    intial_scanning_done: Arc<Mutex<bool>>,
+    initial_validation_done: Arc<Mutex<bool>>,
     output_manager_service: OutputManagerHandle,
     transaction_service: TransactionServiceHandle,
     utxo_scanner_handle: UtxoScannerHandle,
@@ -72,6 +74,8 @@ impl WalletDebouncer {
                 time_locked_balance: None,
             })),
             refresh_needed: Arc::new(Mutex::new(true)),
+            intial_scanning_done: Arc::new(Mutex::new(false)),
+            initial_validation_done: Arc::new(Mutex::new(false)),
             scanned_height: Arc::new(Mutex::new(scanned_height)),
             output_manager_service,
             transaction_service,
@@ -133,6 +137,10 @@ impl WalletDebouncer {
         refresh_needed
     }
 
+    pub async fn is_initial_validation_done(&self) -> bool {
+        *self.initial_validation_done.lock().await
+    }
+
     async fn set_refresh_needed(&self, refresh_needed: bool) {
         let mut lock = self.refresh_needed.lock().await;
         if *lock != refresh_needed {
@@ -177,9 +185,21 @@ impl WalletDebouncer {
                                 TransactionEvent::DetectedTransactionConfirmed { .. } |
                                 TransactionEvent::TransactionMined { .. } |
                                 TransactionEvent::TransactionMinedUnconfirmed { .. } |
-                                TransactionEvent::TransactionImported(_)  |
-                                TransactionEvent::TransactionValidationStateChanged(..) => {
+                                TransactionEvent::TransactionImported(_)  => {
                                     self.set_refresh_needed(true).await;
+                                },
+                                TransactionEvent::TransactionValidationStateChanged{faux, ..} => {
+                                    self.set_refresh_needed(true).await;
+                                    #[allow(clippy::collapsible_if)]
+                                    if faux {
+                                        let mut intial = self.initial_validation_done.lock().await;
+                                        if !(*intial) {
+                                            if *self.intial_scanning_done.lock().await{
+                                                // we should only set this after we completed initial scanning and then completed faux tx validation
+                                                *intial = true;
+                                            }
+                                        }
+                                    }
                                 },
                                 _ => (),
                             }
@@ -215,6 +235,8 @@ impl WalletDebouncer {
                                     final_height,
                                     ..
                                 }=> {
+                                    let mut scanning_done = self.intial_scanning_done.lock().await;
+                                    *scanning_done = true;
                                     self.update_scanned_height(final_height).await;
                                 },
                                 _ => {}
