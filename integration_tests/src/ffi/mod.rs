@@ -26,8 +26,6 @@ pub mod ffi_import;
 pub use comms_config::CommsConfig;
 mod wallet_address;
 pub use wallet_address::WalletAddress;
-mod transport_config;
-pub use transport_config::TransportConfig;
 mod wallet;
 pub use wallet::Wallet;
 mod public_key;

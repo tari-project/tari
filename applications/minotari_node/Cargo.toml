@@ -73,6 +73,7 @@ axum = { version = "0.8.4", features = ["default", "http2"] }
 http = "0.2.12"
 utoipa = "5.3.1"
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum"] }
+tower-http = { version = "0.6", features = ["limit"] }
 
 [features]
 default = ["libtor"]

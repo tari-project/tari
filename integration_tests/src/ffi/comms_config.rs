@@ -24,7 +24,7 @@ use std::{ffi::CString, ptr::null_mut};
 
 use libc::c_void;
 
-use super::{ffi_import, transport_config::TransportConfig};
+use super::ffi_import;
 
 pub struct CommsConfig {
     ptr: *mut c_void,
@@ -38,17 +38,13 @@ impl Drop for CommsConfig {
 }
 
 impl CommsConfig {
-    pub fn create(port: u64, transport_config: TransportConfig, base_dir: String) -> Self {
+    pub fn create(base_dir: String) -> Self {
         let mut error = 0;
         let ptr;
         unsafe {
             ptr = ffi_import::comms_config_create(
-                CString::new(format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap().into_raw(),
-                transport_config.get_ptr(),
                 CString::new("wallet.dat").unwrap().into_raw(),
                 CString::new(base_dir).unwrap().into_raw(),
-                30,
-                false, // This needs to be 'false' for the tests to pass
                 &mut error,
             );
             if error > 0 {

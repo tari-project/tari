@@ -379,27 +379,9 @@ extern "C" {
     pub fn pending_inbound_transaction_destroy(transaction: *mut TariPendingInboundTransaction);
     pub fn transaction_send_status_decode(status: *const TariTransactionSendStatus, error_out: *mut c_int) -> c_uint;
     pub fn transaction_send_status_destroy(status: *mut TariTransactionSendStatus);
-    pub fn transport_memory_create() -> *mut TariTransportConfig;
-    pub fn transport_tcp_create(listener_address: *const c_char, error_out: *mut c_int) -> *mut TariTransportConfig;
-    pub fn transport_tor_create(
-        control_server_address: *const c_char,
-        tor_cookie: *const ByteVector,
-        tor_port: c_ushort,
-        tor_proxy_bypass_for_outbound: bool,
-        socks_username: *const c_char,
-        socks_password: *const c_char,
-        error_out: *mut c_int,
-    ) -> *mut TariTransportConfig;
-    pub fn transport_memory_get_address(transport: *const TariTransportConfig, error_out: *mut c_int) -> *mut c_char;
-    pub fn transport_type_destroy(transport: *mut TariTransportConfig);
-    pub fn transport_config_destroy(transport: *mut TariTransportConfig);
     pub fn comms_config_create(
-        public_address: *const c_char,
-        transport: *const TariTransportConfig,
         database_name: *const c_char,
         datastore_path: *const c_char,
-        discovery_timeout_in_secs: c_ulonglong,
-        exclude_dial_test_addresses: bool,
         error_out: *mut c_int,
     ) -> *mut TariCommsConfig;
     pub fn comms_config_destroy(wc: *mut TariCommsConfig);
@@ -424,7 +406,8 @@ extern "C" {
         dns_seeds_str: *const c_char,
         dns_seed_name_servers_str: *const c_char,
         use_dns_sec: bool,
-
+        http_base_node: *const c_char,
+        wallet_birthday_offset: c_int,
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut TariPendingInboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(
