@@ -337,15 +337,31 @@ grpc_address = "/ip4/127.0.0.1/tcp/18143"
 #grpc_authentication = { username = "admin", password = "xxxx" }
 ```
 
-4. Set the wallet's base node. Set this value to the `minotari_node` you created or chose at the beginning of this guide in **Section 1**.
+4. Set the wallet's base node. By default the Tari provided public server will be used, but it can also be set to a private base node. Set this value to the `minotari_node` you created or chose at the beginning of this guide in **Section 1**.
 
-> Note: The format is `<...public key...>::<...public address...>`, with <...> being replaced with the addresses noted previously. Below is a sample of what these configuration settings look like, using the example data from **Section 1**. You should not use the data below, but insert your own details.
+> Note: Below is a sample of what these configuration settings look like, using the example data from **Section 1**. You should not use the data below, but insert your own details.
 
+This is the private base node:
 ```toml
-# A custom base node peer that will be used to obtain metadata from, example
-# "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189"
-# (default = )
-custom_base_node = "22d33b525d35d256674c5184c262b70d15275effcf5f6fe6dc0d359a18541d04::/onion3/6x54mmubphz5r3opswpuhseswivvlaxbohuqvwsn4o36zmtudq73dgid:18141"
+# Wallet Query HTTP service details
+# `external_address` is optional, but if not set, then wallet wont be able to call our endpoint.
+# This address must be accessible by the wallet (on a global scale over the internet).
+[base_node.http_wallet_query_service]
+#port = 9000
+#external_address = "http://127.0.0.1:9000"
+```
+
+This is the fallback base node, which can also be a private base node.
+```toml
+# The URL of the HTTP client to use for base node service requests
+#http_server_url="http://127.0.0.1:9000"
+# The fallback url address to use if the base node at http_server_url does not respond
+#fallback_http_server_url = "https://rpc.tari.com"             # MainNet
+#fallback_http_server_url = "https://rpc.stagenet.tari.com"    # StageNet
+#fallback_http_server_url = "https://rpc.nextnet.tari.com"     # NextNet
+#fallback_http_server_url = "https://rpc.localnet.tari.com"    # LocalNet
+#fallback_http_server_url = "https://rpc.igor.tari.com"        # Igor
+#fallback_http_server_url = "https://rpc.esmeralda.tari.com"   # Esmeralda
 ```
 
 5. Save the file and start the wallet again.

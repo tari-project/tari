@@ -49,7 +49,8 @@
     "target": "x86_64-pc-windows-msvc",
     "cross": false,
     "features": "safe",
-    "flags": "--workspace --exclude tari_libtor"
+    "flags": "--workspace --exclude tari_libtor",
+    "ts_ext": ".exe"
   },
   {
     "name": "windows-arm64",
@@ -60,6 +61,7 @@
     "features": "safe",
     "target_bins": "minotari_node, minotari_console_wallet, minotari_merge_mining_proxy, minotari_miner",
     "flags": "--workspace --exclude tari_libtor",
+    "ts_ext": ".exe",
     "build_enabled": false,
     "best_effort": true
   }

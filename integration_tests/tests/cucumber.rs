@@ -45,8 +45,8 @@ fn main() {
         include_str!("../log4rs/cucumber.yml"),
     )
     .expect("logging not configured");
-    // Never move this line below the runtime creation!!! It will cause that any new thread created via task::spawn will
-    // not be affected by the output capture.
+    // Output capture removed - using internal feature that's not stable
+    // Tests will output to regular stdout/stderr instead
     let runtime = Runtime::new().unwrap();
     runtime.block_on(async {
         let world = TariWorld::cucumber()
