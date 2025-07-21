@@ -436,7 +436,7 @@ where KM: TransactionKeyManagerInterface
                             payment_id.transaction_info_set_amount(recipient.amount);
                             match payment_id.get_type() {
                                 TxType::PaymentToOther => {
-                                    payment_id.transaction_info_set_address(recipient.recipient_address)
+                                    payment_id.transaction_info_set_address(recipient.recipient_address)?
                                 },
                                 TxType::PaymentToSelf |
                                 TxType::CoinSplit |
@@ -444,12 +444,12 @@ where KM: TransactionKeyManagerInterface
                                 TxType::ValidatorNodeRegistration |
                                 TxType::CodeTemplateRegistration |
                                 TxType::ClaimAtomicSwap |
-                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address),
+                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address)?,
                                 _ => {},
                             }
                         } else {
                             payment_id.transaction_info_set_amount(total_to_self);
-                            payment_id.transaction_info_set_address(own_address);
+                            payment_id.transaction_info_set_address(own_address)?;
                         }
                         trace!(target: LOG_TARGET, "Modified change payment id: {}, TxId: {:?}", payment_id, self.tx_id);
 

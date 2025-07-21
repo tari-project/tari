@@ -140,6 +140,8 @@ pub enum TransactionProtocolError {
     EncryptionError,
     #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(String),
+    #[error("Address exceeded maximum memo field size: `{0}`")]
+    AddressExceededMaximumMemoFieldSize(String),
 }
 
 impl From<RangeProofError> for TransactionProtocolError {

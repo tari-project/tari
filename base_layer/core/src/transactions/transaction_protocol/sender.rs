@@ -715,7 +715,9 @@ impl SenderTransactionProtocol {
             }
 
             let mut payment_id = change.output.payment_id.clone();
-            payment_id.transaction_info_set_sent_output_hashes(sent_hashes);
+            payment_id
+                .transaction_info_set_sent_output_hashes(sent_hashes)
+                .map_err(|_e| TPE::InvalidStateError)?;
             let encrypted_data = key_manager
                 .encrypt_data_for_recovery(
                     &change.output.spending_key_id,

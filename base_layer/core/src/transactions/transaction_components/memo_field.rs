@@ -462,23 +462,112 @@ impl MemoField {
     }
 
     /// Helper function to set the 'recipient_address' of a 'PaymentId::TransactionInfo'
-    pub fn transaction_info_set_address(&mut self, address: TariAddress) {
+    pub fn transaction_info_set_address(&mut self, address: TariAddress) -> Result<(), String> {
         if let InnerMemoField::TransactionInfo {
             ref mut recipient_address,
+            ref sent_output_hashes,
+            ref payment_id,
             ..
         } = self.inner
         {
-            *recipient_address = address
+            // Calculate the new size with the updated address
+            let total_size =
+                Self::calculate_transaction_info_size(&address, sent_output_hashes.len(), payment_id.len());
+
+            if total_size > MAX_ENCRYPTED_DATA_SIZE {
+                return Err(format!(
+                    "Setting address would exceed {}-byte limit: {} bytes (new address: {} bytes, hashes: {} bytes, \
+                     payment_id: {} bytes, overhead: {} bytes)",
+                    MAX_ENCRYPTED_DATA_SIZE,
+                    total_size,
+                    address.get_size(),
+                    sent_output_hashes.len() * FixedHash::byte_size(),
+                    payment_id.len(),
+                    total_size -
+                        address.get_size() -
+                        (sent_output_hashes.len() * FixedHash::byte_size()) -
+                        payment_id.len()
+                ));
+            }
+
+            *recipient_address = address;
+            Ok(())
+        } else {
+            Err("Cannot set address on non-TransactionInfo memo field".to_string())
         }
     }
 
-    pub fn transaction_info_set_sent_output_hashes(&mut self, sent_output_hashes: Vec<FixedHash>) {
+    pub fn transaction_info_set_sent_output_hashes(
+        &mut self,
+        sent_output_hashes: Vec<FixedHash>,
+    ) -> Result<(), String> {
         if let InnerMemoField::TransactionInfo {
+            ref recipient_address,
+            ref payment_id,
             sent_output_hashes: ref mut hashes,
             ..
         } = self.inner
         {
+            // Calculate the new size with the updated hashes
+            let total_size =
+                Self::calculate_transaction_info_size(recipient_address, sent_output_hashes.len(), payment_id.len());
+
+            if total_size > MAX_ENCRYPTED_DATA_SIZE {
+                return Err(format!(
+                    "Setting sent output hashes would exceed {}-byte limit: {} bytes (address: {} bytes, new hashes: \
+                     {} bytes, payment_id: {} bytes, overhead: {} bytes)",
+                    MAX_ENCRYPTED_DATA_SIZE,
+                    total_size,
+                    recipient_address.get_size(),
+                    sent_output_hashes.len() * FixedHash::byte_size(),
+                    payment_id.len(),
+                    total_size -
+                        recipient_address.get_size() -
+                        (sent_output_hashes.len() * FixedHash::byte_size()) -
+                        payment_id.len()
+                ));
+            }
+
             *hashes = sent_output_hashes;
+            Ok(())
+        } else {
+            Err("Cannot set sent output hashes on non-TransactionInfo memo field".to_string())
+        }
+    }
+
+    /// Helper function to set the 'payment_id' of a 'InnerMemoField::TransactionInfo'
+    pub fn transaction_info_set_payment_id(&mut self, payment_id: Vec<u8>) -> Result<(), String> {
+        if let InnerMemoField::TransactionInfo {
+            ref recipient_address,
+            ref sent_output_hashes,
+            payment_id: ref mut current_payment_id,
+            ..
+        } = self.inner
+        {
+            // Calculate the new size with the updated payment_id
+            let total_size =
+                Self::calculate_transaction_info_size(recipient_address, sent_output_hashes.len(), payment_id.len());
+
+            if total_size > MAX_ENCRYPTED_DATA_SIZE {
+                return Err(format!(
+                    "Setting payment ID would exceed {}-byte limit: {} bytes (address: {} bytes, hashes: {} bytes, \
+                     new payment_id: {} bytes, overhead: {} bytes)",
+                    MAX_ENCRYPTED_DATA_SIZE,
+                    total_size,
+                    recipient_address.get_size(),
+                    sent_output_hashes.len() * FixedHash::byte_size(),
+                    payment_id.len(),
+                    total_size -
+                        recipient_address.get_size() -
+                        (sent_output_hashes.len() * FixedHash::byte_size()) -
+                        payment_id.len()
+                ));
+            }
+
+            *current_payment_id = payment_id;
+            Ok(())
+        } else {
+            Err("Cannot set payment ID on non-TransactionInfo memo field".to_string())
         }
     }
 
@@ -2327,5 +2416,172 @@ mod test {
             1 + 1 + single_address.get_size() + MemoField::SIZE_VALUE_AND_META_DATA + 1 + 1 + small_payment_id.len();
         assert!(calculated_base_size < PADDING_SIZE);
         assert_eq!(transaction_info.get_size(), PADDING_SIZE);
+    }
+
+    #[test]
+    fn test_transaction_info_set_address_validation() {
+        // Create a small dual address and transaction info
+        let small_dual_address = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+        let large_dual_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+
+        let mut transaction_info = MemoField::new_transaction_info(
+            small_dual_address.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![],
+            vec![1u8; 50], // Small payment ID
+        )
+        .expect("Should create transaction info");
+
+        // Test setting valid address
+        let result = transaction_info.transaction_info_set_address(small_dual_address.clone());
+        assert!(result.is_ok(), "Setting valid address should succeed");
+
+        // Test setting address that would exceed size limit
+        // Create a large payment ID to get close to the limit
+        let mut large_transaction_info = MemoField::new_transaction_info(
+            small_dual_address.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![],
+            vec![1u8; 180], // Large payment ID to get close to limit
+        )
+        .expect("Should create transaction info");
+
+        // Setting a larger address should fail
+        let result = large_transaction_info.transaction_info_set_address(large_dual_address);
+        assert!(result.is_err(), "Setting address that would exceed limit should fail");
+        assert!(
+            result.unwrap_err().contains("exceed"),
+            "Error should mention exceeding limit"
+        );
+
+        // Test setting address on non-TransactionInfo memo field
+        let mut empty_memo = MemoField::new_empty();
+        let result = empty_memo.transaction_info_set_address(small_dual_address);
+        assert!(result.is_err(), "Setting address on empty memo should fail");
+        assert!(
+            result.unwrap_err().contains("non-TransactionInfo"),
+            "Error should mention wrong type"
+        );
+    }
+
+    #[test]
+    fn test_transaction_info_set_sent_output_hashes_validation() {
+        let single_address = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+
+        let mut transaction_info = MemoField::new_transaction_info(
+            single_address.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![],
+            vec![1u8; 50], // Small payment ID
+        )
+        .expect("Should create transaction info");
+
+        // Test setting valid number of hashes
+        let few_hashes = vec![FixedHash::zero(); 2];
+        let result = transaction_info.transaction_info_set_sent_output_hashes(few_hashes);
+        assert!(result.is_ok(), "Setting valid hashes should succeed");
+
+        // Test setting too many hashes that would exceed size limit
+        // Each FixedHash is 32 bytes, so we need enough to exceed the limit
+        let many_hashes = vec![FixedHash::zero(); 7]; // 7 * 32 = 224 bytes of hashes
+        let result = transaction_info.transaction_info_set_sent_output_hashes(many_hashes);
+        assert!(result.is_err(), "Setting too many hashes should fail");
+        assert!(
+            result.unwrap_err().contains("exceed"),
+            "Error should mention exceeding limit"
+        );
+
+        // Test setting hashes on non-TransactionInfo memo field
+        let mut empty_memo = MemoField::new_empty();
+        let result = empty_memo.transaction_info_set_sent_output_hashes(vec![FixedHash::zero()]);
+        assert!(result.is_err(), "Setting hashes on empty memo should fail");
+        assert!(
+            result.unwrap_err().contains("non-TransactionInfo"),
+            "Error should mention wrong type"
+        );
+    }
+
+    #[test]
+    fn test_transaction_info_edge_cases_256_byte_limit() {
+        let single_address = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+
+        // Create transaction info that's just under the limit
+        let mut transaction_info = MemoField::new_transaction_info(
+            single_address.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![FixedHash::zero(); 4], // 4 * 32 = 128 bytes
+            vec![1u8; 50],              // 50 bytes
+        )
+        .expect("Should create transaction info");
+
+        // Test adding one more hash - should fail
+        let mut current_hashes = transaction_info.get_sent_hashes().unwrap().clone();
+        current_hashes.push(FixedHash::zero());
+        let result = transaction_info.transaction_info_set_sent_output_hashes(current_hashes);
+        assert!(result.is_err(), "Adding one more hash should exceed limit");
+
+        // Test replacing with a larger address - should fail
+        let dual_address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+        let result = transaction_info.transaction_info_set_address(dual_address);
+        assert!(result.is_err(), "Setting larger address should exceed limit");
+    }
+
+    #[test]
+    fn test_transaction_info_set_payment_id_validation() {
+        let single_address = TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap();
+
+        let mut transaction_info = MemoField::new_transaction_info(
+            single_address.clone(),
+            MicroMinotari::from(1000u64),
+            MicroMinotari::from(100u64),
+            false,
+            TxType::PaymentToOther,
+            vec![],
+            vec![1u8; 50], // Small payment ID
+        )
+        .expect("Should create transaction info");
+
+        // Test setting valid payment ID
+        let small_payment_id = vec![1u8; 30];
+        let result = transaction_info.transaction_info_set_payment_id(small_payment_id);
+        assert!(result.is_ok(), "Setting valid payment ID should succeed");
+
+        // Test setting payment ID that would exceed size limit
+        // Need to account for: 1 tag + 1 sender_one_sided + 35 address + 13 metadata + 1 hash_count + 1 payment_id_len
+        // = 52 bytes overhead So 256 - 52 = 204 bytes max for payment_id
+        let large_payment_id = vec![1u8; 210]; // Large payment ID that will exceed limit
+        let result = transaction_info.transaction_info_set_payment_id(large_payment_id);
+        assert!(result.is_err(), "Setting large payment ID should fail");
+        assert!(
+            result.unwrap_err().contains("exceed"),
+            "Error should mention exceeding limit"
+        );
+
+        // Test setting payment ID on non-TransactionInfo memo field
+        let mut empty_memo = MemoField::new_empty();
+        let result = empty_memo.transaction_info_set_payment_id(vec![1u8; 10]);
+        assert!(result.is_err(), "Setting payment ID on empty memo should fail");
+        assert!(
+            result.unwrap_err().contains("non-TransactionInfo"),
+            "Error should mention wrong type"
+        );
     }
 }
