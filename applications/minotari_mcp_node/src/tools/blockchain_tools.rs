@@ -61,6 +61,7 @@ impl McpTool for ListHeadersTool {
         })
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let from_height = params.get("from_height").and_then(|v| v.as_u64()).unwrap_or(0);
 

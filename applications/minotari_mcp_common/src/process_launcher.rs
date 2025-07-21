@@ -111,6 +111,7 @@ impl ProcessLauncher {
     }
 
     /// Launch the process with comprehensive monitoring
+    #[allow(clippy::too_many_lines)]
     pub async fn launch(&self) -> McpResult<LaunchResult> {
         drop(self.status_tx.send(ProcessLaunchStatus::Starting));
 

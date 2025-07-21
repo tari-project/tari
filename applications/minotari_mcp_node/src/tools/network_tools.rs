@@ -445,6 +445,7 @@ impl McpTool for NetworkDiagnosticsTool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute(&self, _params: Value) -> McpResult<Value> {
         // Get network status
         let status_request = Request::new(Empty {});

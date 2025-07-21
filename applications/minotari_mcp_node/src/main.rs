@@ -21,7 +21,7 @@ use crate::{cli::Cli, config::NodeMcpConfig, server::NodeMcpServer};
 /// Initialize minimal file-based logging for MCP server
 fn init_file_logging(cli: &Cli) {
     let log_dir = cli.get_base_path().join("log");
-    let _ = fs::create_dir_all(&log_dir);
+    let _dir = fs::create_dir_all(&log_dir);
 
     // Set up a simple logger that writes to file only (no stdio)
     let log_file_path = log_dir.join("minotari_mcp_node.log");
@@ -38,7 +38,7 @@ fn init_file_logging(cli: &Cli) {
         fn log(&self, record: &log::Record) {
             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&self.path) {
                 let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
-                let _ = writeln!(
+                let _write = writeln!(
                     file,
                     "{} {} [{}] - {}",
                     timestamp,

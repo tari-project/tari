@@ -51,7 +51,7 @@ impl McpResource for NetworkStatusResource {
         // TODO: Replace with actual network status calls when gRPC definitions are available
         Ok(serde_json::json!({
             "status": "online",
-            "node_version": version.value,
+            "node_version": version.version,
             "network": "unknown",
             "message": "Network status information - placeholder implementation"
         }))

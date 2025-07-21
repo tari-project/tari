@@ -204,6 +204,7 @@ impl McpTool for BalanceAnalysisTool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         // Get balance information
         let balance_request = Request::new(GetBalanceRequest { payment_id: None });
@@ -259,24 +260,22 @@ impl McpTool for BalanceAnalysisTool {
             recommendations.push("All funds are locked or pending - wait for transactions to confirm".to_string());
         } else if liquidity_ratio < 0.5 && total_balance > 0 {
             recommendations.push("Consider reducing pending transactions to improve liquidity".to_string());
+        } else {
+            // clippy
         }
 
-        if requested_amount > 0 {
-            if !can_spend_requested {
-                if liquid_balance == 0 {
-                    recommendations.push("No funds available for spending".to_string());
-                } else {
-                    recommendations.push(format!(
-                        "Requested amount ({} µT) exceeds available balance ({} µT)",
-                        requested_amount, liquid_balance
-                    ));
-                }
+        if requested_amount > 0 && can_spend_requested {
+            let remaining_after = liquid_balance - requested_amount;
+            if remaining_after < 10000 {
+                // Less than 0.01 T remaining
+                recommendations.push("Transaction would use almost all available funds".to_string());
+            } else if liquid_balance == 0 {
+                recommendations.push("No funds available for spending".to_string());
             } else {
-                let remaining_after = liquid_balance - requested_amount;
-                if remaining_after < 10000 {
-                    // Less than 0.01 T remaining
-                    recommendations.push("Transaction would use almost all available funds".to_string());
-                }
+                recommendations.push(format!(
+                    "Requested amount ({} µT) exceeds available balance ({} µT)",
+                    requested_amount, liquid_balance
+                ));
             }
         }
 
@@ -410,6 +409,7 @@ impl McpTool for BalanceMonitorTool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         // Get configurable thresholds
         let low_balance_threshold = params
@@ -549,15 +549,15 @@ impl McpTool for BalanceMonitorTool {
                 "high_pending_threshold": high_pending_threshold,
                 "liquidity_threshold": (liquidity_threshold * 100.0).round(),
             },
-            "recommendations": if alert_level != "INFO" {
+            "recommendations": if alert_level == "INFO" {
+                vec!["Balance monitoring active - no immediate action required"]
+            } else {
                 match alert_level {
                     "CRITICAL" => vec!["Fund wallet immediately", "Check for incoming transactions"],
                     "WARNING" => vec!["Monitor balance closely", "Consider reducing transaction frequency", "Check transaction status"],
                     "CAUTION" => vec!["Review pending transactions", "Ensure adequate liquidity for future transactions"],
                     _ => vec![]
                 }
-            } else {
-                vec!["Balance monitoring active - no immediate action required"]
             }
         }))
     }

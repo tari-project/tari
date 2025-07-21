@@ -264,6 +264,7 @@ impl McpTool for WalletStateTool {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let timeout_secs = params.get("timeout_seconds").and_then(|v| v.as_f64()).unwrap_or(90.0) as u64;
 

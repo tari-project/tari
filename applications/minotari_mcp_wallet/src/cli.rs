@@ -12,6 +12,7 @@ use tari_utilities::SafePassword;
 #[clap(name = "minotari_mcp_wallet")]
 #[clap(about = "Minotari Wallet MCP (Model Context Protocol) Server")]
 #[clap(version)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,

@@ -476,6 +476,7 @@ impl McpTool for MiningAnalysisTool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let requested_algo = params.get("preferred_algo").and_then(|v| v.as_u64()).unwrap_or(0); // Default to SHA3X
 

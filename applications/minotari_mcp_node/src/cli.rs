@@ -11,6 +11,7 @@ use tari_common::configuration::{ConfigOverrideProvider, Network};
 #[clap(name = "minotari_mcp_node")]
 #[clap(about = "Minotari Node MCP (Model Context Protocol) Server")]
 #[clap(version)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,

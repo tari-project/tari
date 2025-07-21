@@ -45,10 +45,8 @@ fn main() {
         include_str!("../log4rs/cucumber.yml"),
     )
     .expect("logging not configured");
-    let stdout_buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
     // Output capture removed - using internal feature that's not stable
     // Tests will output to regular stdout/stderr instead
-    let stdout_buffer_clone = stdout_buffer.clone();
     let runtime = Runtime::new().unwrap();
     runtime.block_on(async {
         let world = TariWorld::cucumber()

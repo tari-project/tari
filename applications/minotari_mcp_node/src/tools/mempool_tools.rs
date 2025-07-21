@@ -350,22 +350,22 @@ impl McpTool for AnalyzeMempoolTool {
         fee_distribution.sort_unstable();
         weight_distribution.sort_unstable();
 
-        let fee_percentiles = if !fee_distribution.is_empty() {
-            json!({
-                "p50": fee_distribution.get(fee_distribution.len() / 2).unwrap_or(&0),
-                "p75": fee_distribution.get(fee_distribution.len() * 3 / 4).unwrap_or(&0),
-                "p90": fee_distribution.get(fee_distribution.len() * 9 / 10).unwrap_or(&0),
-                "p99": fee_distribution.get(fee_distribution.len() * 99 / 100).unwrap_or(&0),
-            })
-        } else {
+        let fee_percentiles = if fee_distribution.is_empty() {
             json!({
                 "p50": 0,
                 "p75": 0,
                 "p90": 0,
                 "p99": 0,
             })
+        } else {
+            json!({
+                "p50": fee_distribution.get(fee_distribution.len() / 2).unwrap_or(&0),
+                "p75": fee_distribution.get(fee_distribution.len() * 3 / 4).unwrap_or(&0),
+                "p90": fee_distribution.get(fee_distribution.len() * 9 / 10).unwrap_or(&0),
+                "p99": fee_distribution.get(fee_distribution.len() * 99 / 100).unwrap_or(&0),
+            })
         };
-
+        #[allow(clippy::cast_possible_truncation)]
         Ok(json!({
             "mempool_stats": {
                 "unconfirmed_txs": stats_response.unconfirmed_txs,
@@ -391,13 +391,14 @@ impl McpTool for AnalyzeMempoolTool {
                 "avg": avg_weight,
             },
             "recommendations": {
-                "suggested_fee_per_gram": if !fee_distribution.is_empty() {
+                "suggested_fee_per_gram": if fee_distribution.is_empty() {
+                    25 // Default fee rate
+                } else {
+
                     // Suggest 75th percentile fee rate for faster confirmation
                     let p75_fee = *fee_distribution.get(fee_distribution.len() * 3 / 4).unwrap_or(&0);
                     let p75_weight = *weight_distribution.get(weight_distribution.len() * 3 / 4).unwrap_or(&1);
                     if p75_weight > 0 { p75_fee / p75_weight as u64 } else { 25 }
-                } else {
-                    25 // Default fee rate
                 },
                 "network_congestion": if stats_response.unconfirmed_txs > 1000 {
                     "HIGH"

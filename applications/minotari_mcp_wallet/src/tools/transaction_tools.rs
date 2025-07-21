@@ -83,7 +83,7 @@ impl McpTool for GetTransactionInfoTool {
             .await
             .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction info: {}", e)))?
             .into_inner();
-
+        #[allow(clippy::cast_possible_wrap)]
         let transactions: Vec<Value> = response
             .transactions
             .iter()
@@ -216,6 +216,7 @@ impl McpTool for GetCompletedTransactionsTool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let payment_id = get_optional_string_param(&params, "payment_id").map(|payment_id_str| UserPaymentId {
             utf8_string: payment_id_str,
@@ -260,7 +261,7 @@ impl McpTool for GetCompletedTransactionsTool {
             if count >= limit {
                 break;
             }
-
+            #[allow(clippy::cast_possible_wrap)]
             if let Some(transaction) = tx_response.transaction {
                 transactions.push(json!({
                     "tx_id": transaction.tx_id,
@@ -334,7 +335,7 @@ impl McpTool for GetCompletedTransactionsTool {
             .filter_map(|tx| tx["amount"].as_u64())
             .sum();
         let total_fees: u64 = transactions.iter().filter_map(|tx| tx["fee"].as_u64()).sum();
-
+        #[allow(clippy::cast_possible_wrap)]
         Ok(json!({
             "transactions": transactions,
             "summary": {
@@ -486,7 +487,7 @@ impl McpTool for TransferTool {
                     u256: vec![],
                     user_bytes: vec![],
                 });
-
+            #[allow(clippy::cast_possible_truncation)]
             recipients.push(PaymentRecipient {
                 address: address.to_string(),
                 amount,
@@ -542,10 +543,10 @@ impl McpTool for TransferTool {
                 "failed_transfers": failed_transfers,
                 "total_amount": total_amount,
                 "total_amount_tari": (total_amount as f64 / 1_000_000.0),
-                "success_rate": if !results.is_empty() {
-                    (successful_transfers as f64 / results.len() as f64 * 100.0).round()
-                } else {
+                "success_rate": if results.is_empty() {
                     0.0
+                }else {
+                    (successful_transfers as f64 / results.len() as f64 * 100.0).round()
                 },
             },
             "transaction_ids": results.iter()
@@ -800,6 +801,7 @@ impl McpTool for TransactionAnalysisTool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let days_back = params.get("days_back").and_then(|v| v.as_u64()).unwrap_or(30); // Default to 30 days
 
@@ -864,20 +866,20 @@ impl McpTool for TransactionAnalysisTool {
         let total_fees: u64 = outbound_txs.iter().map(|tx| tx.fee).sum();
 
         // Calculate averages
-        let avg_inbound = if !inbound_txs.is_empty() {
+        let avg_inbound = if inbound_txs.is_empty() {
+            0
+        } else {
             total_inbound / inbound_txs.len() as u64
-        } else {
-            0
         };
-        let avg_outbound = if !outbound_txs.is_empty() {
+        let avg_outbound = if outbound_txs.is_empty() {
+            0
+        } else {
             total_outbound / outbound_txs.len() as u64
-        } else {
-            0
         };
-        let avg_fee = if !outbound_txs.is_empty() {
-            total_fees / outbound_txs.len() as u64
-        } else {
+        let avg_fee = if outbound_txs.is_empty() {
             0
+        } else {
+            total_fees / outbound_txs.len() as u64
         };
 
         // Transaction frequency analysis
@@ -886,12 +888,14 @@ impl McpTool for TransactionAnalysisTool {
         // Fee analysis
         let fee_rates: Vec<u64> = outbound_txs.iter().filter(|tx| tx.fee > 0).map(|tx| tx.fee).collect();
 
-        let (min_fee, max_fee) = if !fee_rates.is_empty() {
-            (*fee_rates.iter().min().unwrap(), *fee_rates.iter().max().unwrap())
-        } else {
+        let (min_fee, max_fee) = if fee_rates.is_empty() {
             (0, 0)
+        } else {
+            (*fee_rates.iter().min().unwrap(), *fee_rates.iter().max().unwrap())
         };
 
+        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_possible_wrap)]
         Ok(json!({
             "analysis_summary": {
                 "period_days": days_back,

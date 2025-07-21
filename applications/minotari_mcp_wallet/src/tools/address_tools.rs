@@ -274,6 +274,7 @@ impl McpTool for AddressValidationTool {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let address = get_required_string_param(&params, "address")?;
 
@@ -351,10 +352,7 @@ impl McpTool for AddressValidationTool {
         // Generate recommendations
         let mut recommendations = Vec::new();
 
-        if !is_valid {
-            recommendations.push("Verify the address was copied correctly".to_string());
-            recommendations.push("Check with the sender for the correct address format".to_string());
-        } else {
+        if is_valid {
             recommendations.push("Address format appears valid".to_string());
 
             match format_type {
@@ -372,7 +370,11 @@ impl McpTool for AddressValidationTool {
                 recommendations.push("Interactive addresses support full Mimblewimble protocol features".to_string());
             } else if address_type == "ONE_SIDED" {
                 recommendations.push("One-sided addresses provide enhanced sender privacy".to_string());
+            } else { // clippy
             }
+        } else {
+            recommendations.push("Verify the address was copied correctly".to_string());
+            recommendations.push("Check with the sender for the correct address format".to_string());
         }
 
         Ok(json!({

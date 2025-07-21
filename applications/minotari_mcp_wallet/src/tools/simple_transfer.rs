@@ -74,6 +74,7 @@ impl McpTool for SimpleTransferTool {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn validate_params(&self, params: &Value) -> McpResult<()> {
         let recipient = get_required_string_param(params, "recipient")?;
         let amount = get_required_number_param(params, "amount")? as u64;
@@ -131,6 +132,7 @@ impl McpTool for SimpleTransferTool {
         Ok(())
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let recipient = get_required_string_param(&params, "recipient")?;
         let amount = get_required_number_param(&params, "amount")? as u64;
