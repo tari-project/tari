@@ -1503,11 +1503,6 @@ message ValidateRequest{}
 
 message ValidateResponse{}
 
-message SetBaseNodeRequest {
-  string public_key_hex = 1;
-  string net_address = 2;
-}
-
 message SetBaseNodeResponse{}
 
 // Empty request for CheckConnectivity

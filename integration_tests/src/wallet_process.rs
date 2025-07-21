@@ -22,7 +22,6 @@
 
 use std::{path::PathBuf, str::FromStr, thread, time::Duration};
 
-use minotari_app_grpc::tari_rpc::SetBaseNodeRequest;
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_console_wallet::{run_wallet_with_cli, Cli};
 use minotari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
@@ -106,20 +105,8 @@ pub async fn spawn_wallet(
             .base_node_monitor_max_refresh_interval = Duration::from_secs(5);
     };
 
-    let base_node = base_node_name.clone().map(|name| {
-        let pubkey = world.base_nodes.get(&name).unwrap().identity.public_key().clone();
-        let port = world.base_nodes.get(&name).unwrap().port;
-        let set_base_node_request = SetBaseNodeRequest {
-            net_address: format! {"/ip4/127.0.0.1/tcp/{}", port},
-            public_key_hex: pubkey.to_string(),
-        };
-
-        (pubkey, port, set_base_node_request)
-    });
-
     let peer_addresses = get_peer_addresses(world, &peer_seeds).await;
 
-    let base_node_cloned = base_node.clone();
     let shutdown = Shutdown::new();
     let mut send_to_thread_shutdown = shutdown.clone();
 
@@ -172,10 +159,6 @@ pub async fn spawn_wallet(
                 .transaction_service_config
                 .transaction_routing_mechanism = mech;
         }
-
-        // FIXME: wallet doesn't pick up the custom base node for some reason atm
-        wallet_app_config.wallet.custom_base_node =
-            base_node_cloned.map(|(pubkey, port, _)| format!("{}::/ip4/127.0.0.1/tcp/{}", pubkey, port));
 
         wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 
