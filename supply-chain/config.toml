@@ -868,6 +868,10 @@ criteria = "safe-to-deploy"
 version = "0.3.5"
 criteria = "safe-to-deploy"
 
+[[exemptions.dyn-clone]]
+version = "1.0.19"
+criteria = "safe-to-deploy"
+
 [[exemptions.eax]]
 version = "0.5.0"
 criteria = "safe-to-deploy"
@@ -2172,6 +2176,10 @@ criteria = "safe-to-deploy"
 version = "0.13.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.prost-reflect]]
+version = "0.15.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.prost-types]]
 version = "0.11.9"
 criteria = "safe-to-deploy"
@@ -2448,6 +2456,14 @@ criteria = "safe-to-deploy"
 version = "0.2.7"
 criteria = "safe-to-deploy"
 
+[[exemptions.schemars]]
+version = "0.8.22"
+criteria = "safe-to-deploy"
+
+[[exemptions.schemars_derive]]
+version = "0.8.22"
+criteria = "safe-to-deploy"
+
 [[exemptions.scoped-tls]]
 version = "1.0.1"
 criteria = "safe-to-deploy"
@@ -2494,6 +2510,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.serde-value]]
 version = "0.7.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_derive_internals]]
+version = "0.29.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.serde_json]]
@@ -3028,6 +3048,10 @@ criteria = "safe-to-deploy"
 version = "0.26.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.tokio-test]]
+version = "0.4.4"
+criteria = "safe-to-deploy"
+
 [[exemptions.tokio-util]]
 version = "0.6.10"
 criteria = "safe-to-deploy"
@@ -3334,6 +3358,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.which]]
 version = "4.4.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.which]]
+version = "5.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.widestring]]

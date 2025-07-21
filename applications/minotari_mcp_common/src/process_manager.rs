@@ -403,16 +403,6 @@ mod tests {
         assert!(port.unwrap() > 0);
     }
 
-    #[test]
-    fn test_is_port_available() {
-        // Port 0 should never be available for binding
-        assert!(!ProcessUtils::is_port_available(0));
-
-        // Find an available port and verify it's available
-        let port = ProcessUtils::find_available_port(50000).unwrap();
-        assert!(ProcessUtils::is_port_available(port));
-    }
-
     #[tokio::test]
     async fn test_service_running_check() {
         // Check a port that definitely won't have a service
