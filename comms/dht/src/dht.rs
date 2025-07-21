@@ -28,7 +28,7 @@ use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     message::{InboundMessage, OutboundMessage},
-    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    peer_manager::{NodeIdentity, PeerFeatures, PeerManager, PeerManagerError},
     pipeline::PipelineError,
 };
 use tari_shutdown::ShutdownSignal;
@@ -51,7 +51,9 @@ use crate::{
     network_discovery::DhtNetworkDiscovery,
     outbound,
     outbound::DhtOutboundRequest,
+    peer_validator::PeerValidator,
     rpc,
+    rpc::UnvalidatedPeerInfo,
     storage::MIGRATIONS,
     DedupLayer,
     DhtActorError,
@@ -72,6 +74,8 @@ pub enum DhtInitializationError {
     DhtActorInitializationError(#[from] DhtActorError),
     #[error("Builder error: no outbound message sender set")]
     BuilderNoOutboundMessageSender,
+    #[error("Peer manager error: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
 }
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
@@ -136,6 +140,58 @@ impl Dht {
         debug!(target: LOG_TARGET, "Dht initialization complete.");
 
         Ok(dht)
+    }
+
+    /// This function ensures that all peers in the peer manager database are valid
+    pub async fn validate_all_peers(&self) -> Result<(), DhtInitializationError> {
+        let peers = self.peer_manager.all(None).await?;
+        let peers_count = peers.len();
+        debug!(
+            target: LOG_TARGET,
+            "[Validate peer db] Starting peer validation for all ({}) peers in the peer db.",
+            peers_count,
+        );
+        let validator = PeerValidator::new(&self.config);
+        let mut invalid_peers = Vec::new();
+        for peer in peers {
+            trace!(
+                target: LOG_TARGET, "[Validate peer db] peer: '{}' / '{}' {}{} {:?}",
+                peer.node_id,
+                peer.public_key,
+                if peer.is_seed() { "S"} else { "_" },
+                if peer.features.is_node() { "N_"} else { "_W" },
+                peer.addresses,
+            );
+            let node_id = peer.node_id.clone();
+
+            if peer.addresses.addresses().iter().all(|addr| !addr.source().is_config()) {
+                let peer_to_validate = UnvalidatedPeerInfo::from_peer_limited_claims(
+                    peer,
+                    self.config.max_permitted_peer_claims,
+                    self.config.peer_validator_config.max_permitted_peer_addresses_per_claim,
+                );
+                if let Err(e) = validator.validate_peer(peer_to_validate, None) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[Validate peer db] Peer validation failed for peer '{}', deleting from peer db, Error: '{}'",
+                        node_id, e
+                    );
+                    invalid_peers.push(node_id);
+                }
+            }
+        }
+        if invalid_peers.is_empty() {
+            debug!(target: LOG_TARGET, "[Validate peer db] All ({}) peers in the peer db are valid.", peers_count);
+        } else {
+            self.peer_manager.hard_delete_peers(&invalid_peers).await?;
+            debug!(
+                target: LOG_TARGET,
+                "[Validate peer db] Removed {} invalid peers from the peer db: [{}]",
+                invalid_peers.len(),
+                invalid_peers.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", "),
+            );
+        }
+        Ok(())
     }
 
     pub fn builder() -> DhtBuilder {

@@ -95,6 +95,7 @@ pub async fn run_base_node(
         },
         init: true,
         rebuild_db: false,
+        validate_peer_db: false,
         non_interactive_mode: true,
         watch: None,
         profile_with_tokio_console: false,
@@ -153,6 +154,13 @@ pub async fn run_base_node_with_cli(
     let ctx =
         builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal(), &readiness_handler)
             .await?;
+
+    if cli.validate_peer_db {
+        ctx.base_node_dht()
+            .validate_all_peers()
+            .await
+            .map_err(|e| ExitError::new(ExitCode::PeerDatabaseError, e))?;
+    }
 
     ctx.start()
         .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;

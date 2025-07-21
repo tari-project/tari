@@ -55,8 +55,8 @@ impl<'a> PeerValidator<'a> {
         Self { config }
     }
 
-    /// Validates the new peer against the current peer database. Returning true if a new peer was added and false if
-    /// the peer already exists.
+    /// Validates a new peer candidate's peer information, optionally verifying against an existing peer. Returns a
+    /// Peer item if validation is successful, error otherwise.
     pub fn validate_peer(
         &self,
         new_peer: UnvalidatedPeerInfo,
@@ -106,21 +106,35 @@ impl<'a> PeerValidator<'a> {
         });
 
         for claim in new_peer.claims {
-            peer_validator::validate_peer_identity_claim(
+            match peer_validator::validate_peer_identity_claim(
                 &self.config.peer_validator_config,
                 &new_peer.public_key,
                 &claim,
-            )?;
-            peer.update_addresses(&claim.addresses, &PeerAddressSource::FromDiscovery {
-                peer_identity_claim: claim.clone(),
-            });
-            trace!(
-                target: LOG_TARGET,
-                "Peer '{}' / '{}' added with address(es) from claim: {:?}",
-                node_id,
-                new_peer.public_key.to_hex(),
-                claim.addresses
-            );
+            ) {
+                Ok(_) => {
+                    peer.update_addresses(&claim.addresses, &PeerAddressSource::FromDiscovery {
+                        peer_identity_claim: claim.clone(),
+                    });
+                    trace!(
+                        target: LOG_TARGET,
+                        "Peer '{}' / '{}' passed validation for claim: {:?}",
+                        node_id,
+                        new_peer.public_key.to_hex(),
+                        claim
+                    );
+                },
+                Err(e) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Peer '{}' / '{}' FAILED validation for claim: {:?}, error: {}",
+                        node_id,
+                        new_peer.public_key.to_hex(),
+                        claim,
+                        e
+                    );
+                    return Err(DhtPeerValidatorError::ValidatorError(e));
+                },
+            }
         }
 
         Ok(peer)

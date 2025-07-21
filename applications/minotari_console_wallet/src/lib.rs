@@ -107,6 +107,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         birthday: None,
         libtor_data_dir: None,
         skip_recovery: false,
+        validate_peer_db: false,
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
@@ -194,6 +195,12 @@ pub fn run_wallet_with_cli(
         cli.non_interactive_mode,
         wallet_type,
     ))?;
+
+    if cli.validate_peer_db {
+        runtime
+            .block_on(wallet.dht_service.validate_all_peers())
+            .map_err(|e| ExitError::new(ExitCode::PeerDatabaseError, e))?;
+    }
 
     if !cli.non_interactive_mode &&
         config.wallet.transaction_service_config.transaction_routing_mechanism ==

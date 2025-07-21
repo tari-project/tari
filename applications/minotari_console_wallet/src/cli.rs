@@ -107,6 +107,9 @@ pub struct Cli {
     /// Skip wallet recovery
     #[clap(long)]
     pub skip_recovery: bool,
+    /// This will validate the peer db, removing any invalid entries
+    #[clap(long, alias = "validate_peer_db")]
+    pub validate_peer_db: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

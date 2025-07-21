@@ -92,6 +92,12 @@ impl PeerManager {
         Ok(())
     }
 
+    /// The peers with the specified node ids will be permanently deleted from the database.
+    pub async fn hard_delete_peers(&self, node_ids: &[NodeId]) -> Result<(), PeerManagerError> {
+        self.peer_storage_sql.hard_delete_peers(node_ids)?;
+        Ok(())
+    }
+
     /// Get all peers based on a list of their node_ids
     pub async fn get_peers_by_node_ids(&self, node_ids: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.get_peers_by_node_ids(node_ids)

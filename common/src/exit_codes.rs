@@ -132,6 +132,8 @@ pub enum ExitCode {
     TlsConfigurationError = 124,
     #[error("Unable to setup tari pulse")]
     TariPulseError = 125,
+    #[error("The application encountered a peer database error.")]
+    PeerDatabaseError = 126,
 }
 
 impl From<super::ConfigError> for ExitError {

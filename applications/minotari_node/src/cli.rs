@@ -39,6 +39,9 @@ pub struct Cli {
     /// This will rebuild the db, adding block for block in
     #[clap(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
+    /// This will validate the peer db, removing any invalid entries
+    #[clap(long, alias = "validate_peer_db")]
+    pub validate_peer_db: bool,
     /// Run in non-interactive mode, with no UI.
     #[clap(short, long, alias = "non-interactive", env = "TARI_NON_INTERACTIVE")]
     pub non_interactive_mode: bool,

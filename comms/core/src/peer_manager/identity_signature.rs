@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt::Display,
+};
 
 use blake2::Blake2b;
 use chrono::{DateTime, Utc};
@@ -29,7 +32,7 @@ use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_crypto::hashing::DomainSeparatedHasher;
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 
 use super::hashing::{comms_core_peer_manager_domain, CommsCorePeerManagerDomain, IDENTITY_SIGNATURE};
 use crate::{
@@ -191,6 +194,19 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
             public_nonce: identity_sig.signature.get_compressed_public_nonce().to_vec(),
             updated_at: identity_sig.updated_at.timestamp(),
         }
+    }
+}
+
+impl Display for IdentitySignature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "IdentitySignature {{ version: {}, updated_at: {}, signature: ({},{}) }}",
+            self.version,
+            self.updated_at,
+            self.signature.get_signature().to_hex(),
+            self.signature.get_compressed_public_nonce().to_hex()
+        )
     }
 }
 

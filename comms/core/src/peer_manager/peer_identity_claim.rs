@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt::Display,
+};
 
 use multiaddr::Multiaddr;
 use serde_derive::{Deserialize, Serialize};
@@ -81,5 +84,15 @@ impl TryFrom<PeerIdentityMsg> for PeerIdentityClaim {
         } else {
             Err(PeerManagerError::MissingIdentitySignature)
         }
+    }
+}
+
+impl Display for PeerIdentityClaim {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "PeerIdentityClaim {{ addresses: {:?}, features: {:?}, signature: {} }}",
+            self.addresses, self.features, self.signature
+        )
     }
 }

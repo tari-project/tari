@@ -761,6 +761,33 @@ impl PeerDatabaseSql {
         })
     }
 
+    /// Permanently remove peers from the database
+    pub fn hard_delete_peers(&self, node_ids: &[NodeId]) -> Result<Option<usize>, StorageError> {
+        if node_ids.is_empty() {
+            return Ok(None);
+        }
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        let node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+
+        let deleted_count = conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            diesel::delete(
+                multi_addresses::table.filter(
+                    multi_addresses::peer_id.eq_any(
+                        peers::table
+                            .filter(peers::node_id.eq_any(&node_ids_hex))
+                            .select(peers::peer_id),
+                    ),
+                ),
+            )
+            .execute(conn)?;
+
+            Ok(diesel::delete(peers::table.filter(peers::node_id.eq_any(&node_ids_hex))).execute(conn)?)
+        })?;
+
+        Ok(if deleted_count == 0 { None } else { Some(deleted_count) })
+    }
+
     /// Set the metadata for a peer, returning 'None' if the value was empty and the old value if the value was updated
     pub fn set_metadata(&self, node_id: &NodeId, key: u8, data: Vec<u8>) -> Result<Option<Vec<u8>>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
@@ -2496,6 +2523,53 @@ mod tests {
         let peer = peers_db.get_peer_by_node_id(&node_peers[5].node_id).unwrap().unwrap();
         assert_eq!(peer.metadata.get(&111).unwrap(), &[1, 2, 3]);
         assert_eq!(peer.metadata.get(&222).unwrap(), &[4, 5, 6]);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_hard_delete_peers() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        // Create new node peers
+        let mut node_peers = Vec::with_capacity(12);
+        for i in 0..12 {
+            let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+            if i % 4 == 0 {
+                peer.flags = PeerFlags::SEED;
+            }
+            node_peers.push(peer.clone());
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+        // Create new wallet peers
+        let mut wallet_peers = Vec::with_capacity(12);
+        for _i in 0..12 {
+            let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT);
+            wallet_peers.push(peer.clone());
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+
+        // Hard delete some node peers
+        let peers_to_delete = vec![
+            node_peers[0].node_id.clone(),
+            node_peers[3].node_id.clone(),
+            node_peers[6].node_id.clone(),
+            node_peers[9].node_id.clone(),
+            wallet_peers[5].node_id.clone(),
+            wallet_peers[10].node_id.clone(),
+        ];
+
+        // Verify the peers were deleted
+        let number_deleted = peers_db.hard_delete_peers(&peers_to_delete).unwrap();
+        assert_eq!(number_deleted.unwrap(), peers_to_delete.len());
+        let all_peers = peers_db.get_all_peers(None).unwrap();
+        all_peers.iter().for_each(|peer| {
+            assert!(!peers_to_delete.contains(&peer.node_id));
+        });
     }
 
     #[test]

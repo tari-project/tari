@@ -102,6 +102,12 @@ impl PeerStorageSql {
         Ok(())
     }
 
+    /// The peers with the specified node ids will be permanently deleted from the database.
+    pub fn hard_delete_peers(&self, node_ids: &[NodeId]) -> Result<(), PeerManagerError> {
+        self.peer_db.hard_delete_peers(node_ids)?;
+        Ok(())
+    }
+
     /// Find the peer with the provided NodeID
     pub fn get_peer_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_peer_by_node_id(node_id)?)
