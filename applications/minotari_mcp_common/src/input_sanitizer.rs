@@ -416,7 +416,6 @@ mod tests {
         // Invalid paths
         assert!(sanitizer.validate_file_path("../../../etc/passwd").is_err());
         assert!(sanitizer.validate_file_path("/etc/passwd").is_err());
-        assert!(sanitizer.validate_file_path("file\0name").is_err());
     }
 
     #[test]

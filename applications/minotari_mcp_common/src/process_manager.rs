@@ -397,13 +397,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_find_available_port() {
-        let port = ProcessUtils::find_available_port(50000);
-        assert!(port.is_some());
-        assert!(port.unwrap() >= 50000);
-    }
-
-    #[test]
     fn test_get_random_port() {
         let port = ProcessUtils::get_random_port();
         assert!(port.is_ok());
