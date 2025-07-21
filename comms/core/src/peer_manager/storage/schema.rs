@@ -43,7 +43,7 @@ table! {
         last_attempted -> Nullable<Timestamp>,
         last_failed_reason -> Nullable<Text>,
         quality_score -> Nullable<Integer>,
-        source -> Text,
+        source -> Binary,
     }
 }
 

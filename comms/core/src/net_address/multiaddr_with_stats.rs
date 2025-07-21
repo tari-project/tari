@@ -11,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{NaiveDateTime, Utc};
 use log::trace;
 use multiaddr::Multiaddr;
@@ -386,7 +387,7 @@ impl Display for MultiaddrWithStats {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, BorshSerialize, BorshDeserialize)]
 pub enum PeerAddressSource {
     Config,
     FromNodeIdentity {
@@ -467,7 +468,11 @@ impl PartialEq for PeerAddressSource {
 }
 #[cfg(test)]
 mod test {
+    use borsh::{BorshDeserialize, BorshSerialize};
+    use multiaddr::Multiaddr;
+
     use super::*;
+    use crate::peer_manager::{create_test_peer_identity_claim, PeerFeatures};
 
     #[test]
     fn test_update_latency() {
@@ -561,5 +566,29 @@ mod test {
         assert_eq!(another_addr.quality_score, None);
 
         assert_eq!(another_addr.cmp(&address), Ordering::Less);
+    }
+
+    #[test]
+    fn test_borsh_serialize_deserialize() {
+        for _i in 0..1000 {
+            let claim = create_test_peer_identity_claim(PeerFeatures::COMMUNICATION_NODE);
+
+            let source = PeerAddressSource::FromDiscovery {
+                peer_identity_claim: claim,
+            };
+
+            // Serialize the claim
+            let mut serialized_data = Vec::new();
+            BorshSerialize::serialize(&source, &mut serialized_data).unwrap();
+
+            // Deserialize the claim
+            let deserialized_source = PeerAddressSource::deserialize_reader(&mut serialized_data.as_slice()).unwrap();
+
+            // Assert equality
+            assert_eq!(
+                source, deserialized_source,
+                "Deserialized object does not match the original"
+            );
+        }
     }
 }

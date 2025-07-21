@@ -22,6 +22,7 @@
 
 use std::{cmp::min, collections::HashMap, str::FromStr, time::Duration};
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use bytes::Bytes;
 use chrono::{NaiveDateTime, TimeDelta};
 use diesel::{
@@ -562,8 +563,11 @@ impl PeerDatabaseSql {
                 last_attempted: address.last_attempted(),
                 last_failed_reason: address.last_failed_reason().map(|s| s.to_string()),
                 quality_score: address.quality_score(),
-                source: serde_json::to_string(&address.source())
-                    .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
+                source: {
+                    let mut serialized_data = Vec::new();
+                    BorshSerialize::serialize(address.source(), &mut serialized_data)?;
+                    serialized_data
+                },
             });
         }
 
@@ -664,10 +668,11 @@ impl PeerDatabaseSql {
                 last_attempted: address.last_attempted(),
                 last_failed_reason: address.last_failed_reason().map(|s| s.to_string()),
                 quality_score: address.quality_score(),
-                source: Some(
-                    serde_json::to_string(&address.source())
-                        .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
-                ),
+                source: Some({
+                    let mut serialized_data = Vec::new();
+                    BorshSerialize::serialize(address.source(), &mut serialized_data)?;
+                    serialized_data
+                }),
             });
         }
 
@@ -1650,7 +1655,7 @@ pub struct NewMultiaddrWithStatsSql {
     pub last_attempted: Option<chrono::NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
-    pub source: String,
+    pub source: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Selectable, Queryable, AsChangeset, PartialEq, Eq)]
@@ -1666,7 +1671,7 @@ pub struct UpdateMultiaddrWithStatsSql {
     pub last_attempted: Option<chrono::NaiveDateTime>,
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
-    pub source: Option<String>,
+    pub source: Option<Vec<u8>>,
 }
 
 /// Serialize the protocols into a comma-separated string
@@ -1742,7 +1747,11 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
             last_attempted: address.last_attempted(),
             last_failed_reason: address.last_failed_reason().map(|v| v.to_string()),
             quality_score: address.quality_score(),
-            source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
+            source: Some({
+                let mut serialized_data = Vec::new();
+                BorshSerialize::serialize(address.source(), &mut serialized_data).unwrap_or_default();
+                serialized_data
+            }),
         }
     }
 }
@@ -1803,7 +1812,7 @@ impl TryFrom<Vec<NewMultiaddrWithStatsSql>> for MultiaddressesWithStats {
                 addr.last_attempted,
                 addr.last_failed_reason,
                 addr.quality_score,
-                serde_json::from_str(&addr.source).map_err(StorageError::JsonError)?,
+                PeerAddressSource::deserialize_reader(&mut addr.source.as_slice())?,
             );
             addresses.push(address);
         }
@@ -1844,6 +1853,7 @@ mod tests {
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
             create_test_peer,
+            create_test_peer_with_claim,
             database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
             storage::{
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
@@ -2452,6 +2462,29 @@ mod tests {
         let peer = peers_db.get_peer_by_node_id(&node_peers[5].node_id).unwrap().unwrap();
         assert_eq!(peer.metadata.get(&111).unwrap(), &[1, 2, 3]);
         assert_eq!(peer.metadata.get(&222).unwrap(), &[4, 5, 6]);
+    }
+    #[test]
+    fn test_consistent_peer_claim_serialize_deserialize() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        // Create new node peers
+        let mut original_peers = Vec::with_capacity(5);
+        for _i in 0..1000 {
+            let peer = create_test_peer_with_claim(false, PeerFeatures::COMMUNICATION_NODE);
+            original_peers.push(peer.clone());
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+
+        for peer in &mut original_peers {
+            let peer_from_db = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+            peer.id = peer_from_db.id;
+            assert_eq!(&peer_from_db, peer);
+        }
     }
 
     #[test]

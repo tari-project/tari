@@ -65,6 +65,7 @@ tower = { version = "0.4", features = ["util"] }
 tracing = "0.1.26"
 yamux = "0.13.2"
 zeroize = "1"
+borsh = "1.5.7"
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }

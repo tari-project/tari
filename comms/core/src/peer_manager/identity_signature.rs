@@ -20,9 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    io::{Error as IoError, ErrorKind, Read, Result as IoResult, Write},
+};
 
 use blake2::Blake2b;
+use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, Utc};
 use digest::consts::U64;
 use prost::Message;
@@ -194,6 +198,44 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
     }
 }
 
+impl BorshSerialize for IdentitySignature {
+    fn serialize<W: Write>(&self, writer: &mut W) -> IoResult<()> {
+        BorshSerialize::serialize(&self.version, writer)?;
+
+        BorshSerialize::serialize(&self.signature.get_compressed_public_nonce().as_bytes(), writer)?;
+        BorshSerialize::serialize(&self.signature.get_signature().as_bytes(), writer)?;
+
+        BorshSerialize::serialize(&self.updated_at.timestamp(), writer)?;
+        BorshSerialize::serialize(&self.updated_at.timestamp_subsec_nanos(), writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for IdentitySignature {
+    fn deserialize_reader<R: Read>(reader: &mut R) -> IoResult<Self> {
+        let version = u8::deserialize_reader(reader)?;
+
+        let public_nonce_bytes = <Vec<u8>>::deserialize_reader(reader)?;
+        let signature_bytes = <Vec<u8>>::deserialize_reader(reader)?;
+        let public_nonce = CommsPublicKey::from_canonical_bytes(&public_nonce_bytes)
+            .map_err(|e| IoError::new(ErrorKind::InvalidData, e.to_string()))?;
+        let signature = CommsSecretKey::from_canonical_bytes(&signature_bytes)
+            .map_err(|e| IoError::new(ErrorKind::InvalidData, e.to_string()))?;
+
+        let timestamp = i64::deserialize_reader(reader)?;
+        let nanos = u32::deserialize_reader(reader)?;
+        let updated_at = chrono::DateTime::<Utc>::from_timestamp(timestamp, nanos)
+            .ok_or_else(|| IoError::new(ErrorKind::InvalidData, "Invalid timestamp"))?;
+
+        Ok(Self {
+            version,
+            signature: CompressedSignature::new(public_nonce, signature),
+            updated_at,
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::str::FromStr;
@@ -201,6 +243,7 @@ mod test {
     use tari_crypto::keys::SecretKey;
 
     use super::*;
+    use crate::peer_manager::{create_test_peer_identity_claim, PeerIdentityClaim};
 
     mod is_valid_for_peer {
         use super::*;
@@ -253,6 +296,28 @@ mod test {
             assert!(
                 !identity.is_valid(&public_key, tampered, [&address]).unwrap(),
                 "Signature is not valid"
+            );
+        }
+    }
+
+    #[test]
+    fn test_borsh_serialize_deserialize() {
+        for _i in 0..1000 {
+            let PeerIdentityClaim {
+                signature: identity, ..
+            } = create_test_peer_identity_claim(PeerFeatures::COMMUNICATION_NODE);
+
+            // Serialize the identity
+            let mut serialized_data = Vec::new();
+            borsh::BorshSerialize::serialize(&identity, &mut serialized_data).unwrap();
+
+            // Deserialize the identity
+            let deserialized_identity = IdentitySignature::deserialize_reader(&mut serialized_data.as_slice()).unwrap();
+
+            // Assert equality
+            assert_eq!(
+                identity, deserialized_identity,
+                "Deserialized object does not match the original"
             );
         }
     }

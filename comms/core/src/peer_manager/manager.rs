@@ -24,6 +24,8 @@ use std::{fmt, time::Duration};
 
 use multiaddr::Multiaddr;
 
+#[cfg(test)]
+use crate::peer_manager::create_test_peer_identity_claim;
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
 use crate::{
@@ -394,6 +396,53 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
 
     let good_addresses = peer.addresses.borrow_mut();
     let good_address = good_addresses.addresses()[0].address().clone();
+    good_addresses.mark_last_seen_now(&good_address);
+
+    peer
+}
+
+#[cfg(test)]
+pub fn create_test_peer_with_claim(ban_flag: bool, features: PeerFeatures) -> Peer {
+    use std::borrow::BorrowMut;
+
+    use rand::rngs::OsRng;
+
+    use crate::peer_manager::{PeerFlags, PeerIdentityClaim};
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let node_id = NodeId::from_key(&pk);
+
+    let PeerIdentityClaim {
+        addresses,
+        features,
+        signature,
+    } = create_test_peer_identity_claim(features);
+    let peer_identity_claim = PeerIdentityClaim {
+        addresses: addresses.clone(),
+        features,
+        signature,
+    };
+    let net_addresses =
+        MultiaddressesWithStats::from_addresses_with_source(addresses, &PeerAddressSource::FromDiscovery {
+            peer_identity_claim,
+        });
+
+    let mut peer = Peer::new(
+        pk,
+        node_id,
+        net_addresses,
+        PeerFlags::default(),
+        features,
+        Default::default(),
+        Default::default(),
+    );
+    if ban_flag {
+        peer.ban_for(Duration::from_secs(1000), "".to_string());
+    }
+
+    let good_addresses = peer.addresses.borrow_mut();
+    let good_address = good_addresses.addresses()[0].address().clone();
+    good_addresses.mark_last_seen_now(&good_address);
+    let good_address = good_addresses.addresses()[good_addresses.len() - 1].address().clone();
     good_addresses.mark_last_seen_now(&good_address);
 
     peer

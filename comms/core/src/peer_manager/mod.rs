@@ -97,14 +97,16 @@ mod peer_id;
 pub use peer_id::{generate_peer_id_as_i64, PeerId};
 
 mod manager;
-#[cfg(test)]
-pub use manager::create_test_peer;
 pub use manager::PeerManager;
+#[cfg(test)]
+pub use manager::{create_test_peer, create_test_peer_with_claim};
 
 mod peer_storage_sql;
 pub use peer_storage_sql::{PeerStorageSql as PeerStorage, STALE_PEER_THRESHOLD_DURATION};
 
 mod peer_identity_claim;
+#[cfg(test)]
+pub use peer_identity_claim::create_test_peer_identity_claim;
 pub use peer_identity_claim::PeerIdentityClaim;
 
 mod or_not_found;
