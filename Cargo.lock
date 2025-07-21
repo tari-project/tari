@@ -4322,32 +4322,25 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_common"
-version = "4.9.1-pre.0"
+version = "4.10.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "clap 3.2.25",
  "hex",
  "log",
- "minotari_app_utilities",
  "minotari_node_grpc_client",
  "minotari_wallet_grpc_client",
  "prost 0.13.4",
  "prost-reflect",
- "prost-types 0.13.4",
  "regex",
  "schemars",
  "serde",
  "serde_json",
- "tari_common",
- "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
  "tonic 0.13.1",
- "tonic-health",
- "tower 0.5.2",
  "unicode-normalization",
  "uuid",
  "which 5.0.0",
@@ -4355,9 +4348,8 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_node"
-version = "4.9.1-pre.0"
+version = "4.10.0-pre.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "chrono",
  "clap 3.2.25",
@@ -4371,24 +4363,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_common",
- "tari_core",
- "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
  "tonic 0.13.1",
- "uuid",
- "which 4.4.2",
 ]
 
 [[package]]
 name = "minotari_mcp_wallet"
-version = "4.9.1-pre.0"
+version = "4.10.0-pre.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "chrono",
  "clap 3.2.25",
- "dirs",
  "hex",
  "log",
  "minotari_app_grpc",
@@ -4398,13 +4384,9 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_common",
- "tari_core",
  "tari_utilities",
- "thiserror 1.0.69",
  "tokio",
  "tonic 0.13.1",
- "uuid",
- "which 4.4.2",
 ]
 
 [[package]]
@@ -8736,18 +8718,6 @@ dependencies = [
  "prost-types 0.13.4",
  "quote",
  "syn 2.0.90",
-]
-
-[[package]]
-name = "tonic-health"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb87334d340313fefa513b6e60794d44a86d5f039b523229c99c323e4e19ca4b"
-dependencies = [
- "prost 0.13.4",
- "tokio",
- "tokio-stream",
- "tonic 0.13.1",
 ]
 
 [[package]]

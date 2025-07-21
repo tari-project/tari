@@ -7,15 +7,11 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-minotari_app_utilities = { workspace = true }
-tari_common = { workspace = true }
-tari_utilities = { workspace = true }
 tokio = { version = "1.44", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
-clap = { version = "3.2", features = ["derive", "env"] }
 log = "0.4"
 async-trait = "0.1"
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -24,10 +20,7 @@ hex = "0.4"
 regex = "1.10"
 unicode-normalization = "0.1"
 tonic = { version = "0.13.1", default-features = false, features = ["transport", "tls-ring"] }
-tonic-health = "0.13.0"
-tower = { version = "0.5", features = ["timeout", "limit", "buffer"] }
 prost = "0.13.3"
-prost-types = "0.13.3"
 prost-reflect = "0.15.0"
 schemars = { version = "0.8", features = ["derive"] }
 minotari_node_grpc_client = { workspace = true }
