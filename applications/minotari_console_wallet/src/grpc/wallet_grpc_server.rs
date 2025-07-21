@@ -401,14 +401,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     async fn get_state(&self, _request: Request<GetStateRequest>) -> Result<Response<GetStateResponse>, Status> {
         let start = std::time::Instant::now();
-        let (balance, scanned_height) = {
+        let (balance, scanned_height, is_initial_validation_done) = {
             let mut debouncer = self.debouncer.lock().await;
             let balance = match debouncer.get_balance().await {
                 Ok(b) => b,
                 Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
             };
             let scanned_height = debouncer.get_scanned_height().await;
-            (Some(balance), scanned_height)
+            let is_initial_validation_done = debouncer.is_initial_validation_done().await;
+            (Some(balance), scanned_height, is_initial_validation_done)
         };
 
         let status = self
@@ -436,6 +437,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             scanned_height,
             balance,
             network,
+            has_done_initial_validation: is_initial_validation_done,
         }))
     }
 
@@ -1112,7 +1114,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                         let event = if is_sent { SENT } else { QUEUED };
                                         handle_pending_outbound(tx_id, event, &mut transaction_service, &mut sender).await;
                                     },
-                                    TransactionValidationStateChanged(_t_operation_id) => {
+                                    TransactionValidationStateChanged{..} => {
                                         send_transaction_event(simple_event("unknown"), &mut sender).await;
                                     },
                                     ReceivedTransaction(_) | ReceivedTransactionReply(_)  | TransactionBroadcast(_) => {

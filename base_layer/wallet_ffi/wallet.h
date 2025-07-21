@@ -143,8 +143,6 @@ struct TransactionKernel;
 
 struct TransactionSendStatus;
 
-struct TransportConfig;
-
 /**
  * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
  * build both inputs and outputs (every input comes from an output). This is only used for import and export where
@@ -236,8 +234,6 @@ typedef struct OutboundTransaction TariPendingOutboundTransaction;
 typedef struct InboundTransaction TariPendingInboundTransaction;
 
 typedef struct TransactionSendStatus TariTransactionSendStatus;
-
-typedef struct TransportConfig TariTransportConfig;
 
 typedef struct P2pConfig TariCommsConfig;
 
@@ -3029,127 +3025,14 @@ void transaction_send_status_destroy(TariTransactionSendStatus *status);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Transport Types -----------------------------------------///
- * Creates a memory transport type
- *
- * ## Arguments
- * `()` - Does not take any arguments
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
- *
- * # Safety
- * The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
- * leak
- */
-TariTransportConfig *transport_memory_create(void);
-
-/**
- * Creates a tcp transport type
- *
- * ## Arguments
- * `listener_address` - The pointer to a char array
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
- *
- * # Safety
- * The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
- * leak
- */
-TariTransportConfig *transport_tcp_create(const char *listener_address,
-                                          int *error_out);
-
-/**
- * Creates a tor transport type
- *
- * ## Arguments
- * `control_server_address` - The pointer to a char array
- * `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
- * `tor_port` - The tor port
- * `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
- * the tor proxy if tcp is available, if not it has no effect
- * `socks_password` - The pointer to a char array containing the socks password, can be null
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
- *
- * # Safety
- * The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
- * memory leak
- */
-TariTransportConfig *transport_tor_create(const char *control_server_address,
-                                          const struct ByteVector *tor_cookie,
-                                          unsigned short tor_port,
-                                          bool tor_proxy_bypass_for_outbound,
-                                          const char *socks_username,
-                                          const char *socks_password,
-                                          int *error_out);
-
-/**
- * Gets the address for a memory transport type
- *
- * ## Arguments
- * `transport` - Pointer to a TariTransportConfig
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer is null.
- *
- * ## Returns
- * `*mut c_char` - Returns the address as a pointer to a char array, array will be empty on error
- *
- * # Safety
- * Can only be used with a memory transport type, will crash otherwise
- */
-char *transport_memory_get_address(const TariTransportConfig *transport,
-                                   int *error_out);
-
-/**
- * Frees memory for a TariTransportConfig
- *
- * ## Arguments
- * `transport` - The pointer to a TariTransportConfig
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- */
-void transport_type_destroy(TariTransportConfig *transport);
-
-/**
- * Frees memory for a TariTransportConfig
- *
- * ## Arguments
- * `transport` - The pointer to a TariTransportConfig
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- */
-void transport_config_destroy(TariTransportConfig *transport);
-
-/**
- * ---------------------------------------------------------------------------------------------///
  * ----------------------------------- CommsConfig ---------------------------------------------///
  * Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
  *
  * ## Arguments
- * `public_address` - The public address char array pointer. This is the address that the wallet advertises publicly to
- * peers
- * `transport` - TariTransportConfig that specifies the type of comms transport to be used.
- * connections are moved to after initial connection. Default if null is 0.0.0.0:7898 which will accept connections
- * from all IP address on port 7898
  * `database_name` - The database name char array pointer. This is the unique name of this
  * wallet's database
  * `database_path` - The database path char array pointer which. This is the folder path where the
  * database files will be created and the application has write access to
- * `discovery_timeout_in_secs`: specify how long the Discovery Timeout for the wallet is.
- * `exclude_dial_test_addresses`: exclude dialing of test addresses; this should be 'true' for production wallets
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3160,12 +3043,8 @@ void transport_config_destroy(TariTransportConfig *transport);
  * # Safety
  * The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
  */
-TariCommsConfig *comms_config_create(const char *public_address,
-                                     const TariTransportConfig *transport,
-                                     const char *database_name,
+TariCommsConfig *comms_config_create(const char *database_name,
                                      const char *datastore_path,
-                                     unsigned long long discovery_timeout_in_secs,
-                                     bool exclude_dial_test_addresses,
                                      int *error_out);
 
 /**
@@ -3263,6 +3142,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * If this is null, then a new master key is created for the wallet.
  * `dns_seed_name_servers_str` - An optional list of DNS servers to query to get hold of the seed peer list.
  * `use_dns_sec` - Use DNSSEC when querying the DNS servers.
+ * `wallet_birthday_offset` - The offest that the wallet should use to start scanning is starting from its birthday.
  * `callback_received_transaction` - The callback function pointer matching the function signature. This will be
  * called when an inbound transaction is received.
  * `callback_received_transaction_reply` - The callback function
@@ -3356,6 +3236,7 @@ struct TariWallet *wallet_create(void *context,
                                  const char *dns_seed_name_servers_str,
                                  bool use_dns_sec,
                                  const char *http_base_node,
+                                 int wallet_birthday_offset,
                                  void (*callback_received_transaction)(void *context,
                                                                        TariPendingInboundTransaction*),
                                  void (*callback_received_transaction_reply)(void *context,
@@ -4822,114 +4703,6 @@ void payment_record_destroy(struct TariPaymentRecord *record);
  */
 unsigned long long basenode_state_get_height_of_the_longest_chain(struct TariBaseNodeState *ptr,
                                                                   int *error_out);
-
-/**
- * Extracts a best block hash [`FixedHash`] represented as a vector of bytes wrapped into a `ByteVector`
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut ByteVector` - The block hash of the current tip of the longest valid chain. Returns a ByteVector or null if
- * the NodeId is None.
- *
- * # Safety
- * None
- */
-struct ByteVector *basenode_state_get_best_block(struct TariBaseNodeState *ptr,
-                                                 int *error_out);
-
-/**
- * Extracts a timestamp of the best block
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_ulonglong` - Timestamp of the tip block in the longest valid chain
- *
- * # Safety
- * None
- */
-unsigned long long basenode_state_get_best_block_timestamp(struct TariBaseNodeState *ptr,
-                                                           int *error_out);
-
-/**
- * Extracts a pruning horizon
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_ulonglong` - The configured number of blocks back from the tip that this database tracks. A value of 0 indicates
- * that pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
- * was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
- * are preserved from genesis (i.e. the database is in full archival mode).
- *
- * # Safety
- * None
- */
-unsigned long long basenode_state_get_pruning_horizon(struct TariBaseNodeState *ptr,
-                                                      int *error_out);
-
-/**
- * Extracts a pruned height
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_ulonglong` - The height of the pruning horizon. This indicates from what height a full block can be provided
- * (exclusive). If `pruned_height` is equal to the `best_block_height` no blocks can be
- * provided. Archival nodes wil always have an `pruned_height` of zero.
- *
- * # Safety
- * None
- */
-unsigned long long basenode_state_get_pruned_height(struct TariBaseNodeState *ptr,
-                                                    int *error_out);
-
-/**
- * Denotes whether a base node is fully synced or not.
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut c_ulonglong` - An array of the length of 2 `c_ulonglong`
- *
- * # Safety
- * None
- */
-bool basenode_state_get_is_node_synced(struct TariBaseNodeState *ptr,
-                                       int *error_out);
-
-/**
- * Extracts the timestamp of when the base node was last updated.
- *
- * ## Arguments
- * `ptr` - The pointer to a `TariBaseNodeState`
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_ulonglong` - Timestamp.
- *
- * # Safety
- * None
- */
-unsigned long long basenode_state_get_node_updated_at(struct TariBaseNodeState *ptr,
-                                                      int *error_out);
 
 /**
  * Extracts the connection latency to the base node.

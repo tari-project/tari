@@ -7,7 +7,6 @@ use utoipa::ToSchema;
 #[derive(Serialize, Deserialize, Validate)]
 pub struct SyncUtxosByBlockRequest {
     pub start_header_hash: Vec<u8>,
-    pub end_header_hash: Vec<u8>,
     #[validate(minimum = 1)]
     #[validate(maximum = 2000)]
     pub limit: u64,
@@ -19,6 +18,7 @@ pub struct SyncUtxosByBlockRequest {
 pub struct SyncUtxosByBlockResponse {
     pub blocks: Vec<BlockUtxoInfo>,
     pub has_next_page: bool,
+    pub next_header_to_scan: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize, ToSchema, Debug, Clone)]

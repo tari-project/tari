@@ -36,7 +36,6 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
     async fn sync_utxos_by_block(
         &self,
         start_header_hash: Vec<u8>,
-        end_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, Error>>, Error>;
 

@@ -155,7 +155,7 @@ impl WalletEventMonitor {
                                     self.trigger_balance_refresh();
                                     notifier.transaction_sent_or_queued(tx_id, status.direct_send_result || status.store_and_forward_send_result);
                                 },
-                                TransactionEvent::TransactionValidationStateChanged(_) => {
+                                TransactionEvent::TransactionValidationStateChanged{..} => {
                                     self.trigger_full_tx_state_refresh().await;
                                     self.trigger_balance_refresh();
                                 },

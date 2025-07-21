@@ -1,6 +1,8 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::cmp;
+
 use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
@@ -174,13 +176,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             .await?
             .ok_or_else(|| Error::StartHeaderHashNotFound)?;
 
-        let hash = request.end_header_hash.clone().try_into()?;
-
-        let end_header = self
-            .db
-            .fetch_header_by_block_hash(hash)
-            .await?
-            .ok_or_else(|| Error::EndHeaderHashNotFound)?;
+        let tip_header = self.db.fetch_tip_header().await?;
+        // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
+        // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
+        // we can cache all wallet's queries
+        let increase = ((start_header.height + 100) / 100) * 100;
+        let end_height = cmp::min(tip_header.header().height, increase);
 
         // pagination
         let start_header_height = start_header.height + (request.page * request.limit);
@@ -192,10 +193,10 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 height: start_header_height,
             })?;
 
-        if start_header.height > end_header.height {
+        if start_header.height > tip_header.header().height {
             return Err(Error::HeaderHeightMismatch {
                 start_height: start_header.height,
-                end_height: end_header.height,
+                end_height: tip_header.header().height,
             });
         }
 
@@ -203,6 +204,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let mut utxos = vec![];
         let mut current_header = start_header;
         let mut fetched_utxos = 0;
+        let next_header_to_request;
         loop {
             let current_header_hash = current_header.hash();
 
@@ -269,7 +271,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
 
             fetched_utxos += 1;
 
-            if current_header.height >= end_header.height || fetched_utxos >= request.limit {
+            if current_header.height >= tip_header.header().height {
+                next_header_to_request = vec![];
+                break;
+            }
+            if fetched_utxos >= request.limit {
+                next_header_to_request = current_header.hash().to_vec();
                 break;
             }
 
@@ -280,13 +287,18 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .ok_or_else(|| Error::HeaderNotFound {
                         height: current_header.height + 1,
                     })?;
+            if current_header.height == end_height {
+                next_header_to_request = current_header.hash().to_vec();
+                break; // Stop if we reach the end height}
+            }
         }
 
-        let has_next_page = (end_header.height - current_header.height) > 0;
+        let has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
 
         Ok(SyncUtxosByBlockResponse {
             blocks: utxos,
             has_next_page,
+            next_header_to_scan: next_header_to_request,
         })
     }
 }

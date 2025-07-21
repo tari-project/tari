@@ -201,7 +201,6 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     async fn sync_utxos_by_block(
         &self,
         start_header_hash: Vec<u8>,
-        end_header_hash: Vec<u8>,
         shutdown: ShutdownSignal,
     ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponse, Error>>, Error> {
         let (tx, rx) = mpsc::channel(100);
@@ -213,11 +212,9 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
             .find(|b| b.hash().to_vec() == start_header_hash)
             .map_or(0, |b| b.height);
 
-        let end_height = state2
-            .blocks
-            .values()
-            .find(|b| b.hash().to_vec() == end_header_hash)
-            .map_or(0, |b| b.height);
+        let end_height = state2.tip_info.as_ref().map_or(0, |tip| {
+            tip.metadata.as_ref().map_or(0, |meta| meta.best_block_height())
+        });
         let state = self.state.clone();
         tokio::spawn(async move {
             let state = state.read().await;
@@ -254,6 +251,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
                     let response = SyncUtxosByBlockResponse {
                         blocks: blocks.clone(),
                         has_next_page,
+                        next_header_to_scan: vec![],
                     };
                     blocks.clear();
 
