@@ -129,11 +129,22 @@ pub enum DhtRequest {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 pub enum OffenceSeverity {
     Low,
     Medium,
     High,
+}
+
+impl OffenceSeverity {
+    /// Compare two OffenceSeverity values and return the maximum severity
+    pub fn max(self, other: OffenceSeverity) -> OffenceSeverity {
+        match (self, other) {
+            (OffenceSeverity::High, _) | (_, OffenceSeverity::High) => OffenceSeverity::High,
+            (OffenceSeverity::Medium, _) | (_, OffenceSeverity::Medium) => OffenceSeverity::Medium,
+            _ => OffenceSeverity::Low,
+        }
+    }
 }
 
 impl Display for DhtRequest {

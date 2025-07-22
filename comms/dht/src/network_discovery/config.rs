@@ -101,6 +101,12 @@ pub struct NetworkDiscoveryConfig {
     #[serde(default)]
     #[serde(with = "serializers::seconds")]
     pub bootstrap_timeout: Duration,
+    /// The number of banable offenses this node will tolerate while syncing peers before the sync peer will be banned.
+    /// Any banable offense will be punished after syc completes or when the threshold is reached; this will let a node
+    /// accept valid peers in the presence of banable offenses.
+    /// Default: 15
+    #[serde(default)]
+    pub peer_sync_immediate_ban_threshold: usize,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -122,6 +128,7 @@ impl Default for NetworkDiscoveryConfig {
             bootstrap_rpc_get_peers_stream_timeout: Duration::from_secs(5),
             bootstrap_rpc_streaming_timeout: Duration::from_secs(5),
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
+            peer_sync_immediate_ban_threshold: 15,
         }
     }
 }

@@ -127,16 +127,8 @@ impl Discovering {
                     self.stats.sync_peers.push(peer_node_id.clone());
                     debug!(target: LOG_TARGET, "Attempting to sync from peer `{}`", peer_node_id);
 
-                    match self.request_from_peers(conn).await {
-                        Ok(_) => {
-                            self.stats.num_succeeded += 1;
-                        },
-                        Err(err) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Failed to request peers from `{}`: {}", peer_node_id, err
-                            );
-                        },
+                    if self.request_from_peers(conn).await.is_ok() {
+                        self.stats.num_succeeded += 1;
                     }
                 },
                 Err(err) => {
@@ -162,6 +154,7 @@ impl Discovering {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn request_peers(
         &mut self,
         sync_peer: &NodeId,
@@ -170,8 +163,7 @@ impl Discovering {
         debug!(
             target: LOG_TARGET,
             "Requesting {} peers from `{}`",
-            self.params
-                .num_peers_to_request,
+            self.params.num_peers_to_request,
             sync_peer
         );
         let mut stream = client
@@ -196,33 +188,92 @@ impl Discovering {
         let mut counter = 0;
         #[allow(clippy::mutable_key_type)]
         let mut peers_received = HashSet::new();
+        let mut ban_offences = Vec::new();
+        let peer_sync_immediate_ban_threshold = self.config().network_discovery.peer_sync_immediate_ban_threshold;
         while let Some(resp) = stream.next().await {
             counter += 1;
             if counter > self.params.num_peers_to_request {
-                warn!(target: LOG_TARGET, "Remote peer sent more peers than we requested.");
+                warn!(target: LOG_TARGET, "Sync peer `{}` sent more peers than we requested.", sync_peer);
                 return Err(NetworkDiscoveryError::TooManyPeersReceived);
             }
-            let GetPeersResponse { peer } = resp?;
-
-            let peer = peer.ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived)?;
-            let new_peer: UnvalidatedPeerInfo = peer
-                .try_into()
-                .map_err(NetworkDiscoveryError::InvalidPeerDataReceived)?;
-            if !peers_received.insert(new_peer.public_key.clone()) {
-                warn!(target: LOG_TARGET, "Remote peer sent duplicate peer.");
-                return Err(NetworkDiscoveryError::DuplicatePeerReceived);
+            if Self::count_banable_offences(&ban_offences) >= peer_sync_immediate_ban_threshold {
+                warn!(
+                    target: LOG_TARGET,
+                    "Too many banable offences ({}) received from peer `{}`. Stopping further processing.",
+                    peer_sync_immediate_ban_threshold, sync_peer
+                );
+                break;
             }
-            self.validate_and_add_peer(sync_peer, new_peer).await?;
+            let GetPeersResponse { peer } = match resp {
+                Ok(val) => val,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid response: {:?}", sync_peer, err);
+                    let err = NetworkDiscoveryError::from(err);
+                    let severity = Self::determine_offence_severity(&err);
+                    ban_offences.push((severity, err));
+                    continue;
+                },
+            };
+
+            let peer = match peer.ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived) {
+                Ok(val) => val,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Sync peer `{}` sent an empty peer message: {:?}", sync_peer, err);
+                    let severity = Self::determine_offence_severity(&err);
+                    ban_offences.push((severity, err));
+                    continue;
+                },
+            };
+            let new_peer: UnvalidatedPeerInfo =
+                match peer.try_into().map_err(NetworkDiscoveryError::InvalidPeerDataReceived) {
+                    Ok(val) => val,
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid data: {:?}", sync_peer, err);
+                        let severity = Self::determine_offence_severity(&err);
+                        ban_offences.push((severity, err));
+                        continue;
+                    },
+                };
+            if !peers_received.insert(new_peer.public_key.clone()) {
+                let err = NetworkDiscoveryError::DuplicatePeerReceived;
+                warn!(target: LOG_TARGET, "Sync peer `{}` sent duplicate peer: {:?}", sync_peer, err);
+                let severity = Self::determine_offence_severity(&err);
+                ban_offences.push((severity, err));
+                continue;
+            }
+            if let Err(err) = self.validate_and_add_peer(new_peer).await {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to validate and add peer from sync peer `{}`: {:?}", sync_peer, err
+                );
+                let severity = Self::determine_offence_severity(&err);
+                ban_offences.push((severity, err));
+                continue;
+            }
+        }
+
+        // Return any error that has the highest severity offence if any were recorded
+        if !ban_offences.is_empty() {
+            // Sort the offences by severity, from highest to lowest
+            ban_offences.sort_by(|a, b| b.0.cmp(&a.0));
+            if let Some((severity, err)) = ban_offences.into_iter().next() {
+                trace!(
+                    target: LOG_TARGET,
+                    "Request peers from: `{}`, returning error: {:?}, severity: {:?}", sync_peer, err, severity
+                );
+                return Err(err);
+            }
         }
 
         Ok(())
     }
 
-    async fn validate_and_add_peer(
-        &mut self,
-        sync_peer: &NodeId,
-        new_peer: UnvalidatedPeerInfo,
-    ) -> Result<(), NetworkDiscoveryError> {
+    // Helper function to calculate the number of banable offences in ban_offences vec that are not None
+    fn count_banable_offences(ban_offences: &[(Option<OffenceSeverity>, NetworkDiscoveryError)]) -> usize {
+        ban_offences.iter().filter(|(severity, _)| severity.is_some()).count()
+    }
+
+    async fn validate_and_add_peer(&mut self, new_peer: UnvalidatedPeerInfo) -> Result<(), NetworkDiscoveryError> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
         if self.context.node_identity.node_id() == &node_id {
             debug!(target: LOG_TARGET, "Received our own node from peer sync. Ignoring.");
@@ -243,13 +294,7 @@ impl Discovering {
                 self.add_peer(valid_peer).await?;
                 Ok(())
             },
-            Err(err) => {
-                info!(
-                    target: LOG_TARGET,
-                    "Received invalid peer from sync peer '{}': {}.", sync_peer, err
-                );
-                Err(err.into())
-            },
+            Err(err) => Err(err.into()),
         }
     }
 
@@ -261,36 +306,37 @@ impl Discovering {
         match result {
             Ok(t) => Ok(t),
             Err(err) => {
-                match &err {
-                    NetworkDiscoveryError::EmptyPeerMessageReceived |
-                    NetworkDiscoveryError::InvalidPeerDataReceived(_) |
-                    NetworkDiscoveryError::DuplicatePeerReceived |
-                    NetworkDiscoveryError::TooManyPeersReceived => {
-                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
-                    },
-                    NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => {
-                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
-                    },
-                    NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
-                        self.ban_peer(peer, OffenceSeverity::Low, &err).await;
-                    },
-                    // Other errors - no banning needed
-                    NetworkDiscoveryError::RpcStatus(_) |
-                    NetworkDiscoveryError::NoSyncPeers |
-                    NetworkDiscoveryError::PeerManagerError(_) |
-                    NetworkDiscoveryError::RpcError(_) |
-                    NetworkDiscoveryError::ConnectivityError(_) |
-                    NetworkDiscoveryError::PeerValidationError(_) |
-                    NetworkDiscoveryError::JoinError(_) |
-                    NetworkDiscoveryError::Timeout { .. } => {},
+                let severity = Self::determine_offence_severity(&err);
+                if let Some(val) = severity {
+                    self.ban_peer(peer, val, &err).await
                 }
                 Err(err)
             },
         }
     }
 
+    fn determine_offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSeverity> {
+        match err {
+            NetworkDiscoveryError::EmptyPeerMessageReceived |
+            NetworkDiscoveryError::InvalidPeerDataReceived(_) |
+            NetworkDiscoveryError::DuplicatePeerReceived |
+            NetworkDiscoveryError::PeerValidationError(_) |
+            NetworkDiscoveryError::TooManyPeersReceived => Some(OffenceSeverity::High),
+            NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => Some(OffenceSeverity::High),
+            NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => Some(OffenceSeverity::Low),
+            // Other errors - no banning needed
+            NetworkDiscoveryError::RpcStatus(_) |
+            NetworkDiscoveryError::NoSyncPeers |
+            NetworkDiscoveryError::PeerManagerError(_) |
+            NetworkDiscoveryError::RpcError(_) |
+            NetworkDiscoveryError::ConnectivityError(_) |
+            NetworkDiscoveryError::JoinError(_) |
+            NetworkDiscoveryError::Timeout { .. } => None,
+        }
+    }
+
     async fn ban_peer<T: ToString>(&mut self, peer: NodeId, severity: OffenceSeverity, err: T) {
-        if let Err(e) = self
+        match self
             .context
             .connectivity
             .ban_peer_until(
@@ -300,10 +346,19 @@ impl Discovering {
             )
             .await
         {
-            warn!(
-                target: LOG_TARGET,
-                "Failed to ban peer `{}`: {}", peer, e
-            );
+            Ok(_) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Banned peer `{}` for {:.2?} due to '{}'",
+                    peer, self.config().ban_duration_from_severity(severity), err.to_string()
+                );
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to ban peer `{}`: {}", peer, e
+                );
+            },
         }
     }
 
