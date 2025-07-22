@@ -90,6 +90,7 @@ where TWalletConnectivity: WalletConnectivityInterface
     async fn monitor_node(&mut self, mut shutdown_signal: ShutdownSignal) -> Result<(), BaseNodeMonitorError> {
         let mut interval = interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_checked_height = 0;
 
         loop {
             select! {
@@ -126,6 +127,19 @@ where TWalletConnectivity: WalletConnectivityInterface
 
                     let is_synced = tip_info.is_synced;
                     let best_block_height = chain_metadata.best_block_height();
+                    trace!(
+                        target: LOG_TARGET,
+                        "Base node Tip: {} ({}) Latency: {} ms",
+                        best_block_height,
+                        if is_synced { "Synced" } else { "Syncing..." },
+                        latency.as_millis()
+                    );
+
+                    if best_block_height == last_checked_height {
+                        // no new block, continue to the next iteration
+                        continue;
+                    }
+                    last_checked_height = best_block_height;
 
                     self
                         .update_state(BaseNodeState {
@@ -136,13 +150,7 @@ where TWalletConnectivity: WalletConnectivityInterface
                         })
                         .await;
 
-                    trace!(
-                        target: LOG_TARGET,
-                        "Base node Tip: {} ({}) Latency: {} ms",
-                        best_block_height,
-                        if is_synced { "Synced" } else { "Syncing..." },
-                        latency.as_millis()
-                    );
+
 
                }
             }
