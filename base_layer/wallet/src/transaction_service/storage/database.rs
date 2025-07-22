@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, Transaction, TransactionOutput},
+    transaction_components::{memo_field::MemoField, Transaction, TransactionOutput},
 };
 
 use crate::transaction_service::{
@@ -778,7 +778,7 @@ where T: TransactionBackend + 'static
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         direction: TransactionDirection,
     ) -> Result<(), TransactionStorageError> {
         let hash = scanned_output.hash();

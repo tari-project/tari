@@ -65,7 +65,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             BuildInfo,
             CodeTemplateRegistration,
             EncryptedData,
@@ -913,10 +913,11 @@ where
                 fee_per_gram,
                 sidechain_deployment_key,
             } => {
-                let payment_id = PaymentId::Open {
-                    user_data: format!("Template Registration: {}", template_name).into_bytes(),
-                    tx_type: TxType::CodeTemplateRegistration,
-                };
+                let payment_id = MemoField::new_open(
+                    format!("Template Registration: {}", template_name).into_bytes(),
+                    TxType::CodeTemplateRegistration,
+                )
+                .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
                 let (tx_id, template_address) = self
                     .register_code_template(
                         fee_per_gram,
@@ -1240,7 +1241,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        mut payment_id: PaymentId,
+        mut payment_id: MemoField,
         tx_meta: TransactionMetadata,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
@@ -1270,8 +1271,8 @@ where
         }
         // let override the payment_id if the address says we should
         if destination.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, destination.get_payment_id_user_data_bytes());
-            payment_id = PaymentId::open(destination.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, destination.get_memo_field_payment_id_bytes());
+            payment_id = MemoField::open(destination.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
         }
         // If we're paying ourselves, let's complete and submit the transaction immediately
         if &self
@@ -1406,7 +1407,7 @@ where
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<
         (
             TxId,
@@ -1492,7 +1493,7 @@ where
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1659,7 +1660,7 @@ where
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1692,12 +1693,14 @@ where
         let minimum_value_promise = MicroMinotari::zero();
 
         // Prepare sender part of the transaction
-        let payment_id = payment_id.add_sender_address(
-            self.resources.interactive_tari_address.clone(),
-            false,
-            fee_per_gram,
-            None,
-        );
+        let payment_id = payment_id
+            .add_sender_address(
+                self.resources.interactive_tari_address.clone(),
+                false,
+                fee_per_gram,
+                None,
+            )
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
         let mut stp = self
             .resources
             .output_manager_service
@@ -1920,17 +1923,17 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
         recipient_script: Option<TariScript>,
-        mut payment_id: PaymentId,
+        mut payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Sending one sided transaction to {} with {}", dest_address, amount);
         let tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_payment_id_user_data_bytes());
-            payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
+            payment_id = MemoField::open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
         }
-        let payment_id = match payment_id {
-            PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
+        let payment_id = payment_id
+            .add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 fee_per_gram,
@@ -1941,9 +1944,8 @@ where
                 } else {
                     Some(TxType::PaymentToOther)
                 },
-            ),
-            _ => payment_id,
-        };
+            )
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
         // For a stealth transaction, the script is not provided because the public key that should be included
@@ -2279,13 +2281,14 @@ where
         let amount = stp.get_amount_to_recipient()?;
 
         let minimum_value_promise = MicroMinotari::zero();
-        let payment_id = PaymentId::AddressAndData {
-            sender_address: self.resources.interactive_tari_address.clone(),
-            sender_one_sided: true,
-            fee: stp.get_fee_amount().unwrap_or_default(),
-            tx_type: TxType::PaymentToOther,
-            user_data: vec![],
-        };
+        let payment_id = MemoField::new_address_and_data(
+            self.resources.interactive_tari_address.clone(),
+            stp.get_fee_amount().unwrap_or_default(),
+            true,
+            TxType::PaymentToOther,
+            vec![],
+        )
+        .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -2414,7 +2417,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -2445,7 +2448,7 @@ where
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         claim_public_key: Option<CompressedPublicKey>,
         sidechain_deployment_key: Option<PrivateKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -2453,12 +2456,14 @@ where
         >,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         let tx_id = TxId::new_random();
-        let payment_id = payment_id.add_sender_address(
-            self.resources.interactive_tari_address.clone(),
-            false,
-            fee_per_gram,
-            Some(TxType::Burn),
-        );
+        let payment_id = payment_id
+            .add_sender_address(
+                self.resources.interactive_tari_address.clone(),
+                false,
+                fee_per_gram,
+                Some(TxType::Burn),
+            )
+            .map_err(TransactionServiceError::InvalidPaymentId)?;
         trace!(
             target: LOG_TARGET,
             "Burning transaction start - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, \
@@ -2708,7 +2713,7 @@ where
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -2760,7 +2765,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         max_epoch: VnEpoch,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -2802,7 +2807,7 @@ where
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -2840,7 +2845,7 @@ where
         binary_url: MaxSizeString<255>,
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
-        payment_id: PaymentId,
+        payment_id: MemoField,
 
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2936,7 +2941,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -3539,61 +3544,48 @@ where
                         for ro in recovered {
                             if source_address.is_none() {
                                 payment_id = Some(ro.output.payment_id.clone());
-                                match &ro.output.payment_id {
-                                    PaymentId::AddressAndData {
-                                        sender_address: address,
-                                        tx_type: _,
-                                        user_data: _,
-                                        ..
-                                    } => {
-                                        source_address = Some(address.clone());
-                                        destination_address = Some(self.resources.one_sided_tari_address.clone());
-                                        amount = Some(ro.output.value);
-                                    },
-                                    PaymentId::TransactionInfo {
-                                        recipient_address,
-                                        amount: tx_amount,
-                                        tx_type,
-                                        sender_one_sided,
-                                        ..
-                                    } => {
-                                        amount = Some(*tx_amount);
-                                        let own_address = if *sender_one_sided {
-                                            self.resources.one_sided_tari_address.clone()
-                                        } else {
-                                            self.resources.interactive_tari_address.clone()
-                                        };
-                                        match tx_type {
-                                            TxType::PaymentToOther => {
-                                                source_address = Some(own_address.clone());
-                                                destination_address = Some(recipient_address.clone());
-                                            },
-                                            TxType::Burn => {
-                                                source_address = Some(own_address.clone());
-                                                destination_address = Some(TariAddress::default());
-                                            },
-                                            TxType::PaymentToSelf |
-                                            TxType::CoinSplit |
-                                            TxType::CoinJoin |
-                                            TxType::ValidatorNodeRegistration |
-                                            TxType::CodeTemplateRegistration |
-                                            TxType::ClaimAtomicSwap |
-                                            TxType::HtlcAtomicSwapRefund |
-                                            TxType::Coinbase => {
-                                                source_address = Some(own_address.clone());
-                                                destination_address = Some(own_address.clone());
-                                            },
-                                            TxType::ImportedUtxoNoneRewindable => {
-                                                source_address = Some(TariAddress::default());
-                                                destination_address = Some(recipient_address.clone());
-                                            },
-                                        }
-                                    },
-                                    _ => {
-                                        payment_id = Some(ro.output.payment_id.clone());
-                                        amount = Some(ro.output.value);
-                                    },
-                                };
+                                if let Some(address) = ro.output.payment_id.get_sender_address() {
+                                    source_address = Some(address);
+                                    destination_address = Some(self.resources.one_sided_tari_address.clone());
+                                    amount = Some(ro.output.value);
+                                } else if let Some((recipient_address, tx_amount, tx_type, sender_one_sided)) =
+                                    ro.output.payment_id.get_transaction_info_details()
+                                {
+                                    amount = Some(tx_amount);
+                                    let own_address = if sender_one_sided {
+                                        self.resources.one_sided_tari_address.clone()
+                                    } else {
+                                        self.resources.interactive_tari_address.clone()
+                                    };
+                                    match tx_type {
+                                        TxType::PaymentToOther => {
+                                            source_address = Some(own_address.clone());
+                                            destination_address = Some(recipient_address.clone());
+                                        },
+                                        TxType::Burn => {
+                                            source_address = Some(own_address.clone());
+                                            destination_address = Some(TariAddress::default());
+                                        },
+                                        TxType::PaymentToSelf |
+                                        TxType::CoinSplit |
+                                        TxType::CoinJoin |
+                                        TxType::ValidatorNodeRegistration |
+                                        TxType::CodeTemplateRegistration |
+                                        TxType::ClaimAtomicSwap |
+                                        TxType::HtlcAtomicSwapRefund |
+                                        TxType::Coinbase => {
+                                            source_address = Some(own_address.clone());
+                                            destination_address = Some(own_address.clone());
+                                        },
+                                        TxType::ImportedUtxoNoneRewindable => {
+                                            source_address = Some(TariAddress::default());
+                                            destination_address = Some(recipient_address.clone());
+                                        },
+                                    }
+                                } else {
+                                    payment_id = Some(ro.output.payment_id.clone());
+                                    amount = Some(ro.output.value);
+                                }
                             }
                             received_hashes
                                 .push(ro.output.hash(&self.resources.transaction_key_manager_service).await?);
@@ -4043,46 +4035,41 @@ where
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
 
         // Faux transactions for scanned change outputs must correspond to the original transaction
-        let (direction, amount, destination_address) = if let PaymentId::TransactionInfo {
-            recipient_address,
-            amount,
-            tx_type,
-            ..
-        } = payment_id.clone()
-        {
-            (
-                match tx_type {
-                    TxType::PaymentToOther |
-                    TxType::Burn |
-                    TxType::CodeTemplateRegistration |
-                    TxType::ValidatorNodeRegistration |
-                    TxType::CoinSplit |
-                    TxType::PaymentToSelf => TransactionDirection::Outbound,
-                    TxType::CoinJoin |
-                    TxType::ClaimAtomicSwap |
-                    TxType::HtlcAtomicSwapRefund |
-                    TxType::ImportedUtxoNoneRewindable |
-                    TxType::Coinbase => TransactionDirection::Inbound,
-                },
-                amount,
-                if tx_type == TxType::Burn {
-                    TariAddress::default()
-                } else {
-                    recipient_address.clone()
-                },
-            )
-        } else {
-            (
-                TransactionDirection::Inbound,
-                value,
-                self.resources.one_sided_tari_address.clone(),
-            )
-        };
+        let (direction, amount, destination_address) =
+            if let Some((recipient_address, amount, tx_type, _)) = payment_id.get_transaction_info_details() {
+                (
+                    match tx_type {
+                        TxType::PaymentToOther |
+                        TxType::Burn |
+                        TxType::CodeTemplateRegistration |
+                        TxType::ValidatorNodeRegistration |
+                        TxType::CoinSplit |
+                        TxType::PaymentToSelf => TransactionDirection::Outbound,
+                        TxType::CoinJoin |
+                        TxType::ClaimAtomicSwap |
+                        TxType::HtlcAtomicSwapRefund |
+                        TxType::ImportedUtxoNoneRewindable |
+                        TxType::Coinbase => TransactionDirection::Inbound,
+                    },
+                    amount,
+                    if tx_type == TxType::Burn {
+                        TariAddress::default()
+                    } else {
+                        recipient_address.clone()
+                    },
+                )
+            } else {
+                (
+                    TransactionDirection::Inbound,
+                    value,
+                    self.resources.one_sided_tari_address.clone(),
+                )
+            };
 
         self.db.add_utxo_import_transaction_with_status(
             tx_id,
@@ -4376,7 +4363,7 @@ where
         tx: Transaction,
         fee: MicroMinotari,
         amount: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(), TransactionServiceError> {
         let all_outputs = tx.body.outputs().iter().map(|o| o.hash()).collect::<Vec<HashOutput>>();
         self.submit_transaction(
@@ -4455,7 +4442,7 @@ where
             None => return Ok(None), // This should not happen, but just in case
         };
 
-        let payment_id_bytes = txn.payment_id.user_data_as_bytes();
+        let payment_id_bytes = txn.payment_id.payment_id_as_bytes();
 
         // Check if PayRef matches any sent output by generating proper PayRef
         for output_hash in &txn.sent_output_hashes {

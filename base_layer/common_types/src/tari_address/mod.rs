@@ -47,7 +47,7 @@ const INTERNAL_DUAL_BASE58_MIN_SIZE: usize = 89; // number of bytes used for the
 const INTERNAL_DUAL_BASE58_MAX_SIZE: usize = 443; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MIN_BASE58_SIZE: usize = 45; // number of bytes used for the internal representation
 const INTERNAL_SINGLE_MAX_BASE58_SIZE: usize = 48; // number of bytes used for the internal representation
-const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
+pub const MAX_ENCRYPTED_DATA_SIZE: usize = 256; // max size of the payment_id_ bytes
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TariAddressFeatures(u8);
@@ -242,18 +242,18 @@ impl TariAddress {
         }
     }
 
-    pub fn get_payment_id_user_data_bytes(&self) -> Vec<u8> {
+    pub fn get_memo_field_payment_id_bytes(&self) -> Vec<u8> {
         match self {
-            TariAddress::Dual(v) => v.get_payment_id_user_data_bytes(),
+            TariAddress::Dual(v) => v.get_memo_field_payment_id_bytes(),
             TariAddress::Single(_) => vec![],
         }
     }
 
-    pub fn with_payment_id_user_data(&self, data: Vec<u8>) -> Result<Self, TariAddressError> {
+    pub fn with_memo_field_payment_id(&self, data: Vec<u8>) -> Result<Self, TariAddressError> {
         match self {
             TariAddress::Dual(v) => {
                 let mut address = v.clone();
-                address.add_payment_id_user_data(data)?;
+                address.add_memo_field_payment_id(data)?;
                 Ok(TariAddress::Dual(address))
             },
             TariAddress::Single(_) => Err(TariAddressError::PaymentIdNotSupported),

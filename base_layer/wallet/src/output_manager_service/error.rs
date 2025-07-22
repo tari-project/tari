@@ -155,6 +155,8 @@ pub enum OutputManagerError {
     TariAddressError(#[from] TariAddressError),
     #[error("Base node client error: `{0}`")]
     BaseNodeClientError(String),
+    #[error("Invalid payment ID format: `{0}`")]
+    InvalidPaymentIdFormat(String),
 }
 
 impl From<RangeProofError> for OutputManagerError {

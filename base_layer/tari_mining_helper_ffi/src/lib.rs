@@ -43,7 +43,7 @@ use tari_core::{
     transactions::{
         generate_coinbase,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             CoinBaseExtra,
             RangeProofType,
         },
@@ -404,10 +404,7 @@ pub unsafe extern "C" fn inject_coinbase(
             stealth_payment,
             consensus_manager.consensus_constants(height),
             range_proof_type,
-            PaymentId::Open {
-                user_data: vec![],
-                tx_type: TxType::Coinbase,
-            },
+            MemoField::new_open(vec![], TxType::Coinbase).expect("Should never fail since use data is empty"),
         )
         .await
     }) {

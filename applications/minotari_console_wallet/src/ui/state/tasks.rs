@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, BuildInfo, OutputFeatures, TemplateType},
+    transaction_components::{memo_field::MemoField, BuildInfo, OutputFeatures, TemplateType},
 };
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_utilities::{hex::Hex, ByteArray};
@@ -54,7 +54,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     fee_per_gram: MicroMinotari,
-    payment_id: PaymentId,
+    payment_id: MemoField,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -108,7 +108,7 @@ pub async fn send_burn_transaction_task(
     claim_public_key: Option<CompressedPublicKey>,
     amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
-    payment_id: PaymentId,
+    payment_id: MemoField,
     fee_per_gram: MicroMinotari,
     sidechain_deployment_key: Option<PrivateKey>,
     mut transaction_service_handle: TransactionServiceHandle,

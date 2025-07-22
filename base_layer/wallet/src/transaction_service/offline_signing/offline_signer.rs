@@ -32,7 +32,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             OutputFeatures,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
@@ -86,18 +86,19 @@ where
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        mut payment_id: PaymentId,
+        mut payment_id: MemoField,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
         debug!(target: LOG_TARGET, "Locking one sided transaction to {} with {}", dest_address, amount);
         let tx_id = TxId::new_random();
 
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
-            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_payment_id_user_data_bytes());
-            payment_id = PaymentId::open(dest_address.get_payment_id_user_data_bytes(), TxType::PaymentToOther);
+            debug!(target: LOG_TARGET, "Address contains memo, overriding memo {} with {:?}", payment_id, dest_address.get_memo_field_payment_id_bytes());
+            payment_id = MemoField::open(dest_address.get_memo_field_payment_id_bytes(), TxType::PaymentToOther);
         }
-        let payment_id = match payment_id {
-            PaymentId::Open { .. } | PaymentId::Empty => payment_id.add_sender_address(
+        let payment_id = payment_id
+            .clone()
+            .add_sender_address(
                 self.resources.one_sided_tari_address.clone(),
                 true,
                 fee_per_gram,
@@ -108,9 +109,8 @@ where
                 } else {
                     Some(TxType::PaymentToOther)
                 },
-            ),
-            _ => payment_id,
-        };
+            )
+            .unwrap_or(payment_id);
 
         let script = push_pubkey_script(&Default::default());
         // Prepare sender part of the transaction

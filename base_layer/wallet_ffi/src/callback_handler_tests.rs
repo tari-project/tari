@@ -46,7 +46,7 @@ mod test {
     use tari_core::transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             Transaction,
         },
         ReceiverTransactionProtocol,
@@ -315,7 +315,7 @@ mod test {
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            PaymentId::open_from_string("1", TxType::PaymentToOther),
+            MemoField::open_from_string("1", TxType::PaymentToOther),
             Utc::now(),
         );
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
@@ -351,7 +351,7 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
-            PaymentId::open_from_string("2", TxType::PaymentToOther),
+            MemoField::open_from_string("2", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
@@ -371,7 +371,7 @@ mod test {
             23 * uT,
             stp,
             TransactionStatus::Pending,
-            PaymentId::open_from_string("3", TxType::PaymentToOther),
+            MemoField::open_from_string("3", TxType::PaymentToOther),
             Utc::now(),
             false,
         );
@@ -425,7 +425,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(2),
             Some(DateTime::from_timestamp(0, 0).unwrap_or(DateTime::<Utc>::MIN_UTC)),
-            PaymentId::open_from_string("6", TxType::PaymentToOther),
+            MemoField::open_from_string("6", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
@@ -461,7 +461,7 @@ mod test {
             TransactionDirection::Inbound,
             Some(5),
             Some(DateTime::from_timestamp(0, 0).unwrap()),
-            PaymentId::open_from_string("7", TxType::PaymentToOther),
+            MemoField::open_from_string("7", TxType::PaymentToOther),
         )
         .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())

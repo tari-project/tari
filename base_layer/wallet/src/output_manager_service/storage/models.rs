@@ -29,7 +29,7 @@ use tari_common_types::{
     types::{BlockHash, CompressedCommitment, HashOutput},
 };
 use tari_core::transactions::{
-    transaction_components::{payment_id::PaymentId, WalletOutput},
+    transaction_components::{memo_field::MemoField, WalletOutput},
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -56,7 +56,7 @@ pub struct DbWalletOutput {
     pub source: OutputSource,
     pub received_in_tx_id: Option<TxId>,
     pub spent_in_tx_id: Option<TxId>,
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
 }
 
 impl DbWalletOutput {

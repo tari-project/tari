@@ -171,9 +171,9 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
                         let mut new_address = TariAddress::combine_addresses(&stored_address, &k)
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?;
-                        if !k.get_payment_id_user_data_bytes().is_empty() {
+                        if !k.get_memo_field_payment_id_bytes().is_empty() {
                             new_address = new_address
-                                .with_payment_id_user_data(k.get_payment_id_user_data_bytes())
+                                .with_memo_field_payment_id(k.get_memo_field_payment_id_bytes())
                                 .map_err(|_| ContactsServiceStorageError::ConversionError)?;
                         }
                         ContactSql::set_address_of_node_id(&c.node_id.to_vec(), &new_address.to_vec(), &mut conn)?;

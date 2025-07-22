@@ -43,7 +43,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         test_helpers::{create_utxo, TestParams, TransactionSchema},
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -319,7 +319,7 @@ async fn initialize_sender_transaction_protocol_for_overflow_test(
         let output = WalletOutputBuilder::new(tx_output, commitment_mask_key.key_id)
             .with_features(txn_schema.features.clone())
             .with_script(txn_schema.script.clone())
-            .encrypt_data_for_recovery(key_manager, None, PaymentId::Empty)
+            .encrypt_data_for_recovery(key_manager, None, MemoField::new_empty())
             .await
             .unwrap()
             .with_input_data(input_data)
@@ -395,7 +395,7 @@ async fn test_sender_transaction_protocol_for_overflow() {
         utxo.encrypted_data,
         utxo.minimum_value_promise,
         utxo.proof,
-        PaymentId::Empty,
+        MemoField::new_empty(),
     );
 
     // Test overflow in inputs

@@ -40,7 +40,7 @@ use crate::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             OutputFeatures,
             TransactionOutput,
             TransactionOutputVersion,
@@ -97,7 +97,7 @@ pub struct SenderTransactionInitializer<KM> {
     sender_custom_outputs: Vec<OutputPair>,
     change: Option<ChangeDetails>,
     recipient: Option<RecipientDetails>,
-    payment_id: Option<PaymentId>,
+    payment_id: Option<MemoField>,
     prevent_fee_gt_amount: bool,
     tx_id: Option<TxId>,
     kernel_features: KernelFeatures,
@@ -250,7 +250,7 @@ where KM: TransactionKeyManagerInterface
     }
 
     /// Provide a payment id for receiver
-    pub fn with_payment_id(&mut self, payment_id: PaymentId) -> &mut Self {
+    pub fn with_payment_id(&mut self, payment_id: MemoField) -> &mut Self {
         self.payment_id = Some(payment_id);
         self
     }
@@ -412,12 +412,12 @@ where KM: TransactionKeyManagerInterface
                             .features()
                             .contains(TariAddressFeatures::INTERACTIVE);
 
-                        let mut payment_id = PaymentId::TransactionInfo {
-                            recipient_address: TariAddress::default(),
+                        let mut payment_id = MemoField::new_transaction_info(
+                            TariAddress::default(),
+                            MicroMinotari::default(),
+                            fee_without_change + change_fee,
                             sender_one_sided,
-                            amount: MicroMinotari::default(),
-                            fee: fee_without_change + change_fee,
-                            tx_type: if self.kernel_features.is_burned() {
+                            if self.kernel_features.is_burned() {
                                 TxType::Burn
                             } else {
                                 self.payment_id
@@ -425,18 +425,18 @@ where KM: TransactionKeyManagerInterface
                                     .map(|pay_id| pay_id.get_type())
                                     .unwrap_or_default()
                             },
-                            user_data: self
-                                .payment_id
+                            Vec::new(),
+                            self.payment_id
                                 .as_ref()
-                                .map(|pay_id| pay_id.user_data_as_bytes())
+                                .map(|pay_id| pay_id.payment_id_as_bytes())
                                 .unwrap_or_default(),
-                            sent_output_hashes: Vec::new(),
-                        };
+                        )
+                        .map_err(|e| e.to_string())?;
                         if let Some(recipient) = self.recipient.clone() {
                             payment_id.transaction_info_set_amount(recipient.amount);
                             match payment_id.get_type() {
                                 TxType::PaymentToOther => {
-                                    payment_id.transaction_info_set_address(recipient.recipient_address)
+                                    payment_id.transaction_info_set_address(recipient.recipient_address)?
                                 },
                                 TxType::PaymentToSelf |
                                 TxType::CoinSplit |
@@ -444,12 +444,12 @@ where KM: TransactionKeyManagerInterface
                                 TxType::ValidatorNodeRegistration |
                                 TxType::CodeTemplateRegistration |
                                 TxType::ClaimAtomicSwap |
-                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address),
+                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address)?,
                                 _ => {},
                             }
                         } else {
                             payment_id.transaction_info_set_amount(total_to_self);
-                            payment_id.transaction_info_set_address(own_address);
+                            payment_id.transaction_info_set_address(own_address)?;
                         }
                         trace!(target: LOG_TARGET, "Modified change payment id: {}, TxId: {:?}", payment_id, self.tx_id);
 

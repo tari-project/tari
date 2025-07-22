@@ -29,7 +29,7 @@ use std::{
 use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::payment_id::PaymentId;
+use tari_core::transactions::transaction_components::memo_field::MemoField;
 
 use super::ffi::{
     Balance,
@@ -160,7 +160,7 @@ impl WalletFFI {
         dest: String,
         amount: u64,
         fee_per_gram: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         one_sided: bool,
     ) -> u64 {
         self.wallet

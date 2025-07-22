@@ -45,7 +45,7 @@ use crate::{
     transactions::{
         tari_amount::*,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             KernelBuilder,
             OutputFeatures,
             Transaction,
@@ -108,7 +108,7 @@ pub(super) struct RawTransactionInfo {
     /// Details used to construct the transaction kernel.
     pub metadata: TransactionMetadata,
     /// A user payment ID for the sender/receiver
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
     /// The senders address
     pub sender_address: TariAddress,
 }
@@ -140,7 +140,7 @@ pub struct SingleRoundSenderData {
     /// Metadata used to construct the transaction kernel
     pub metadata: TransactionMetadata,
     /// A user payment ID for the sender/receiver
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
     /// The output's features
     pub features: OutputFeatures,
     /// Script
@@ -715,7 +715,9 @@ impl SenderTransactionProtocol {
             }
 
             let mut payment_id = change.output.payment_id.clone();
-            payment_id.transaction_info_set_sent_output_hashes(sent_hashes);
+            payment_id
+                .transaction_info_set_sent_output_hashes(sent_hashes)
+                .map_err(|_e| TPE::InvalidStateError)?;
             let encrypted_data = key_manager
                 .encrypt_data_for_recovery(
                     &change.output.spending_key_id,
@@ -1102,7 +1104,7 @@ mod test {
             tari_amount::*,
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
-                payment_id::PaymentId,
+                memo_field::MemoField,
                 EncryptedData,
                 OutputFeatures,
                 TransactionOutput,
@@ -1205,7 +1207,7 @@ mod test {
 
         // Encrypted value
         let encrypted_data = key_manager
-            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, value, PaymentId::Empty)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, value, MemoField::new_empty())
             .await
             .unwrap();
 
@@ -1381,7 +1383,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &key_manager,
         )
         .await
@@ -1507,7 +1509,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &key_manager,
         )
         .await
@@ -1620,7 +1622,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &key_manager,
         )
         .await
@@ -1813,7 +1815,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &key_manager_bob,
         )
         .await

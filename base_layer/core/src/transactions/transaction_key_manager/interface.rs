@@ -44,7 +44,7 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 use crate::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::PaymentId,
+        memo_field::MemoField,
         EncryptedData,
         KernelFeatures,
         RangeProofType,
@@ -374,7 +374,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         commitment_mask_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<EncryptedData, TransactionError>;
 
     async fn extract_payment_id_from_encrypted_data(
@@ -382,14 +382,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         encrypted_data: &EncryptedData,
         commitment: &CompressedCommitment,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<PaymentId, TransactionError>;
+    ) -> Result<MemoField, TransactionError>;
 
     async fn try_output_key_recovery(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError>;
+    ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError>;
 
     async fn get_script_offset(
         &self,

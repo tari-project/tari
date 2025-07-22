@@ -38,7 +38,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::MicroMinotari,
-        transaction_components::{payment_id::PaymentId, Transaction},
+        transaction_components::{memo_field::MemoField, Transaction},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -53,7 +53,7 @@ pub struct InboundTransaction {
     pub amount: MicroMinotari,
     pub receiver_protocol: ReceiverTransactionProtocol,
     pub status: TransactionStatus,
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
     pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
     pub direct_send_success: bool,
@@ -70,7 +70,7 @@ impl InboundTransaction {
         amount: MicroMinotari,
         receiver_protocol: ReceiverTransactionProtocol,
         status: TransactionStatus,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         timestamp: DateTime<Utc>,
     ) -> Self {
         Self {
@@ -98,7 +98,7 @@ pub struct OutboundTransaction {
     pub fee: MicroMinotari,
     pub sender_protocol: SenderTransactionProtocol,
     pub status: TransactionStatus,
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
     pub timestamp: DateTime<Utc>,
     pub cancelled: bool,
     pub direct_send_success: bool,
@@ -116,7 +116,7 @@ impl OutboundTransaction {
         fee: MicroMinotari,
         sender_protocol: SenderTransactionProtocol,
         status: TransactionStatus,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         timestamp: DateTime<Utc>,
         direct_send_success: bool,
     ) -> Self {
@@ -144,7 +144,7 @@ impl OutboundTransaction {
         fee: MicroMinotari,
         sender_protocol: SenderTransactionProtocol,
         status: TransactionStatus,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         timestamp: DateTime<Utc>,
         direct_send_success: bool,
         sent_output_hashes: Vec<FixedHash>,
@@ -185,7 +185,7 @@ pub struct CompletedTransaction {
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
     pub mined_timestamp: Option<DateTime<Utc>>,
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
     /// Hashes of outputs being sent to others (excluding change)
     pub sent_output_hashes: Vec<FixedHash>,
     /// Hashes of outputs received from others (excluding change)
@@ -207,7 +207,7 @@ impl CompletedTransaction {
         direction: TransactionDirection,
         mined_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<Self, TransactionStorageError> {
         if status == TransactionStatus::Coinbase {
             return Err(TransactionStorageError::CoinbaseNotSupported);
@@ -379,7 +379,7 @@ impl CompletedTransaction {
         direction: TransactionDirection,
         mined_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         sent_output_hashes: Vec<FixedHash>,
         received_output_hashes: Vec<FixedHash>,
         change_output_hashes: Vec<FixedHash>,
@@ -653,7 +653,7 @@ mod test {
         transactions::{
             tari_amount::MicroMinotari,
             transaction_components::{
-                payment_id::PaymentId,
+                memo_field::MemoField,
                 EncryptedData,
                 OutputFeatures,
                 Transaction,
@@ -709,7 +709,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::default(),
+            payment_id: MemoField::default(),
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],

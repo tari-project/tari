@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, convert::TryInto, fmt, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
@@ -55,7 +55,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -310,10 +310,8 @@ where
                     output_hash,
                     expected_commitment,
                     recipient_address,
-                    PaymentId::Open {
-                        user_data: output_hash.to_vec(),
-                        tx_type: TxType::PaymentToOther,
-                    },
+                    MemoField::new_open(output_hash.to_vec(), TxType::PaymentToOther)
+                        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID: {}", e)))?,
                     0,
                     RangeProofType::BulletProofPlus,
                     0.into(),
@@ -850,13 +848,14 @@ where
         } else {
             return Err(OutputManagerError::InvalidScriptHash);
         };
-        let payment_id = PaymentId::AddressAndData {
-            sender_address: single_round_sender_data.sender_address.clone(),
-            fee: single_round_sender_data.metadata.fee,
-            sender_one_sided: false,
-            tx_type: TxType::PaymentToOther,
-            user_data: vec![],
-        };
+        let payment_id = MemoField::new_address_and_data(
+            single_round_sender_data.sender_address.clone(),
+            single_round_sender_data.metadata.fee,
+            false,
+            TxType::PaymentToOther,
+            vec![],
+        )
+        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID, size: {}", e)))?;
         let encrypted_data = self
             .resources
             .key_manager
@@ -1028,7 +1027,7 @@ where
         recipient_covenant: Covenant,
         recipient_minimum_value_promise: MicroMinotari,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1150,7 +1149,7 @@ where
         outputs: Vec<WalletOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop]?;
@@ -1276,24 +1275,12 @@ where
 
     async fn pre_mine_script_key_from_payment_id(
         &self,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         tx_id: TxId,
     ) -> Result<TariKeyAndId, OutputManagerError> {
-        let index = match payment_id {
-            PaymentId::U256(index) => u64::try_from(index).expect("we dont go over u64"),
-            PaymentId::Open { user_data: data, .. } => {
-                let bytes: [u8; size_of::<u64>()] = data.try_into().map_err(|_| {
-                    OutputManagerError::ServiceError(format!("Invalid payment id (TxId: {}): expected", tx_id))
-                })?;
-                u64::from_le_bytes(bytes)
-            },
-            _ => {
-                return Err(OutputManagerError::ServiceError(format!(
-                    "Invalid payment id (TxId: {}): expected 'PaymentId as u64', received {:?}",
-                    tx_id, payment_id
-                )))
-            },
-        };
+        let index = payment_id
+            .get_u64_data()
+            .map_err(|e| OutputManagerError::InvalidPaymentIdFormat(format!("TxId: {}, {}", tx_id, e)))?;
         let script_key_id = TariKeyId::Managed {
             branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
             index,
@@ -1322,7 +1309,7 @@ where
         metadata_ephemeral_public_key_shares: Vec<CompressedPublicKey>,
         dh_shared_secret_shares: Vec<CompressedPublicKey>,
         recipient_address: TariAddress,
-        tx_payment_id: PaymentId,
+        tx_payment_id: MemoField,
         original_maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
@@ -1711,7 +1698,7 @@ where
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         maturity: u64,
         range_proof_type: RangeProofType,
         minimum_value_promise: MicroMinotari,
@@ -1904,12 +1891,14 @@ where
             .stealth_address_script_spending_key(&commitment_mask_key_id, recipient_address.public_spend_key())
             .await?;
         let script = push_pubkey_script(&script_spending_key);
-        let payment_id = payment_id.add_sender_address(
-            self.resources.one_sided_tari_address.clone(),
-            true,
-            fee,
-            Some(TxType::PaymentToOther),
-        );
+        let payment_id = payment_id
+            .add_sender_address(
+                self.resources.one_sided_tari_address.clone(),
+                true,
+                fee,
+                Some(TxType::PaymentToOther),
+            )
+            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
 
         let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
             .with_features(
@@ -1974,7 +1963,7 @@ where
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         let covenant = Covenant::default();
 
@@ -2051,7 +2040,7 @@ where
                 Covenant::default(),
                 self.resources.interactive_tari_address.clone(),
             )
-            .with_payment_id(PaymentId::open_from_string(
+            .with_payment_id(MemoField::open_from_string(
                 "Pay to self transaction",
                 TxType::PaymentToSelf,
             ));
@@ -2501,7 +2490,7 @@ where
             self.resources.key_manager.clone(),
         );
         tx_builder
-            .with_payment_id(PaymentId::open_from_string(
+            .with_payment_id(MemoField::open_from_string(
                 &format!(
                     "Coin split transaction, {} into {} outputs",
                     accumulated_amount, number_of_splits
@@ -2535,7 +2524,7 @@ where
                     OutputFeatures::default(),
                     amount_per_split,
                     Covenant::default(),
-                    PaymentId::open_from_string(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                    MemoField::open_from_string(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
                     fee,
                 )
                 .await?;
@@ -2672,7 +2661,7 @@ where
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
         );
-        let payment_id = PaymentId::open_from_string(
+        let payment_id = MemoField::open_from_string(
             &format!("Coin split, {} into {} outputs", accumulated_amount, number_of_splits),
             TxType::CoinSplit,
         );
@@ -2806,7 +2795,7 @@ where
         output_features: OutputFeatures,
         amount: MicroMinotari,
         covenant: Covenant,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         fee: MicroMinotari,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (commitment_mask_key, script_key) = self
@@ -2815,12 +2804,14 @@ where
             .get_next_commitment_mask_and_script_key()
             .await?;
         let script = script!(PushPubKey(Box::new(script_key.pub_key.clone())))?;
-        let payment_id = payment_id.add_sender_address(
-            self.resources.interactive_tari_address.clone(),
-            false,
-            fee,
-            Some(TxType::PaymentToSelf),
-        );
+        let payment_id = payment_id
+            .add_sender_address(
+                self.resources.interactive_tari_address.clone(),
+                false,
+                fee,
+                Some(TxType::PaymentToSelf),
+            )
+            .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
 
         let encrypted_data = self
             .resources
@@ -2888,7 +2879,7 @@ where
         &mut self,
         commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         let default_features_and_scripts_size = self
             .default_features_and_scripts_size()
@@ -3033,7 +3024,7 @@ where
             )
             .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_payment_id(PaymentId::open_from_string("scraping wallet", TxType::PaymentToOther))
+            .with_payment_id(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features)
@@ -3130,7 +3121,7 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_payment_id(PaymentId::open_from_string(
+                    .with_payment_id(MemoField::open_from_string(
                         "SHA-XTR atomic swap",
                         TxType::ClaimAtomicSwap,
                     ))
@@ -3213,7 +3204,7 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_payment_id(PaymentId::open_from_string(
+            .with_payment_id(MemoField::open_from_string(
                 "SHA-XTR atomic refund",
                 TxType::HtlcAtomicSwapRefund,
             ))

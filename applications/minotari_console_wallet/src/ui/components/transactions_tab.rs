@@ -10,7 +10,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus},
 };
-use tari_core::transactions::transaction_components::payment_id::{PaymentId, TxType};
+use tari_core::transactions::transaction_components::memo_field::TxType;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -155,7 +155,7 @@ impl TransactionsTab {
             )));
 
             column3_items.push(ListItem::new(Span::styled(
-                t.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                t.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                 Style::default().fg(text_color),
             )));
         }
@@ -220,12 +220,7 @@ impl TransactionsTab {
 
             let mut transaction_status = tx.status;
             let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
-            if let Some(
-                PaymentId::Open { tx_type, .. } |
-                PaymentId::AddressAndData { tx_type, .. } |
-                PaymentId::TransactionInfo { tx_type, .. },
-            ) = tx.payment_id.clone()
-            {
+            if let Some(tx_type) = tx.payment_id.as_ref().and_then(|p| p.get_tx_type()) {
                 match tx.status {
                     TransactionStatus::OneSidedUnconfirmed => transaction_status = TransactionStatus::MinedUnconfirmed,
                     TransactionStatus::OneSidedConfirmed => transaction_status = TransactionStatus::MinedConfirmed,
@@ -234,8 +229,11 @@ impl TransactionsTab {
                 transaction_type = tx_type;
             };
 
-            if let Some(PaymentId::Open { .. } | PaymentId::AddressAndData { .. }) = tx.payment_id.clone() {
-                if transaction_type == TxType::PaymentToSelf && tx.source_address != tx.destination_address {
+            if let Some(payment_id) = tx.payment_id.as_ref() {
+                if (payment_id.is_open() || payment_id.is_address_and_data()) &&
+                    transaction_type == TxType::PaymentToSelf &&
+                    tx.source_address != tx.destination_address
+                {
                     transaction_type = TxType::PaymentToOther;
                 }
                 if transaction_type == TxType::Burn && tx.destination_address != TariAddress::default() {
@@ -392,7 +390,7 @@ impl TransactionsTab {
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
             let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
-                if let Some(PaymentId::TransactionInfo { fee, .. }) = tx.payment_id.clone() {
+                if let Some(fee) = tx.payment_id.as_ref().and_then(|p| p.get_fee()) {
                     let status = match tx.status {
                         TransactionStatus::OneSidedUnconfirmed => TransactionStatus::MinedUnconfirmed,
                         TransactionStatus::OneSidedConfirmed => TransactionStatus::MinedConfirmed,
@@ -407,7 +405,7 @@ impl TransactionsTab {
                         tx.weight,
                         tx.inputs_count,
                         tx.outputs_count,
-                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                         tx.source_address.clone(),
                         tx.destination_address.clone(),
                     )
@@ -420,7 +418,7 @@ impl TransactionsTab {
                         tx.weight,
                         tx.inputs_count,
                         tx.outputs_count,
-                        tx.payment_id.clone().unwrap_or_default().user_data_as_string(),
+                        tx.payment_id.clone().unwrap_or_default().payment_id_as_string(),
                         tx.source_address.clone(),
                         tx.destination_address.clone(),
                     )
