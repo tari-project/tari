@@ -195,6 +195,7 @@ impl PeerStorageSql {
         mut n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        external_addresses_only: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
             n = PEER_MANAGER_SYNC_PEERS;
@@ -202,9 +203,13 @@ impl PeerStorageSql {
             n = min(n, PEER_MANAGER_SYNC_PEERS);
         }
 
-        Ok(self
-            .peer_db
-            .get_n_random_active_peers(n, excluded_peers, features, Some(STALE_PEER_THRESHOLD_DURATION))?)
+        Ok(self.peer_db.get_n_random_active_peers(
+            n,
+            excluded_peers,
+            features,
+            Some(STALE_PEER_THRESHOLD_DURATION),
+            external_addresses_only,
+        )?)
     }
 
     /// Compile a list of all known peers
@@ -234,6 +239,7 @@ impl PeerStorageSql {
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
+        external_addresses_only: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_closest_n_active_peers(
             region_node_id,
@@ -243,6 +249,7 @@ impl PeerStorageSql {
             stale_peer_threshold,
             exclude_if_all_address_failed,
             exclusion_distance,
+            external_addresses_only,
         )?)
     }
 
@@ -383,7 +390,7 @@ mod test {
     use super::*;
     use crate::{
         net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
-        peer_manager::{database::MIGRATIONS, peer::PeerFlags},
+        peer_manager::{create_test_peer_add_internal_addresses, database::MIGRATIONS, peer::PeerFlags},
     };
 
     fn get_peer_db_sql_test_db() -> Result<PeerDatabaseSql, PeerManagerError> {
@@ -789,10 +796,44 @@ mod test {
         assert_eq!(peer_storage.all(None).unwrap().len(), 4);
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE))
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
                 .unwrap()
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn discovery_syncing_peers_with_external_addresses_only() {
+        let peer_storage = get_peer_storage_sql_test_db().unwrap();
+        let nodes = repeat_with(|| create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_NODE))
+            .take(5)
+            .collect::<Vec<_>>();
+        let wallets =
+            repeat_with(|| create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_CLIENT))
+                .take(5)
+                .collect::<Vec<_>>();
+        for peer in nodes.iter().chain(wallets.iter()) {
+            peer_storage.add_or_update_peer(peer.clone()).unwrap();
+        }
+
+        // Assert that peers have internal and external addresses
+        let nodes_all_addresses = peer_storage
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
+            .unwrap();
+        assert!(nodes_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) }));
+        assert!(nodes_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) }));
+
+        // Assert that peers have external addresses only
+        let nodes_external_addresses_only = peer_storage
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
+            .unwrap();
+        assert!(nodes_external_addresses_only
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().all(|addr| addr.is_external()) }));
     }
 }

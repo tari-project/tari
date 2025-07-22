@@ -324,6 +324,34 @@ impl Peer {
     pub fn to_short_string(&self) -> String {
         format!("{}::{}", self.public_key, self.addresses)
     }
+
+    /// Returns the peer as optional without any internal addresses - None if all addresses are internal
+    #[allow(dead_code)]
+    pub fn as_peer_with_external_addresses_only(&self) -> Option<Peer> {
+        let external_addresses: Vec<_> = self.addresses.iter().filter(|a| a.is_external()).cloned().collect();
+
+        if external_addresses.is_empty() {
+            return None;
+        }
+
+        let new_addresses = MultiaddressesWithStats::new(external_addresses);
+
+        Some(Peer {
+            id: self.id,
+            public_key: self.public_key.clone(),
+            node_id: self.node_id.clone(),
+            addresses: new_addresses,
+            flags: self.flags,
+            banned_until: self.banned_until,
+            banned_reason: self.banned_reason.clone(),
+            features: self.features,
+            supported_protocols: self.supported_protocols.clone(),
+            added_at: self.added_at,
+            user_agent: self.user_agent.clone(),
+            metadata: self.metadata.clone(),
+            deleted_at: self.deleted_at,
+        })
+    }
 }
 
 /// Display Peer as `[peer_id]: <pubkey>`

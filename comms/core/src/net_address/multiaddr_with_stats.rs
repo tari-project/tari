@@ -13,7 +13,7 @@ use std::{
 
 use chrono::{NaiveDateTime, Utc};
 use log::trace;
-use multiaddr::Multiaddr;
+use multiaddr::{Multiaddr, Protocol};
 use serde::{Deserialize, Serialize};
 
 use crate::{peer_manager::PeerIdentityClaim, types::CommsPublicKey};
@@ -142,6 +142,17 @@ impl MultiaddrWithStats {
 
     pub fn address(&self) -> &Multiaddr {
         &self.address
+    }
+
+    /// Returns true if the address is an external address, i.e. not a loopback, unspecified or private IP address.
+    pub fn is_external(&self) -> bool {
+        let mut protocols = self.address.iter();
+        let internal = match protocols.next() {
+            Some(Protocol::Ip4(ip)) => ip.is_loopback() || ip.is_unspecified() || ip.is_private(),
+            Some(Protocol::Ip6(ip)) => ip.is_loopback() || ip.is_unspecified(),
+            _ => false, // onion3 etc = OK
+        };
+        !internal
     }
 
     pub fn offline_at(&self) -> Option<NaiveDateTime> {

@@ -39,7 +39,7 @@ pub struct UnvalidatedPeerInfo {
 }
 
 impl UnvalidatedPeerInfo {
-    pub fn from_peer_limited_claims(peer: Peer, max_claims: usize, max_addresse_per_claim: usize) -> Self {
+    pub fn from_peer_limited_claims(peer: Peer, max_claims: usize, max_addresses_per_claim: usize) -> Self {
         let claims = peer
             .addresses
             .addresses()
@@ -51,7 +51,7 @@ impl UnvalidatedPeerInfo {
 
                 let claim = addr.source().peer_identity_claim()?;
 
-                if claim.addresses.len() > max_addresse_per_claim {
+                if claim.addresses.len() > max_addresses_per_claim {
                     return None;
                 }
 

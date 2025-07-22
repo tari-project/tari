@@ -62,6 +62,7 @@ async fn select_peers_for_discovery_round(
                     Some(STALE_PEER_THRESHOLD_DURATION),
                     true,
                     None,
+                    true,
                 )
                 .await?
         },
