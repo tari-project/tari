@@ -422,6 +422,7 @@ where
         let mut total_value_recovered = MicroMinotari::zero();
         let mut blocks_scanned = 0;
         let mut starting_header_vec = start_header_hash.to_vec();
+        let mut last_saved_hash = None;
         loop {
             let mut utxo_stream = client
                 .sync_utxos_by_block(starting_header_vec.clone(), self.shutdown_signal.clone())
@@ -502,11 +503,7 @@ where
                                 block_hash.to_hex()
                             );
                             self.resources.db.save_scanned_block(scanned_block)?;
-                            self.resources.db.clear_scanned_blocks_before_height(
-                                current_height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
-                                true,
-                            )?;
-
+                            last_saved_hash = Some(block_hash);
                             if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                                 debug!(
                                     target: LOG_TARGET,
@@ -538,8 +535,11 @@ where
                     scanned_block.height.saturating_sub(SCANNED_BLOCK_CACHE_SIZE),
                     true,
                 )?;
-                self.resources.db.save_scanned_block(scanned_block)?;
+                if last_saved_hash != Some(scanned_block.header_hash) {
+                    self.resources.db.save_scanned_block(scanned_block)?;
+                }
             }
+
             if starting_header_vec.is_empty() {
                 // No more blocks to scan
                 break;

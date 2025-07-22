@@ -59,11 +59,6 @@
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
 
-# A custom base node peer that will be used to obtain metadata from, example
-# "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189"
-# (default = )
-#custom_base_node = "none"
-
 # A list of base node peers that the wallet should use for service requests and tracking chain state in the form
 # ["public_key::net_address", ...] (default = [])
 #base_node_service_peers = []
@@ -105,7 +100,12 @@
 # The URL of the HTTP client to use for base node service requests
 #http_server_url="http://127.0.0.1:9000"
 # The fallback url address to use if the base node at http_server_url does not respond
-#fallback_http_server_url = "https://rpc.esmeralda.tari.com"
+#fallback_http_server_url = "https://rpc.tari.com"             # MainNet
+#fallback_http_server_url = "https://rpc.stagenet.tari.com"    # StageNet
+#fallback_http_server_url = "https://rpc.nextnet.tari.com"     # NextNet
+#fallback_http_server_url = "https://rpc.localnet.tari.com"    # LocalNet
+#fallback_http_server_url = "https://rpc.igor.tari.com"        # Igor
+#fallback_http_server_url = "https://rpc.esmeralda.tari.com"   # Esmeralda
 
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
