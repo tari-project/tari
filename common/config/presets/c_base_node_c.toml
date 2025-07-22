@@ -321,13 +321,13 @@ database_url = "data/base_node/dht.db"
 # Maximum time to wait for a dial during bootstrap before abandoning the attempt. (Default: 30 seconds)
 #network_discovery.bootstrap_dial_peer_timeout = 30
 # Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt. (Default: 15 seconds)
-#network_discovery.bootstrap_rpc_connect_timeout = 15
+#network_discovery.bootstrap_rpc_connect_timeout = 10
 # Maximum time to wait for to obtain the RPC get peers stream during bootstrap before abandoning the attempt.
 # (Default: 15 seconds)
-#network_discovery.bootstrap_rpc_get_peers_stream_timeout = 10
+#network_discovery.bootstrap_rpc_get_peers_stream_timeout = 5
 # Maximum time to wait for any item while streaming RPC peers during bootstrap before abandoning the attempt.
 # (Default: 10 seconds)
-#network_discovery.bootstrap_rpc_streaming_timeout = 10
+#network_discovery.bootstrap_rpc_streaming_timeout = 5
 # Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
 #network_discovery.bootstrap_timeout = 300 # 5 * 60
 

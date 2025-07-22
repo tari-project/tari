@@ -82,17 +82,17 @@ pub struct NetworkDiscoveryConfig {
     #[serde(with = "serializers::seconds")]
     pub bootstrap_dial_peer_timeout: Duration,
     /// Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt.
-    /// Default: 15 seconds
+    /// Default: 10 seconds
     #[serde(default)]
     #[serde(with = "serializers::seconds")]
     pub bootstrap_rpc_connect_timeout: Duration,
     /// Maximum time to wait for to obtain the RPC get peers stream during bootstrap before abandoning the attempt.
-    /// Default: 15 seconds
+    /// Default: 5 seconds
     #[serde(default)]
     #[serde(with = "serializers::seconds")]
     pub bootstrap_rpc_get_peers_stream_timeout: Duration,
     /// Maximum time to wait for any item while streaming RPC peers during bootstrap before abandoning the attempt.
-    /// Default: 10 seconds
+    /// Default: 5 seconds
     #[serde(default)]
     #[serde(with = "serializers::seconds")]
     pub bootstrap_rpc_streaming_timeout: Duration,
@@ -118,9 +118,9 @@ impl Default for NetworkDiscoveryConfig {
             seed_peer_min_initial_sync_peers_needed: 15,
             min_successful_seed_contacts_for_early_exit: 5,
             bootstrap_dial_peer_timeout: Duration::from_secs(30),
-            bootstrap_rpc_connect_timeout: Duration::from_secs(15),
-            bootstrap_rpc_get_peers_stream_timeout: Duration::from_secs(10),
-            bootstrap_rpc_streaming_timeout: Duration::from_secs(10),
+            bootstrap_rpc_connect_timeout: Duration::from_secs(10),
+            bootstrap_rpc_get_peers_stream_timeout: Duration::from_secs(5),
+            bootstrap_rpc_streaming_timeout: Duration::from_secs(5),
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
         }
     }
