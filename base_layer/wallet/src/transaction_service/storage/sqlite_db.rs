@@ -48,11 +48,7 @@ use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     tari_address::TariAddress,
     transaction::{
-        TransactionConversionError,
-        TransactionDirection,
-        TransactionDirectionError,
-        TransactionStatus,
-        TxId,
+        TransactionConversionError, TransactionDirection, TransactionDirectionError, TransactionStatus, TxId,
     },
     types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
@@ -70,11 +66,7 @@ use crate::{
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
             models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TxCancellationReason,
-                WalletTransaction,
+                CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
             },
         },
     },
@@ -385,9 +377,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 InboundTransactionSql::find_by_cancelled(*k, true, &mut conn).is_ok()
             },
             DbKey::AnyTransaction(k) => {
-                CompletedTransactionSql::find(*k, &mut conn).is_ok() ||
-                    InboundTransactionSql::find(*k, &mut conn).is_ok() ||
-                    OutboundTransactionSql::find(*k, &mut conn).is_ok()
+                CompletedTransactionSql::find(*k, &mut conn).is_ok()
+                    || InboundTransactionSql::find(*k, &mut conn).is_ok()
+                    || OutboundTransactionSql::find(*k, &mut conn).is_ok()
             },
         };
         if start.elapsed().as_millis() > 0 {
@@ -439,9 +431,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let result = OutboundTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok() ||
-            InboundTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok() ||
-            CompletedTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok();
+        let result = OutboundTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok()
+            || InboundTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok()
+            || CompletedTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok();
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -804,9 +796,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        if CompletedTransactionSql::increment_send_count(tx_id, &mut conn).is_err() &&
-            OutboundTransactionSql::increment_send_count(tx_id, &mut conn).is_err() &&
-            InboundTransactionSql::increment_send_count(tx_id, &mut conn).is_err()
+        if CompletedTransactionSql::increment_send_count(tx_id, &mut conn).is_err()
+            && OutboundTransactionSql::increment_send_count(tx_id, &mut conn).is_err()
+            && InboundTransactionSql::increment_send_count(tx_id, &mut conn).is_err()
         {
             return Err(TransactionStorageError::ValuesNotFound);
         }
@@ -1240,6 +1232,50 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             Err(e) => return Err(e),
         };
         Ok(tx)
+    }
+
+    fn find_completed_transactions_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        use diesel::prelude::*;
+
+        let mut query = completed_transactions::table.into_boxed();
+
+        // Apply status filter if provided
+        if let Some(status_bitflag) = status_filter {
+            if status_bitflag != 0 {
+                // Build a vector of status values to filter by
+                let mut status_values = Vec::new();
+
+                for i in 0..32 {
+                    let status_bit = 1u64 << i;
+                    if (status_bitflag & status_bit) != 0 {
+                        status_values.push(i);
+                    }
+                }
+
+                if !status_values.is_empty() {
+                    query = query.filter(completed_transactions::status.eq_any(status_values));
+                }
+            }
+        }
+
+        query
+            .order(completed_transactions::timestamp.desc())
+            .offset(offset as i64)
+            .limit(limit as i64)
+            .load::<CompletedTransactionSql>(&mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 
     fn fetch_confirmed_detected_transactions_from_height(
@@ -2193,9 +2229,9 @@ impl CompletedTransactionSql {
                     TransactionStatus::OneSidedConfirmed | TransactionStatus::OneSidedUnconfirmed => {
                         Some(TransactionStatus::OneSidedUnconfirmed as i32)
                     },
-                    TransactionStatus::CoinbaseUnconfirmed |
-                    TransactionStatus::CoinbaseConfirmed |
-                    TransactionStatus::CoinbaseNotInBlockChain => {
+                    TransactionStatus::CoinbaseUnconfirmed
+                    | TransactionStatus::CoinbaseConfirmed
+                    | TransactionStatus::CoinbaseNotInBlockChain => {
                         Some(TransactionStatus::CoinbaseNotInBlockChain as i32)
                     },
                     TransactionStatus::Imported => Some(TransactionStatus::Imported as i32),
@@ -2565,13 +2601,11 @@ mod test {
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             memo_field::{MemoField, TxType},
-            OutputFeatures,
-            Transaction,
+            OutputFeatures, Transaction,
         },
         transaction_key_manager::create_memory_db_key_manager,
         transaction_protocol::sender::TransactionSenderMessage,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        ReceiverTransactionProtocol, SenderTransactionProtocol,
     };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_script::{inputs, script};
@@ -2585,12 +2619,8 @@ mod test {
             database::{DbKey, TransactionBackend},
             models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
             sqlite_db::{
-                CompletedTransactionSql,
-                InboundTransactionSenderInfo,
-                InboundTransactionSql,
-                OutboundTransactionSql,
-                TransactionServiceSqliteDatabase,
-                UpdateCompletedTransactionSql,
+                CompletedTransactionSql, InboundTransactionSenderInfo, InboundTransactionSql, OutboundTransactionSql,
+                TransactionServiceSqliteDatabase, UpdateCompletedTransactionSql,
             },
         },
     };

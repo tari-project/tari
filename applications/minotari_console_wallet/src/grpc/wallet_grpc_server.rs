@@ -29,91 +29,30 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future,
-    SinkExt,
+    future, SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self,
-    payment_recipient::PaymentType,
-    wallet_server,
-    BroadcastSignedOneSidedTransactionRequest,
-    BroadcastSignedOneSidedTransactionResponse,
-    CheckConnectivityResponse,
-    ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse,
-    ClaimShaAtomicSwapRequest,
-    ClaimShaAtomicSwapResponse,
-    CoinSplitRequest,
-    CoinSplitResponse,
-    CommitmentSignature,
-    CreateBurnTransactionRequest,
-    CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest,
-    CreateTemplateRegistrationResponse,
-    FeePerGramStat,
-    GetAddressResponse,
-    GetAllCompletedTransactionsRequest,
-    GetAllCompletedTransactionsResponse,
-    GetBalanceRequest,
-    GetBalanceResponse,
-    GetBlockHeightTransactionsRequest,
-    GetBlockHeightTransactionsResponse,
-    GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest,
-    GetCompletedTransactionsResponse,
-    GetConnectivityRequest,
-    GetFeeEstimateRequest,
-    GetFeeEstimateResponse,
-    GetFeePerGramStatsRequest,
-    GetFeePerGramStatsResponse,
-    GetIdentityRequest,
-    GetIdentityResponse,
-    GetPaymentByReferenceRequest,
-    GetPaymentByReferenceResponse,
-    GetPaymentIdAddressRequest,
-    GetStateRequest,
-    GetStateResponse,
-    GetTransactionInfoRequest,
-    GetTransactionInfoResponse,
-    GetTransactionPayRefsRequest,
-    GetTransactionPayRefsResponse,
-    GetUnspentAmountsResponse,
-    GetVersionRequest,
-    GetVersionResponse,
-    ImportTransactionsRequest,
-    ImportTransactionsResponse,
-    ImportUtxosRequest,
-    ImportUtxosResponse,
-    PrepareOneSidedTransactionForSigningRequest,
-    PrepareOneSidedTransactionForSigningResponse,
-    RegisterValidatorNodeRequest,
-    RegisterValidatorNodeResponse,
-    ReplaceByFeeRequest,
-    ReplaceByFeeResponse,
-    RevalidateRequest,
-    RevalidateResponse,
-    SendShaAtomicSwapRequest,
-    SendShaAtomicSwapResponse,
-    SignMessageRequest,
-    SignMessageResponse,
-    SubmitValidatorEvictionProofRequest,
-    SubmitValidatorEvictionProofResponse,
-    SubmitValidatorNodeExitRequest,
-    SubmitValidatorNodeExitResponse,
-    TransactionDirection,
-    TransactionEvent,
-    TransactionEventRequest,
-    TransactionEventResponse,
-    TransactionInfo,
-    TransactionStatus,
-    TransferRequest,
-    TransferResponse,
-    TransferResult,
-    UserPayForFeeRequest,
-    UserPayForFeeResponse,
-    ValidateRequest,
-    ValidateResponse,
+    self, payment_recipient::PaymentType, wallet_server, BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse, CheckConnectivityResponse, ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
+    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, FeePerGramStat, GetAddressResponse,
+    GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
+    GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse, GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetFeeEstimateRequest,
+    GetFeeEstimateResponse, GetFeePerGramStatsRequest, GetFeePerGramStatsResponse, GetIdentityRequest,
+    GetIdentityResponse, GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest,
+    GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest, GetTransactionPayRefsResponse, GetUnspentAmountsResponse, GetVersionRequest,
+    GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest, PrepareOneSidedTransactionForSigningResponse,
+    RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, ReplaceByFeeRequest, ReplaceByFeeResponse,
+    RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SignMessageRequest,
+    SignMessageResponse, SubmitValidatorEvictionProofRequest, SubmitValidatorEvictionProofResponse,
+    SubmitValidatorNodeExitRequest, SubmitValidatorNodeExitResponse, TransactionDirection, TransactionEvent,
+    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest,
+    TransferResponse, TransferResult, UserPayForFeeRequest, UserPayForFeeResponse, ValidateRequest, ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -141,8 +80,7 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
-            OutputFeatures,
-            UnblindedOutput,
+            OutputFeatures, UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
@@ -1289,46 +1227,24 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
         let mut transaction_service = self.get_transaction_service();
 
-        let mut completed_transactions = transaction_service
-            .get_completed_transactions(None, None, None, 0)
+        let status_filter = if req.status_bitflag == 0 {
+            None
+        } else {
+            Some(req.status_bitflag)
+        };
+
+        let completed_transactions = transaction_service
+            .get_completed_transactions_paginated(req.offset, req.limit, status_filter)
             .await
             .map_err(|err| {
                 Status::not_found(format!(
-                    "GetAllCompletedTransactions: Error found for get_completed_transactions: {:?}",
+                    "GetAllCompletedTransactions: Error found for get_completed_transactions_paginated: {:?}",
                     err
                 ))
             })?;
-        completed_transactions.extend(
-            transaction_service
-                .get_cancelled_completed_transactions(0)
-                .await
-                .map_err(|err| {
-                    Status::not_found(format!(
-                        "GetAllCompletedTransactions: Error found for get_cancelled_completed_transactions: {:?}",
-                        err
-                    ))
-                })?,
-        );
 
-        completed_transactions.sort_by(|a, b| {
-            b.timestamp
-                .partial_cmp(&a.timestamp)
-                .expect("Should be able to compare timestamps")
-        });
-
-        let offset = usize::try_from(req.offset).unwrap_or(0);
-        let limit = if req.limit > 0 {
-            usize::try_from(req.limit).unwrap_or(usize::MAX)
-        } else {
-            usize::MAX
-        };
         let mut transactions: Vec<TransactionInfo> = Vec::new();
-        for txn in completed_transactions
-            .into_iter()
-            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status as u32))) != 0)
-            .skip(offset)
-            .take(limit)
-        {
+        for txn in completed_transactions {
             let output_commitments: Vec<Vec<u8>> = txn
                 .transaction
                 .body

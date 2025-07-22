@@ -42,12 +42,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            memo_field::MemoField,
-            BuildInfo,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
+            memo_field::MemoField, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
             TransactionOutput,
         },
     },
@@ -66,11 +61,7 @@ use crate::{
         error::TransactionServiceError,
         offline_signing::models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
         storage::models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
+            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
         },
     },
     OperationId,
@@ -91,6 +82,11 @@ pub enum TransactionServiceRequest {
     GetCompletedTransactionsByAddresses {
         source_address: Option<TariAddress>,
         destination_address: Option<TariAddress>,
+    },
+    GetCompletedTransactionsPaginated {
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
     },
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
@@ -271,6 +267,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
             Self::GetCompletedTransactions { .. } => write!(f, "GetCompletedTransactions"),
             Self::GetCompletedTransactionsByAddresses { .. } => write!(f, "GetCompletedTransactionsByAddresses"),
+            Self::GetCompletedTransactionsPaginated { .. } => write!(f, "GetCompletedTransactionsPaginated"),
             Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
@@ -1252,6 +1249,26 @@ impl TransactionServiceHandle {
                 block_hash,
                 block_height,
                 max_limit,
+            })
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_completed_transactions_paginated(
+        &mut self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCompletedTransactionsPaginated {
+                offset,
+                limit,
+                status_filter,
             })
             .await??
         {
