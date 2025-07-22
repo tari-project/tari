@@ -326,7 +326,6 @@ impl Peer {
     }
 
     /// Returns the peer as optional without any internal addresses - None if all addresses are internal
-    #[allow(dead_code)]
     pub fn as_peer_with_external_addresses_only(&self) -> Option<Peer> {
         let external_addresses: Vec<_> = self.addresses.iter().filter(|a| a.is_external()).cloned().collect();
 
