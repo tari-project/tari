@@ -53,6 +53,12 @@ pub enum NetworkDiscoveryError {
     InvalidPeerDataReceived(anyhow::Error),
     #[error("Tokio task join error: `{0}`")]
     JoinError(#[from] JoinError),
+    #[error("Timeout waiting for {operation} to {peer} after {duration}")]
+    Timeout {
+        operation: String,
+        peer: String,
+        duration: String,
+    },
 }
 
 // Custom PartialEq implementation that only compares the discriminant (variant type)
