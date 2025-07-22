@@ -31,7 +31,6 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
-    signal,
     sync::mpsc,
 };
 
@@ -55,24 +54,40 @@ impl StdioTransport {
         // Setup graceful shutdown
         let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
 
-        // Handle SIGINT and SIGTERM for graceful shutdown
+        // Handle platform-specific signals
         let shutdown_tx_clone = shutdown_tx.clone();
-        tokio::spawn(async move {
-            let mut sigint =
-                signal::unix::signal(signal::unix::SignalKind::interrupt()).expect("Failed to install SIGINT handler");
-            let mut sigterm =
-                signal::unix::signal(signal::unix::SignalKind::terminate()).expect("Failed to install SIGTERM handler");
+        #[cfg(unix)]
+        {
+            use tokio::signal;
+            tokio::spawn(async move {
+                let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+                    .expect("Failed to install SIGINT handler");
+                let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+                    .expect("Failed to install SIGTERM handler");
 
-            tokio::select! {
-                _ = sigint.recv() => {
-                    log::info!("Received SIGINT, shutting down gracefully");
+                tokio::select! {
+                    _ = sigint.recv() => {
+                        log::info!("Received SIGINT, shutting down gracefully");
+                    }
+                    _ = sigterm.recv() => {
+                        log::info!("Received SIGTERM, shutting down gracefully");
+                    }
                 }
-                _ = sigterm.recv() => {
-                    log::info!("Received SIGTERM, shutting down gracefully");
+                let _ = shutdown_tx_clone.send(());
+            });
+        }
+
+        #[cfg(windows)]
+        {
+            tokio::spawn(async move {
+                if let Err(e) = tokio::signal::ctrl_c().await {
+                    log::error!("Failed to install Ctrl+C handler: {}", e);
+                    return;
                 }
-            }
-            let _ = shutdown_tx_clone.send(());
-        });
+                log::info!("Received Ctrl+C, shutting down gracefully");
+                let _ = shutdown_tx_clone.send(());
+            });
+        }
 
         // Setup stdin reader and stdout writer
         let stdin = tokio::io::stdin();
