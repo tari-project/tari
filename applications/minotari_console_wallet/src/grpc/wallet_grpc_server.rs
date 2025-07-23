@@ -1216,12 +1216,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     #[allow(clippy::too_many_lines)]
+    // DEPRECATED: Use get_all_completed_transactions_stream for better performance and memory efficiency
     async fn get_all_completed_transactions(
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
     ) -> Result<Response<GetAllCompletedTransactionsResponse>, Status> {
         let start = std::time::Instant::now();
         let req = request.into_inner();
+        warn!(
+            target: LOG_TARGET,
+            "GetAllCompletedTransactions: DEPRECATED method called - consider migrating to GetAllCompletedTransactionsStream for better performance"
+        );
         trace!(
             target: LOG_TARGET,
             "GetAllCompletedTransactions: Incoming GRPC request"
