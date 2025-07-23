@@ -154,7 +154,6 @@ impl Discovering {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn request_peers(
         &mut self,
         sync_peer: &NodeId,
@@ -186,21 +185,21 @@ impl Discovering {
             })
             .await?;
         let mut counter = 0;
+        let mut ban_offenses = 0;
+        let peer_sync_immediate_ban_threshold = self.config().network_discovery.peer_sync_immediate_ban_threshold;
         #[allow(clippy::mutable_key_type)]
         let mut peers_received = HashSet::new();
-        let mut ban_offences = Vec::new();
-        let peer_sync_immediate_ban_threshold = self.config().network_discovery.peer_sync_immediate_ban_threshold;
         while let Some(resp) = stream.next().await {
             counter += 1;
             if counter > self.params.num_peers_to_request {
                 warn!(target: LOG_TARGET, "Sync peer `{}` sent more peers than we requested.", sync_peer);
                 return Err(NetworkDiscoveryError::TooManyPeersReceived);
             }
-            if Self::count_banable_offences(&ban_offences) >= peer_sync_immediate_ban_threshold {
+            if ban_offenses >= peer_sync_immediate_ban_threshold {
                 warn!(
-                    target: LOG_TARGET,
-                    "Too many banable offences ({}) received from peer `{}`. Stopping further processing.",
-                    peer_sync_immediate_ban_threshold, sync_peer
+                      target: LOG_TARGET,
+                     "Too many banable offences ({}) received from peer `{}`. Stopping further processing.",
+                      peer_sync_immediate_ban_threshold, sync_peer
                 );
                 break;
             }
@@ -208,9 +207,7 @@ impl Discovering {
                 Ok(val) => val,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid response: {:?}", sync_peer, err);
-                    let err = NetworkDiscoveryError::from(err);
-                    let severity = Self::determine_offence_severity(&err);
-                    ban_offences.push((severity, err));
+                    ban_offenses += 1;
                     continue;
                 },
             };
@@ -219,8 +216,7 @@ impl Discovering {
                 Ok(val) => val,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Sync peer `{}` sent an empty peer message: {:?}", sync_peer, err);
-                    let severity = Self::determine_offence_severity(&err);
-                    ban_offences.push((severity, err));
+                    ban_offenses += 1;
                     continue;
                 },
             };
@@ -229,16 +225,14 @@ impl Discovering {
                     Ok(val) => val,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid data: {:?}", sync_peer, err);
-                        let severity = Self::determine_offence_severity(&err);
-                        ban_offences.push((severity, err));
+                        ban_offenses += 1;
                         continue;
                     },
                 };
             if !peers_received.insert(new_peer.public_key.clone()) {
                 let err = NetworkDiscoveryError::DuplicatePeerReceived;
                 warn!(target: LOG_TARGET, "Sync peer `{}` sent duplicate peer: {:?}", sync_peer, err);
-                let severity = Self::determine_offence_severity(&err);
-                ban_offences.push((severity, err));
+                ban_offenses += 1;
                 continue;
             }
             if let Err(err) = self.validate_and_add_peer(new_peer).await {
@@ -246,31 +240,17 @@ impl Discovering {
                     target: LOG_TARGET,
                     "Failed to validate and add peer from sync peer `{}`: {:?}", sync_peer, err
                 );
-                let severity = Self::determine_offence_severity(&err);
-                ban_offences.push((severity, err));
+                ban_offenses += 1;
                 continue;
             }
         }
 
         // Return any error that has the highest severity offence if any were recorded
-        if !ban_offences.is_empty() {
-            // Sort the offences by severity, from highest to lowest
-            ban_offences.sort_by(|a, b| b.0.cmp(&a.0));
-            if let Some((severity, err)) = ban_offences.into_iter().next() {
-                trace!(
-                    target: LOG_TARGET,
-                    "Request peers from: `{}`, returning error: {:?}, severity: {:?}", sync_peer, err, severity
-                );
-                return Err(err);
-            }
+        if ban_offenses > 0 {
+            return Err(NetworkDiscoveryError::TooManyBanableOffences(ban_offenses));
         }
 
         Ok(())
-    }
-
-    // Helper function to calculate the number of banable offences in ban_offences vec that are not None
-    fn count_banable_offences(ban_offences: &[(Option<OffenceSeverity>, NetworkDiscoveryError)]) -> usize {
-        ban_offences.iter().filter(|(severity, _)| severity.is_some()).count()
     }
 
     async fn validate_and_add_peer(&mut self, new_peer: UnvalidatedPeerInfo) -> Result<(), NetworkDiscoveryError> {
@@ -306,32 +286,32 @@ impl Discovering {
         match result {
             Ok(t) => Ok(t),
             Err(err) => {
-                let severity = Self::determine_offence_severity(&err);
-                if let Some(val) = severity {
-                    self.ban_peer(peer, val, &err).await
+                match &err {
+                    NetworkDiscoveryError::EmptyPeerMessageReceived |
+                    NetworkDiscoveryError::InvalidPeerDataReceived(_) |
+                    NetworkDiscoveryError::DuplicatePeerReceived |
+                    NetworkDiscoveryError::TooManyPeersReceived |
+                    NetworkDiscoveryError::TooManyBanableOffences(_) => {
+                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
+                    },
+                    NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => {
+                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
+                    },
+                    NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
+                        self.ban_peer(peer, OffenceSeverity::Low, &err).await;
+                    },
+                    // Other errors - no banning needed
+                    NetworkDiscoveryError::RpcStatus(_) |
+                    NetworkDiscoveryError::NoSyncPeers |
+                    NetworkDiscoveryError::PeerManagerError(_) |
+                    NetworkDiscoveryError::RpcError(_) |
+                    NetworkDiscoveryError::ConnectivityError(_) |
+                    NetworkDiscoveryError::PeerValidationError(_) |
+                    NetworkDiscoveryError::JoinError(_) |
+                    NetworkDiscoveryError::Timeout { .. } => {},
                 }
                 Err(err)
             },
-        }
-    }
-
-    fn determine_offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSeverity> {
-        match err {
-            NetworkDiscoveryError::EmptyPeerMessageReceived |
-            NetworkDiscoveryError::InvalidPeerDataReceived(_) |
-            NetworkDiscoveryError::DuplicatePeerReceived |
-            NetworkDiscoveryError::PeerValidationError(_) |
-            NetworkDiscoveryError::TooManyPeersReceived => Some(OffenceSeverity::High),
-            NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => Some(OffenceSeverity::High),
-            NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => Some(OffenceSeverity::Low),
-            // Other errors - no banning needed
-            NetworkDiscoveryError::RpcStatus(_) |
-            NetworkDiscoveryError::NoSyncPeers |
-            NetworkDiscoveryError::PeerManagerError(_) |
-            NetworkDiscoveryError::RpcError(_) |
-            NetworkDiscoveryError::ConnectivityError(_) |
-            NetworkDiscoveryError::JoinError(_) |
-            NetworkDiscoveryError::Timeout { .. } => None,
         }
     }
 
