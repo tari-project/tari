@@ -42,7 +42,12 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            memo_field::MemoField, BuildInfo, CodeTemplateRegistration, OutputFeatures, TemplateType, Transaction,
+            memo_field::MemoField,
+            BuildInfo,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            TemplateType,
+            Transaction,
             TransactionOutput,
         },
     },
@@ -61,7 +66,11 @@ use crate::{
         error::TransactionServiceError,
         offline_signing::models::{PrepareOneSidedTransactionForSigningResult, SignedOneSidedTransactionResult},
         storage::models::{
-            CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason, WalletTransaction,
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
         },
     },
     OperationId,

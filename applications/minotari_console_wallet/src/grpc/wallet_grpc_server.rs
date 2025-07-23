@@ -29,30 +29,91 @@ use std::{
 
 use futures::{
     channel::mpsc::{self, Sender},
-    future, SinkExt,
+    future,
+    SinkExt,
 };
 use log::*;
 use minotari_app_grpc::tari_rpc::{
-    self, payment_recipient::PaymentType, wallet_server, BroadcastSignedOneSidedTransactionRequest,
-    BroadcastSignedOneSidedTransactionResponse, CheckConnectivityResponse, ClaimHtlcRefundRequest,
-    ClaimHtlcRefundResponse, ClaimShaAtomicSwapRequest, ClaimShaAtomicSwapResponse, CoinSplitRequest,
-    CoinSplitResponse, CommitmentSignature, CreateBurnTransactionRequest, CreateBurnTransactionResponse,
-    CreateTemplateRegistrationRequest, CreateTemplateRegistrationResponse, FeePerGramStat, GetAddressResponse,
-    GetAllCompletedTransactionsRequest, GetAllCompletedTransactionsResponse, GetBalanceRequest, GetBalanceResponse,
-    GetBlockHeightTransactionsRequest, GetBlockHeightTransactionsResponse, GetCompleteAddressResponse,
-    GetCompletedTransactionsRequest, GetCompletedTransactionsResponse, GetConnectivityRequest, GetFeeEstimateRequest,
-    GetFeeEstimateResponse, GetFeePerGramStatsRequest, GetFeePerGramStatsResponse, GetIdentityRequest,
-    GetIdentityResponse, GetPaymentByReferenceRequest, GetPaymentByReferenceResponse, GetPaymentIdAddressRequest,
-    GetStateRequest, GetStateResponse, GetTransactionInfoRequest, GetTransactionInfoResponse,
-    GetTransactionPayRefsRequest, GetTransactionPayRefsResponse, GetUnspentAmountsResponse, GetVersionRequest,
-    GetVersionResponse, ImportTransactionsRequest, ImportTransactionsResponse, ImportUtxosRequest, ImportUtxosResponse,
-    PrepareOneSidedTransactionForSigningRequest, PrepareOneSidedTransactionForSigningResponse,
-    RegisterValidatorNodeRequest, RegisterValidatorNodeResponse, ReplaceByFeeRequest, ReplaceByFeeResponse,
-    RevalidateRequest, RevalidateResponse, SendShaAtomicSwapRequest, SendShaAtomicSwapResponse, SignMessageRequest,
-    SignMessageResponse, SubmitValidatorEvictionProofRequest, SubmitValidatorEvictionProofResponse,
-    SubmitValidatorNodeExitRequest, SubmitValidatorNodeExitResponse, TransactionDirection, TransactionEvent,
-    TransactionEventRequest, TransactionEventResponse, TransactionInfo, TransactionStatus, TransferRequest,
-    TransferResponse, TransferResult, UserPayForFeeRequest, UserPayForFeeResponse, ValidateRequest, ValidateResponse,
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    BroadcastSignedOneSidedTransactionRequest,
+    BroadcastSignedOneSidedTransactionResponse,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CommitmentSignature,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    FeePerGramStat,
+    GetAddressResponse,
+    GetAllCompletedTransactionsRequest,
+    GetAllCompletedTransactionsResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetBlockHeightTransactionsRequest,
+    GetBlockHeightTransactionsResponse,
+    GetCompleteAddressResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetFeeEstimateRequest,
+    GetFeeEstimateResponse,
+    GetFeePerGramStatsRequest,
+    GetFeePerGramStatsResponse,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetPaymentByReferenceRequest,
+    GetPaymentByReferenceResponse,
+    GetPaymentIdAddressRequest,
+    GetStateRequest,
+    GetStateResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetTransactionPayRefsRequest,
+    GetTransactionPayRefsResponse,
+    GetUnspentAmountsResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportTransactionsRequest,
+    ImportTransactionsResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    PrepareOneSidedTransactionForSigningRequest,
+    PrepareOneSidedTransactionForSigningResponse,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    ReplaceByFeeRequest,
+    ReplaceByFeeResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SignMessageRequest,
+    SignMessageResponse,
+    SubmitValidatorEvictionProofRequest,
+    SubmitValidatorEvictionProofResponse,
+    SubmitValidatorNodeExitRequest,
+    SubmitValidatorNodeExitResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
+    UserPayForFeeRequest,
+    UserPayForFeeResponse,
+    ValidateRequest,
+    ValidateResponse,
 };
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -80,7 +141,8 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
-            OutputFeatures, UnblindedOutput,
+            OutputFeatures,
+            UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
         transaction_protocol::recipient::RecipientState,
@@ -177,8 +239,8 @@ impl WalletGrpcServer {
 
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
-    type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
     type GetAllCompletedTransactionsStreamStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
+    type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
     type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
@@ -1081,7 +1143,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let start = std::time::Instant::now();
         trace!(
             target: LOG_TARGET,
-            "GetAllCompletedTransactions: Incoming GRPC request"
+            "GetCompletedTransactions: Incoming GRPC request"
         );
         let message = request.into_inner();
         let payment_id = if let Some(user_payment_id) = message.payment_id {
@@ -1120,7 +1182,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
         debug!(
             target: LOG_TARGET,
-            "GetAllCompletedTransactions: Found {} completed transactions",
+            "GetCompletedTransactions: Found {} completed transactions",
             transactions.len()
         );
 
@@ -1191,7 +1253,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     Ok(_) => {
                         trace!(
                             target: LOG_TARGET,
-                            "GetAllCompletedTransactions: Sent transaction TxId: {} ({} of {})",
+                            "GetCompletedTransactions: Sent transaction TxId: {} ({} of {})",
                             txn.tx_id,
                             i + 1,
                             transactions.len()
@@ -1215,8 +1277,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
-    #[allow(clippy::too_many_lines)]
     // DEPRECATED: Use get_all_completed_transactions_stream for better performance and memory efficiency
+    #[allow(clippy::too_many_lines)]
     async fn get_all_completed_transactions(
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
@@ -1241,7 +1303,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let total_requested = req.limit;
         let chunk_size = std::cmp::min(total_requested, 100); // Process in chunks of 100
-        let mut all_transactions: Vec<TransactionInfo> = Vec::with_capacity(total_requested as usize);
+        let mut all_transactions: Vec<TransactionInfo> =
+            Vec::with_capacity(total_requested.try_into().unwrap_or(usize::MAX));
         let mut current_offset = req.offset;
         let mut remaining = total_requested;
 
@@ -1343,6 +1406,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn get_all_completed_transactions_stream(
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
@@ -1369,7 +1433,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let chunk_size = std::cmp::min(total_requested, 50);
 
         // Create GRPC streaming channel
-        let buffer_size = std::cmp::min(chunk_size as usize, 10);
+        let buffer_size: usize = std::cmp::min(chunk_size, 10).try_into().unwrap_or(50);
         let (mut sender, receiver) = mpsc::channel(buffer_size);
 
         // Clone transaction service handle for async task
