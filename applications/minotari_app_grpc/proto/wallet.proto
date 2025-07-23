@@ -1100,7 +1100,15 @@ service Wallet {
   rpc ImportTransactions(ImportTransactionsRequest) returns (ImportTransactionsResponse);
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
-  rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponse);
+  // DEPRECATED: Use GetAllCompletedTransactionsStream for better performance and memory efficiency
+  rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest)
+      returns (GetAllCompletedTransactionsResponse) {
+    option deprecated = true;
+  }
+
+  // Get all completed transactions including cancelled ones, sorted by timestamp and paginated (streaming version)
+  // Recommended: Use this streaming version for better performance and progressive loading
+  rpc GetAllCompletedTransactionsStream(GetAllCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
 
   // Gets transaction information by payment reference (PayRef)
   //
@@ -1798,10 +1806,12 @@ message ImportTransactionsResponse {
 
 message GetAllCompletedTransactionsRequest {
   uint64 offset = 1;
+  // limited to 50 if passed higher number than it will be reduced to 50
   uint64 limit = 2;
   uint64 status_bitflag = 3;
 }
 
+// DEPRECATED: Use GetAllCompletedTransactionsStream for better performance and memory efficiency
 message GetAllCompletedTransactionsResponse {
   repeated TransactionInfo transactions = 1;
 }
