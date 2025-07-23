@@ -1102,6 +1102,9 @@ service Wallet {
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
   rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponse);
 
+  // Get all completed transactions including cancelled ones, sorted by timestamp and paginated (streaming version)
+  rpc GetAllCompletedTransactionsStream(GetAllCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
+
   // Gets transaction information by payment reference (PayRef)
   //
   // The `GetPaymentByReference` call retrieves transaction information using a 32-byte payment reference hash.

@@ -1251,7 +1251,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         if let Some(status_bitflag) = status_filter {
             if status_bitflag != 0 {
                 // Build a vector of status values to filter by
-                let mut status_values = Vec::new();
+                let mut status_values: Vec<i32> = Vec::new();
 
                 for i in 0..32 {
                     let status_bit = 1u64 << i;
