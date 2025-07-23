@@ -1,8 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
-### [4.10.1-pre.0](https://github.com/tari-project/tari/compare/v4.10.0-pre.0...v4.10.1-pre.0) (2025-07-21)
 
+### [5.0.0-pre.0](https://github.com/tari-project/tari/compare/v4.10.0-pre.0...v5.0.0-pre.0) (2025-07-23)
+
+### ⚠ BREAKING CHANGES
+
+Wallet config has changed. It needs to be recreated or all instances of `custom_base_node` must be removed
 
 ### Features
 
