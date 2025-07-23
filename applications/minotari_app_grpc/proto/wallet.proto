@@ -1101,7 +1101,10 @@ service Wallet {
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated
   // DEPRECATED: Use GetAllCompletedTransactionsStream for better performance and memory efficiency
-  rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest) returns (GetAllCompletedTransactionsResponse);
+  rpc GetAllCompletedTransactions(GetAllCompletedTransactionsRequest)
+      returns (GetAllCompletedTransactionsResponse) {
+    option deprecated = true;
+  }
 
   // Get all completed transactions including cancelled ones, sorted by timestamp and paginated (streaming version)
   // Recommended: Use this streaming version for better performance and progressive loading
