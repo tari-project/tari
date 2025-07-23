@@ -1005,6 +1005,21 @@ where
                 self.db
                     .get_completed_transactions_by_addresses(source_address, destination_address)?,
             )),
+            TransactionServiceRequest::GetCompletedTransactionsPaginated {
+                offset,
+                limit,
+                status_filter,
+            } => {
+                if limit == 0 {
+                    return Err(TransactionServiceError::InvalidArgument(
+                        "limit must be greater than 0".to_string(),
+                    ));
+                }
+                Ok(TransactionServiceResponse::CompletedTransactions(
+                    self.db
+                        .get_completed_transactions_paginated(offset, limit, status_filter)?,
+                ))
+            },
             TransactionServiceRequest::GetCancelledPendingInboundTransactions => {
                 Ok(TransactionServiceResponse::PendingInboundTransactions(
                     self.db.get_cancelled_pending_inbound_transactions()?,

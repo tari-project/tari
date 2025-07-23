@@ -173,6 +173,13 @@ pub trait TransactionBackend: Send + Sync + Clone {
         payref: &FixedHash,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
 
+    fn find_completed_transactions_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+
     fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError>;
 }
 
@@ -866,6 +873,16 @@ where T: TransactionBackend + 'static
         payref: &FixedHash,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.get_transaction_with_payref(payref)
+    }
+
+    pub fn get_completed_transactions_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.db
+            .find_completed_transactions_paginated(offset, limit, status_filter)
     }
 }
 

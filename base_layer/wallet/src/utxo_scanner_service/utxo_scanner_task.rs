@@ -454,7 +454,7 @@ where
                     let found_outputs = self.search_for_owned_outputs(outputs).await?;
 
                     if found_outputs.is_empty() {
-                        debug!(
+                        trace!(
                             target: LOG_TARGET,
                             "No recoverable outputs found in block at height {} with header hash {}",
                             current_height,
@@ -462,7 +462,7 @@ where
                         );
                     } else {
                         // Now download the whole block and import the outputs
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Found {} recoverable outputs in block at height {} with header hash {}",
                             found_outputs.len(),
@@ -488,7 +488,7 @@ where
                     }
 
                     let block_hash: FixedHash = current_header_hash.try_into()?;
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "Scanned block at height {} with header hash {}, :{:?}",
                         current_height,
@@ -496,7 +496,7 @@ where
                     );
                     if let Some(scanned_block) = prev_scanned_block {
                         if block_hash != scanned_block.header_hash {
-                            debug!(
+                            trace!(
                                 target: LOG_TARGET,
                                 "Saving scanned block at height {} with header hash {}",
                                 current_height,

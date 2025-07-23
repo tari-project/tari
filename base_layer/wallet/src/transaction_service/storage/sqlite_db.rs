@@ -1242,6 +1242,50 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(tx)
     }
 
+    fn find_completed_transactions_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        use diesel::prelude::*;
+
+        let mut query = completed_transactions::table.into_boxed();
+
+        // Apply status filter if provided
+        if let Some(status_bitflag) = status_filter {
+            if status_bitflag != 0 {
+                // Build a vector of status values to filter by
+                let mut status_values: Vec<i32> = Vec::new();
+
+                for i in 0..32 {
+                    let status_bit = 1u64 << i;
+                    if (status_bitflag & status_bit) != 0 {
+                        status_values.push(i);
+                    }
+                }
+
+                if !status_values.is_empty() {
+                    query = query.filter(completed_transactions::status.eq_any(status_values));
+                }
+            }
+        }
+
+        query
+            .order(completed_transactions::timestamp.desc())
+            .offset(offset as i64)
+            .limit(limit as i64)
+            .load::<CompletedTransactionSql>(&mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
+
     fn fetch_confirmed_detected_transactions_from_height(
         &self,
         height: u64,

@@ -9692,41 +9692,31 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 /// ## Arguments
 /// `wallet` - The TariWallet pointer.
 /// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
-/// progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
+/// progress to the client. The first argument of the callback is an event enum encoded as a u8, and the second and
+/// third arguments are u64 values that will contain different information depending on the event
+/// that triggered the callback, as follows:
 /// ```
 /// enum RecoveryEvent {
-///     ConnectingToBaseNode,       // 0
-///     ConnectedToBaseNode,        // 1
-///     ConnectionToBaseNodeFailed, // 2
-///     Progress,                   // 3
-///     Completed,                  // 4
-///     ScanningRoundFailed,        // 5
-///     RecoveryFailed,             // 6
+///     ScanningRoundFailed,        // 0
+///        num_retries: u64,                - 1st argument
+///        retry_limit: u64,                - 2nd argument
+///     Progress,                   // 1
+///        current_height: u64,             - 1st argument
+///        tip_height: u64,                 - 2nd argument
+///     Completed,                  // 2
+///        num_recovered: u64,              - 1st argument
+///        value_recovered: u64,            - 2nd argument (representing MicroMinotari)
 /// }
 /// ```
-/// The second and third arguments are u64 values that will contain different information depending on the event
-/// that triggered the callback. The meaning of the second and third argument for each event are as follows:
-///     - ConnectingToBaseNode, 0, 0
-///     - ConnectedToBaseNode, 0, 1
-///     - ConnectionToBaseNodeFailed, number of retries, retry limit
-///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's recovered, MicroMinotari recovered,
-///     - ScanningRoundFailed, number of retries, retry limit
-///     - RecoveryFailed, 0, 0
 ///
 /// If connection to a base node is successful the flow of callbacks should be:
-///     - The process will start with a callback with `ConnectingToBaseNode` showing a connection is being attempted
-///       this could be repeated multiple times until a connection is made.
-///     - The next a callback with `ConnectedToBaseNode` indicate a successful base node connection and process has
-///       started
-///     - In Progress callbacks will be of the form (n, m) where n < m
-///     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
-///       scanned and how much MicroMinotari was recovered
-///     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
+///     - The process will start with a callback with `Progress`, and will be repeated as long as the recovery is in
+///       progress.
+///     - The `Progress` callbacks will be of the form (n, m) where n < m
+///     - If the process completed successfully then the `Completed` callback will return how many UTXO's were scanned
+///       and how much MicroMinotari was recovered
 ///     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
 ///       attempt will be made
-///     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
-///       a new process.
 ///
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
