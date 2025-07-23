@@ -9697,15 +9697,15 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 /// that triggered the callback, as follows:
 /// ```
 /// enum RecoveryEvent {
-///     ScanningRoundFailed,        // 0
-///        num_retries: u64,                - 1st argument
-///        retry_limit: u64,                - 2nd argument
-///     Progress,                   // 1
+///     Progress,                   // 3
 ///        current_height: u64,             - 1st argument
 ///        tip_height: u64,                 - 2nd argument
-///     Completed,                  // 2
+///     Completed,                  // 4
 ///        num_recovered: u64,              - 1st argument
 ///        value_recovered: u64,            - 2nd argument (representing MicroMinotari)
+///     ScanningRoundFailed,        // 5
+///        num_retries: u64,                - 1st argument
+///        retry_limit: u64,                - 2nd argument
 /// }
 /// ```
 ///

@@ -32,9 +32,9 @@ const LOG_TARGET: &str = "wallet_ffi";
 
 /// Events that the recovery process will report via the callback
 enum RecoveryEvent {
-    Progress,            // 3
-    Completed,           // 4
-    ScanningRoundFailed, // 5
+    Progress = 3,            // 3
+    Completed = 4,           // 4
+    ScanningRoundFailed = 5, // 5
 }
 
 #[allow(clippy::too_many_lines)]
