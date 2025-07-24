@@ -92,7 +92,7 @@ use crate::transactions::transaction_key_manager::{
 };
 
 const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
-const TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
+const TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 2_000;
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
@@ -679,7 +679,8 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .read()
             .await;
 
-        let current_index = km.key_index();
+        // we start by assuming its going to be the next index, if we are correct this saves us 2 guesses
+        let current_index = km.key_index() + 1;
 
         // its most likely that the key is close to the current index, so we start searching from the current index
         for i in 0u64..TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH {
@@ -1679,12 +1680,31 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 TariKeyId::Managed { branch, index }
             },
             Err(_) => {
+
                 let public_key = CompressedPublicKey::from_secret_key(&private_key);
                 self.import_key(private_key).await?;
                 TariKeyId::Imported { key: public_key }
             },
         };
         Ok((key, value, payment_id))
+    }
+
+    pub async fn is_this_output_ours(
+        &self,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<bool, TransactionError> {
+        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            self.get_private_key(key_id).await?
+        } else {
+            self.get_private_view_key().await?
+        };
+        let (value, private_key, _payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
+        self.crypto_factories
+            .range_proof
+            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
+        Ok(true)
     }
 
     pub async fn stealth_address_script_spending_key(

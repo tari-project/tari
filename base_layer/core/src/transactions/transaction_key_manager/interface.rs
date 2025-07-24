@@ -391,6 +391,13 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError>;
 
+    async fn is_this_output_ours(
+        &self,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<bool, TransactionError>;
+
     async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],

@@ -3381,19 +3381,15 @@ where
                             if script_spending_key != **scanned_pk {
                                 continue;
                             }
-                            let commitment_mask = self
-                                .resources
-                                .key_manager
-                                .import_key(commitment_mask_private_key)
-                                .await?;
+
                             let script_key = TariKeyId::Derived {
-                                key: SerializedKeyString::from(commitment_mask.to_string()),
+                                key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                             };
 
                             let rewound_output = WalletOutput::new_with_rangeproof(
                                 output.version,
                                 committed_value,
-                                commitment_mask,
+                                commitment_mask_key_id.clone(),
                                 output.features,
                                 output.script,
                                 ExecutionStack::new(vec![]),

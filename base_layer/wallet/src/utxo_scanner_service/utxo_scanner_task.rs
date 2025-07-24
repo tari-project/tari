@@ -564,20 +564,8 @@ where
         for output in outputs {
             let commitment = CompressedCommitment::from_canonical_bytes(&output.commitment)
                 .map_err(|e| anyhow!("Not a valid commitment: {}", e.to_string()))?;
+
             let encrypted = EncryptedData::from_bytes(&output.encrypted_data)?;
-
-            // Change outputs just use the view key.
-            if self
-                .key_manager
-                .try_output_key_recovery(&commitment, &encrypted, None)
-                .await
-                .ok()
-                .is_some()
-            {
-                found_outputs.push(output.clone());
-                continue;
-            }
-
             // Received output use the DH of view key and sender offset.
             let offset_pub_key = CompressedKey::from_canonical_bytes(&output.sender_offset_public_key)
                 .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e.to_string()))?;
@@ -588,6 +576,18 @@ where
             let recovery_key = shared_secret_to_output_encryption_key(&shared_secret)
                 .map_err(|e| anyhow!("Could not hash key :{}", e.to_string()))?;
             if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
+                .ok()
+                .is_some()
+            {
+                found_outputs.push(output.clone());
+                continue;
+            }
+
+            // Change outputs just use the view key.
+            if self
+                .key_manager
+                .is_this_output_ours(&commitment, &encrypted, None)
+                .await
                 .ok()
                 .is_some()
             {
@@ -611,13 +611,38 @@ where
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
-        let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = Vec::new();
+        let start = Instant::now();
+        let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = self
+            .resources
+            .output_manager_service
+            .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
+            .await?
+            .into_iter()
+            .map(|ro| -> Result<_, anyhow::Error> {
+                let status = if ro.output.features.is_coinbase() {
+                    ImportStatus::CoinbaseUnconfirmed
+                } else {
+                    ImportStatus::OneSidedUnconfirmed
+                };
+                let output = outputs
+                    .iter()
+                    .find(|o| o.hash() == ro.hash)
+                    .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
+                Ok((ro.output, status, ro.tx_id, output.clone()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let one_sided_time = start.elapsed();
+        let other_outputs = outputs
+            .iter()
+            .filter(|o| !found_outputs.iter().any(|f| f.3.hash() == o.hash()))
+            .map(|o| (o.clone(), None))
+            .collect();
         let start = Instant::now();
         found_outputs.append(
             &mut self
                 .resources
                 .output_manager_service
-                .scan_for_recoverable_outputs(outputs.clone().into_iter().map(|o| (o, None)).collect())
+                .scan_for_recoverable_outputs(other_outputs)
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, anyhow::Error> {
@@ -635,30 +660,6 @@ where
                 .collect::<Result<Vec<_>, _>>()?,
         );
         let scanned_time = start.elapsed();
-        let start = Instant::now();
-
-        found_outputs.append(
-            &mut self
-                .resources
-                .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
-                .await?
-                .into_iter()
-                .map(|ro| -> Result<_, anyhow::Error> {
-                    let status = if ro.output.features.is_coinbase() {
-                        ImportStatus::CoinbaseUnconfirmed
-                    } else {
-                        ImportStatus::OneSidedUnconfirmed
-                    };
-                    let output = outputs
-                        .iter()
-                        .find(|o| o.hash() == ro.hash)
-                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                    Ok((ro.output, status, ro.tx_id, output.clone()))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-        let one_sided_time = start.elapsed();
         trace!(
             target: LOG_TARGET,
             "{:?}: Scanned for outputs: outputs took {} ms , one-sided took {} ms",
