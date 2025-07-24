@@ -1680,7 +1680,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 TariKeyId::Managed { branch, index }
             },
             Err(_) => {
-
                 let public_key = CompressedPublicKey::from_secret_key(&private_key);
                 self.import_key(private_key).await?;
                 TariKeyId::Imported { key: public_key }
