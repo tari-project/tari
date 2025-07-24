@@ -140,7 +140,7 @@ where TWalletConnectivity: WalletConnectivityInterface
                         // no new block, continue to the next iteration
                         continue;
                     }
-                    last_checked_hash = tip_hash.clone();
+                    last_checked_hash = *tip_hash;
 
                     self
                         .update_state(BaseNodeState {
