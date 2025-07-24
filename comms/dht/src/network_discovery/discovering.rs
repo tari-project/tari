@@ -27,9 +27,12 @@ use log::*;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerId},
+    peer_validator::PeerValidatorError,
+    protocol::rpc::{ClientStreaming, RpcStatus},
     types::CommsPublicKey,
     PeerConnection,
 };
+use tari_utilities::hex::Hex;
 
 use super::{
     state_machine::{
@@ -43,10 +46,10 @@ use super::{
 };
 use crate::{
     actor::OffenceSeverity,
-    peer_validator::PeerValidator,
+    peer_validator::{DhtPeerValidatorError, PeerValidator},
     proto::rpc::{GetPeersRequest, GetPeersResponse},
     rpc,
-    rpc::UnvalidatedPeerInfo,
+    rpc::{DhtClient, UnvalidatedPeerInfo},
     DhtConfig,
 };
 
@@ -141,7 +144,40 @@ impl Discovering {
     }
 
     async fn request_from_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
-        let client = conn.connect_rpc::<rpc::DhtClient>().await?;
+        let rpc_connect_timeout = self.config().network_discovery.bootstrap_rpc_connect_timeout;
+        let rpc_result = tokio::time::timeout(rpc_connect_timeout, conn.connect_rpc::<DhtClient>()).await;
+        let client = match rpc_result {
+            Ok(Ok(client)) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "Successfully connected RPC client to sync peer '{}'",
+                    conn.peer_node_id()
+                );
+                client
+            },
+            Ok(Err(e)) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to connect RPC client to sync peer {}: {}",
+                    conn.peer_node_id(),
+                    e
+                );
+                return Err(e.into());
+            },
+            Err(_) => {
+                error!(
+                    target: LOG_TARGET,
+                    "RPC connect_rpc to seed '{}' timed out after {:?}",
+                    conn.peer_node_id(),
+                    rpc_connect_timeout,
+                );
+                return Err(NetworkDiscoveryError::Timeout {
+                    operation: "connect_rpc".to_string(),
+                    peer: conn.peer_node_id().to_hex(),
+                    duration: format!("{:.2?}", rpc_connect_timeout),
+                });
+            },
+        };
         let peer_node_id = conn.peer_node_id();
 
         debug!(
@@ -154,19 +190,15 @@ impl Discovering {
         Ok(())
     }
 
-    async fn request_peers(
+    async fn get_stream(
         &mut self,
-        sync_peer: &NodeId,
         mut client: rpc::DhtClient,
-    ) -> Result<(), NetworkDiscoveryError> {
-        debug!(
-            target: LOG_TARGET,
-            "Requesting {} peers from `{}`",
-            self.params.num_peers_to_request,
-            sync_peer
-        );
-        let mut stream = client
-            .get_peers(GetPeersRequest {
+        sync_peer: &NodeId,
+    ) -> Result<ClientStreaming<GetPeersResponse>, NetworkDiscoveryError> {
+        let rpc_get_peers_stream_timeout = self.config().network_discovery.bootstrap_rpc_get_peers_stream_timeout;
+        let stream_result = tokio::time::timeout(
+            rpc_get_peers_stream_timeout,
+            client.get_peers(GetPeersRequest {
                 n: self.params.num_peers_to_request,
                 include_clients: true,
                 max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
@@ -182,33 +214,95 @@ impl Discovering {
                         error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX addresses per claim");
                         u32::MAX
                     }),
-            })
-            .await?;
+            }),
+        )
+        .await;
+
+        let peer_stream = match stream_result {
+            Ok(Ok(stream)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Successfully initiated get_peers stream from sync peer '{}'",
+                    sync_peer
+                );
+                stream
+            },
+            Ok(Err(e)) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to initiate get_peers stream from sync peer '{}': {}. This sync peer will be skipped.",
+                    sync_peer,
+                    e
+                );
+                return Err(e.into());
+            },
+            Err(_) => {
+                error!(
+                    target: LOG_TARGET,
+                    "RPC get_peers from sunc '{}' timed out after {:?}",
+                    sync_peer, rpc_get_peers_stream_timeout
+                );
+                return Err(NetworkDiscoveryError::Timeout {
+                    operation: "get_peers".to_string(),
+                    peer: sync_peer.to_hex(),
+                    duration: format!("{:.2?}", rpc_get_peers_stream_timeout),
+                });
+            },
+        };
+
+        Ok(peer_stream)
+    }
+
+    async fn get_peer_response(
+        &mut self,
+        stream: &mut ClientStreaming<GetPeersResponse>,
+        sync_peer: &NodeId,
+    ) -> Result<Option<Result<GetPeersResponse, RpcStatus>>, NetworkDiscoveryError> {
+        let rpc_streaming_timeout = self.config().network_discovery.bootstrap_rpc_streaming_timeout;
+        match tokio::time::timeout(rpc_streaming_timeout, stream.next()).await {
+            Ok(response) => Ok(response),
+            Err(_) => Err(NetworkDiscoveryError::Timeout {
+                operation: "get_peer_response".to_string(),
+                peer: sync_peer.to_hex(),
+                duration: format!("{:.2?}", rpc_streaming_timeout),
+            }),
+        }
+    }
+
+    async fn request_peers(&mut self, sync_peer: &NodeId, client: rpc::DhtClient) -> Result<(), NetworkDiscoveryError> {
+        debug!(
+            target: LOG_TARGET,
+            "Requesting {} peers from `{}`",
+            self.params.num_peers_to_request,
+            sync_peer
+        );
+        let mut stream = self.get_stream(client, sync_peer).await?;
         let mut counter = 0;
-        let mut ban_offenses = 0;
+        let mut invalid_peer_signatures = 0;
         let peer_sync_immediate_ban_threshold = self.config().network_discovery.peer_sync_immediate_ban_threshold;
         #[allow(clippy::mutable_key_type)]
         let mut peers_received = HashSet::new();
-        while let Some(resp) = stream.next().await {
+        while let Some(resp) = self.get_peer_response(&mut stream, sync_peer).await? {
             counter += 1;
             if counter > self.params.num_peers_to_request {
                 warn!(target: LOG_TARGET, "Sync peer `{}` sent more peers than we requested.", sync_peer);
                 return Err(NetworkDiscoveryError::TooManyPeersReceived);
             }
-            if ban_offenses >= peer_sync_immediate_ban_threshold {
+            if invalid_peer_signatures >= peer_sync_immediate_ban_threshold {
                 warn!(
                       target: LOG_TARGET,
-                     "Too many banable offences ({}) received from peer `{}`. Stopping further processing.",
-                      peer_sync_immediate_ban_threshold, sync_peer
+                     "Too many ban-able offences ({} of {}) received from peer `{}`. Stopping further processing.",
+                      peer_sync_immediate_ban_threshold, counter, sync_peer
                 );
-                break;
+                return Err(NetworkDiscoveryError::BanableOffencesWhileSyncing(
+                    invalid_peer_signatures,
+                ));
             }
             let GetPeersResponse { peer } = match resp {
                 Ok(val) => val,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid response: {:?}", sync_peer, err);
-                    ban_offenses += 1;
-                    continue;
+                    return Err(NetworkDiscoveryError::from(err));
                 },
             };
 
@@ -216,8 +310,7 @@ impl Discovering {
                 Ok(val) => val,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Sync peer `{}` sent an empty peer message: {:?}", sync_peer, err);
-                    ban_offenses += 1;
-                    continue;
+                    return Err(err);
                 },
             };
             let new_peer: UnvalidatedPeerInfo =
@@ -225,29 +318,38 @@ impl Discovering {
                     Ok(val) => val,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid data: {:?}", sync_peer, err);
-                        ban_offenses += 1;
-                        continue;
+                        return Err(err);
                     },
                 };
             if !peers_received.insert(new_peer.public_key.clone()) {
                 let err = NetworkDiscoveryError::DuplicatePeerReceived;
                 warn!(target: LOG_TARGET, "Sync peer `{}` sent duplicate peer: {:?}", sync_peer, err);
-                ban_offenses += 1;
-                continue;
+                return Err(err);
             }
             if let Err(err) = self.validate_and_add_peer(new_peer).await {
                 warn!(
                     target: LOG_TARGET,
                     "Failed to validate and add peer from sync peer `{}`: {:?}", sync_peer, err
                 );
-                ban_offenses += 1;
-                continue;
+                // Note: Currently we allow invalid peer signature errors to accumulate up to a threshold without
+                //       banning the sync peer due to an embedded problem, however, the invalid peer info sets are not
+                //       added to the peer database. This allowance must be removed when the issue is solved.
+                //       See: https://github.com/tari-project/tari/issues/7306
+                if let NetworkDiscoveryError::PeerValidationError(DhtPeerValidatorError::ValidatorError(
+                    PeerValidatorError::InvalidPeerSignature { .. },
+                )) = err
+                {
+                    invalid_peer_signatures += 1;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Sync peer `{}` committed {} of {} ban offences",
+                        sync_peer, invalid_peer_signatures, peer_sync_immediate_ban_threshold
+                    );
+                    continue;
+                } else {
+                    return Err(err);
+                }
             }
-        }
-
-        // Return any error that has the highest severity offence if any were recorded
-        if ban_offenses > 0 {
-            return Err(NetworkDiscoveryError::TooManyBanableOffences(ban_offenses));
         }
 
         Ok(())
@@ -291,7 +393,7 @@ impl Discovering {
                     NetworkDiscoveryError::InvalidPeerDataReceived(_) |
                     NetworkDiscoveryError::DuplicatePeerReceived |
                     NetworkDiscoveryError::TooManyPeersReceived |
-                    NetworkDiscoveryError::TooManyBanableOffences(_) => {
+                    NetworkDiscoveryError::BanableOffencesWhileSyncing(_) => {
                         self.ban_peer(peer, OffenceSeverity::High, &err).await;
                     },
                     NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => {

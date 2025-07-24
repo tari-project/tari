@@ -103,8 +103,8 @@ pub struct NetworkDiscoveryConfig {
     pub bootstrap_timeout: Duration,
     /// The number of banable offenses this node will tolerate while syncing peers before the sync peer will be banned.
     /// Any banable offense will be punished after syc completes or when the threshold is reached; this will let a node
-    /// accept valid peers in the presence of banable offenses.
-    /// Default: 25
+    /// accept valid peers in the presence of ban-able offenses.
+    /// Default: 100
     #[serde(default)]
     pub peer_sync_immediate_ban_threshold: usize,
 }
@@ -128,9 +128,10 @@ impl Default for NetworkDiscoveryConfig {
             bootstrap_rpc_get_peers_stream_timeout: Duration::from_secs(5),
             bootstrap_rpc_streaming_timeout: Duration::from_secs(5),
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
-            // This number is high to account for the big number of invalid peer info sets received from all sync peers
-            // due to an embedded error in the peer manager. When solved, this number can be reduced.
-            peer_sync_immediate_ban_threshold: 25,
+            // Note: This number is high to account for the big number of invalid peer info sets received from all sync
+            //       peers due to an embedded error in the peer manager. When solved, this number can be reduced.
+            //       See: https://github.com/tari-project/tari/issues/7306
+            peer_sync_immediate_ban_threshold: 100,
         }
     }
 }

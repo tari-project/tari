@@ -378,8 +378,8 @@ network_discovery.initial_peer_sync_delay = 25
 #network_discovery.bootstrap_timeout = 300 # 5 * 60
 # The number of banable offenses this node will tolerate while syncing peers before the sync peer will be banned.
 # Any banable offense will be punished after syc completes or when the threshold is reached; this will let a node
-# accept valid peers in the presence of banable offenses. (Default: 15)
-#network_discovery.peer_sync_immediate_ban_threshold = 15
+# accept valid peers in the presence of banable offenses. (Default: 100)
+#network_discovery.peer_sync_immediate_ban_threshold = 100
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 ban_duration = 120 # 2 mins

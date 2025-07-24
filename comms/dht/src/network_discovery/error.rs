@@ -47,8 +47,8 @@ pub enum NetworkDiscoveryError {
     EmptyPeerMessageReceived,
     #[error("Sync peer sent too many peers")]
     TooManyPeersReceived,
-    #[error("Sync peer committed too many ban-able offences: {0}")]
-    TooManyBanableOffences(usize),
+    #[error("Sync peer committed {0} ban-able offences")]
+    BanableOffencesWhileSyncing(usize),
     #[error("Sync peer sent duplicate peer")]
     DuplicatePeerReceived,
     #[error("Sync peer sent invalid peer data: {0}")]
@@ -76,7 +76,10 @@ impl PartialEq for NetworkDiscoveryError {
                 (Self::PeerValidationError(_), Self::PeerValidationError(_)) |
                 (Self::EmptyPeerMessageReceived, Self::EmptyPeerMessageReceived) |
                 (Self::TooManyPeersReceived, Self::TooManyPeersReceived) |
-                (Self::TooManyBanableOffences(_), Self::TooManyBanableOffences(_)) |
+                (
+                    Self::BanableOffencesWhileSyncing(_),
+                    Self::BanableOffencesWhileSyncing(_)
+                ) |
                 (Self::DuplicatePeerReceived, Self::DuplicatePeerReceived) |
                 (Self::InvalidPeerDataReceived(_), Self::InvalidPeerDataReceived(_))
         )
