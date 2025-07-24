@@ -59,7 +59,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{payment_id::PaymentId, OutputFeatures, TransactionOutput, WalletOutput},
+        transaction_components::{memo_field::MemoField, OutputFeatures, TransactionOutput, WalletOutput},
         transaction_key_manager::{
             create_memory_db_key_manager,
             MemoryDbKeyManager,
@@ -382,7 +382,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap_err();
@@ -419,7 +419,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -520,7 +520,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap_err();
@@ -603,7 +603,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -632,7 +632,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -734,7 +734,7 @@ async fn test_utxo_selection_with_tx_priority() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -781,7 +781,7 @@ async fn send_not_enough_funds() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
     {
@@ -849,7 +849,7 @@ async fn send_no_change() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -916,7 +916,7 @@ async fn send_not_enough_for_change() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
     {
@@ -958,7 +958,7 @@ async fn cancel_transaction() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -1064,7 +1064,7 @@ async fn test_get_balance() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -1136,7 +1136,7 @@ async fn sending_transaction_persisted_while_offline() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -1170,7 +1170,7 @@ async fn sending_transaction_persisted_while_offline() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -2171,7 +2171,7 @@ async fn scan_for_recovery_test() {
         let features = OutputFeatures::default();
         let encrypted_data = oms
             .key_manager_handle
-            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount, PaymentId::Empty)
+            .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, amount, MemoField::new_empty())
             .await
             .unwrap();
 
@@ -2188,7 +2188,7 @@ async fn scan_for_recovery_test() {
             Covenant::new(),
             encrypted_data,
             MicroMinotari::zero(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &oms.key_manager_handle,
         )
         .await

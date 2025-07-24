@@ -56,7 +56,7 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::payment_id::PaymentId};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -1242,6 +1242,50 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(tx)
     }
 
+    fn find_completed_transactions_paginated(
+        &self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let cipher = acquire_read_lock!(self.cipher);
+
+        use diesel::prelude::*;
+
+        let mut query = completed_transactions::table.into_boxed();
+
+        // Apply status filter if provided
+        if let Some(status_bitflag) = status_filter {
+            if status_bitflag != 0 {
+                // Build a vector of status values to filter by
+                let mut status_values: Vec<i32> = Vec::new();
+
+                for i in 0..32 {
+                    let status_bit = 1u64 << i;
+                    if (status_bitflag & status_bit) != 0 {
+                        status_values.push(i);
+                    }
+                }
+
+                if !status_values.is_empty() {
+                    query = query.filter(completed_transactions::status.eq_any(status_values));
+                }
+            }
+        }
+
+        query
+            .order(completed_transactions::timestamp.desc())
+            .offset(offset as i64)
+            .limit(limit as i64)
+            .load::<CompletedTransactionSql>(&mut conn)?
+            .into_iter()
+            .map(|ct: CompletedTransactionSql| {
+                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
+
     fn fetch_confirmed_detected_transactions_from_height(
         &self,
         height: u64,
@@ -1502,7 +1546,7 @@ impl InboundTransactionSql {
     fn try_from(i: InboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let receiver_protocol_bytes = bincode::serialize(&i.receiver_protocol)
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
-        let user_payment_id = i.payment_id.user_data_as_bytes();
+        let user_payment_id = i.payment_id.payment_id_as_bytes();
         let user_payment_id = if user_payment_id.is_empty() {
             None
         } else {
@@ -1570,7 +1614,7 @@ impl InboundTransaction {
             direct_send_success: i.direct_send_success != 0,
             send_count: i.send_count as u32,
             last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
-            payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
+            payment_id: MemoField::from_bytes(&i.payment_id.unwrap_or_default()),
             received_output_hashes: bytes_to_fixedhash_vec(&i.received_output_hashes.unwrap_or_default()),
         })
     }
@@ -1762,7 +1806,7 @@ impl OutboundTransactionSql {
     fn try_from(o: OutboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let sender_protocol_bytes = bincode::serialize(&o.sender_protocol)
             .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
-        let user_payment_id = o.payment_id.user_data_as_bytes();
+        let user_payment_id = o.payment_id.payment_id_as_bytes();
         let user_payment_id = if user_payment_id.is_empty() {
             None
         } else {
@@ -1833,7 +1877,7 @@ impl OutboundTransaction {
             direct_send_success: o.direct_send_success != 0,
             send_count: o.send_count as u32,
             last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
-            payment_id: PaymentId::from_bytes(&o.payment_id.unwrap_or_default()),
+            payment_id: MemoField::from_bytes(&o.payment_id.unwrap_or_default()),
             sent_output_hashes: bytes_to_fixedhash_vec(&o.sent_output_hashes.unwrap_or_default()),
         };
 
@@ -2259,7 +2303,7 @@ impl CompletedTransactionSql {
     fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let transaction_bytes =
             bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
-        let user_payment_id = c.payment_id.user_data_as_bytes();
+        let user_payment_id = c.payment_id.payment_id_as_bytes();
         let user_payment_id = if user_payment_id.is_empty() {
             None
         } else {
@@ -2381,7 +2425,7 @@ impl CompletedTransaction {
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
             mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
-            payment_id: PaymentId::from_bytes(&c.payment_id.unwrap_or_default()),
+            payment_id: MemoField::from_bytes(&c.payment_id.unwrap_or_default()),
             sent_output_hashes: bytes_to_fixedhash_vec(&c.sent_output_hashes.unwrap_or_default()),
             received_output_hashes: bytes_to_fixedhash_vec(&c.received_output_hashes.unwrap_or_default()),
             change_output_hashes: bytes_to_fixedhash_vec(&c.change_output_hashes.unwrap_or_default()),
@@ -2420,7 +2464,7 @@ pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
     pub signature: Signature,
     pub status: TransactionStatus,
-    pub payment_id: PaymentId,
+    pub payment_id: MemoField,
 }
 
 impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
@@ -2434,7 +2478,7 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
             status: TransactionStatus::try_from(i.status)?,
-            payment_id: PaymentId::from_bytes(&i.payment_id.unwrap_or_default()),
+            payment_id: MemoField::from_bytes(&i.payment_id.unwrap_or_default()),
         })
     }
 }
@@ -2564,7 +2608,7 @@ mod test {
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             OutputFeatures,
             Transaction,
         },
@@ -2648,7 +2692,7 @@ mod test {
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
-            .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
+            .with_payment_id(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
             .with_input(input)
             .await
             .unwrap()
@@ -2684,7 +2728,7 @@ mod test {
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2705,7 +2749,7 @@ mod test {
                 fee: stp.get_fee_amount().unwrap(),
                 sender_protocol: stp.clone(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+                payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -2773,7 +2817,7 @@ mod test {
             amount,
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2793,7 +2837,7 @@ mod test {
             amount,
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -2869,7 +2913,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2903,7 +2947,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -3064,7 +3108,7 @@ mod test {
             amount: MicroMinotari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -3094,7 +3138,7 @@ mod test {
             fee: MicroMinotari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -3150,7 +3194,7 @@ mod test {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -3215,7 +3259,7 @@ mod test {
                 amount: MicroMinotari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+                payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -3240,7 +3284,7 @@ mod test {
                 fee: MicroMinotari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
-                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+                payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
                 cancelled: false,
                 direct_send_success: false,
@@ -3290,7 +3334,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+                payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -3436,7 +3480,7 @@ mod test {
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
-                payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+                payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 

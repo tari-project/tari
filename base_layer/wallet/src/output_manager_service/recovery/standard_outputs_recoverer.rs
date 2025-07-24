@@ -29,7 +29,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, OutputType, TransactionError, TransactionOutput, WalletOutput},
+    transaction_components::{memo_field::MemoField, OutputType, TransactionError, TransactionOutput, WalletOutput},
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 use tari_crypto::keys::SecretKey;
@@ -159,14 +159,8 @@ where
                         // code is here as a hacky fix to attempt to find the tx if TU already imported it. This will be
                         // low-volume so we can afford to do this. Scanning during recovery for higher output wallets,
                         // this becomes a massive bottleneck.
-                        let (source_address, recipient_address) = match &db_output.payment_id {
-                            PaymentId::AddressAndData { sender_address, .. } => (Some(sender_address.clone()), None),
-                            PaymentId::TransactionInfo { recipient_address, .. } => {
-                                (None, Some(recipient_address.clone()))
-                            },
-                            _ => (None, None),
-                        };
-
+                        let source_address = db_output.payment_id.get_sender_address();
+                        let recipient_address = db_output.payment_id.get_recipient_address();
                         if source_address.is_some() || recipient_address.is_some() {
                             related_txs = self
                                 .transaction_service_handle
@@ -289,7 +283,7 @@ where
     async fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, PaymentId)>, OutputManagerError> {
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
         match self.db.fetch_by_commitment(output.commitment().clone()) {

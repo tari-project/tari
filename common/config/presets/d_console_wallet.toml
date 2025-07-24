@@ -59,11 +59,6 @@
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
 
-# A custom base node peer that will be used to obtain metadata from, example
-# "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189"
-# (default = )
-#custom_base_node = "none"
-
 # A list of base node peers that the wallet should use for service requests and tracking chain state in the form
 # ["public_key::net_address", ...] (default = [])
 #base_node_service_peers = []
@@ -105,7 +100,12 @@
 # The URL of the HTTP client to use for base node service requests
 #http_server_url="http://127.0.0.1:9000"
 # The fallback url address to use if the base node at http_server_url does not respond
-#fallback_http_server_url = "https://rpc.esmeralda.tari.com"
+#fallback_http_server_url = "https://rpc.tari.com"             # MainNet
+#fallback_http_server_url = "https://rpc.stagenet.tari.com"    # StageNet
+#fallback_http_server_url = "https://rpc.nextnet.tari.com"     # NextNet
+#fallback_http_server_url = "https://rpc.localnet.tari.com"    # LocalNet
+#fallback_http_server_url = "https://rpc.igor.tari.com"        # Igor
+#fallback_http_server_url = "https://rpc.esmeralda.tari.com"   # Esmeralda
 
 [wallet.transactions]
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 30)
@@ -364,12 +364,18 @@ network_discovery.initial_peer_sync_delay = 25
 # The minimum number of seed peers that must be successfully contacted (i.e., returned at least one peer)
 # before an early exit due to `seed_peer_min_initial_sync_peers_needed` can occur.(Default: 5)
 #network_discovery.min_successful_seed_contacts_for_early_exit = 5
+# Maximum time to wait for a dial during bootstrap before abandoning the attempt. (Default: 30 seconds)
+#network_discovery.bootstrap_dial_peer_timeout = 30
+# Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt. (Default: 15 seconds)
+#network_discovery.bootstrap_rpc_connect_timeout = 10
+# Maximum time to wait for to obtain the RPC get peers stream during bootstrap before abandoning the attempt.
+# (Default: 15 seconds)
+#network_discovery.bootstrap_rpc_get_peers_stream_timeout = 5
+# Maximum time to wait for any item while streaming RPC peers during bootstrap before abandoning the attempt.
+# (Default: 10 seconds)
+#network_discovery.bootstrap_rpc_streaming_timeout = 5
 # Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
 #network_discovery.bootstrap_timeout = 300 # 5 * 60
-# The number of banable offenses this node will tolerate while syncing peers before the sync peer will be banned.
-# Any banable offense will be punished after syc completes or when the threshold is reached; this will let a node
-# accept valid peers in the presence of banable offenses. (Default: 15)
-#network_discovery.peer_sync_immediate_ban_threshold = 15
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 ban_duration = 120 # 2 mins

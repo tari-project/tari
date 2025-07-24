@@ -53,7 +53,7 @@ use tari_core::{
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             OutputFeatures,
             RangeProofType,
             Transaction,
@@ -91,7 +91,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
-        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
+        .with_payment_id(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -141,7 +141,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -194,7 +194,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             &commitment_mask_key.key_id,
             None,
             sender.amount.as_u64(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -212,7 +212,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         Covenant::default(),
         encrypted_data,
         MicroMinotari::zero(),
-        PaymentId::Empty,
+        MemoField::new_empty(),
         &key_manager,
     )
     .await
@@ -255,7 +255,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             amount: amounts[i],
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
-            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
             timestamp: Utc::now(),
             cancelled: false,
             direct_send_success: false,
@@ -348,7 +348,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
-            payment_id: PaymentId::open_from_string(messages[i], TxType::PaymentToOther),
+            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
             sent_output_hashes: vec![],
             change_output_hashes: vec![],
             received_output_hashes: vec![],
@@ -455,7 +455,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             22 * uT,
             rtp,
             TransactionStatus::Pending,
-            PaymentId::open_from_string("To be cancelled", TxType::PaymentToOther),
+            MemoField::open_from_string("To be cancelled", TxType::PaymentToOther),
             Utc::now(),
         ),
     )
@@ -509,7 +509,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             stp.get_fee_amount().unwrap(),
             stp,
             TransactionStatus::Pending,
-            PaymentId::open_from_string("To be cancelled", TxType::PaymentToOther),
+            MemoField::open_from_string("To be cancelled", TxType::PaymentToOther),
             Utc::now(),
             false,
         ),
@@ -606,7 +606,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(5),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        PaymentId::open_from_string("message", TxType::PaymentToOther),
+        MemoField::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 
@@ -635,7 +635,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(6),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        PaymentId::open_from_string("message", TxType::PaymentToOther),
+        MemoField::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 
@@ -664,7 +664,7 @@ async fn import_tx_and_read_it_from_db() {
         TransactionDirection::Inbound,
         Some(7),
         Some(DateTime::from_timestamp(0, 0).unwrap()),
-        PaymentId::open_from_string("message", TxType::PaymentToOther),
+        MemoField::open_from_string("message", TxType::PaymentToOther),
     )
     .unwrap();
 

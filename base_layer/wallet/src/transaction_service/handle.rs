@@ -42,7 +42,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             BuildInfo,
             CodeTemplateRegistration,
             OutputFeatures,
@@ -92,6 +92,11 @@ pub enum TransactionServiceRequest {
         source_address: Option<TariAddress>,
         destination_address: Option<TariAddress>,
     },
+    GetCompletedTransactionsPaginated {
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    },
     GetCancelledPendingInboundTransactions,
     GetCancelledPendingOutboundTransactions,
     GetCancelledCompletedTransactions(u64),
@@ -104,13 +109,13 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     BurnTari {
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         claim_public_key: Option<CompressedPublicKey>,
         sidechain_deployment_key: Option<PrivateKey>,
     },
@@ -125,14 +130,14 @@ pub enum TransactionServiceRequest {
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     SpendBackupPreMineUtxo {
         fee_per_gram: MicroMinotari,
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     FetchUnspentOutputs {
         output_hashes: Vec<HashOutput>,
@@ -152,7 +157,7 @@ pub enum TransactionServiceRequest {
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     SubmitValidatorNodeExit {
         amount: MicroMinotari,
@@ -162,7 +167,7 @@ pub enum TransactionServiceRequest {
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     RegisterCodeTemplate {
         template_name: MaxSizeString<32>,
@@ -178,7 +183,7 @@ pub enum TransactionServiceRequest {
         amount: MicroMinotari,
         proof: EvictionProof,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         sidechain_deployment_key: Option<PrivateKey>,
     },
     PrepareOneSidedTransactionForSigning {
@@ -187,7 +192,7 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     SignOneSidedTransaction {
         request: PrepareOneSidedTransactionForSigningResult,
@@ -201,7 +206,7 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     SendOneSidedToStealthAddressTransaction {
         destination: TariAddress,
@@ -209,7 +214,7 @@ pub enum TransactionServiceRequest {
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     ScrapeWallet {
         destination: TariAddress,
@@ -220,7 +225,7 @@ pub enum TransactionServiceRequest {
         MicroMinotari,
         UtxoSelectionCriteria,
         MicroMinotari,
-        PaymentId,
+        MemoField,
     ),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
@@ -231,9 +236,9 @@ pub enum TransactionServiceRequest {
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
-    SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, PaymentId),
+    SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, MemoField),
     SetLowPowerMode,
     SetNormalPowerMode,
     RestartTransactionProtocols,
@@ -271,6 +276,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetPendingOutboundTransactions => write!(f, "GetPendingOutboundTransactions"),
             Self::GetCompletedTransactions { .. } => write!(f, "GetCompletedTransactions"),
             Self::GetCompletedTransactionsByAddresses { .. } => write!(f, "GetCompletedTransactionsByAddresses"),
+            Self::GetCompletedTransactionsPaginated { .. } => write!(f, "GetCompletedTransactionsPaginated"),
             Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
@@ -765,7 +771,7 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -812,7 +818,7 @@ impl TransactionServiceHandle {
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -843,7 +849,7 @@ impl TransactionServiceHandle {
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -903,7 +909,7 @@ impl TransactionServiceHandle {
         proof: EvictionProof,
         fee_per_gram: MicroMinotari,
         sidechain_deployment_key: Option<PrivateKey>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -928,7 +934,7 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
         match self
             .handle
@@ -982,7 +988,7 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -1007,7 +1013,7 @@ impl TransactionServiceHandle {
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
         claim_public_key: Option<CompressedPublicKey>,
         sidechain_deployment_key: Option<PrivateKey>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
@@ -1041,7 +1047,7 @@ impl TransactionServiceHandle {
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<
         (
             TxId,
@@ -1095,7 +1101,7 @@ impl TransactionServiceHandle {
         output_hash: HashOutput,
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -1156,7 +1162,7 @@ impl TransactionServiceHandle {
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -1260,6 +1266,26 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn get_completed_transactions_paginated(
+        &mut self,
+        offset: u64,
+        limit: u64,
+        status_filter: Option<u64>,
+    ) -> Result<Vec<CompletedTransaction>, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetCompletedTransactionsPaginated {
+                offset,
+                limit,
+                status_filter,
+            })
+            .await??
+        {
+            TransactionServiceResponse::CompletedTransactions(c) => Ok(c),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn get_completed_transactions_by_addresses(
         &mut self,
         source_address: Option<TariAddress>,
@@ -1340,7 +1366,7 @@ impl TransactionServiceHandle {
         current_height: Option<u64>,
         mined_timestamp: Option<DateTime<Utc>>,
         scanned_output: TransactionOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -1366,7 +1392,7 @@ impl TransactionServiceHandle {
         tx_id: TxId,
         tx: Transaction,
         amount: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(), TransactionServiceError> {
         let fee = tx.body.get_total_fee()?;
         match self
@@ -1471,7 +1497,7 @@ impl TransactionServiceHandle {
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(TxId, CompressedPublicKey, TransactionOutput), TransactionServiceError> {
         match self
             .handle

@@ -6,7 +6,7 @@ use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_common_types::wallet_types::WalletType;
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::payment_id::{PaymentId, TxType},
+    transaction_components::memo_field::{MemoField, TxType},
 };
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
@@ -278,7 +278,17 @@ impl SendTab {
                                 amount.into(),
                                 UtxoSelectionCriteria::default(),
                                 fee_per_gram,
-                                PaymentId::open_from_string(&self.payment_id_field, TxType::PaymentToOther),
+                                match MemoField::new_open_from_string(&self.payment_id_field, TxType::PaymentToOther) {
+                                    Ok(payment_id) => payment_id,
+                                    Err(_) => {
+                                        self.error_message = Some(
+                                            "Payment ID is invalid or too large (max 256 bytes)\nPress Enter to \
+                                             continue."
+                                                .to_string(),
+                                        );
+                                        return KeyHandled::Handled;
+                                    },
+                                },
                                 tx,
                             )) {
                                 Err(e) => {

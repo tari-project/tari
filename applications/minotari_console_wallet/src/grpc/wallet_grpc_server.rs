@@ -140,7 +140,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             OutputFeatures,
             UnblindedOutput,
         },
@@ -239,6 +239,7 @@ impl WalletGrpcServer {
 
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
+    type GetAllCompletedTransactionsStreamStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
     type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
     type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
@@ -313,7 +314,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let interactive_address = interactive_address
-            .with_payment_id_user_data(message.payment_id.clone())
+            .with_memo_field_payment_id(message.payment_id.clone())
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let one_sided_address = self
             .wallet
@@ -321,7 +322,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         let one_sided_address = one_sided_address
-            .with_payment_id_user_data(message.payment_id)
+            .with_memo_field_payment_id(message.payment_id)
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
         Ok(Response::new(GetCompleteAddressResponse {
             interactive_address: interactive_address.to_vec(),
@@ -486,7 +487,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let address = TariAddress::from_str(&message.address)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let payment_id = if !message.raw_payment_id.is_empty() {
-            PaymentId::from_bytes(&message.raw_payment_id)
+            MemoField::from_bytes(&message.raw_payment_id)
         } else if let Some(user_pay_id) = message.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -502,12 +503,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            PaymentId::Open {
-                user_data: bytes,
-                tx_type: TxType::ClaimAtomicSwap,
-            }
+            MemoField::open_unchecked(bytes, TxType::ClaimAtomicSwap)
         } else {
-            PaymentId::Empty
+            MemoField::new_empty()
         };
         let mut transaction_service = self.get_transaction_service();
         let response = match transaction_service
@@ -576,7 +574,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        PaymentId::open_from_string(
+                        MemoField::open_from_string(
                             "Claiming HTLC transaction with pre-image",
                             TxType::ClaimAtomicSwap,
                         ),
@@ -656,7 +654,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         tx_id,
                         tx,
                         amount,
-                        PaymentId::open_from_string("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
+                        MemoField::open_from_string("Creating HTLC refund transaction", TxType::HtlcAtomicSwapRefund),
                     )
                     .await
                 {
@@ -723,7 +721,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("Destination address is malformed"))?;
 
         let payment_id = if !recipient.raw_payment_id.is_empty() {
-            PaymentId::from_bytes(&recipient.raw_payment_id)
+            MemoField::from_bytes(&recipient.raw_payment_id)
         } else if let Some(user_pay_id) = recipient.user_payment_id {
             let bytes = match (
                 user_pay_id.u256.is_empty(),
@@ -739,12 +737,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     ));
                 },
             };
-            PaymentId::Open {
-                user_data: bytes,
-                tx_type: TxType::PaymentToOther,
-            }
+            MemoField::open_unchecked(bytes, TxType::PaymentToOther)
         } else {
-            PaymentId::Empty
+            MemoField::new_empty()
         };
 
         let mut transaction_service = self.get_transaction_service();
@@ -843,7 +838,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
             let payment_id = if !raw_payment_id.is_empty() {
-                PaymentId::open(raw_payment_id.to_vec(), TxType::PaymentToOther)
+                MemoField::open_unchecked(raw_payment_id.to_vec(), TxType::PaymentToOther)
             } else if let Some(user_pay_id) = user_payment_id {
                 let bytes = match (
                     user_pay_id.u256.is_empty(),
@@ -859,12 +854,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         ));
                     },
                 };
-                PaymentId::Open {
-                    user_data: bytes,
-                    tx_type: TxType::PaymentToOther,
-                }
+                MemoField::open_unchecked(bytes, TxType::PaymentToOther)
             } else {
-                PaymentId::Empty
+                MemoField::new_empty()
             };
             let mut transaction_service = self.get_transaction_service();
             transfers.push(async move {
@@ -983,7 +975,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.amount.into(),
                 UtxoSelectionCriteria::default(),
                 message.fee_per_gram.into(),
-                PaymentId::from_bytes(&message.payment_id),
+                MemoField::from_bytes(&message.payment_id),
                 if message.claim_public_key.is_empty() {
                     None
                 } else {
@@ -1151,7 +1143,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let start = std::time::Instant::now();
         trace!(
             target: LOG_TARGET,
-            "GetAllCompletedTransactions: Incoming GRPC request"
+            "GetCompletedTransactions: Incoming GRPC request"
         );
         let message = request.into_inner();
         let payment_id = if let Some(user_payment_id) = message.payment_id {
@@ -1190,7 +1182,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
         debug!(
             target: LOG_TARGET,
-            "GetAllCompletedTransactions: Found {} completed transactions",
+            "GetCompletedTransactions: Found {} completed transactions",
             transactions.len()
         );
 
@@ -1236,7 +1228,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
-                        user_payment_id: txn.payment_id.user_data_as_bytes(),
+                        user_payment_id: txn.payment_id.payment_id_as_bytes(),
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
                         output_commitments,
                         input_commitments,
@@ -1261,7 +1253,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     Ok(_) => {
                         trace!(
                             target: LOG_TARGET,
-                            "GetAllCompletedTransactions: Sent transaction TxId: {} ({} of {})",
+                            "GetCompletedTransactions: Sent transaction TxId: {} ({} of {})",
                             txn.tx_id,
                             i + 1,
                             transactions.len()
@@ -1285,6 +1277,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
+    // DEPRECATED: Use get_all_completed_transactions_stream for better performance and memory efficiency
     #[allow(clippy::too_many_lines)]
     async fn get_all_completed_transactions(
         &self,
@@ -1292,114 +1285,328 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<GetAllCompletedTransactionsResponse>, Status> {
         let start = std::time::Instant::now();
         let req = request.into_inner();
+        warn!(
+            target: LOG_TARGET,
+            "GetAllCompletedTransactions: DEPRECATED method called - consider migrating to GetAllCompletedTransactionsStream for better performance"
+        );
         trace!(
             target: LOG_TARGET,
             "GetAllCompletedTransactions: Incoming GRPC request"
         );
         let mut transaction_service = self.get_transaction_service();
 
-        let mut completed_transactions = transaction_service
-            .get_completed_transactions(None, None, None, 0)
-            .await
-            .map_err(|err| {
-                Status::not_found(format!(
-                    "GetAllCompletedTransactions: Error found for get_completed_transactions: {:?}",
-                    err
-                ))
-            })?;
-        completed_transactions.extend(
-            transaction_service
-                .get_cancelled_completed_transactions(0)
+        let status_filter = if req.status_bitflag == 0 {
+            None
+        } else {
+            Some(req.status_bitflag)
+        };
+
+        let total_requested = req.limit;
+        let chunk_size = std::cmp::min(total_requested, 100); // Process in chunks of 100
+        let mut all_transactions: Vec<TransactionInfo> =
+            Vec::with_capacity(total_requested.try_into().unwrap_or(usize::MAX));
+        let mut current_offset = req.offset;
+        let mut remaining = total_requested;
+
+        // Stream data in chunks to reduce memory usage
+        while remaining > 0 {
+            let current_limit = std::cmp::min(remaining, chunk_size);
+
+            let chunk_transactions = transaction_service
+                .get_completed_transactions_paginated(current_offset, current_limit, status_filter)
                 .await
                 .map_err(|err| {
                     Status::not_found(format!(
-                        "GetAllCompletedTransactions: Error found for get_cancelled_completed_transactions: {:?}",
+                        "GetAllCompletedTransactions: Error found for get_completed_transactions_paginated: {:?}",
                         err
                     ))
-                })?,
-        );
+                })?;
 
-        completed_transactions.sort_by(|a, b| {
-            b.timestamp
-                .partial_cmp(&a.timestamp)
-                .expect("Should be able to compare timestamps")
-        });
+            // Break if we get no more results
+            if chunk_transactions.is_empty() {
+                break;
+            }
 
-        let offset = usize::try_from(req.offset).unwrap_or(0);
-        let limit = if req.limit > 0 {
-            usize::try_from(req.limit).unwrap_or(usize::MAX)
-        } else {
-            usize::MAX
-        };
-        let mut transactions: Vec<TransactionInfo> = Vec::new();
-        for txn in completed_transactions
-            .into_iter()
-            .filter(|tx| req.status_bitflag == 0 || (req.status_bitflag & (1 << (tx.status as u32))) != 0)
-            .skip(offset)
-            .take(limit)
-        {
-            let output_commitments: Vec<Vec<u8>> = txn
-                .transaction
-                .body
-                .outputs()
-                .iter()
-                .map(|o| o.commitment().as_bytes().to_vec())
-                .collect();
-            let input_commitments: Vec<Vec<u8>> = txn
-                .transaction
-                .body
-                .inputs()
-                .iter()
-                .map(|i| match i.commitment() {
-                    Ok(c) => c.as_bytes().to_vec(),
-                    Err(e) => {
-                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
-                        vec![]
-                    },
-                })
-                .collect();
-
-            transactions.push(TransactionInfo {
-                tx_id: txn.tx_id.into(),
-                source_address: txn.source_address.to_vec(),
-                dest_address: txn.destination_address.to_vec(),
-                status: TransactionStatus::from(txn.status) as i32,
-                amount: txn.amount.into(),
-                is_cancelled: txn.cancelled.is_some(),
-                direction: TransactionDirection::from(txn.direction) as i32,
-                fee: txn.fee.into(),
-                timestamp: txn.timestamp.timestamp() as u64,
-                excess_sig: txn
+            // Process this chunk
+            for txn in chunk_transactions {
+                let output_commitments: Vec<Vec<u8>> = txn
                     .transaction
-                    .first_kernel_excess_sig()
-                    .unwrap_or(&Signature::default())
-                    .get_signature()
-                    .to_vec(),
-                raw_payment_id: txn.payment_id.to_bytes(),
-                user_payment_id: txn.payment_id.user_data_as_bytes(),
-                mined_in_block_height: txn.mined_height.unwrap_or(0),
-                output_commitments,
-                input_commitments,
-                payment_references_sent: txn
-                    .calculate_sent_payment_references()
-                    .into_iter()
-                    .map(|pr| pr.to_vec())
-                    .collect(),
-                payment_references_received: txn
-                    .calculate_received_payment_references()
-                    .into_iter()
-                    .map(|pr| pr.to_vec())
-                    .collect(),
-                payment_references_change: txn
-                    .calculate_change_payment_references()
-                    .into_iter()
-                    .map(|pr| pr.to_vec())
-                    .collect(),
-            });
+                    .body
+                    .outputs()
+                    .iter()
+                    .map(|o| o.commitment().as_bytes().to_vec())
+                    .collect();
+                let input_commitments: Vec<Vec<u8>> = txn
+                    .transaction
+                    .body
+                    .inputs()
+                    .iter()
+                    .map(|i| match i.commitment() {
+                        Ok(c) => c.as_bytes().to_vec(),
+                        Err(e) => {
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            vec![]
+                        },
+                    })
+                    .collect();
+
+                all_transactions.push(TransactionInfo {
+                    tx_id: txn.tx_id.into(),
+                    source_address: txn.source_address.to_vec(),
+                    dest_address: txn.destination_address.to_vec(),
+                    status: TransactionStatus::from(txn.status) as i32,
+                    amount: txn.amount.into(),
+                    is_cancelled: txn.cancelled.is_some(),
+                    direction: TransactionDirection::from(txn.direction) as i32,
+                    fee: txn.fee.into(),
+                    timestamp: txn.timestamp.timestamp() as u64,
+                    excess_sig: txn
+                        .transaction
+                        .first_kernel_excess_sig()
+                        .unwrap_or(&Signature::default())
+                        .get_signature()
+                        .to_vec(),
+                    raw_payment_id: txn.payment_id.to_bytes(),
+                    user_payment_id: txn.payment_id.payment_id_as_bytes(),
+                    mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    output_commitments,
+                    input_commitments,
+                    payment_references_sent: txn
+                        .calculate_sent_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                    payment_references_received: txn
+                        .calculate_received_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                    payment_references_change: txn
+                        .calculate_change_payment_references()
+                        .into_iter()
+                        .map(|pr| pr.to_vec())
+                        .collect(),
+                });
+            }
+
+            // Update for next iteration
+            current_offset += current_limit;
+            remaining -= current_limit;
         }
 
+        debug!(
+            target: LOG_TARGET,
+            "GetAllCompletedTransactions: Processed {} transactions in chunks",
+            all_transactions.len()
+        );
+
         trace!(target: LOG_TARGET, "'GetAllCompletedTransactions' completed in {:.2?}", start.elapsed());
-        Ok(Response::new(GetAllCompletedTransactionsResponse { transactions }))
+        Ok(Response::new(GetAllCompletedTransactionsResponse {
+            transactions: all_transactions,
+        }))
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn get_all_completed_transactions_stream(
+        &self,
+        request: Request<GetAllCompletedTransactionsRequest>,
+    ) -> Result<Response<Self::GetAllCompletedTransactionsStreamStream>, Status> {
+        let start = std::time::Instant::now();
+        let req = request.into_inner();
+
+        trace!(
+            target: LOG_TARGET,
+            "GetAllCompletedTransactionsStreaming: Incoming GRPC request with offset={}, limit={}, status_bitflag={}",
+            req.offset,
+            req.limit,
+            req.status_bitflag
+        );
+
+        let status_filter = if req.status_bitflag == 0 {
+            None
+        } else {
+            Some(req.status_bitflag)
+        };
+
+        // Streaming parameters - smaller chunks for better responsiveness
+        let total_requested = req.limit;
+        let chunk_size = std::cmp::min(total_requested, 50);
+
+        // Create GRPC streaming channel
+        let buffer_size: usize = std::cmp::min(chunk_size, 10).try_into().unwrap_or(50);
+        let (mut sender, receiver) = mpsc::channel(buffer_size);
+
+        // Clone transaction service handle for async task
+        let mut transaction_service = self.get_transaction_service();
+
+        // Spawn async task to stream data
+        task::spawn(async move {
+            let mut current_offset = req.offset;
+            let mut remaining = total_requested;
+            let mut total_sent = 0u64;
+
+            debug!(
+                target: LOG_TARGET,
+                "GetAllCompletedTransactionsStreaming: Starting to stream {} transactions in chunks of {}",
+                total_requested,
+                chunk_size
+            );
+
+            while remaining > 0 {
+                let current_limit = std::cmp::min(remaining, chunk_size);
+
+                trace!(
+                    target: LOG_TARGET,
+                    "GetAllCompletedTransactionsStreaming: Fetching chunk at offset={}, limit={}",
+                    current_offset,
+                    current_limit
+                );
+
+                // Fetch chunk from database
+                let chunk_transactions = match transaction_service
+                    .get_completed_transactions_paginated(current_offset, current_limit, status_filter)
+                    .await
+                {
+                    Ok(transactions) => transactions,
+                    Err(err) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "GetAllCompletedTransactionsStreaming: Database error: {:?}",
+                            err
+                        );
+                        let _ = sender
+                            .send(Err(Status::internal(format!(
+                                "Database error while fetching transactions: {:?}",
+                                err
+                            ))))
+                            .await;
+                        return;
+                    },
+                };
+
+                // Break if no more results
+                if chunk_transactions.is_empty() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "GetAllCompletedTransactionsStreaming: No more transactions found, ending stream"
+                    );
+                    break;
+                }
+
+                // Process and stream each transaction
+                for txn in chunk_transactions {
+                    let output_commitments: Vec<Vec<u8>> = txn
+                        .transaction
+                        .body
+                        .outputs()
+                        .iter()
+                        .map(|o| o.commitment().as_bytes().to_vec())
+                        .collect();
+
+                    let input_commitments: Vec<Vec<u8>> = txn
+                        .transaction
+                        .body
+                        .inputs()
+                        .iter()
+                        .map(|i| match i.commitment() {
+                            Ok(c) => c.as_bytes().to_vec(),
+                            Err(e) => {
+                                warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                                vec![]
+                            },
+                        })
+                        .collect();
+
+                    let transaction_info = TransactionInfo {
+                        tx_id: txn.tx_id.into(),
+                        source_address: txn.source_address.to_vec(),
+                        dest_address: txn.destination_address.to_vec(),
+                        status: TransactionStatus::from(txn.status) as i32,
+                        amount: txn.amount.into(),
+                        is_cancelled: txn.cancelled.is_some(),
+                        direction: TransactionDirection::from(txn.direction) as i32,
+                        fee: txn.fee.into(),
+                        timestamp: txn.timestamp.timestamp() as u64,
+                        excess_sig: txn
+                            .transaction
+                            .first_kernel_excess_sig()
+                            .unwrap_or(&Signature::default())
+                            .get_signature()
+                            .to_vec(),
+                        raw_payment_id: txn.payment_id.to_bytes(),
+                        user_payment_id: txn.payment_id.payment_id_as_bytes(),
+                        mined_in_block_height: txn.mined_height.unwrap_or(0),
+                        output_commitments,
+                        input_commitments,
+                        payment_references_sent: txn
+                            .calculate_sent_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
+                        payment_references_received: txn
+                            .calculate_received_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
+                        payment_references_change: txn
+                            .calculate_change_payment_references()
+                            .into_iter()
+                            .map(|pr| pr.to_vec())
+                            .collect(),
+                    };
+
+                    let response = GetCompletedTransactionsResponse {
+                        transaction: Some(transaction_info),
+                    };
+
+                    // Stream the transaction
+                    match sender.send(Ok(response)).await {
+                        Ok(_) => {
+                            total_sent += 1;
+                            trace!(
+                                target: LOG_TARGET,
+                                "GetAllCompletedTransactionsStreaming: Sent transaction TxId: {} ({} of {})",
+                                txn.tx_id,
+                                total_sent,
+                                total_requested
+                            );
+                        },
+                        Err(_) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "GetAllCompletedTransactionsStreaming: Stream closed by client"
+                            );
+                            return;
+                        },
+                    }
+                }
+
+                // Update for next iteration
+                current_offset += current_limit;
+                remaining = remaining.saturating_sub(current_limit);
+
+                trace!(
+                    target: LOG_TARGET,
+                    "GetAllCompletedTransactionsStreaming: Completed chunk, remaining={}",
+                    remaining
+                );
+            }
+
+            debug!(
+                target: LOG_TARGET,
+                "GetAllCompletedTransactionsStreaming: Completed. Sent {} transactions in {:.2?}",
+                total_sent,
+                start.elapsed()
+            );
+        });
+
+        trace!(
+            target: LOG_TARGET,
+            "GetAllCompletedTransactionsStreaming: Setup completed in {:.2?}",
+            start.elapsed()
+        );
+
+        Ok(Response::new(receiver))
     }
 
     async fn get_block_height_transactions(
@@ -1471,7 +1678,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .get_signature()
                     .to_vec(),
                 raw_payment_id: txn.payment_id.to_bytes(),
-                user_payment_id: txn.payment_id.user_data_as_bytes(),
+                user_payment_id: txn.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
                 output_commitments,
                 input_commitments,
@@ -1512,7 +1719,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroMinotari::from(message.fee_per_gram),
-                PaymentId::open_from_string("Creating coin-split transaction", TxType::CoinSplit),
+                MemoField::open_from_string("Creating coin-split transaction", TxType::CoinSplit),
             )
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
@@ -1542,7 +1749,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .import_unblinded_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
-                        PaymentId::from_bytes(&message.payment_id),
+                        MemoField::from_bytes(&message.payment_id),
                     )
                     .await
                     .map_err(|e| Status::internal(format!("{:?}", e)))?
@@ -1749,7 +1956,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                PaymentId::from_bytes(&request.payment_id),
+                MemoField::from_bytes(&request.payment_id),
             )
             .await
         {
@@ -1807,11 +2014,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 request.max_epoch.into(),
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
-                PaymentId::Open {
-                    // TODO: should this be its own TxType?
-                    tx_type: TxType::PaymentToSelf,
-                    user_data: request.message,
-                },
+                MemoField::open_unchecked(request.message, TxType::PaymentToSelf),
             )
             .await
         {
@@ -1865,10 +2068,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 proof,
                 request.fee_per_gram.into(),
                 sidechain_key,
-                PaymentId::Open {
-                    user_data: request.message.into_bytes(),
-                    tx_type: TxType::PaymentToSelf,
-                },
+                MemoField::open_unchecked(request.message.into_bytes(), TxType::PaymentToSelf),
             )
             .await
         {
@@ -1965,7 +2165,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),
-                    user_payment_id: txn.payment_id.user_data_as_bytes(),
+                    user_payment_id: txn.payment_id.payment_id_as_bytes(),
                     mined_in_block_height: txn.mined_height.unwrap_or(0),
                     output_commitments,
                     input_commitments,
@@ -2347,7 +2547,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 excess_sig: Default::default(),
                 timestamp: tx.timestamp.timestamp() as u64,
                 raw_payment_id: tx.payment_id.to_bytes(),
-                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments: vec![],
@@ -2383,7 +2583,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 excess_sig: Default::default(),
                 timestamp: tx.timestamp.timestamp() as u64,
                 raw_payment_id: tx.payment_id.to_bytes(),
-                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
                 output_commitments,
                 input_commitments,
@@ -2429,7 +2629,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                     .map(|s| s.get_signature().to_vec())
                     .unwrap_or_default(),
                 raw_payment_id: tx.payment_id.to_bytes(),
-                user_payment_id: tx.payment_id.user_data_as_bytes(),
+                user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
                 output_commitments: output_commitments.clone(),
                 input_commitments,

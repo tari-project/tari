@@ -33,7 +33,7 @@ use tari_utilities::ByteArray;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
 use crate::transactions::{
-    transaction_components::payment_id::PaymentId,
+    transaction_components::memo_field::MemoField,
     transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage},
 };
 
@@ -107,7 +107,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .metadata
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
-        let payment_id = PaymentId::from_bytes(&data.payment_id);
+        let payment_id = MemoField::from_bytes(&data.payment_id);
         let ephemeral_public_nonce =
             CompressedPublicKey::from_canonical_bytes(&data.ephemeral_public_nonce).map_err(|err| err.to_string())?;
         let features = data

@@ -40,7 +40,7 @@ use tari_core::{
     one_sided::shared_secret_to_output_encryption_key,
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_components::{payment_id::PaymentId, EncryptedData, TransactionOutput, WalletOutput},
+        transaction_components::{EncryptedData, TransactionOutput, WalletOutput},
         transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
@@ -454,7 +454,7 @@ where
                     let found_outputs = self.search_for_owned_outputs(outputs).await?;
 
                     if found_outputs.is_empty() {
-                        debug!(
+                        trace!(
                             target: LOG_TARGET,
                             "No recoverable outputs found in block at height {} with header hash {}",
                             current_height,
@@ -462,7 +462,7 @@ where
                         );
                     } else {
                         // Now download the whole block and import the outputs
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Found {} recoverable outputs in block at height {} with header hash {}",
                             found_outputs.len(),
@@ -488,7 +488,7 @@ where
                     }
 
                     let block_hash: FixedHash = current_header_hash.try_into()?;
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "Scanned block at height {} with header hash {}, :{:?}",
                         current_height,
@@ -496,7 +496,7 @@ where
                     );
                     if let Some(scanned_block) = prev_scanned_block {
                         if block_hash != scanned_block.header_hash {
-                            debug!(
+                            trace!(
                                 target: LOG_TARGET,
                                 "Saving scanned block at height {} with header hash {}",
                                 current_height,
@@ -681,15 +681,12 @@ where
             let source_address = if wo.features.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
+            } else if let Some(address) = wo.payment_id.get_sender_address() {
+                address
+            } else if wo.payment_id.is_transaction_info() {
+                self.resources.one_sided_tari_address.clone()
             } else {
-                match &wo.payment_id {
-                    PaymentId::AddressAndData {
-                        sender_address: address,
-                        ..
-                    } => address.clone(),
-                    PaymentId::TransactionInfo { .. } => self.resources.one_sided_tari_address.clone(),
-                    _ => TariAddress::default(),
-                }
+                TariAddress::default()
             };
             match self
                 .import_key_manager_utxo_to_transaction_service(

@@ -140,7 +140,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             CoinBaseExtra,
             OutputFeatures,
             OutputFeaturesVersion,
@@ -348,7 +348,7 @@ impl From<DbWalletOutput> for TariUtxo {
             raw_payment_id: CString::new(format!("{}", x.payment_id))
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
-            user_payment_id: CString::new(x.payment_id.user_data_as_string())
+            user_payment_id: CString::new(x.payment_id.payment_id_as_string())
                 .expect("failed to obtain string from a payment id")
                 .into_raw(),
             mined_in_block: CString::new(x.mined_in_block.unwrap_or_default().to_hex())
@@ -1514,7 +1514,7 @@ pub unsafe extern "C" fn tari_address_create_with_payment_id_bytes(
         return ptr::null_mut();
     }
     let v = (*bytes).0.clone();
-    let new_address = (*address).with_payment_id_user_data(v);
+    let new_address = (*address).with_memo_field_payment_id(v);
     match new_address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
@@ -1569,7 +1569,7 @@ pub unsafe extern "C" fn tari_address_create_with_payment_id_utf8(
     };
 
     let v = utf8_str.as_bytes().to_vec();
-    let new_address = (*address).with_payment_id_user_data(v);
+    let new_address = (*address).with_memo_field_payment_id(v);
     match new_address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
@@ -1962,7 +1962,7 @@ pub unsafe extern "C" fn tari_address_get_user_payment_id(
         *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
         return result.into_raw();
     }
-    let payment_id = (*address).get_payment_id_user_data_bytes();
+    let payment_id = (*address).get_memo_field_payment_id_bytes();
     match CString::new(payment_id) {
         Ok(v) => result = v,
         Err(e) => {
@@ -2001,7 +2001,7 @@ pub unsafe extern "C" fn tari_address_get_user_payment_id_as_bytes(
         *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
         return ptr::null_mut();
     }
-    let payment_id = (*address).get_payment_id_user_data_bytes();
+    let payment_id = (*address).get_memo_field_payment_id_bytes();
     let mut bytes = ByteVector(Vec::new());
     bytes.0 = payment_id;
 
@@ -2697,7 +2697,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
             (*output).clone(),
             source_address,
-            PaymentId::open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
+            MemoField::open_from_string(&payment_id_string, TxType::ImportedUtxoNoneRewindable),
         )) {
         Ok(tx_id) => tx_id.as_u64(),
         Err(e) => {
@@ -3193,10 +3193,7 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
                         .extract_payment_id_from_encrypted_data(&(*encrypted_data), &commitment, None),
                 ) {
                     Ok(payment_id) => {
-                        if let PaymentId::Open { tx_type, .. } |
-                        PaymentId::AddressAndData { tx_type, .. } |
-                        PaymentId::TransactionInfo { tx_type, .. } = payment_id
-                        {
+                        if let Some(tx_type) = payment_id.get_tx_type() {
                             transaction_type = c_uint::from(tx_type.as_u8());
                         }
                     },
@@ -4923,7 +4920,7 @@ pub unsafe extern "C" fn completed_transaction_get_user_payment_id(
         return result.into_raw();
     }
     let payment_id = (*transaction).payment_id.clone();
-    match CString::new(payment_id.user_data_as_string()) {
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
             *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
@@ -4963,7 +4960,7 @@ pub unsafe extern "C" fn completed_transaction_get_user_payment_id_as_bytes(
     }
     let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
-    bytes.0 = payment_id.user_data_as_bytes();
+    bytes.0 = payment_id.payment_id_as_bytes();
 
     Box::into_raw(Box::new(bytes))
 }
@@ -5041,10 +5038,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_type(
         *error_out = LibWalletError::from(InterfaceError::NullError("completed_transaction".to_string())).code;
     } else {
         let payment_id = (*transaction).payment_id.clone();
-        if let PaymentId::Open { tx_type, .. } |
-        PaymentId::AddressAndData { tx_type, .. } |
-        PaymentId::TransactionInfo { tx_type, .. } = payment_id
-        {
+        if let Some(tx_type) = payment_id.get_tx_type() {
             transaction_type = c_uint::from(tx_type.as_u8());
         }
     }
@@ -5422,7 +5416,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id(
     }
 
     let payment_id = (*transaction).payment_id.clone();
-    match CString::new(payment_id.user_data_as_string()) {
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
             *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
@@ -5462,7 +5456,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_user_payment_id_as_byt
     }
     let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
-    bytes.0 = payment_id.user_data_as_bytes();
+    bytes.0 = payment_id.payment_id_as_bytes();
 
     Box::into_raw(Box::new(bytes))
 }
@@ -5710,7 +5704,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id(
     }
     let payment_id = (*transaction).payment_id.clone();
 
-    match CString::new(payment_id.user_data_as_string()) {
+    match CString::new(payment_id.payment_id_as_string()) {
         Ok(v) => result = v,
         Err(e) => {
             *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
@@ -5750,7 +5744,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_user_payment_id_as_byte
     }
     let payment_id = (*transaction).payment_id.clone();
     let mut bytes = ByteVector(Vec::new());
-    bytes.0 = payment_id.user_data_as_bytes();
+    bytes.0 = payment_id.payment_id_as_bytes();
 
     Box::into_raw(Box::new(bytes))
 }
@@ -7230,7 +7224,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         commitments,
         number_of_splits,
         MicroMinotari(fee_per_gram),
-        PaymentId::open_from_string(
+        MemoField::open_from_string(
             &format!("{} even coin splits", number_of_splits),
             if number_of_splits > 1 {
                 TxType::CoinSplit
@@ -7306,7 +7300,7 @@ pub unsafe extern "C" fn wallet_coin_join(
     match (*wallet).runtime.block_on((*wallet).wallet.coin_join(
         commitments,
         fee_per_gram.into(),
-        Some(PaymentId::open_from_string(
+        Some(MemoField::open_from_string(
             &format!("Coin join {} outputs", commitments_len),
             TxType::CoinJoin,
         )),
@@ -8043,10 +8037,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
     };
 
     let payment_id = if payment_id_string.is_null() {
-        PaymentId::open_from_string("", TxType::PaymentToOther)
+        MemoField::open_from_string("", TxType::PaymentToOther)
     } else {
         match CStr::from_ptr(payment_id_string).to_str() {
-            Ok(v) => PaymentId::open_from_string(v, TxType::PaymentToOther),
+            Ok(v) => MemoField::open_from_string(v, TxType::PaymentToOther),
             _ => {
                 *error_out = LibWalletError::from(InterfaceError::NullError("payment_id".to_string())).code;
                 return 0;
@@ -9698,41 +9692,31 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 /// ## Arguments
 /// `wallet` - The TariWallet pointer.
 /// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
-/// progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
+/// progress to the client. The first argument of the callback is an event enum encoded as a u8, and the second and
+/// third arguments are u64 values that will contain different information depending on the event
+/// that triggered the callback, as follows:
 /// ```
 /// enum RecoveryEvent {
-///     ConnectingToBaseNode,       // 0
-///     ConnectedToBaseNode,        // 1
-///     ConnectionToBaseNodeFailed, // 2
-///     Progress,                   // 3
-///     Completed,                  // 4
-///     ScanningRoundFailed,        // 5
-///     RecoveryFailed,             // 6
+///     Progress,                   // 0
+///        current_height: u64,             - 1st argument
+///        tip_height: u64,                 - 2nd argument
+///     Completed,                  // 1
+///        num_recovered: u64,              - 1st argument
+///        value_recovered: u64,            - 2nd argument (representing MicroMinotari)
+///     ScanningRoundFailed,        // 2
+///        num_retries: u64,                - 1st argument
+///        retry_limit: u64,                - 2nd argument
 /// }
 /// ```
-/// The second and third arguments are u64 values that will contain different information depending on the event
-/// that triggered the callback. The meaning of the second and third argument for each event are as follows:
-///     - ConnectingToBaseNode, 0, 0
-///     - ConnectedToBaseNode, 0, 1
-///     - ConnectionToBaseNodeFailed, number of retries, retry limit
-///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's recovered, MicroMinotari recovered,
-///     - ScanningRoundFailed, number of retries, retry limit
-///     - RecoveryFailed, 0, 0
 ///
 /// If connection to a base node is successful the flow of callbacks should be:
-///     - The process will start with a callback with `ConnectingToBaseNode` showing a connection is being attempted
-///       this could be repeated multiple times until a connection is made.
-///     - The next a callback with `ConnectedToBaseNode` indicate a successful base node connection and process has
-///       started
-///     - In Progress callbacks will be of the form (n, m) where n < m
-///     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
-///       scanned and how much MicroMinotari was recovered
-///     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
+///     - The process will start with a callback with `Progress`, and will be repeated as long as the recovery is in
+///       progress.
+///     - The `Progress` callbacks will be of the form (n, m) where n < m
+///     - If the process completed successfully then the `Completed` callback will return how many UTXO's were scanned
+///       and how much MicroMinotari was recovered
 ///     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
 ///       attempt will be made
-///     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
-///       a new process.
 ///
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -11062,7 +11046,7 @@ mod test {
                 &commitment,
                 amount,
                 &spending_key,
-                PaymentId::Empty,
+                MemoField::new_empty(),
             )
             .unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
@@ -12245,28 +12229,25 @@ mod test {
                 TxType::ImportedUtxoNoneRewindable,
             ] {
                 for payment_id in [
-                    PaymentId::Open {
-                        user_data: "hallo world".as_bytes().to_vec(),
+                    MemoField::new_open("hallo world".as_bytes().to_vec(), tx_type).unwrap(),
+                    MemoField::new_address_and_data(
+                        TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                        MicroMinotari::from(123),
+                        false,
                         tx_type,
-                    },
-                    PaymentId::AddressAndData {
-                        sender_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
-                            .unwrap(),
-                        sender_one_sided: false,
-                        fee: MicroMinotari::from(123),
+                        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    )
+                    .unwrap(),
+                    MemoField::new_transaction_info(
+                        TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk").unwrap(),
+                        MicroMinotari::from(123456),
+                        MicroMinotari::from(123),
+                        false,
                         tx_type,
-                        user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                    },
-                    PaymentId::TransactionInfo {
-                        recipient_address: TariAddress::from_base58("f3S7XTiyKQauZpDUjdR8NbcQ33MYJigiWiS44ccZCxwAAjk")
-                            .unwrap(),
-                        sender_one_sided: false,
-                        amount: MicroMinotari::from(123456),
-                        fee: MicroMinotari::from(123),
-                        tx_type,
-                        user_data: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                        sent_output_hashes: vec![],
-                    },
+                        vec![],
+                        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                    )
+                    .unwrap(),
                 ] {
                     let wallet_output = (*alice_wallet).runtime.block_on(create_test_input(
                         15000.into(),

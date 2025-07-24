@@ -103,7 +103,7 @@ use crate::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             EncryptedData,
             KernelFeatures,
             RangeProofType,
@@ -1622,7 +1622,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment_mask_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<EncryptedData, TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
@@ -1647,7 +1647,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         encrypted_data: &EncryptedData,
         commitment: &CompressedCommitment,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<PaymentId, TransactionError> {
+    ) -> Result<MemoField, TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
         } else {
@@ -1662,7 +1662,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroMinotari, PaymentId), TransactionError> {
+    ) -> Result<(TariKeyId, MicroMinotari, MemoField), TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
         } else {

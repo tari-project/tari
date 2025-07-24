@@ -1,5 +1,5 @@
 [workspace.package]
-version = "4.10.1-pre.0"
+version = "5.0.0-pre.0"
 edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
@@ -41,6 +41,9 @@ members = [
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
     "applications/minotari_utils",
+    "applications/minotari_mcp_common",
+    "applications/minotari_mcp_node",
+    "applications/minotari_mcp_wallet",
     "integration_tests",
     "hashing",
 ]
@@ -91,6 +94,7 @@ minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/com
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common" }
 serde_json = "1.0.39"
 serde = "1.0.119"
+minotari_mcp_common = { path = "applications/minotari_mcp_common" }
 
 [profile.release]
 # By default, Rust will wrap an integer in release mode instead of throwing the overflow error

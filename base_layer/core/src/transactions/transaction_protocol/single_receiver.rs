@@ -159,7 +159,7 @@ mod test {
             tari_amount::*,
             test_helpers::TestParams,
             transaction_components::{
-                payment_id::PaymentId,
+                memo_field::MemoField,
                 EncryptedData,
                 OutputFeatures,
                 TransactionKernel,
@@ -197,7 +197,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &key_manager,
         )
         .await
@@ -238,7 +238,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &key_manager,
         )
         .await
@@ -289,7 +289,7 @@ mod test {
             public_excess: pub_xs.clone(),
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
-            payment_id: PaymentId::Empty,
+            payment_id: MemoField::new_empty(),
             features: OutputFeatures::default(),
             script: script.clone(),
             sender_offset_public_key,
@@ -317,7 +317,7 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             &key_manager,
         )
         .await

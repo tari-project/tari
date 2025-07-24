@@ -32,7 +32,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             OutputFeatures,
             Transaction,
             TransactionOutput,
@@ -79,7 +79,7 @@ pub enum OutputManagerRequest {
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     SpendBackupPreMineUtxo {
         tx_id: TxId,
@@ -99,7 +99,7 @@ pub enum OutputManagerRequest {
         covenant: Covenant,
         minimum_value_promise: MicroMinotari,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -108,13 +108,13 @@ pub enum OutputManagerRequest {
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     CreatePayToSelfWithOutputs {
         outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     CancelTransaction(TxId),
     GetSpentOutputs,
@@ -134,7 +134,7 @@ pub enum OutputManagerRequest {
     CreateCoinJoin {
         commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     },
     FeeEstimate {
         amount: MicroMinotari,
@@ -542,7 +542,7 @@ impl OutputManagerHandle {
         covenant: Covenant,
         minimum_value_promise: MicroMinotari,
         recipient_address: TariAddress,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -750,7 +750,7 @@ impl OutputManagerHandle {
         &mut self,
         commitments: Vec<CompressedCommitment>,
         fee_per_gram: MicroMinotari,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         match self
             .handle
@@ -841,7 +841,7 @@ impl OutputManagerHandle {
         outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroMinotari,
         input_selection: UtxoSelectionCriteria,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         match self
             .handle
@@ -872,7 +872,7 @@ impl OutputManagerHandle {
         recipient_address: TariAddress,
         original_maturity: u64,
         use_output: UseOutput,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<
         (
             Transaction,
@@ -960,7 +960,7 @@ impl OutputManagerHandle {
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         match self
             .handle

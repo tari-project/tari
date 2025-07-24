@@ -19,12 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
+use tari_common_types::types::FixedHash;
 use tari_comms::protocol::rpc::RpcError;
 use tari_shutdown::ShutdownSignal;
 use tokio::{select, sync::RwLock, time::interval};
@@ -90,6 +90,7 @@ where TWalletConnectivity: WalletConnectivityInterface
     async fn monitor_node(&mut self, mut shutdown_signal: ShutdownSignal) -> Result<(), BaseNodeMonitorError> {
         let mut interval = interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_checked_hash = FixedHash::zero();
 
         loop {
             select! {
@@ -126,6 +127,20 @@ where TWalletConnectivity: WalletConnectivityInterface
 
                     let is_synced = tip_info.is_synced;
                     let best_block_height = chain_metadata.best_block_height();
+                    trace!(
+                        target: LOG_TARGET,
+                        "Base node Tip: {} ({}) Latency: {} ms",
+                        best_block_height,
+                        if is_synced { "Synced" } else { "Syncing..." },
+                        latency.as_millis()
+                    );
+
+                    let tip_hash = chain_metadata.best_block_hash();
+                    if last_checked_hash == *tip_hash {
+                        // no new block, continue to the next iteration
+                        continue;
+                    }
+                    last_checked_hash = tip_hash.clone();
 
                     self
                         .update_state(BaseNodeState {
@@ -136,13 +151,7 @@ where TWalletConnectivity: WalletConnectivityInterface
                         })
                         .await;
 
-                    trace!(
-                        target: LOG_TARGET,
-                        "Base node Tip: {} ({}) Latency: {} ms",
-                        best_block_height,
-                        if is_synced { "Synced" } else { "Syncing..." },
-                        latency.as_millis()
-                    );
+
 
                }
             }

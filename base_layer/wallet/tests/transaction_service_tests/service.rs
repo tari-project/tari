@@ -121,7 +121,7 @@ use tari_core::{
         tari_amount::*,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
-            payment_id::{PaymentId, TxType},
+            memo_field::{MemoField, TxType},
             KernelBuilder,
             OutputFeatures,
             RangeProofType,
@@ -619,7 +619,7 @@ async fn manage_single_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .is_err());
@@ -636,7 +636,7 @@ async fn manage_single_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            PaymentId::open_from_string("TAKE MAH MONEYS!", TxType::PaymentToOther),
+            MemoField::open_from_string("TAKE MAH MONEYS!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending tx");
@@ -793,7 +793,7 @@ async fn large_interactive_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(1),
-            PaymentId::open_from_string("TAKE MAH MONEYS!", TxType::PaymentToOther),
+            MemoField::open_from_string("TAKE MAH MONEYS!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending large tx");
@@ -956,7 +956,7 @@ async fn test_spend_dust_to_self_in_oversized_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
+            MemoField::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
         )
         .await
         .is_err());
@@ -1053,7 +1053,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open_from_string("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
+            MemoField::open_from_string("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -1168,7 +1168,7 @@ async fn test_spend_dust_happy_path() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
+            MemoField::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -1212,7 +1212,7 @@ async fn test_spend_dust_happy_path() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            PaymentId::open_from_string("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
+            MemoField::open_from_string("GIVE MAH _OWN_ MONEYS AWAY!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -1311,7 +1311,7 @@ async fn single_transaction_to_self() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
+            MemoField::open_from_string("TAKE MAH _OWN_ MONEYS!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending tx");
@@ -1399,7 +1399,7 @@ async fn large_coin_split_transaction() {
             tx_id,
             coin_split_tx,
             amount,
-            PaymentId::open_from_string("large coin-split", TxType::CoinSplit),
+            MemoField::open_from_string("large coin-split", TxType::CoinSplit),
         )
         .await
         .expect("Alice sending coin-split tx");
@@ -1482,7 +1482,7 @@ async fn single_transaction_burn_tari() {
             burn_value,
             UtxoSelectionCriteria::default(),
             20.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
             Some(claim_public_key.clone()),
             None,
         )
@@ -1642,7 +1642,7 @@ async fn send_one_sided_transaction_to_other() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::open_from_string("SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!", TxType::PaymentToOther),
+            MemoField::open_from_string("SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!", TxType::PaymentToOther),
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1786,7 +1786,7 @@ async fn recover_one_sided_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -1908,7 +1908,7 @@ async fn recover_stealth_one_sided_transaction() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             20.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .expect("Alice sending one-sided tx to Bob");
@@ -2015,7 +2015,7 @@ async fn test_htlc_send_and_claim() {
             value,
             UtxoSelectionCriteria::default(),
             20.into(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .expect("Alice sending HTLC transaction");
@@ -2058,7 +2058,7 @@ async fn test_htlc_send_and_claim() {
 
     bob_ts_interface
         .transaction_service_handle
-        .submit_transaction(tx_id_htlc, tx, htlc_amount, PaymentId::Empty)
+        .submit_transaction(tx_id_htlc, tx, htlc_amount, MemoField::new_empty())
         .await
         .unwrap();
     assert_eq!(
@@ -2256,7 +2256,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open_from_string("a to b 1", TxType::PaymentToOther),
+            MemoField::open_from_string("a to b 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2274,7 +2274,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open_from_string("a to c 1", TxType::PaymentToOther),
+            MemoField::open_from_string("a to c 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2294,7 +2294,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open_from_string("b to a 1", TxType::PaymentToOther),
+            MemoField::open_from_string("b to a 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2305,7 +2305,7 @@ async fn manage_multiple_transactions() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open_from_string("a to b 2", TxType::PaymentToOther),
+            MemoField::open_from_string("a to b 2", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2451,7 +2451,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -2556,7 +2556,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -2686,7 +2686,7 @@ async fn finalize_tx_with_missing_output() {
             Covenant::default(),
             MicroMinotari::zero(),
             TariAddress::default(),
-            PaymentId::Empty,
+            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -2884,7 +2884,7 @@ async fn discovery_async_return_test() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open_from_string("Discovery Tx!", TxType::PaymentToOther),
+            MemoField::open_from_string("Discovery Tx!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -2924,7 +2924,7 @@ async fn discovery_async_return_test() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(20),
-            PaymentId::open_from_string("Discovery Tx2!", TxType::PaymentToOther),
+            MemoField::open_from_string("Discovery Tx2!", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3076,7 +3076,7 @@ async fn test_transaction_cancellation() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3183,7 +3183,7 @@ async fn test_transaction_cancellation() {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(5))
-        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
+        .with_payment_id(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -3270,7 +3270,7 @@ async fn test_transaction_cancellation() {
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari::from(5))
-        .with_payment_id(PaymentId::open_from_string("Yo!", TxType::PaymentToOther))
+        .with_payment_id(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
         .with_input(input)
         .await
         .unwrap()
@@ -3428,7 +3428,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3631,7 +3631,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3821,7 +3821,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message1", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3865,7 +3865,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message2", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message2", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3914,7 +3914,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message3", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message3", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -3963,7 +3963,7 @@ async fn test_tx_direct_send_behaviour() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message4", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message4", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -4296,7 +4296,7 @@ async fn test_transaction_resending() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -4825,7 +4825,7 @@ async fn test_replying_to_cancelled_tx() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             100 * uT,
-            PaymentId::open_from_string("Testing Message", TxType::PaymentToOther),
+            MemoField::open_from_string("Testing Message", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5622,7 +5622,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
-        payment_id: PaymentId::open_from_string("Yo!", TxType::PaymentToOther),
+        payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
         change_output_hashes: vec![],
         received_output_hashes: vec![],
         sent_output_hashes: vec![],
@@ -5764,7 +5764,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open_from_string("blah", TxType::PaymentToOther),
+            MemoField::open_from_string("blah", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5780,7 +5780,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open_from_string("one-sided 1", TxType::PaymentToOther),
+            MemoField::open_from_string("one-sided 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5796,7 +5796,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open_from_string("one-sided 2", TxType::PaymentToOther),
+            MemoField::open_from_string("one-sided 2", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5946,7 +5946,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open_from_string("coinbase_confirmed", TxType::PaymentToOther),
+            MemoField::open_from_string("coinbase_confirmed", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5962,7 +5962,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
+            MemoField::open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -5978,7 +5978,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
                 .await
                 .unwrap(),
-            PaymentId::open_from_string("Coinbase_not_mined", TxType::PaymentToOther),
+            MemoField::open_from_string("Coinbase_not_mined", TxType::PaymentToOther),
         )
         .await
         .unwrap();
@@ -6121,7 +6121,7 @@ fn create_mock_completed_transaction(
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: Utc::now().checked_add_days(Days::new(1)),
-        payment_id: PaymentId::open_from_string(description, TxType::PaymentToOther),
+        payment_id: MemoField::open_from_string(description, TxType::PaymentToOther),
         change_output_hashes: vec![],
         received_output_hashes: vec![],
         sent_output_hashes: vec![],

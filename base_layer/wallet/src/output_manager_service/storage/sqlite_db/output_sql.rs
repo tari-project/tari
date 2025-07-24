@@ -38,7 +38,7 @@ use tari_common_types::{
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::PaymentId,
+        memo_field::MemoField,
         EncryptedData,
         OutputFeatures,
         OutputType,
@@ -916,8 +916,8 @@ impl OutputSql {
 
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
         let payment_id = match self.payment_id {
-            Some(bytes) => PaymentId::from_bytes(&bytes),
-            None => PaymentId::Empty,
+            Some(bytes) => MemoField::from_bytes(&bytes),
+            None => MemoField::new_empty(),
         };
 
         let wallet_output = WalletOutput::new_with_rangeproof(

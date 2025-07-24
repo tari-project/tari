@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [5.0.0-pre.0](https://github.com/tari-project/tari/compare/v4.10.0-pre.0...v5.0.0-pre.0) (2025-07-23)
+
+### ⚠ BREAKING CHANGES
+
+Wallet config has changed. It needs to be recreated or all instances of `custom_base_node` must be removed
+
+### Features
+
+* remove old custom base node settings and update config ([#7353](https://github.com/tari-project/tari/issues/7353)) ([5a6d323](https://github.com/tari-project/tari/commit/5a6d32344c2d728e692741d8cc2aac6be73405c4))
+
+
+### Bug Fixes
+
+* add dns opts to system dns ([#7355](https://github.com/tari-project/tari/issues/7355)) ([ee171e1](https://github.com/tari-project/tari/commit/ee171e1b5c9cbc4b8f0463153a5dfb5038ca7b61))
+* prevent duplicate block insert ([#7357](https://github.com/tari-project/tari/issues/7357)) ([97d10d0](https://github.com/tari-project/tari/commit/97d10d001fbcc4fe23873521605b41b2b93b3c07))
+
 ## [4.10.0-pre.0](https://github.com/tari-project/tari/compare/v4.9.1-pre.0...v4.10.0-pre.0) (2025-07-18)
 
 

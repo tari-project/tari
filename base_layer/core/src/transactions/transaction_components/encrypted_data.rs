@@ -53,7 +53,7 @@ use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::transactions::{tari_amount::MicroMinotari, transaction_components::payment_id::PaymentId};
+use crate::transactions::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
 
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();
@@ -86,7 +86,7 @@ impl EncryptedData {
         commitment: &CompressedCommitment,
         value: MicroMinotari,
         mask: &PrivateKey,
-        payment_id: PaymentId,
+        payment_id: MemoField,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
         let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + payment_id.get_size()]);
@@ -123,7 +123,7 @@ impl EncryptedData {
         encryption_key: &PrivateKey,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
-    ) -> Result<(MicroMinotari, PrivateKey, PaymentId), EncryptedDataError> {
+    ) -> Result<(MicroMinotari, PrivateKey, MemoField), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
         let tag = Tag::from_slice(&encrypted_data.as_bytes()[..SIZE_TAG]);
         let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[SIZE_TAG..SIZE_TAG + SIZE_NONCE]);
@@ -150,7 +150,7 @@ impl EncryptedData {
         Ok((
             u64::from_le_bytes(value_bytes).into(),
             PrivateKey::from_canonical_bytes(&bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK])?,
-            PaymentId::from_bytes(&bytes[SIZE_VALUE + SIZE_MASK..]),
+            MemoField::from_bytes(&bytes[SIZE_VALUE + SIZE_MASK..]),
         ))
     }
 
@@ -274,7 +274,6 @@ mod test {
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
     use super::*;
-    use crate::transactions::transaction_components::payment_id::PaymentId;
 
     #[test]
     fn test_premine() {
@@ -319,13 +318,13 @@ mod test {
             EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
         assert_eq!(amount, decrypted_value);
         assert_eq!(mask, decrypted_mask);
-        match decrypted_payment_id {
-            PaymentId::Open { user_data: data, .. } => {
-                let bytes: [u8; SIZE_VALUE] = data.try_into().unwrap();
-                let v = u64::from_le_bytes(bytes);
-                assert_eq!(v, id);
-            },
-            _ => panic!("Expected PaymentId::Open"),
+        if decrypted_payment_id.is_open() {
+            let data = decrypted_payment_id.get_payment_id();
+            let bytes: [u8; SIZE_VALUE] = data.try_into().unwrap();
+            let v = u64::from_le_bytes(bytes);
+            assert_eq!(v, id);
+        } else {
+            panic!("Expected PaymentId::Open");
         }
     }
 

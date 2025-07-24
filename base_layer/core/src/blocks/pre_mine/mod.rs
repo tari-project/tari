@@ -44,7 +44,7 @@ use crate::{
     transactions::{
         tari_amount::{MicroMinotari, Minotari},
         transaction_components::{
-            payment_id::PaymentId,
+            memo_field::MemoField,
             CoinBaseExtra,
             KernelFeatures,
             OutputFeatures,
@@ -872,7 +872,7 @@ pub async fn create_pre_mine_genesis_block_info(
                 RangeProofType::RevealedValue,
             ))
             .with_script(script)
-            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), PaymentId::U256(i.into()))
+            .encrypt_data_for_recovery(&key_manager, Some(&view_key_id), MemoField::new_u256(i.into()))
             .await
             .map_err(|e| e.to_string())?
             .with_input_data(ExecutionStack::default())

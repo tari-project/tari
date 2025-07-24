@@ -62,7 +62,6 @@ pub struct NetworkDiscoveryConfig {
     #[serde(default)]
     #[serde(with = "serializers::optional_seconds")]
     pub initial_peer_sync_delay: Option<Duration>,
-
     /// The minimum number of peers to attempt to sync with during each seed peer sync operation.
     /// If this many peers are successfully added to the peer DB (across all seed peers attempted
     /// in one round), the current seed_strap round will end early, provided that
@@ -72,13 +71,31 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 15
     #[serde(default)]
     pub seed_peer_min_initial_sync_peers_needed: usize,
-
     /// The minimum number of seed peers that must be successfully contacted (i.e., returned at least one peer)
     /// before an early exit due to `seed_peer_min_initial_sync_peers_needed` can occur.
     /// Default: 5
     #[serde(default)]
     pub min_successful_seed_contacts_for_early_exit: usize,
-
+    /// Maximum time to wait for a dial during bootstrap before abandoning the attempt.
+    /// Default: 30 seconds
+    #[serde(default)]
+    #[serde(with = "serializers::seconds")]
+    pub bootstrap_dial_peer_timeout: Duration,
+    /// Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt.
+    /// Default: 10 seconds
+    #[serde(default)]
+    #[serde(with = "serializers::seconds")]
+    pub bootstrap_rpc_connect_timeout: Duration,
+    /// Maximum time to wait for to obtain the RPC get peers stream during bootstrap before abandoning the attempt.
+    /// Default: 5 seconds
+    #[serde(default)]
+    #[serde(with = "serializers::seconds")]
+    pub bootstrap_rpc_get_peers_stream_timeout: Duration,
+    /// Maximum time to wait for any item while streaming RPC peers during bootstrap before abandoning the attempt.
+    /// Default: 5 seconds
+    #[serde(default)]
+    #[serde(with = "serializers::seconds")]
+    pub bootstrap_rpc_streaming_timeout: Duration,
     /// Maximum time to wait for bootstrap to complete before forcing completion
     /// Default: 5 minutes
     #[serde(default)]
@@ -100,6 +117,10 @@ impl Default for NetworkDiscoveryConfig {
             initial_peer_sync_delay: None,
             seed_peer_min_initial_sync_peers_needed: 15,
             min_successful_seed_contacts_for_early_exit: 5,
+            bootstrap_dial_peer_timeout: Duration::from_secs(30),
+            bootstrap_rpc_connect_timeout: Duration::from_secs(10),
+            bootstrap_rpc_get_peers_stream_timeout: Duration::from_secs(5),
+            bootstrap_rpc_streaming_timeout: Duration::from_secs(5),
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
         }
     }

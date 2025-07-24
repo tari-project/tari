@@ -220,6 +220,10 @@ pub enum TransactionServiceError {
     InvalidBurnTransaction(String),
     #[error("Invalid validator node signature")]
     InvalidValidatorNodeSignature,
+    #[error("Invalid payment ID: {0}")]
+    InvalidPaymentId(String),
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

@@ -79,7 +79,7 @@ impl NewOutputSql {
         let mut covenant = Vec::new();
         BorshSerialize::serialize(&output.wallet_output.covenant, &mut covenant)?;
 
-        let user_payment_id = output.payment_id.user_data_as_bytes();
+        let user_payment_id = output.payment_id.payment_id_as_bytes();
         let user_payment_id = if user_payment_id.is_empty() {
             None
         } else {
