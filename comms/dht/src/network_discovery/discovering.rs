@@ -115,7 +115,7 @@ impl Discovering {
     pub async fn next_event(&mut self) -> StateEvent {
         debug!(
             target: LOG_TARGET,
-            "Starting network discovery with params {}", self.params
+            "Discovering: Starting network discovery with params {}", self.params
         );
 
         if let Err(err) = self.initialize().await {
@@ -128,14 +128,14 @@ impl Discovering {
                 Ok(conn) => {
                     let peer_node_id = conn.peer_node_id().clone();
                     self.stats.sync_peers.push(peer_node_id.clone());
-                    debug!(target: LOG_TARGET, "Attempting to sync from peer `{}`", peer_node_id);
+                    debug!(target: LOG_TARGET, "Discovering: Attempting to sync from peer `{}`", peer_node_id);
 
                     if self.request_from_peers(conn).await.is_ok() {
                         self.stats.num_succeeded += 1;
                     }
                 },
                 Err(err) => {
-                    debug!(target: LOG_TARGET, "Failed to connect to sync peer candidate: {}", err);
+                    debug!(target: LOG_TARGET, "Discovering: Failed to connect to sync peer candidate: {}", err);
                 },
             }
         }
@@ -150,7 +150,7 @@ impl Discovering {
             Ok(Ok(client)) => {
                 trace!(
                     target: LOG_TARGET,
-                    "Successfully connected RPC client to sync peer '{}'",
+                    "Discovering: Successfully connected RPC client to sync peer '{}'",
                     conn.peer_node_id()
                 );
                 client
@@ -158,7 +158,7 @@ impl Discovering {
             Ok(Err(e)) => {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to connect RPC client to sync peer {}: {}",
+                    "Discovering: Failed to connect RPC client to sync peer {}: {}",
                     conn.peer_node_id(),
                     e
                 );
@@ -167,7 +167,7 @@ impl Discovering {
             Err(_) => {
                 error!(
                     target: LOG_TARGET,
-                    "RPC connect_rpc to seed '{}' timed out after {:?}",
+                    "Discovering: RPC connect_rpc to sync peer '{}' timed out after {:?}",
                     conn.peer_node_id(),
                     rpc_connect_timeout,
                 );
@@ -182,7 +182,7 @@ impl Discovering {
 
         debug!(
             target: LOG_TARGET,
-            "Established RPC connection to peer `{}`", peer_node_id
+            "Discovering: Established RPC connection to sync peer `{}`", peer_node_id
         );
         let result = self.request_peers(peer_node_id, client).await;
         self.ban_on_offence(peer_node_id.clone(), result).await?;
@@ -202,7 +202,10 @@ impl Discovering {
                 n: self.params.num_peers_to_request,
                 include_clients: true,
                 max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
-                    error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX claims per peer");
+                    error!(
+                        target: LOG_TARGET,
+                        "Discovering: Node configured to accept more than u32::MAX claims per peer"
+                    );
                     u32::MAX
                 }),
                 max_addresses_per_claim: self
@@ -211,7 +214,10 @@ impl Discovering {
                     .max_permitted_peer_addresses_per_claim
                     .try_into()
                     .unwrap_or_else(|_| {
-                        error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX addresses per claim");
+                        error!(
+                            target: LOG_TARGET,
+                            "Discovering: Node configured to accept more than u32::MAX addresses per claim"
+                        );
                         u32::MAX
                     }),
             }),
@@ -222,7 +228,7 @@ impl Discovering {
             Ok(Ok(stream)) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Successfully initiated get_peers stream from sync peer '{}'",
+                    "Discovering: Successfully initiated get_peers stream from sync peer '{}'",
                     sync_peer
                 );
                 stream
@@ -230,7 +236,8 @@ impl Discovering {
             Ok(Err(e)) => {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to initiate get_peers stream from sync peer '{}': {}. This sync peer will be skipped.",
+                    "Discovering: Failed to initiate get_peers stream from sync peer '{}': {}. This sync peer will be \
+                    skipped.",
                     sync_peer,
                     e
                 );
@@ -239,7 +246,7 @@ impl Discovering {
             Err(_) => {
                 error!(
                     target: LOG_TARGET,
-                    "RPC get_peers from sunc '{}' timed out after {:?}",
+                    "Discovering: RPC get_peers from sync '{}' timed out after {:?}",
                     sync_peer, rpc_get_peers_stream_timeout
                 );
                 return Err(NetworkDiscoveryError::Timeout {
@@ -272,7 +279,7 @@ impl Discovering {
     async fn request_peers(&mut self, sync_peer: &NodeId, client: rpc::DhtClient) -> Result<(), NetworkDiscoveryError> {
         debug!(
             target: LOG_TARGET,
-            "Requesting {} peers from `{}`",
+            "Discovering: Requesting {} peers from `{}`",
             self.params.num_peers_to_request,
             sync_peer
         );
@@ -285,13 +292,14 @@ impl Discovering {
         while let Some(resp) = self.get_peer_response(&mut stream, sync_peer).await? {
             counter += 1;
             if counter > self.params.num_peers_to_request {
-                warn!(target: LOG_TARGET, "Sync peer `{}` sent more peers than we requested.", sync_peer);
+                warn!(target: LOG_TARGET, "Discovering: Sync peer `{}` sent more peers than we requested.", sync_peer);
                 return Err(NetworkDiscoveryError::TooManyPeersReceived);
             }
             if invalid_peer_signatures >= peer_sync_immediate_ban_threshold {
                 warn!(
                       target: LOG_TARGET,
-                     "Too many ban-able offences ({} of {}) received from peer `{}`. Stopping further processing.",
+                     "Discovering: Too many ban-able offences ({} of {}) received from peer `{}`. Stopping further \
+                     processing.",
                       peer_sync_immediate_ban_threshold, counter, sync_peer
                 );
                 return Err(NetworkDiscoveryError::BanableOffencesWhileSyncing(
@@ -301,7 +309,11 @@ impl Discovering {
             let GetPeersResponse { peer } = match resp {
                 Ok(val) => val,
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid response: {:?}", sync_peer, err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Discovering: Sync peer `{}` sent invalid response: {:?}",
+                        sync_peer, err
+                    );
                     return Err(NetworkDiscoveryError::from(err));
                 },
             };
@@ -309,7 +321,10 @@ impl Discovering {
             let peer = match peer.ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived) {
                 Ok(val) => val,
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Sync peer `{}` sent an empty peer message: {:?}", sync_peer, err);
+                    warn!(
+                        target: LOG_TARGET, "Discovering: Sync peer `{}` sent an empty peer message: {:?}",
+                        sync_peer, err
+                    );
                     return Err(err);
                 },
             };
@@ -317,19 +332,23 @@ impl Discovering {
                 match peer.try_into().map_err(NetworkDiscoveryError::InvalidPeerDataReceived) {
                     Ok(val) => val,
                     Err(err) => {
-                        warn!(target: LOG_TARGET, "Sync peer `{}` sent invalid data: {:?}", sync_peer, err);
+                        warn!(
+                            target: LOG_TARGET,
+                            "Discovering: Sync peer `{}` sent invalid data: {:?}",
+                            sync_peer, err
+                        );
                         return Err(err);
                     },
                 };
             if !peers_received.insert(new_peer.public_key.clone()) {
                 let err = NetworkDiscoveryError::DuplicatePeerReceived;
-                warn!(target: LOG_TARGET, "Sync peer `{}` sent duplicate peer: {:?}", sync_peer, err);
+                warn!(target: LOG_TARGET, "Discovering: Sync peer `{}` sent duplicate peer: {:?}", sync_peer, err);
                 return Err(err);
             }
             if let Err(err) = self.validate_and_add_peer(new_peer).await {
                 warn!(
                     target: LOG_TARGET,
-                    "Failed to validate and add peer from sync peer `{}`: {:?}", sync_peer, err
+                    "Discovering: Failed to validate and add peer from sync peer `{}`: {:?}", sync_peer, err
                 );
                 // Note: Currently we allow invalid peer signature errors to accumulate up to a threshold without
                 //       banning the sync peer due to an embedded problem, however, the invalid peer info sets are not
@@ -342,7 +361,7 @@ impl Discovering {
                     invalid_peer_signatures += 1;
                     debug!(
                         target: LOG_TARGET,
-                        "Sync peer `{}` committed {} of {} ban offences",
+                        "Discovering: Sync peer `{}` committed {} of {} ban offences",
                         sync_peer, invalid_peer_signatures, peer_sync_immediate_ban_threshold
                     );
                     continue;
@@ -358,7 +377,7 @@ impl Discovering {
     async fn validate_and_add_peer(&mut self, new_peer: UnvalidatedPeerInfo) -> Result<(), NetworkDiscoveryError> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
         if self.context.node_identity.node_id() == &node_id {
-            debug!(target: LOG_TARGET, "Received our own node from peer sync. Ignoring.");
+            debug!(target: LOG_TARGET, "Discovering: Received our own node from peer sync. Ignoring.");
             return Ok(());
         }
 
@@ -431,14 +450,14 @@ impl Discovering {
             Ok(_) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Banned peer `{}` for {:.2?} due to '{}'",
+                    "Discovering: Banned peer `{}` for {:.2?} due to '{}'",
                     peer, self.config().ban_duration_from_severity(severity), err.to_string()
                 );
             },
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Failed to ban peer `{}`: {}", peer, e
+                    "Discovering: Failed to ban peer `{}`: {}", peer, e
                 );
             },
         }
@@ -462,7 +481,7 @@ impl Discovering {
 
         debug!(
             target: LOG_TARGET,
-            "Dialing {} candidate peer(s) for peer sync",
+            "Discovering: Dialing {} candidate peer(s) for peer sync",
             pending_dials.len()
         );
         pending_dials
