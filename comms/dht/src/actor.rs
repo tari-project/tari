@@ -136,17 +136,6 @@ pub enum OffenceSeverity {
     High,
 }
 
-impl OffenceSeverity {
-    /// Compare two OffenceSeverity values and return the maximum severity
-    pub fn max(self, other: OffenceSeverity) -> OffenceSeverity {
-        match (self, other) {
-            (OffenceSeverity::High, _) | (_, OffenceSeverity::High) => OffenceSeverity::High,
-            (OffenceSeverity::Medium, _) | (_, OffenceSeverity::Medium) => OffenceSeverity::Medium,
-            _ => OffenceSeverity::Low,
-        }
-    }
-}
-
 impl Display for DhtRequest {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         #[allow(clippy::enum_glob_use)]
