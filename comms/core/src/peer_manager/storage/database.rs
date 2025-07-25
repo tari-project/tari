@@ -1180,7 +1180,7 @@ impl PeerDatabaseSql {
 
         // Perform a join query to fetch peers and their addresses
         let node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-        self.get_peers_by_node_ids_str(&node_ids_hex, &mut conn)
+        self.get_peers_by_node_ids_str(&node_ids_hex, false, &mut conn)
     }
 
     /// Get all peers based on a list of their node_ids
@@ -1203,15 +1203,26 @@ impl PeerDatabaseSql {
     fn get_peers_by_node_ids_str(
         &self,
         node_ids: &[String],
+        external_addresses_only: bool,
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<Peer>, StorageError> {
-        // Perform a join query to fetch peers and their addresses
-        let results = peers::table
-            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(peers::node_id.eq_any(node_ids))
-            .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(conn)?;
-
-        PeerDatabaseSql::peers_from_join_query(results)
+        if external_addresses_only {
+            let results = peers::table
+                .inner_join(
+                    multi_addresses::table.on(multi_addresses::peer_id
+                        .eq(peers::peer_id)
+                        .and(multi_addresses::is_external.eq(true))),
+                )
+                .filter(peers::node_id.eq_any(node_ids))
+                .load(conn)?;
+            PeerDatabaseSql::peers_from_join_query(results)
+        } else {
+            let results = peers::table
+                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .filter(peers::node_id.eq_any(node_ids))
+                .load(conn)?;
+            PeerDatabaseSql::peers_from_join_query(results)
+        }
     }
 
     /// Get all banned peers
@@ -1365,14 +1376,14 @@ impl PeerDatabaseSql {
     }
 
     // Get the closest `n` active peer ids (have been seen, optionally within a threshold, not banned, not deleted,
-    // optional features).
+    // optional features, optionally that have at least one external address).
     fn get_active_peer_node_ids(
         &self,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
-        external_addresses_only: bool,
+        at_least_one_external_addresses: bool,
         n: Option<usize>,
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<String>, StorageError> {
@@ -1397,7 +1408,7 @@ impl PeerDatabaseSql {
                 .filter(multi_addresses::last_failed_reason.is_null());
         }
 
-        if external_addresses_only {
+        if at_least_one_external_addresses {
             query = query.filter(multi_addresses::is_external.eq(true));
         }
 
@@ -1487,7 +1498,7 @@ impl PeerDatabaseSql {
             node_ids.truncate(n);
 
             let selected_node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-            let mut peers = self.get_peers_by_node_ids_str(&selected_node_ids_hex, conn)?;
+            let mut peers = self.get_peers_by_node_ids_str(&selected_node_ids_hex, external_addresses_only, conn)?;
 
             peers.sort_by(|a, b| {
                 a.node_id
@@ -1525,30 +1536,14 @@ impl PeerDatabaseSql {
                 conn,
             )?;
 
-            let peers = self.get_peers_by_node_ids_str(&node_ids_hex, conn)?;
-            let mut peers_result = Vec::with_capacity(peers.len());
-            if external_addresses_only {
-                for peer in &peers {
-                    if let Some(val) = peer.as_peer_with_external_addresses_only() {
-                        peers_result.push(val);
-                    } else {
-                        let msg = format!(
-                            "Query should have returned peers with external addresses, peer at fault: {}",
-                            peer
-                        );
-                        warn!("{}", msg);
-                        return Err(StorageError::UnexpectedResult(msg));
-                    }
-                }
-            } else {
-                peers_result.extend(peers);
-            }
+            let peers = self.get_peers_by_node_ids_str(&node_ids_hex, external_addresses_only, conn)?;
 
-            Ok(peers_result)
+            Ok(peers)
         })
     }
 
-    /// Get a random set of `n` peers from the database that are not banned and not deleted
+    /// Get a random set of `n` peers from the database that are not banned and not deleted and have at least one
+    /// external address
     pub fn get_n_random_peers(&self, n: usize, exclude_node_ids: &[NodeId]) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1584,7 +1579,7 @@ impl PeerDatabaseSql {
             }
 
             // Step 2: Load full peer + addresses only for selected node_ids
-            self.get_peers_by_node_ids_str(&node_ids, conn)
+            self.get_peers_by_node_ids_str(&node_ids, true, conn)
         })
     }
 

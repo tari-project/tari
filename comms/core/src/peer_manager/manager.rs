@@ -247,7 +247,7 @@ impl PeerManager {
         self.peer_storage_sql.get_closest_n_good_standing_peers(n, features)
     }
 
-    /// Fetch n random peers that are Communication Nodes
+    /// Fetch n random peers that are Communication Nodes and have at least one external address
     pub async fn random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.random_peers(n, excluded)
     }

@@ -257,7 +257,8 @@ impl PeerStorageSql {
         Ok(self.peer_db.get_seed_peers()?)
     }
 
-    /// Compile a random list of communication node peers of size _n_ that are not banned or offline
+    /// Compile a random list of communication node peers of size _n_ that are not banned or offline  and have at least
+    /// one external address
     pub fn random_peers(&self, n: usize, exclude_peers: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_n_random_peers(n, exclude_peers)?)
     }
