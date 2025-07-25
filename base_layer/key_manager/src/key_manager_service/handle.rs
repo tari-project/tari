@@ -106,26 +106,6 @@ where
             .await
     }
 
-    async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .find_key_index(&branch.into(), key)
-            .await
-    }
-
-    async fn update_current_key_index_if_higher<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<(), KeyManagerServiceError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .update_current_key_index_if_higher(&branch.into(), index)
-            .await
-    }
-
     async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner).read().await.import_key(private_key).await
     }
