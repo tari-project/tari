@@ -53,7 +53,7 @@ pub struct ConnectivityConfig {
     /// (default: disabled)
     pub maintain_n_closest_connections_only: Option<usize>,
     /// Target number of active peer connections to maintain
-    /// Default: 8
+    /// Default: 16
     pub target_connection_count: usize,
     /// Enable proactive peer dialing to maintain target connections
     /// Default: true
@@ -84,7 +84,7 @@ impl Default for ConnectivityConfig {
             connection_tie_break_linger: Duration::from_secs(2),
             expire_peer_last_seen_duration: Duration::from_secs(24 * 60 * 60),
             maintain_n_closest_connections_only: None,
-            target_connection_count: 8,
+            target_connection_count: 16,
             proactive_dialing_enabled: true,
             dialing_multiplier: 2.5,
             success_rate_tracking_window: Duration::from_secs(5 * 60),

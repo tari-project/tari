@@ -35,6 +35,7 @@ use crate::{
         NodeDistance,
         NodeId,
         PeerFeatures,
+        PeerFlags,
         PeerManagerError,
         ThisPeerIdentity,
     },
@@ -168,9 +169,10 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
+        peer_flags: Option<PeerFlags>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql
-            .discovery_syncing(n, excluded_peers, features, external_addresses_only)
+            .discovery_syncing(n, excluded_peers, features, peer_flags, external_addresses_only)
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
@@ -221,6 +223,7 @@ impl PeerManager {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
@@ -231,6 +234,7 @@ impl PeerManager {
             n,
             excluded_peers,
             features,
+            peer_flags,
             stale_peer_threshold,
             exclude_if_all_address_failed,
             exclusion_distance,
@@ -248,8 +252,13 @@ impl PeerManager {
     }
 
     /// Fetch n random peers that are Communication Nodes and have at least one external address
-    pub async fn random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql.random_peers(n, excluded)
+    pub async fn random_peers(
+        &self,
+        n: usize,
+        excluded: &[NodeId],
+        flags: Option<PeerFlags>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.random_peers(n, excluded, flags)
     }
 
     /// Calculate the region threshold for a given number of peers and features
@@ -589,6 +598,7 @@ mod test {
                 3,
                 &[],
                 None,
+                None,
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,
@@ -624,6 +634,7 @@ mod test {
                 3,
                 &excluded_peers,
                 None,
+                None,
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,
@@ -654,8 +665,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager.random_peers(10, &[]).await.unwrap();
-        let identities2 = peer_manager.random_peers(10, &[]).await.unwrap();
+        let identities1 = peer_manager.random_peers(10, &[], None).await.unwrap();
+        let identities2 = peer_manager.random_peers(10, &[], None).await.unwrap();
         assert_ne!(identities1, identities2);
     }
 
@@ -838,6 +849,7 @@ mod test {
                             &[],
                             Some(PeerFeatures::COMMUNICATION_NODE),
                             None,
+                            None,
                             false,
                             None,
                             false,
@@ -872,6 +884,7 @@ mod test {
                 n,
                 &[],
                 Some(PeerFeatures::COMMUNICATION_NODE),
+                None,
                 None,
                 false,
                 None,

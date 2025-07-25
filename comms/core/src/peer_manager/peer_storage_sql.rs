@@ -34,6 +34,7 @@ use crate::{
         NodeDistance,
         NodeId,
         PeerFeatures,
+        PeerFlags,
         PeerManagerError,
     },
     types::{CommsDatabase, CommsPublicKey},
@@ -195,6 +196,7 @@ impl PeerStorageSql {
         mut n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         external_addresses_only: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
@@ -207,6 +209,7 @@ impl PeerStorageSql {
             n,
             excluded_peers,
             features,
+            peer_flags,
             Some(STALE_PEER_THRESHOLD_DURATION),
             external_addresses_only,
         )?)
@@ -236,6 +239,7 @@ impl PeerStorageSql {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
@@ -246,6 +250,7 @@ impl PeerStorageSql {
             n,
             excluded_peers,
             features,
+            peer_flags,
             stale_peer_threshold,
             exclude_if_all_address_failed,
             exclusion_distance,
@@ -259,8 +264,13 @@ impl PeerStorageSql {
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline  and have at least
     /// one external address
-    pub fn random_peers(&self, n: usize, exclude_peers: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.get_n_random_peers(n, exclude_peers)?)
+    pub fn random_peers(
+        &self,
+        n: usize,
+        exclude_peers: &[NodeId],
+        flags: Option<PeerFlags>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        Ok(self.peer_db.get_n_random_peers(n, exclude_peers, flags)?)
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
@@ -789,18 +799,51 @@ mod test {
         let good_address = good_addresses.addresses()[0].address().clone();
         good_addresses.mark_last_seen_now(&good_address);
 
+        let mut good_seed = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        good_seed.flags = PeerFlags::SEED;
+        let good_addresses = good_seed.addresses.borrow_mut();
+        let good_address = good_addresses.addresses()[0].address().clone();
+        good_addresses.mark_last_seen_now(&good_address);
+
         assert!(peer_storage.add_or_update_peer(never_seen_peer).is_ok());
         assert!(peer_storage.add_or_update_peer(not_active_peer).is_ok());
         assert!(peer_storage.add_or_update_peer(banned_peer).is_ok());
         assert!(peer_storage.add_or_update_peer(good_peer).is_ok());
+        assert!(peer_storage.add_or_update_peer(good_seed).is_ok());
 
-        assert_eq!(peer_storage.all(None).unwrap().len(), 4);
+        assert_eq!(peer_storage.all(None).unwrap().len(), 5);
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
+                .discovery_syncing(
+                    100,
+                    &[],
+                    Some(PeerFeatures::COMMUNICATION_NODE),
+                    Some(PeerFlags::NONE),
+                    false
+                )
                 .unwrap()
                 .len(),
             1
+        );
+        assert_eq!(
+            peer_storage
+                .discovery_syncing(
+                    100,
+                    &[],
+                    Some(PeerFeatures::COMMUNICATION_NODE),
+                    Some(PeerFlags::SEED),
+                    false
+                )
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            peer_storage
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), None, false)
+                .unwrap()
+                .len(),
+            2
         );
     }
 
@@ -820,7 +863,7 @@ mod test {
 
         // Assert that peers have internal and external addresses
         let nodes_all_addresses = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), None, false)
             .unwrap();
         assert!(nodes_all_addresses
             .iter()
@@ -831,7 +874,7 @@ mod test {
 
         // Assert that peers have external addresses only
         let nodes_external_addresses_only = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), None, true)
             .unwrap();
         assert!(nodes_external_addresses_only
             .iter()

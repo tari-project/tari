@@ -70,6 +70,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     shutdown_signal: ShutdownSignal,
     monitored_peers: Arc<RwLock<Vec<NodeId>>>,
     peer_manager: Arc<PeerManager>,
+    seeds: Vec<NodeId>,
 }
 
 impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
@@ -99,6 +100,7 @@ where
             config: config.clone(),
             monitored_peers: Arc::new(RwLock::new(config.monitored_peers)),
             peer_manager,
+            seeds: Vec::new(),
         }
     }
 
@@ -119,6 +121,18 @@ where
             },
             None => Either::Right(futures::stream::iter(iter::empty())),
         };
+
+        self.seeds = self
+            .peer_manager
+            .get_seed_peers()
+            .await
+            .unwrap_or({
+                warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
+                vec![]
+            })
+            .iter()
+            .map(|s| s.node_id.clone())
+            .collect();
 
         loop {
             tokio::select! {
@@ -335,7 +349,7 @@ where
             .connectivity
             .select_connections(ConnectivitySelection::random_nodes(
                 self.config.num_peers_per_round,
-                Default::default(),
+                self.seeds.clone(),
             ))
             .await?
             .into_iter()
