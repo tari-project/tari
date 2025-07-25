@@ -9279,7 +9279,7 @@ pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TariWallet, er
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.output_manager_service.validate_txos())
+        .block_on((*wallet).wallet.output_manager_service.validate_utxos())
     {
         Ok(request_key) => request_key,
         Err(e) => {

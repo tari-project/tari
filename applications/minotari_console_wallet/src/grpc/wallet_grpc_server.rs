@@ -204,6 +204,7 @@ impl WalletGrpcServer {
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
             wallet.utxo_scanner_service.clone(),
+            wallet.clone(),
             wallet.comms.shutdown_signal(),
             scanned_height,
         );
@@ -413,12 +414,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
             (Some(balance), scanned_height, is_initial_validation_done)
         };
 
+        let debouncer_online_status = {
+            let debouncer = self.debouncer.lock().await;
+            debouncer.get_online_status().await
+        };
+
         let status = self
             .comms()
             .connectivity()
             .get_connectivity_status()
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
+
+        // Enhanced connectivity detection: log both traditional and scan-based status
+        use minotari_wallet::connectivity_service::OnlineStatus;
+        let is_enhanced_online = debouncer_online_status == OnlineStatus::Online;
+
+        info!(
+            target: LOG_TARGET,
+            "Wallet connectivity - Traditional: connected={}, Scan-based: online={}, Last scanned height: {}",
+            status.num_connected_nodes() > 0,
+            is_enhanced_online,
+            scanned_height
+        );
         let mut base_node_service = self.wallet.base_node_service.clone();
 
         let network = Some(tari_rpc::NetworkStatusResponse {

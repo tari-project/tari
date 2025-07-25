@@ -2183,7 +2183,7 @@ pub async fn command_runner(
                 }
                 println!("Starting validation process");
                 let mut oms = wallet.output_manager_service.clone();
-                oms.validate_txos().await?;
+                oms.validate_utxos().await?;
                 let mut event = oms.get_event_stream();
                 loop {
                     match event.recv().await {
@@ -2309,7 +2309,7 @@ pub async fn command_runner(
                         .map_err(|e| CommandError::General(e.to_string()))?;
                     print!("Wallet recovery completed");
                     let mut oms = new_wallet.output_manager_service.clone();
-                    oms.validate_txos().await?;
+                    oms.validate_utxos().await?;
                     let mut event = oms.get_event_stream();
                     loop {
                         match event.recv().await {

@@ -436,7 +436,7 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -
 async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     debug!(target: LOG_TARGET, "Starting TXO validations.");
 
-    wallet.output_manager_service.validate_txos().await.map_err(|e| {
+    wallet.output_manager_service.validate_utxos().await.map_err(|e| {
         error!(target: LOG_TARGET, "Error validating Unspent TXOs: {}", e);
         ExitError::new(ExitCode::WalletError, e)
     })?;

@@ -660,7 +660,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn validate_txos(&mut self) -> Result<u64, OutputManagerError> {
+    pub async fn validate_utxos(&mut self) -> Result<u64, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::ValidateUtxos).await?? {
             OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),

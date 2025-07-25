@@ -144,7 +144,7 @@ where
     async fn finalize(&mut self, sync_result: SyncResult) -> Result<(), anyhow::Error> {
         // this is a best effort, if this fails, its very likely that it's already busy with a validation. We have
         // updated the scanned, so we need to update txns
-        let _result = self.resources.output_manager_service.validate_txos().await;
+        let _result = self.resources.output_manager_service.validate_utxos().await;
         let _result = self.resources.transaction_service.validate_transactions().await;
         let SyncResult {
             final_height,
