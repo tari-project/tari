@@ -158,6 +158,8 @@ pub struct BaseNodeConfig {
     pub tari_pulse_health_check: Duration,
     /// Wallet HTTP service configuration
     pub http_wallet_query_service: WalletHttpServiceConfig,
+    /// Stratum server configuration
+    pub stratum: StratumServerConfig,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -178,6 +180,21 @@ impl Default for WalletHttpServiceConfig {
             external_address: Some(
                 Url::parse(format!("http://127.0.0.1:{port}").as_str()).expect("This should be a valid URL"),
             ),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct StratumServerConfig {
+    pub enabled: bool,
+    pub port: u16,
+}
+
+impl Default for StratumServerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: 3333, // Default Stratum port
         }
     }
 }
@@ -221,6 +238,7 @@ impl Default for BaseNodeConfig {
             tari_pulse_interval: Duration::from_secs(120),
             tari_pulse_health_check: Duration::from_secs(60 * 10),
             http_wallet_query_service: Default::default(),
+            stratum: StratumServerConfig::default(),
         }
     }
 }

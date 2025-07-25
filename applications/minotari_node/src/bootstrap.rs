@@ -69,7 +69,12 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::{config::WalletHttpServiceConfig, http::create_base_node_wallet_http_server, ApplicationConfig};
+use crate::{
+    config::{StratumServerConfig, WalletHttpServiceConfig},
+    http::create_base_node_wallet_http_server,
+    stratum::stratum_server::TariStratumServer,
+    ApplicationConfig,
+};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -189,6 +194,7 @@ where B: BlockchainBackend + 'static
             self.db.into(),
             &p2p_config,
             &self.app_config.base_node.http_wallet_query_service,
+            &self.app_config.base_node.stratum,
             self.interrupt_signal.clone(),
         )
         .await;
@@ -244,6 +250,7 @@ where B: BlockchainBackend + 'static
         db: AsyncBlockchainDb<B>,
         p2p_config: &P2pConfig,
         wallet_query_service_config: &WalletHttpServiceConfig,
+        stratum_config: &StratumServerConfig,
         shutdown_signal: ShutdownSignal,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
@@ -291,6 +298,20 @@ where B: BlockchainBackend + 'static
                     "Failed to start wallet http server: {:?}", error
                 );
             },
+        }
+        if stratum_config.enabled {
+            let stratum_server = TariStratumServer::new(stratum_config.port);
+            match stratum_server.start(shutdown_signal.clone()).await {
+                Ok(_) => {
+                    info!(target: LOG_TARGET, "Stratum server started successfully");
+                },
+                Err(error) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to start Stratum server: {:?}", error
+                    );
+                },
+            }
         }
 
         comms.add_protocol_extension(rpc_server)

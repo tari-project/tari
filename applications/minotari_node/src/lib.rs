@@ -39,6 +39,7 @@ mod recovery;
 mod utils;
 
 mod http;
+mod stratum;
 
 use std::{process, sync::Arc};
 
