@@ -116,7 +116,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateResponse,
 };
 use minotari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
@@ -134,7 +134,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{types::CommsPublicKey, CommsNode};
+use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
@@ -414,10 +414,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             (Some(balance), scanned_height, is_initial_validation_done)
         };
 
-        let debouncer_online_status = {
-            let debouncer = self.debouncer.lock().await;
-            debouncer.get_online_status().await
-        };
+        let online_status = self.wallet.wallet_connectivity.get_connectivity_status().await;
 
         let status = self
             .comms()
@@ -426,17 +423,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
 
-        // Enhanced connectivity detection: log both traditional and scan-based status
-        use minotari_wallet::connectivity_service::OnlineStatus;
-        let is_enhanced_online = debouncer_online_status == OnlineStatus::Online;
+        let status = if online_status == OnlineStatus::Offline {
+            ConnectivityStatus::Offline
+        } else {
+            status
+        };
 
-        info!(
-            target: LOG_TARGET,
-            "Wallet connectivity - Traditional: connected={}, Scan-based: online={}, Last scanned height: {}",
-            status.num_connected_nodes() > 0,
-            is_enhanced_online,
-            scanned_height
-        );
         let mut base_node_service = self.wallet.base_node_service.clone();
 
         let network = Some(tari_rpc::NetworkStatusResponse {

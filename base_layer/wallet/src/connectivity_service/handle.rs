@@ -62,6 +62,10 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
         self.client_factory.create_http_client()
     }
 
+    async fn change_connection_status(&mut self, status: OnlineStatus) {
+        self.online_status_watch.send(status).unwrap();
+    }
+
     async fn get_connectivity_status(&self) -> OnlineStatus {
         if self.client_factory.create_http_client().is_online().await {
             OnlineStatus::Online

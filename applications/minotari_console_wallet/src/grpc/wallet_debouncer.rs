@@ -21,12 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    sync::Arc,
-    time::{Duration, Instant},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::{
@@ -57,7 +61,7 @@ const CONNECTIVITY_CHECK_INTERVAL: Duration = Duration::from_secs(300); // 5 min
 #[derive(Clone)]
 pub struct WalletDebouncer {
     balance: Arc<Mutex<Balance>>,
-    scanned_height: Arc<Mutex<u64>>,
+    scanned_height: Arc<AtomicU64>,
     refresh_needed: Arc<Mutex<bool>>,
     intial_scanning_done: Arc<Mutex<bool>>,
     initial_validation_done: Arc<Mutex<bool>>,
@@ -67,8 +71,7 @@ pub struct WalletDebouncer {
     wallet: WalletSqlite,
     shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<Mutex<bool>>,
-    last_scan_activity: Arc<Mutex<Option<Instant>>>,
-    online_status: Arc<Mutex<OnlineStatus>>,
+    last_scan_activity: Arc<AtomicU64>,
 }
 
 impl WalletDebouncer {
@@ -91,15 +94,15 @@ impl WalletDebouncer {
             refresh_needed: Arc::new(Mutex::new(true)),
             intial_scanning_done: Arc::new(Mutex::new(false)),
             initial_validation_done: Arc::new(Mutex::new(false)),
-            scanned_height: Arc::new(Mutex::new(scanned_height)),
+            scanned_height: Arc::new(AtomicU64::new(scanned_height)),
             output_manager_service,
             transaction_service,
             utxo_scanner_handle,
             wallet,
             shutdown_signal,
             event_monitor_started: Arc::new(Mutex::new(false)),
-            last_scan_activity: Arc::new(Mutex::new(None)),
-            online_status: Arc::new(Mutex::new(OnlineStatus::Connecting)),
+            last_scan_activity: Arc::new(AtomicU64::new(scanned_height + 1)), /* Add 1 to pass initial connectivity
+                                                                               * check */
         }
     }
 
@@ -159,22 +162,6 @@ impl WalletDebouncer {
         *self.initial_validation_done.lock().await
     }
 
-    /// This method implements the enhanced online detection by:
-    /// 1. First checking if there has been recent scanning activity (within 5 minutes)
-    /// 2. If recent activity exists, the wallet is considered online
-    /// 3. Otherwise, falls back to the stored online status from proactive connectivity checks
-    pub async fn get_online_status(&self) -> OnlineStatus {
-        // Check if we've had recent scanning activity (within last 5 minutes)
-        if let Some(last_activity) = *self.last_scan_activity.lock().await {
-            if last_activity.elapsed() < CONNECTIVITY_CHECK_INTERVAL {
-                return OnlineStatus::Online;
-            }
-        }
-
-        // Fall back to stored online status
-        *self.online_status.lock().await
-    }
-
     async fn set_refresh_needed(&self, refresh_needed: bool) {
         let mut lock = self.refresh_needed.lock().await;
         if *lock != refresh_needed {
@@ -184,16 +171,16 @@ impl WalletDebouncer {
     }
 
     async fn update_scanned_height(&self, scanned_height: u64) {
-        let mut lock = self.scanned_height.lock().await;
-        if *lock != scanned_height {
+        let lock = self.scanned_height.load(Ordering::SeqCst);
+        if lock != scanned_height {
             trace!(target: LOG_TARGET, "set_scanned_height '{}'", scanned_height);
-            *lock = scanned_height;
+            self.scanned_height.store(scanned_height, Ordering::SeqCst);
         }
     }
 
     pub async fn get_scanned_height(&mut self) -> u64 {
         self.start_event_monitor_if_needed().await;
-        *self.scanned_height.lock().await
+        self.scanned_height.load(Ordering::SeqCst)
     }
 
     async fn monitor_events(&self) {
@@ -299,16 +286,12 @@ impl WalletDebouncer {
         }
     }
 
-    /// Updates the last scan activity timestamp and sets online status.
+    /// Updates the last scan activity height
     /// This is called whenever the wallet successfully scans a block, indicating active connectivity.
     async fn update_last_scan_activity(&self) {
-        let mut lock = self.last_scan_activity.lock().await;
-        *lock = Some(Instant::now());
-
-        // Update online status when we have scan activity
-        let mut status_lock = self.online_status.lock().await;
-        *status_lock = OnlineStatus::Online;
-        trace!(target: LOG_TARGET, "Updated scan activity timestamp - wallet is online");
+        let scanned_height = self.scanned_height.load(Ordering::SeqCst);
+        self.last_scan_activity.store(scanned_height, Ordering::SeqCst);
+        trace!(target: LOG_TARGET, "Updated scan activity height - wallet is online");
     }
 
     /// Background task that monitors connectivity proactively.
@@ -321,7 +304,7 @@ impl WalletDebouncer {
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    self.check_connectivity_if_needed().await;
+                    self.check_connectivity().await;
                 },
                 _ = shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Connectivity monitor shutting down");
@@ -331,45 +314,35 @@ impl WalletDebouncer {
         }
     }
 
-    async fn check_connectivity_if_needed(&self) {
-        let should_check = {
-            let last_activity = self.last_scan_activity.lock().await;
-            match *last_activity {
-                Some(timestamp) => timestamp.elapsed() >= CONNECTIVITY_CHECK_INTERVAL,
-                None => true, // No activity recorded yet, check connectivity
-            }
+    /// Check if height has changed since last scan
+    /// if not then get tip info if we get response we got online otherwise offline
+    async fn check_connectivity(&self) {
+        let scanned_height = self.scanned_height.load(Ordering::SeqCst);
+        let last_scan_activity = self.last_scan_activity.load(Ordering::SeqCst);
+        let mut connectivity = self.wallet.wallet_connectivity.clone();
+
+        if last_scan_activity == scanned_height {
+            connectivity.change_connection_status(OnlineStatus::Offline).await;
+            return;
+        }
+
+        // Try to get base node client and test connectivity
+        let new_status = if self.test_base_node_connectivity().await {
+            trace!(target: LOG_TARGET, "Connectivity check successful");
+            OnlineStatus::Online
+        } else {
+            warn!(target: LOG_TARGET, "Connectivity check failed");
+            OnlineStatus::Offline
         };
 
-        if should_check {
-            trace!(target: LOG_TARGET, "No recent scan activity, checking connectivity proactively");
-
-            // Try to get base node client and test connectivity
-            let new_status = if self.test_base_node_connectivity().await {
-                trace!(target: LOG_TARGET, "Connectivity check successful");
-                OnlineStatus::Online
-            } else {
-                warn!(target: LOG_TARGET, "Connectivity check failed");
-                OnlineStatus::Offline
-            };
-
-            let mut status_lock = self.online_status.lock().await;
-            if *status_lock != new_status {
-                info!(target: LOG_TARGET, "Online status changed from {:?} to {:?}", *status_lock, new_status);
-                *status_lock = new_status;
-            }
-        }
+        connectivity.change_connection_status(new_status).await;
     }
 
-    /// Tests base node connectivity by using the wallet's connectivity interface.
-    /// This implements the GitHub issue requirement to call get_tip_info for connectivity testing.
-    /// The connectivity interface internally uses is_online() which checks recent successful
-    /// base node communication, effectively implementing the get_tip_info health check.
     /// Returns true if the wallet can communicate with the base node, false otherwise.
     async fn test_base_node_connectivity(&self) -> bool {
-        // Use the existing connectivity check which internally calls get_tip_info
-        let connectivity = self.wallet.wallet_connectivity.clone();
-        // The connectivity interface uses is_online() which relies on successful get_tip_info calls
-        // to the base node, implementing the GitHub issue requirement for tip info health checks
-        matches!(connectivity.get_connectivity_status().await, OnlineStatus::Online)
+        let mut connectivity = self.wallet.wallet_connectivity.clone();
+        let client = connectivity.obtain_base_node_wallet_rpc_client().await;
+        let tip_info = client.get_tip_info().await;
+        tip_info.is_ok()
     }
 }
