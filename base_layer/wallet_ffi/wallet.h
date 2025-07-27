@@ -4298,13 +4298,13 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  * that triggered the callback, as follows:
  * ```
  * enum RecoveryEvent {
- *     Progress,                   // 3
+ *     Progress,                   // 0
  *        current_height: u64,             - 1st argument
  *        tip_height: u64,                 - 2nd argument
- *     Completed,                  // 4
+ *     Completed,                  // 1
  *        num_recovered: u64,              - 1st argument
  *        value_recovered: u64,            - 2nd argument (representing MicroMinotari)
- *     ScanningRoundFailed,        // 5
+ *     ScanningRoundFailed,        // 2
  *        num_retries: u64,                - 1st argument
  *        retry_limit: u64,                - 2nd argument
  * }

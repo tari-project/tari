@@ -420,6 +420,19 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
+    async fn is_this_output_ours(
+        &self,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<bool, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .is_this_output_ours(commitment, encrypted_data, custom_recovery_key_id)
+            .await
+    }
+
     async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
