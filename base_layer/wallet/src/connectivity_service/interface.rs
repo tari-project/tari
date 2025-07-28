@@ -39,7 +39,7 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
 
     async fn get_connectivity_status(&self) -> OnlineStatus;
 
-    async fn change_connection_status(&mut self, status: OnlineStatus);
+    async fn change_connectivity_status(&mut self, status: OnlineStatus);
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus>;
 }

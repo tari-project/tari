@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use minotari_node_wallet_client::BaseNodeWalletClient;
 use tokio::sync::watch;
 
 use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
@@ -62,16 +61,12 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
         self.client_factory.create_http_client()
     }
 
-    async fn change_connection_status(&mut self, status: OnlineStatus) {
+    async fn change_connectivity_status(&mut self, status: OnlineStatus) {
         self.online_status_watch.send(status).unwrap();
     }
 
     async fn get_connectivity_status(&self) -> OnlineStatus {
-        if self.client_factory.create_http_client().is_online().await {
-            OnlineStatus::Online
-        } else {
-            OnlineStatus::Offline
-        }
+        self.online_status_watch.borrow().to_owned()
     }
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {

@@ -322,7 +322,7 @@ impl WalletDebouncer {
         let mut connectivity = self.wallet.wallet_connectivity.clone();
 
         if last_scan_activity == scanned_height {
-            connectivity.change_connection_status(OnlineStatus::Offline).await;
+            connectivity.change_connectivity_status(OnlineStatus::Offline).await;
             return;
         }
 
@@ -335,7 +335,7 @@ impl WalletDebouncer {
             OnlineStatus::Offline
         };
 
-        connectivity.change_connection_status(new_status).await;
+        connectivity.change_connectivity_status(new_status).await;
     }
 
     /// Returns true if the wallet can communicate with the base node, false otherwise.
