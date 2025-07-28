@@ -410,7 +410,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
             };
             let scanned_height = debouncer.get_scanned_height().await;
-            let is_initial_validation_done = debouncer.is_initial_validation_done().await;
+            let is_initial_validation_done = debouncer.is_initial_validation_done();
             (Some(balance), scanned_height, is_initial_validation_done)
         };
 

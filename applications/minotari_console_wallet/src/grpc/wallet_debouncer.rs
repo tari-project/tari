@@ -22,7 +22,7 @@
 
 use std::{
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
@@ -62,15 +62,15 @@ const CONNECTIVITY_CHECK_INTERVAL: Duration = Duration::from_secs(300); // 5 min
 pub struct WalletDebouncer {
     balance: Arc<Mutex<Balance>>,
     scanned_height: Arc<AtomicU64>,
-    refresh_needed: Arc<Mutex<bool>>,
-    intial_scanning_done: Arc<Mutex<bool>>,
-    initial_validation_done: Arc<Mutex<bool>>,
+    refresh_needed: Arc<AtomicBool>,
+    intial_scanning_done: Arc<AtomicBool>,
+    initial_validation_done: Arc<AtomicBool>,
     output_manager_service: OutputManagerHandle,
     transaction_service: TransactionServiceHandle,
     utxo_scanner_handle: UtxoScannerHandle,
     wallet: WalletSqlite,
     shutdown_signal: ShutdownSignal,
-    event_monitor_started: Arc<Mutex<bool>>,
+    event_monitor_started: Arc<AtomicBool>,
     last_scan_activity: Arc<AtomicU64>,
 }
 
@@ -91,35 +91,34 @@ impl WalletDebouncer {
                 pending_outgoing_balance: 0.into(),
                 time_locked_balance: None,
             })),
-            refresh_needed: Arc::new(Mutex::new(true)),
-            intial_scanning_done: Arc::new(Mutex::new(false)),
-            initial_validation_done: Arc::new(Mutex::new(false)),
+            refresh_needed: Arc::new(AtomicBool::new(true)),
+            intial_scanning_done: Arc::new(AtomicBool::new(false)),
+            initial_validation_done: Arc::new(AtomicBool::new(false)),
             scanned_height: Arc::new(AtomicU64::new(scanned_height)),
             output_manager_service,
             transaction_service,
             utxo_scanner_handle,
             wallet,
             shutdown_signal,
-            event_monitor_started: Arc::new(Mutex::new(false)),
+            event_monitor_started: Arc::new(AtomicBool::new(false)),
             last_scan_activity: Arc::new(AtomicU64::new(scanned_height + 1)), /* Add 1 to pass initial connectivity
                                                                                * check */
         }
     }
 
     pub async fn start_event_monitor_if_needed(&mut self) {
-        if !self.is_event_monitor_started().await {
+        if !self.is_event_monitor_started() {
             trace!(target: LOG_TARGET, "start_event_monitor");
             let self_clone = self.clone();
             tokio::spawn(async move {
                 self_clone.monitor_events().await;
             });
-            let mut lock = self.event_monitor_started.lock().await;
-            *lock = true;
+            self.event_monitor_started.store(true, Ordering::SeqCst);
         }
     }
 
-    async fn is_event_monitor_started(&self) -> bool {
-        *self.event_monitor_started.lock().await
+    fn is_event_monitor_started(&self) -> bool {
+        self.event_monitor_started.load(Ordering::SeqCst)
     }
 
     /// Get the balance of the wallet. This function will return the cached balance of the wallet if it is current, or
@@ -127,14 +126,14 @@ impl WalletDebouncer {
     /// balance.
     pub async fn get_balance(&mut self) -> Result<GetBalanceResponse, Status> {
         self.start_event_monitor_if_needed().await;
-        let balance = if self.is_refresh_needed().await {
+        let balance = if self.is_refresh_needed() {
             let mut output_manager_service = self.output_manager_service.clone();
             let balance = match output_manager_service.get_balance().await {
                 Ok(b) => b,
                 Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
             };
             self.update_balance(balance.clone()).await;
-            self.set_refresh_needed(false).await;
+            self.set_refresh_needed(false);
             balance
         } else {
             (*self.balance.lock().await).clone()
@@ -152,21 +151,20 @@ impl WalletDebouncer {
         *lock = balance;
     }
 
-    async fn is_refresh_needed(&self) -> bool {
-        let refresh_needed = *self.refresh_needed.lock().await;
+    fn is_refresh_needed(&self) -> bool {
+        let refresh_needed = self.refresh_needed.load(Ordering::SeqCst);
         trace!(target: LOG_TARGET, "is_refresh_needed '{}'", refresh_needed);
         refresh_needed
     }
 
-    pub async fn is_initial_validation_done(&self) -> bool {
-        *self.initial_validation_done.lock().await
+    pub fn is_initial_validation_done(&self) -> bool {
+        self.initial_validation_done.load(Ordering::SeqCst)
     }
 
-    async fn set_refresh_needed(&self, refresh_needed: bool) {
-        let mut lock = self.refresh_needed.lock().await;
-        if *lock != refresh_needed {
+    fn set_refresh_needed(&self, refresh_needed: bool) {
+        let old_value = self.refresh_needed.swap(refresh_needed, Ordering::SeqCst);
+        if old_value != refresh_needed {
             trace!(target: LOG_TARGET, "set_refresh_needed '{}'", refresh_needed);
-            *lock = refresh_needed;
         }
     }
 
@@ -212,17 +210,17 @@ impl WalletDebouncer {
                                 TransactionEvent::TransactionMined { .. } |
                                 TransactionEvent::TransactionMinedUnconfirmed { .. } |
                                 TransactionEvent::TransactionImported(_)  => {
-                                    self.set_refresh_needed(true).await;
+                                    self.set_refresh_needed(true);
                                 },
                                 TransactionEvent::TransactionValidationStateChanged{faux, ..} => {
-                                    self.set_refresh_needed(true).await;
+                                    self.set_refresh_needed(true);
                                     #[allow(clippy::collapsible_if)]
                                     if faux {
-                                        let mut intial = self.initial_validation_done.lock().await;
-                                        if !(*intial) {
-                                            if *self.intial_scanning_done.lock().await{
+                                        let intial = self.initial_validation_done.load(Ordering::SeqCst);
+                                        if !intial {
+                                            if self.intial_scanning_done.load(Ordering::SeqCst) {
                                                 // we should only set this after we completed initial scanning and then completed faux tx validation
-                                                *intial = true;
+                                                self.initial_validation_done.store(true, Ordering::SeqCst);
                                             }
                                         }
                                     }
@@ -239,7 +237,7 @@ impl WalletDebouncer {
                     match result {
                         Ok(msg) => {
                             if let OutputManagerEvent::TxoValidationSuccess(_) = &*msg {
-                                self.set_refresh_needed(true).await;
+                                self.set_refresh_needed(true);
                             }
                         },
                         Err(e) => {
@@ -262,8 +260,7 @@ impl WalletDebouncer {
                                     final_height,
                                     ..
                                 }=> {
-                                    let mut scanning_done = self.intial_scanning_done.lock().await;
-                                    *scanning_done = true;
+                                    self.intial_scanning_done.store(true, Ordering::SeqCst);
                                     self.update_scanned_height(final_height).await;
                                     self.update_last_scan_activity().await;
                                 },
