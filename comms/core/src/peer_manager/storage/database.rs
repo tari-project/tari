@@ -689,20 +689,22 @@ impl PeerDatabaseSql {
         diesel::update(peers::table.filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone())))
             .set(&update_peer_sql.peer)
             .execute(conn)?;
+        let peer_id = peers::table
+            .filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone()))
+            .select(peers::peer_id)
+            .first::<i64>(conn)?;
 
         // Update the associated multi-addresses
         for address_update in update_peer_sql.addresses {
             let updated = diesel::update(
-                multi_addresses::table.filter(multi_addresses::address.eq(address_update.address.clone())),
+                multi_addresses::table
+                    .filter(multi_addresses::address.eq(address_update.address.clone()))
+                    .filter(multi_addresses::peer_id.eq(peer_id)),
             )
-            .set(&address_update)
-            .execute(conn)?;
+                .set(&address_update)
+                .execute(conn)?;
             // If the address does not exist, add it
             if updated == 0 {
-                let peer_id = peers::table
-                    .filter(peers::node_id.eq(update_peer_sql.peer.node_id.clone()))
-                    .select(peers::peer_id)
-                    .first::<i64>(conn)?;
                 let new_address_sql = NewMultiaddrWithStatsSql::from((address_update.clone(), peer_id));
                 diesel::insert_into(multi_addresses::table)
                     .values(&new_address_sql)
