@@ -984,6 +984,7 @@ impl DhtConnectivity {
                 stale_peer_threshold,
                 exclude_if_all_address_failed,
                 exclusion_distance,
+                true,
             )
             .await?;
 

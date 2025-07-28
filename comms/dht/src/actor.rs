@@ -795,6 +795,7 @@ impl DhtActor {
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,
+                true,
             )
             .await?;
         debug!(
