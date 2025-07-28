@@ -120,6 +120,7 @@ async fn initialize() {
             Some(STALE_PEER_THRESHOLD_DURATION),
             true,
             None,
+            false,
         )
         .await
         .unwrap()

@@ -31,7 +31,7 @@ pub enum PeerValidatorError {
     InvalidPeerSignature { peer: NodeId },
     #[error("One or more peer addresses were invalid for '{peer}'")]
     InvalidPeerAddresses { peer: NodeId },
-    #[error("Peer '{peer}' was banned")]
+    #[error("Peer '{peer}' has no address claims")]
     PeerHasNoAddresses { peer: NodeId },
     #[error("Invalid multiaddr: {0}")]
     InvalidMultiaddr(String),

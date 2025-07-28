@@ -166,6 +166,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,
+                true,
             )
             .await
             .map_err(RpcError::from)?;
@@ -207,7 +208,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
 
         let peers = self
             .peer_manager
-            .discovery_syncing(message.n as usize, &excluded_peers, features)
+            .discovery_syncing(message.n as usize, &excluded_peers, features, true)
             .await
             .map_err(RpcError::from)?;
 

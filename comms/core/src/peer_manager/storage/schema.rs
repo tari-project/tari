@@ -34,6 +34,7 @@ table! {
         address_id -> Nullable<Integer>,
         peer_id -> BigInt,
         address -> Text,
+        is_external -> Bool,
         last_seen -> Nullable<Timestamp>,
         connection_attempts -> Nullable<Integer>,
         avg_initial_dial_time -> Nullable<BigInt>,
