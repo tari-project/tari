@@ -318,21 +318,22 @@ impl WalletDebouncer {
         let last_scan_activity = self.last_scan_activity.load(Ordering::SeqCst);
         let mut connectivity = self.wallet.wallet_connectivity.clone();
 
+        // If no recent scanning activity, test connectivity
         if last_scan_activity == scanned_height {
-            connectivity.change_connectivity_status(OnlineStatus::Offline).await;
-            return;
-        }
-
-        // Try to get base node client and test connectivity
-        let new_status = if self.test_base_node_connectivity().await {
-            trace!(target: LOG_TARGET, "Connectivity check successful");
-            OnlineStatus::Online
+            // No new blocks scanned - test if we can reach the base node
+            let new_status = if self.test_base_node_connectivity().await {
+                trace!(target: LOG_TARGET, "No new blocks to scan, but connectivity check successful");
+                OnlineStatus::Online
+            } else {
+                warn!(target: LOG_TARGET, "No scanning activity and connectivity check failed");
+                OnlineStatus::Offline
+            };
+            connectivity.change_connectivity_status(new_status).await;
         } else {
-            warn!(target: LOG_TARGET, "Connectivity check failed");
-            OnlineStatus::Offline
-        };
-
-        connectivity.change_connectivity_status(new_status).await;
+            // Recent scanning activity indicates we're online
+            trace!(target: LOG_TARGET, "Recent scanning activity detected - wallet is online");
+            connectivity.change_connectivity_status(OnlineStatus::Online).await;
+        }
     }
 
     /// Returns true if the wallet can communicate with the base node, false otherwise.

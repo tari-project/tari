@@ -20,9 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::debug;
 use tokio::sync::watch;
 
 use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
+const LOG_TARGET: &str = "wallet::connectivity_service::handle";
+
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OnlineStatus {
@@ -62,7 +65,9 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
     }
 
     async fn change_connectivity_status(&mut self, status: OnlineStatus) {
-        self.online_status_watch.send(status).unwrap();
+        if let Err(e) = self.online_status_watch.send(status) {
+            debug!(target: LOG_TARGET, "Connectivity status watch send failed: {}", e);
+        }
     }
 
     async fn get_connectivity_status(&self) -> OnlineStatus {
