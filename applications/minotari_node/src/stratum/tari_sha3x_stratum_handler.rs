@@ -1,10 +1,13 @@
-use std::cmp;
+use std::{cmp, str::FromStr};
 
 use async_trait::async_trait;
 use minotari_app_grpc::conversions::chain_metadata;
+use rand::{rngs::OsRng, RngCore};
+use tari_common_types::tari_address::TariAddress;
 use tokio::sync::watch;
 
 use crate::stratum::{
+    block_template_repository::BlockTemplateRepository,
     job::{Job, SubmittedJob},
     job_repository::JobRepository,
     stratum_server::{LoginResponse, StratumJob, StratumJobHandler, SubmitResponse},
@@ -13,20 +16,27 @@ use crate::stratum::{
 };
 
 #[derive(Clone)]
-pub(crate) struct TariSha3xStratumHandler<T: JobRepository + Clone + Send + Sync + 'static> {
-    latest_block_blob_template: LatestBlockBroadcastReceiver,
-    job_repository: T,
+pub(crate) struct TariSha3xStratumHandler<
+    TJobRepo: JobRepository + Clone + Send + Sync + 'static,
+    TBlockRepo: BlockTemplateRepository + Clone + Send + Sync + 'static,
+> {
+    block_template_repository: TBlockRepo,
+    job_repository: TJobRepo,
     submit_job_queue_sender: SubmitJobQueueSender,
 }
 
-impl<T: JobRepository + Clone + Send + Sync + 'static> TariSha3xStratumHandler<T> {
+impl<
+        TJobRepo: JobRepository + Clone + Send + Sync + 'static,
+        TBlockRepo: BlockTemplateRepository + Clone + Send + Sync + 'static,
+    > TariSha3xStratumHandler<TJobRepo, TBlockRepo>
+{
     pub(crate) fn new(
-        latest_block_blob_template: LatestBlockBroadcastReceiver,
-        job_repository: T,
+        block_template_repository: TBlockRepo,
+        job_repository: TJobRepo,
         submit_job_queue_sender: SubmitJobQueueSender,
     ) -> Self {
         Self {
-            latest_block_blob_template,
+            block_template_repository,
             job_repository,
             submit_job_queue_sender,
         }
@@ -34,27 +44,47 @@ impl<T: JobRepository + Clone + Send + Sync + 'static> TariSha3xStratumHandler<T
 }
 
 #[async_trait]
-impl<T: JobRepository + Clone + Send + Sync + 'static> StratumJobHandler for TariSha3xStratumHandler<T> {
+impl<
+        TJobRepo: JobRepository + Clone + Send + Sync + 'static,
+        TBlockRepo: BlockTemplateRepository + Clone + Send + Sync + 'static,
+    > StratumJobHandler for TariSha3xStratumHandler<TJobRepo, TBlockRepo>
+{
     async fn login(
         &self,
         id: String,
         login: String,
+        is_solo: bool,
+        algo: String,
         pass: String,
         agent: String,
         endpoint_difficulty: u64,
     ) -> anyhow::Result<LoginResponse> {
         // Handle login request
-        let (blob, height, target) = self.latest_block_blob_template.borrow().clone();
-        let job_id = uuid::Uuid::new_v4();
-        let id = uuid::Uuid::new_v4();
+        let solo_address = if is_solo {
+            Some(TariAddress::from_str(&login)?)
+        } else {
+            None
+        };
+        let algo = algo.parse()?;
+        let (blob, height, target) = self
+            .block_template_repository
+            .get_block_template(algo, solo_address)
+            .await?;
+        let mut r = OsRng;
+        let job_id = hex::encode(r.next_u64().to_le_bytes());
+
+        let id = hex::encode(r.next_u64().to_le_bytes());
         let random_bytes = rand::random::<u16>();
         let xn = hex::encode(&random_bytes.to_le_bytes());
         let algo = "sha3x".to_string();
-        let job_target = hex::encode((u64::MAX / cmp::min(target, endpoint_difficulty)).to_le_bytes());
+        let job_target = hex::encode((u64::MAX / target.min(endpoint_difficulty).max(1)).to_le_bytes());
         let chain_target = hex::encode(target.to_le_bytes());
 
+        if blob.is_empty() {
+            return Err(anyhow::anyhow!("No blob available for the latest block"));
+        }
         let job_record = Job {
-            id,
+            id: id.clone(),
             algo: algo.clone(),
             blob: blob.clone(),
             height,
@@ -77,11 +107,11 @@ impl<T: JobRepository + Clone + Send + Sync + 'static> StratumJobHandler for Tar
                 target: job_target,
                 xn,
             },
+            status: "OK".to_string(),
         })
     }
 
     async fn submit(&self, job_id: String, nonce: u64, result: String, id: String) -> anyhow::Result<SubmitResponse> {
-        let job_id = uuid::Uuid::parse_str(&job_id)?;
         let job = self.job_repository.get_job(job_id).await?;
         if job.is_none() {
             return Err(anyhow::anyhow!("Job not found"));

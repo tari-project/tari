@@ -1,8 +1,12 @@
 use std::marker::PhantomData;
 
 use anyhow::Error;
-use log::info;
+use log::{debug, info, warn};
 use serde::Serialize;
+use tari_core::{
+    base_node::LocalNodeCommsInterface,
+    consensus::{self, ConsensusManager},
+};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -12,9 +16,12 @@ use tokio::{
 use tonic::async_trait;
 
 use crate::stratum::{
+    self,
+    block_template_repository::DefaultBlockTemplateRepository,
     job_repository_service::{JobRepositoryClient, JobRepositoryService},
     memory_job_repository::MemoryJobRepository,
     tari_sha3x_stratum_handler::TariSha3xStratumHandler,
+    LatestBlockBroadcastReceiver,
 };
 
 const LOG_TARGET: &str = "minotari::base_node::stratum::server";
@@ -28,14 +35,44 @@ impl TariStratumServer {
         Self { port }
     }
 
-    pub async fn start(&self, shutdown: ShutdownSignal) -> Result<(), Error> {
+    pub async fn start(
+        &self,
+        shutdown: ShutdownSignal,
+        consensus_manager: ConsensusManager,
+        local_node: LocalNodeCommsInterface,
+    ) -> Result<(), Error> {
         let mem_repo = MemoryJobRepository::default();
         let (job_repository_tx, job_repository_rx) = tokio::sync::mpsc::channel(100);
 
         let job_repository_service = JobRepositoryService::new(mem_repo, job_repository_rx);
         let repository_client = JobRepositoryClient::new(job_repository_tx);
 
-        todo!()
+        let mut servers = vec![];
+        let shutdown1 = shutdown.clone();
+        let stratum_port = self.port;
+        let min_difficulty = 10_000_000; // Default minimum difficulty
+        let (submit_tx, submit_job_queue_rx) = tokio::sync::mpsc::channel(100);
+        let block_creater = DefaultBlockTemplateRepository::new(local_node, consensus_manager);
+        servers.push(tokio::spawn(async move {
+            let job_handler = TariSha3xStratumHandler::new(block_creater, repository_client, submit_tx);
+            let stratum_server = StratumServerBuilder::<_, NiceHashStyleStatumStreamAdapter>::new()
+                .with_port(stratum_port)
+                .with_job_handler(job_handler)
+                // .with_min_difficulty(min_difficulty)
+                .build();
+
+            stratum_server.start(shutdown1).await
+        }));
+
+        let shutdown2 = shutdown.clone();
+        // servers.push(tokio::spawn(
+        //     async move { job_validator_service.start(shutdown2).await },
+        // ));
+        let shutdown3 = shutdown.clone();
+        servers.push(tokio::spawn(
+            async move { job_repository_service.start(shutdown3).await },
+        ));
+        Ok(())
     }
 }
 
@@ -91,7 +128,7 @@ struct StratumServer<T: StratumJobHandler, TAdapter: StratumStreamAdapter> {
 
 impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAdapter> {
     pub async fn start(self, mut shutdown_signal: ShutdownSignal) -> anyhow::Result<()> {
-        info!("Starting Stratum server on port {}", self.port);
+        info!(target: LOG_TARGET, "Starting Stratum server on port {}", self.port);
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
         loop {
             select! {
@@ -104,7 +141,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                     match res {
                         Ok((stream, _)) => {
                             // Handle the connection with the job handler
-                            info!( "Accepted connection from {}", stream.peer_addr()?);
+                            info!(target: LOG_TARGET, "Accepted connection from {}", stream.peer_addr()?);
                             let handler = self.hander.clone();
                             // self.hander.handle_connection(stream).await?;
                             tokio::spawn(async move {
@@ -115,16 +152,17 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                 while let Ok(Some(line)) = reader.next_line().await {
                                     // if let Ok(msg): Result<Value, _> = serde_json::from_str(&line) {
                                         // handle 'login', 'submit', etc.
-                                        println!("Received: {:#?}", line);
+                                        debug!(target: LOG_TARGET, "Received line: {}", line);
                                         match TAdapter::try_convert(line) {
                                             Ok(request) => {
                                                 let id = request.id().to_string();
 
-                                                info!( "Parsed request with id: {}", id);
+                                                info!(target:LOG_TARGET, "Parsed request with id: {}", id);
 
                                                 // Handle the request based on its type
                                                 match request {
-                                                    StratumRequest::Login { id, login, pass, agent } => {
+                                                    StratumRequest::Login { id, login, pass, agent, algo } => {
+                                                        let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
                                                         let login_parts = login.split("=").collect::<Vec<_>>();
                                                         let login_address = login_parts[0].to_string();
                                                         let login_difficulty = match login_parts.len() {
@@ -143,23 +181,26 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                             }
                                                             _ => self.min_difficulty,
                                                         };
+                                                        debug!(target: LOG_TARGET, "Login address: {}, difficulty: {}", login_address, login_difficulty);
 
                                                         if login_difficulty < self.min_difficulty {
-                                                            info!( "Login difficulty {} is less than minimum difficulty {}", login_difficulty, self.min_difficulty);
-                                                            writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Login difficulty {} is less than minimum difficulty {}\", \"result\": null}}\n", id, login_difficulty, self.min_difficulty).as_bytes()).await.unwrap();
+                                                            info!(target: LOG_TARGET, "Login difficulty {} is less than minimum difficulty {}", login_difficulty, self.min_difficulty);
+                                                            writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Login difficulty {} is less than minimum difficulty {}\", \"result\": null}}\n", id, login_difficulty, self.min_difficulty).as_bytes()).await.unwrap();
                                                             continue;
                                                         }
 
-                                                        let response = handler.login(id.clone(), login_address, pass, agent, login_difficulty).await;
+                                                        let response = handler.login(id.clone(), login_address, true, algo, pass, agent, login_difficulty).await;
                                                         match response {
                                                             Ok(resp) => {
-                                                                info!( "Handled login request with id: {}", id);
+                                                                info!(target: LOG_TARGET, "Handled login request with id: {}", id);
                                                                 let json_response = serde_json::to_string(&resp).unwrap();
-                                                                writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.unwrap();
+                                                                let res_packet = format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {}, \"error\": null}}\n", id, json_response);
+                                                                debug!(target: LOG_TARGET, "Login response: {}", res_packet);
+                                                                writer.write_all(res_packet.as_bytes()).await.unwrap();
                                                             },
                                                             Err(e) => {
-                                                                info!( "Failed to handle login request: {}", e);
-                                                                writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle login request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
+                                                                warn!(target: LOG_TARGET, "Failed to handle login request: {}", e);
+                                                                writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle login request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
                                                             }
                                                         }
                                                     },
@@ -167,20 +208,20 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                         let nonce = match u64::from_str_radix(&nonce, 16) {
                                                             Ok(n) => n,
                                                             Err(e) => {
-                                                                info!( "Failed to parse nonce: {}", e);
-                                                                writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, "Nonce is not valid").as_bytes()).await.unwrap();
+                                                                warn!(target: LOG_TARGET, "Failed to parse nonce: {}", e);
+                                                                writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, "Nonce is not valid").as_bytes()).await.unwrap();
                                                                 continue;
                                                             }
                                                         };
                                                         let response = handler.submit(job_id, nonce, result, id.clone()).await;
                                                         match response {
                                                             Ok(resp) => {
-                                                                info!( "Handled submit request with id: {}", id);
+                                                                info!(target: LOG_TARGET, "Handled submit request with id: {}", id);
                                                                 let json_response = serde_json::to_string(&resp).unwrap();
                                                                 writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.unwrap();
                                                             },
                                                             Err(e) => {
-                                                                info!( "Failed to handle submit request: {}", e);
+                                                                warn!(target: LOG_TARGET, "Failed to handle submit request: {}", e);
                                                                 writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
                                                             }
                                                         }
@@ -226,6 +267,8 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         &self,
         id: String,
         login: String,
+        is_solo: bool,
+        algo: String,
         pass: String,
         agent: String,
         endpoint_difficulty: u64,
@@ -238,6 +281,7 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
 pub(crate) struct LoginResponse {
     pub id: String,
     pub job: StratumJob,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -289,8 +333,20 @@ impl StratumStreamAdapter for NiceHashStyleStatumStreamAdapter {
                     .as_str()
                     .ok_or(anyhow::anyhow!("Invalid JSON. agent missing"))?
                     .to_string();
+                let algo = params["algo"]
+                    .as_array()
+                    .ok_or(anyhow::anyhow!("Invalid JSON. algo missing"))?
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>();
 
-                Ok(StratumRequest::Login { id, login, pass, agent })
+                Ok(StratumRequest::Login {
+                    id,
+                    login,
+                    pass,
+                    agent,
+                    algo,
+                })
             },
             "submit" => {
                 let params = json["params"].as_object().ok_or(anyhow::anyhow!("Invalid JSON"))?;
@@ -325,6 +381,7 @@ pub enum StratumRequest {
         login: String,
         pass: String,
         agent: String,
+        algo: Vec<String>,
     },
     Submit {
         id: String,

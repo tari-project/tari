@@ -43,7 +43,7 @@ impl<T: JobRepository> JobRepositoryService<T> {
 
 pub enum JobRepositoryRequest {
     InsertJob(Job, oneshot::Sender<Result<(), anyhow::Error>>),
-    GetJob(Uuid, oneshot::Sender<Result<Option<Job>, anyhow::Error>>),
+    GetJob(String, oneshot::Sender<Result<Option<Job>, anyhow::Error>>),
 }
 
 #[derive(Clone)]
@@ -68,7 +68,7 @@ impl JobRepository for JobRepositoryClient {
             .map_err(|_| anyhow::anyhow!("Failed to receive InsertJob response"))?
     }
 
-    async fn get_job(&self, id: Uuid) -> Result<Option<Job>, anyhow::Error> {
+    async fn get_job(&self, id: String) -> Result<Option<Job>, anyhow::Error> {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(JobRepositoryRequest::GetJob(id, tx))

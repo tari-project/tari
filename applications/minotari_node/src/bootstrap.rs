@@ -170,7 +170,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(BaseNodeStateMachineInitializer::new(
                 self.db.clone().into(),
                 base_node_config.state_machine.clone(),
-                self.rules,
+                self.rules.clone(),
                 self.factories,
                 self.randomx_factory,
                 self.app_config.base_node.bypass_range_proof_verification,
@@ -196,6 +196,7 @@ where B: BlockchainBackend + 'static
             &self.app_config.base_node.http_wallet_query_service,
             &self.app_config.base_node.stratum,
             self.interrupt_signal.clone(),
+            self.rules.clone(),
         )
         .await;
 
@@ -252,6 +253,7 @@ where B: BlockchainBackend + 'static
         wallet_query_service_config: &WalletHttpServiceConfig,
         stratum_config: &StratumServerConfig,
         shutdown_signal: ShutdownSignal,
+        consensus_manager: ConsensusManager,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
@@ -266,7 +268,7 @@ where B: BlockchainBackend + 'static
             .add_service(dht.rpc_service())
             .add_service(base_node::create_base_node_sync_rpc_service(
                 db.clone(),
-                base_node_service,
+                base_node_service.clone(),
             ))
             .add_service(mempool::create_mempool_rpc_service(
                 handles.expect_handle::<MempoolHandle>(),
@@ -301,7 +303,10 @@ where B: BlockchainBackend + 'static
         }
         if stratum_config.enabled {
             let stratum_server = TariStratumServer::new(stratum_config.port);
-            match stratum_server.start(shutdown_signal.clone()).await {
+            match stratum_server
+                .start(shutdown_signal.clone(), consensus_manager, base_node_service)
+                .await
+            {
                 Ok(_) => {
                     info!(target: LOG_TARGET, "Stratum server started successfully");
                 },

@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Job {
-    pub id: Uuid,
-    pub job_id: Uuid,
+    pub id: String,
+    pub job_id: String,
     pub created_at: NaiveDateTime,
     pub algo: String,
     pub target: String,

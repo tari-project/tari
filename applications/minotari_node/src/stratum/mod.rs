@@ -2,6 +2,7 @@ use tokio::sync::{oneshot, watch};
 
 use crate::stratum::{job::SubmittedJob, job_repository_service::JobRepositoryRequest};
 
+mod block_template_repository;
 mod job;
 mod job_repository;
 mod job_repository_service;

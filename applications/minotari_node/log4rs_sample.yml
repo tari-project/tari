@@ -87,6 +87,22 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {l:5} {m} // {f}:{L}{n}"
 
+  stratum:
+    kind: rolling_file
+    path: "{{log_dir}}/log/base_node/statrum.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "{{log_dir}}/log/base_node/stratum.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} {l:5} {m} // {f}:{L}{n}"    
+
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
@@ -127,6 +143,11 @@ loggers:
       - stdout
     additive: false  
 
+  minotari::base_node::stratum:
+    level: debug
+    appenders:
+      - stratum
+    additive: false    
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
     level: info
@@ -197,3 +218,4 @@ loggers:
     level: warn
     appenders:
       - message_logging
+
