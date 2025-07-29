@@ -95,7 +95,7 @@ impl<
             chain_target: chain_target.clone(),
             xn: random_bytes as u32,
         };
-        let job = self.job_repository.insert_job(job_record).await?;
+        self.job_repository.insert_job(job_record).await?;
 
         Ok(LoginResponse {
             id: id.to_string(),
@@ -112,16 +112,19 @@ impl<
     }
 
     async fn submit(&self, job_id: String, nonce: u64, result: String, id: String) -> anyhow::Result<SubmitResponse> {
-        let job = self.job_repository.get_job(job_id).await?;
+        let job = self.job_repository.get_job(job_id.clone()).await?;
         if job.is_none() {
-            return Err(anyhow::anyhow!("Job not found"));
+            return Err(anyhow::anyhow!("Job with id {} not found", job_id));
         }
         let job = job.unwrap();
 
         // Quick check the nonce against extra nonce.
         let extra_nonce = job.xn;
         dbg!(extra_nonce);
-        if nonce.to_le_bytes()[..2] != extra_nonce.to_le_bytes()[..2] {
+        dbg!(extra_nonce.to_le_bytes());
+        let nonce_bytes = nonce.to_be_bytes();
+        dbg!(nonce_bytes);
+        if nonce.to_be_bytes()[..2] != extra_nonce.to_le_bytes()[..2] {
             return Err(anyhow::anyhow!("Nonce does not match extra nonce"));
         }
 
