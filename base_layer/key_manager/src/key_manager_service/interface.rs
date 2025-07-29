@@ -240,16 +240,6 @@ where
     /// Gets the key id at the specified index
     async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError>;
 
-    /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
-    async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError>;
-
-    /// Will update the index of the branch if the index given is higher than the current saved index
-    async fn update_current_key_index_if_higher<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<(), KeyManagerServiceError>;
-
     /// Add a new key to be tracked
     async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError>;
 }

@@ -253,20 +253,6 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     async fn get_public_key_at_key_id(&self, key_id: &TariKeyId)
         -> Result<CompressedPublicKey, KeyManagerServiceError>;
 
-    /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
-    async fn find_key_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        key: &CompressedPublicKey,
-    ) -> Result<u64, KeyManagerServiceError>;
-
-    /// Will update the index of the branch if the index given is higher than the current saved index
-    async fn update_current_key_index_if_higher<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<(), KeyManagerServiceError>;
-
     /// Add a new key to be tracked
     async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError>;
 
@@ -313,11 +299,6 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         secret_key_id: &TariKeyId,
         public_key: &CompressedPublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError>;
-
-    async fn get_spending_key_id(
-        &self,
-        public_spending_key: &CompressedPublicKey,
-    ) -> Result<TariKeyId, TransactionError>;
 
     async fn construct_range_proof(
         &self,
