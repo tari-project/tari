@@ -32,11 +32,11 @@ async fn test_block_sync_happy_path() {
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init();  //  > ./target/output.log 2>&1
 
     // Create the network with Alice node and Bob node
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            BlockchainDatabaseConfig::default(),
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![BlockchainDatabaseConfig::default(), BlockchainDatabaseConfig::default()],
+            false,
+        )
         .await;
     let mut alice_state_machine = state_machines.remove(0);
     let alice_node = peer_nodes.remove(0);
@@ -97,11 +97,11 @@ async fn test_block_sync_peer_supplies_no_blocks_with_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            BlockchainDatabaseConfig::default(),
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![BlockchainDatabaseConfig::default(), BlockchainDatabaseConfig::default()],
+            false,
+        )
         .await;
     let mut alice_state_machine = state_machines.remove(0);
     let alice_node = peer_nodes.remove(0);
@@ -157,11 +157,11 @@ async fn test_block_sync_peer_supplies_not_all_blocks_with_ban() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Alice node and Bob node
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            BlockchainDatabaseConfig::default(),
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![BlockchainDatabaseConfig::default(), BlockchainDatabaseConfig::default()],
+            false,
+        )
         .await;
     let mut alice_state_machine = state_machines.remove(0);
     let alice_node = peer_nodes.remove(0);
@@ -220,13 +220,16 @@ async fn test_block_sync_with_conbase_spend_happy_path_1() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Bob (archival node) and Carol (archival node)
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            // Carol is an archival node
-            BlockchainDatabaseConfig::default(),
-            // Bob is an archival node
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![
+                // Carol is an archival node
+                BlockchainDatabaseConfig::default(),
+                // Bob is an archival node
+                BlockchainDatabaseConfig::default(),
+            ],
+            false,
+        )
         .await;
     let mut carol_state_machine = state_machines.remove(0);
     let carol_node = peer_nodes.remove(0);
@@ -329,13 +332,16 @@ async fn test_block_sync_with_conbase_spend_happy_path_2() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`
 
     // Create the network with Bob (archival node) and Carol (archival node)
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            // Carol is an archival node
-            BlockchainDatabaseConfig::default(),
-            // Bob is an archival node
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![
+                // Carol is an archival node
+                BlockchainDatabaseConfig::default(),
+                // Bob is an archival node
+                BlockchainDatabaseConfig::default(),
+            ],
+            false,
+        )
         .await;
     let mut carol_state_machine = state_machines.remove(0);
     let carol_node = peer_nodes.remove(0);

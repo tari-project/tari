@@ -79,7 +79,7 @@ async fn test_listening_lagging() {
         .build()
         .unwrap();
 
-    let (mut node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+    let (mut node_interfaces, _, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
         vec![MempoolServiceConfig::default(); 2],
         vec![
             LivenessConfig {
@@ -93,6 +93,7 @@ async fn test_listening_lagging() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
         network,
+        false,
     )
     .await;
     let alice_node = node_interfaces.remove(0);
@@ -165,7 +166,7 @@ async fn test_listening_initial_fallen_behind() {
         .build()
         .unwrap();
 
-    let (mut node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+    let (mut node_interfaces, _, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
         vec![MempoolServiceConfig::default(); 3],
         vec![
             LivenessConfig {
@@ -179,6 +180,7 @@ async fn test_listening_initial_fallen_behind() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
         network,
+        false,
     )
     .await;
     let alice_node = node_interfaces.remove(0);

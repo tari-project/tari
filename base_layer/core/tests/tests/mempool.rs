@@ -1056,7 +1056,7 @@ async fn receive_and_propagate_transaction() {
         .build()
         .unwrap();
 
-    let (mut node_interfaces, _consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+    let (mut node_interfaces, _, _consensus_manager) = create_network_with_multiple_base_nodes_with_config(
         vec![MempoolServiceConfig::default(); 3],
         vec![LivenessConfig::default(); 3],
         vec![BlockchainDatabaseConfig::default(); 3],
@@ -1064,6 +1064,7 @@ async fn receive_and_propagate_transaction() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
         network,
+        false,
     )
     .await;
     let mut alice_node = node_interfaces.remove(0);
@@ -1737,7 +1738,7 @@ async fn block_event_and_reorg_event_handling() {
         .build()
         .unwrap();
 
-    let (mut node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+    let (mut node_interfaces, _, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
         vec![MempoolServiceConfig::default(); 2],
         vec![LivenessConfig::default(); 2],
         vec![BlockchainDatabaseConfig::default(); 2],
@@ -1745,6 +1746,7 @@ async fn block_event_and_reorg_event_handling() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
         network,
+        false,
     )
     .await;
     let mut alice = node_interfaces.remove(0);
