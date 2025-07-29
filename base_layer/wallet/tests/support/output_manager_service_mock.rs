@@ -144,7 +144,7 @@ impl OutputManagerServiceMock {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                     });
             },
-            OutputManagerRequest::ValidateUtxos => {},
+            OutputManagerRequest::ValidateTxos => {},
             _ => panic!("Output Manager Service Mock does not support this call"),
         }
     }

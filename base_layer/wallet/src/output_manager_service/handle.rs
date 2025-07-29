@@ -120,7 +120,7 @@ pub enum OutputManagerRequest {
     GetSpentOutputs,
     GetUnspentOutputs,
     GetInvalidOutputs,
-    ValidateUtxos,
+    ValidateTxos,
     RevalidateTxos,
     CreateCoinSplit((Vec<CompressedCommitment>, MicroMinotari, usize, MicroMinotari)),
     CreateCoinSplitEven((Vec<CompressedCommitment>, usize, MicroMinotari)),
@@ -231,7 +231,7 @@ impl fmt::Display for OutputManagerRequest {
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
-            ValidateUtxos => write!(f, "ValidateUtxos"),
+            ValidateTxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
             PreviewCoinJoin((commitments, fee_per_gram)) => write!(
                 f,
@@ -660,8 +660,8 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn validate_utxos(&mut self) -> Result<u64, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::ValidateUtxos).await?? {
+    pub async fn validate_txos(&mut self) -> Result<u64, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::ValidateTxos).await?? {
             OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
