@@ -25,7 +25,6 @@ use argon2::password_hash::rand_core::OsRng;
 use blake2::Blake2b;
 use digest::consts::U64;
 use futures::lock::Mutex;
-use log::*;
 use tari_crypto::{
     hash_domain,
     hashing::DomainSeparatedHasher,
@@ -45,9 +44,6 @@ use crate::{
         KeyId,
     },
 };
-
-const LOG_TARGET: &str = "key_manager::key_manager_service";
-const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 hash_domain!(KeyManagerHashingDomain, "com.tari.base_layer.key_manager", 1);
 
@@ -181,49 +177,6 @@ where
             KeyId::Imported { key } => Ok(key.clone()),
             KeyId::Zero => Ok(PK::default()),
         }
-    }
-
-    /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: &str, key: &PK) -> Result<u64, KeyManagerServiceError> {
-        let km = self
-            .key_managers
-            .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch(branch.to_string()))?
-            .lock()
-            .await;
-
-        let current_index = km.key_index();
-
-        for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            let public_key = PK::from_secret_key(&km.derive_key(i)?.key);
-            if public_key == *key {
-                trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
-                return Ok(i);
-            }
-        }
-
-        Err(KeyManagerServiceError::KeyNotFoundInKeyChain)
-    }
-
-    /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
-    pub async fn update_current_key_index_if_higher(
-        &self,
-        branch: &str,
-        index: u64,
-    ) -> Result<(), KeyManagerServiceError> {
-        let mut km = self
-            .key_managers
-            .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch(branch.to_string()))?
-            .lock()
-            .await;
-        let current_index = km.key_index();
-        if index > current_index {
-            km.update_key_index(index);
-            self.db.set_key_index(branch, index)?;
-            trace!(target: LOG_TARGET, "Updated UTXO Key Index to {}", index);
-        }
-        Ok(())
     }
 
     pub async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError> {

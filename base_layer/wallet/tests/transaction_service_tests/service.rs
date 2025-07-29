@@ -1526,10 +1526,6 @@ async fn single_transaction_burn_tari() {
         .range_proof
         .verify_batch(vec![&burn_proof.range_proof.to_vec()], vec![&statement])
         .is_ok());
-    let spending_key_id_from_reciprocal_claim_public_key = key_manager_handle
-        .get_spending_key_id(&burn_proof.reciprocal_claim_public_key.clone())
-        .await
-        .unwrap();
 
     // Verify recovery of burned output
 
@@ -1549,9 +1545,8 @@ async fn single_transaction_burn_tari() {
                 .try_output_key_recovery(output.commitment(), output.encrypted_data(), Some(&recovery_key_id))
                 .await
             {
-                Ok((spending_key_id, value, _)) => {
+                Ok((_spending_key_id, value, _)) => {
                     assert_eq!(value, burn_value);
-                    assert_eq!(spending_key_id, spending_key_id_from_reciprocal_claim_public_key)
                 },
                 Err(e) => panic!("{}", e),
             }
