@@ -2182,7 +2182,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn test_seed_peer_exlusion() {
+    fn test_seed_peer_exclusion() {
         let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,

@@ -308,6 +308,8 @@ impl ProactiveDialer {
 #[cfg(test)]
 mod tests {
 
+    use crate::connectivity::proactive_dialer::MAX_CONCURRENT_DIALS;
+
     #[test]
     fn test_calculate_dial_count() {
         // Helper function to test dial count calculation without full struct
@@ -316,7 +318,6 @@ mod tests {
             let adjusted_count = base_count / success_rate.max(0.1);
             #[allow(clippy::cast_possible_truncation)]
             let final_count = adjusted_count.ceil() as usize;
-            const MAX_CONCURRENT_DIALS: usize = 20;
             final_count.max(needed).min(MAX_CONCURRENT_DIALS)
         }
 

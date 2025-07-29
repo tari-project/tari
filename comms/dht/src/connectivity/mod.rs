@@ -935,7 +935,7 @@ impl DhtConnectivity {
         Ok(self.peer_allow_list().await?.contains(node_id))
     }
 
-    fn is_seed_peer(&mut self, node_id: &NodeId) -> bool {
+    fn is_seed_peer(&self, node_id: &NodeId) -> bool {
         self.seed_peers.contains(node_id)
     }
 

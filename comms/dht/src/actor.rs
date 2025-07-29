@@ -744,8 +744,6 @@ impl DhtActor {
                             "No destination for propagation, sending to {} random peers",
                             config.propagation_factor + connected_seeds_len
                         );
-                        // When selecting the nodes, we want to make sure that we have enough non-seed node connections
-                        let connected_seeds_len = Self::get_connected_seeds(connectivity.clone(), seeds).await?.len();
                         connectivity
                             .select_connections(ConnectivitySelection::random_nodes(
                                 config.propagation_factor + connected_seeds_len,
