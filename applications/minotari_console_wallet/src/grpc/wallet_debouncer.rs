@@ -30,7 +30,6 @@ use std::{
 
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
-use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::{
@@ -72,6 +71,7 @@ pub struct WalletDebouncer {
     shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<AtomicBool>,
     last_scan_activity: Arc<AtomicU64>,
+    connection_status: Arc<Mutex<OnlineStatus>>,
 }
 
 impl WalletDebouncer {
@@ -103,6 +103,7 @@ impl WalletDebouncer {
             event_monitor_started: Arc::new(AtomicBool::new(false)),
             last_scan_activity: Arc::new(AtomicU64::new(scanned_height + 1)), /* Add 1 to pass initial connectivity
                                                                                * check */
+            connection_status: Arc::new(Mutex::new(OnlineStatus::Online)),
         }
     }
 
@@ -291,6 +292,10 @@ impl WalletDebouncer {
         trace!(target: LOG_TARGET, "Updated scan activity height - wallet is online");
     }
 
+    pub async fn get_connection_status(&self) -> OnlineStatus {
+        *self.connection_status.lock().await
+    }
+
     /// Background task that monitors connectivity proactively.
     /// Runs every 5 minutes to check if the wallet should test connectivity
     /// when no recent scanning activity has occurred.
@@ -313,34 +318,23 @@ impl WalletDebouncer {
 
     /// Check if height has changed since last scan
     /// if not then get tip info if we get response we got online otherwise offline
-    async fn check_connectivity(&self) {
+    async fn check_connectivity(&self) -> OnlineStatus {
         let scanned_height = self.scanned_height.load(Ordering::SeqCst);
         let last_scan_activity = self.last_scan_activity.load(Ordering::SeqCst);
-        let mut connectivity = self.wallet.wallet_connectivity.clone();
 
         // If no recent scanning activity, test connectivity
-        if last_scan_activity == scanned_height {
+        let connectivity = if last_scan_activity == scanned_height {
             // No new blocks scanned - test if we can reach the base node
-            let new_status = if self.test_base_node_connectivity().await {
-                trace!(target: LOG_TARGET, "No new blocks to scan, but connectivity check successful");
-                OnlineStatus::Online
-            } else {
-                warn!(target: LOG_TARGET, "No scanning activity and connectivity check failed");
-                OnlineStatus::Offline
-            };
-            connectivity.change_connectivity_status(new_status).await;
+            let connectivity = self.wallet.wallet_connectivity.clone();
+            connectivity.get_connectivity_status().await
         } else {
             // Recent scanning activity indicates we're online
             trace!(target: LOG_TARGET, "Recent scanning activity detected - wallet is online");
-            connectivity.change_connectivity_status(OnlineStatus::Online).await;
-        }
-    }
-
-    /// Returns true if the wallet can communicate with the base node, false otherwise.
-    async fn test_base_node_connectivity(&self) -> bool {
-        let mut connectivity = self.wallet.wallet_connectivity.clone();
-        let client = connectivity.obtain_base_node_wallet_rpc_client().await;
-        let tip_info = client.get_tip_info().await;
-        tip_info.is_ok()
+            OnlineStatus::Online
+        };
+        // Update connection status
+        let mut connection_status_guard = self.connection_status.lock().await;
+        *connection_status_guard = connectivity;
+        connectivity
     }
 }

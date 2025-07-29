@@ -254,9 +254,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
-        let connectivity = self.wallet.wallet_connectivity.clone();
-        let status = connectivity.get_connectivity_status().await;
-        Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
+        let debouncer = self.debouncer.lock().await;
+        let connection_status = debouncer.get_connection_status().await;
+        Ok(Response::new(CheckConnectivityResponse {
+            status: connection_status as i32,
+        }))
     }
 
     async fn check_for_updates(
