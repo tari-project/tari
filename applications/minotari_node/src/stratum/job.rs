@@ -13,7 +13,7 @@ pub struct Job {
     pub height: u64,
     pub chain_target: String,
     pub miner_address: String,
-    pub xn: u32,
+    pub xn: u16,
 }
 
 pub struct SubmittedJob {

@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
+use dashmap::DashMap;
 use log::{debug, warn};
 use minotari_app_grpc::tari_rpc::{self, MinerData, NewBlockCoinbase, PowAlgo};
+use sha3::{Digest, Sha3_256};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
@@ -34,6 +38,11 @@ use tari_core::{
     },
     validation::tari_rx_vm_key_height,
 };
+use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
+use tokio::select;
+
+use crate::stratum::SubmitJobQueueReceiver;
 
 const LOG_TARGET: &str = "minotari::base_node::stratum::block_template_repository";
 
@@ -50,6 +59,7 @@ pub trait BlockTemplateRepository {
 pub struct DefaultBlockTemplateRepository {
     node_service: LocalNodeCommsInterface,
     consensus_rules: tari_core::consensus::ConsensusManager,
+    block_templates: Arc<DashMap<Vec<u8>, Block>>,
 }
 
 impl DefaultBlockTemplateRepository {
@@ -57,7 +67,95 @@ impl DefaultBlockTemplateRepository {
         Self {
             node_service,
             consensus_rules,
+            block_templates: DashMap::new().into(),
         }
+    }
+
+    pub async fn start(
+        &self,
+        mut shutdown_signal: ShutdownSignal,
+        mut job_receiver: SubmitJobQueueReceiver,
+    ) -> Result<(), anyhow::Error> {
+        let mut node_service = self.node_service.clone();
+        let templates = self.block_templates.clone();
+        tokio::spawn(async move {
+            loop {
+                select! {
+                                  _ = shutdown_signal.wait() => {
+                                      debug!(target: LOG_TARGET, "Shutting down Block Template Repository");
+                                      break;
+                                  }
+                                  Some((job, responder)) = job_receiver.recv() => {
+                                      debug!(target: LOG_TARGET, "Received job submission for job ID: {}", job.job_id);
+                                      let block_template =templates.get(&job.blob);
+                                      if let Some(block) = block_template {
+                                          debug!(target: LOG_TARGET, "Found block template for job ID: {}", job.job_id);
+
+                                          let mut block = block.clone();
+                                          block.header.nonce = job.nonce.to_be();
+                                          dbg!(&block.header);
+
+                let mut mining_hash: Vec<u8> = job.blob.clone();
+                // let mining_hash2: Vec<u8> = Hex::from_hex("5cf4f1ea1092bac8cf446433d9e61f3e97f3a61053ff1ceec7f8ac6dc7b9babb").unwrap();
+                let block_mining_hash = block.header.mining_hash();
+                dbg!("Block mining hash:", block_mining_hash);
+                dbg!("Job blob:", job.blob);
+
+                      // let nonce: Vec<u8> = Hex::from_hex("4e7c132263077f46").unwrap();
+                      let nonce: Vec<u8> = job.nonce.to_be_bytes().to_vec();
+                      // let nonce: Vec<u8> = Hex::from_hex("bc03000018bee902").unwrap();
+                    //   let nonce: [u8; 8] = nonce.try_into().unwrap();
+                      // let nonce = u64::from_be_bytes(nonce);
+                    //   let nonce = u64::from_le_bytes(nonce);
+                      // assert_eq!(nonce, 5079787027052067918);
+                      // bc03000018bee902
+                    //   let nonce2: Vec<u8> =Hex::from_hex("257060c86b765176").unwrap();
+
+
+
+                      // mining_hash.reverse();
+                      let hash = Sha3_256::new()
+                          // .chain_update(nonce.to_le_bytes())
+                          .chain_update(nonce)
+                          .chain_update(mining_hash)
+                          .chain_update(vec![1u8])
+                          .finalize()
+                          .to_vec();
+                      let hash = Sha3_256::digest(hash);
+                      let hash = Sha3_256::digest(hash);
+                      let hash = hash.to_vec();
+                      // let difficulty = Difficulty::big_endian_difficulty(&hash)?;
+                    //   assert_eq!(
+                        //   hash.to_hex(),
+                        //   "0000000060e258b8e4104f8d407822e68b6c69b75d2d954f59e75035f00def53".to_string()
+                    //   );
+                    dbg!("Mining hash:", hash);
+                    dbg!(&job.result);
+
+
+
+
+                                          let res = node_service
+                                              .submit_block(block)
+                                              .await
+                                              .inspect_err(|e| warn!(target: LOG_TARGET, "Failed to submit block: {}", e))
+                                              .map(|_| ())
+                                              .map_err(|e| format!("Failed to submit block: {}", e));
+
+                                          let _ = responder.send(res);
+                                      } else {
+                                          warn!(target: LOG_TARGET, "No block template found for job ID: {}", job.job_id);
+                                          let _ = responder.send(Err(format!("No block template found for job ID: {}", job.job_id)));
+                                      }
+
+                                      // debug!(target: LOG_TARGET, "Received job submission for job ID: {}", job.id);
+                                      // let result = self.create_block(job.algo, job.solo_address).await;
+                                      // let _ = responder.send(result);
+                                  }
+                              }
+            }
+        });
+        Ok(())
     }
 
     pub async fn create_block(
@@ -207,6 +305,7 @@ impl DefaultBlockTemplateRepository {
         // miner_data: Some(miner_data),
         // vm_key: vm_key.to_vec(),
         // };
+        self.block_templates.insert(mining_hash.clone(), new_block.clone());
 
         Ok((new_block, mining_hash, vm_key.to_vec(), miner_data))
         // todo!("Return the response to the caller")

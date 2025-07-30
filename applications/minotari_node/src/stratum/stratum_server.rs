@@ -53,8 +53,9 @@ impl TariStratumServer {
         let min_difficulty = 10_000_000; // Default minimum difficulty
         let (submit_tx, submit_job_queue_rx) = tokio::sync::mpsc::channel(100);
         let block_creater = DefaultBlockTemplateRepository::new(local_node, consensus_manager);
+        let block_creater_clone = block_creater.clone();
         servers.push(tokio::spawn(async move {
-            let job_handler = TariSha3xStratumHandler::new(block_creater, repository_client, submit_tx);
+            let job_handler = TariSha3xStratumHandler::new(block_creater_clone, repository_client, submit_tx);
             let stratum_server = StratumServerBuilder::<_, NiceHashStyleStatumStreamAdapter>::new()
                 .with_port(stratum_port)
                 .with_job_handler(job_handler)
@@ -65,9 +66,9 @@ impl TariStratumServer {
         }));
 
         let shutdown2 = shutdown.clone();
-        // servers.push(tokio::spawn(
-        //     async move { job_validator_service.start(shutdown2).await },
-        // ));
+        servers.push(tokio::spawn(async move {
+            block_creater.start(shutdown2, submit_job_queue_rx).await
+        }));
         let shutdown3 = shutdown.clone();
         servers.push(tokio::spawn(
             async move { job_repository_service.start(shutdown3).await },
@@ -291,7 +292,8 @@ pub(crate) struct StratumJob {
     pub blob: String,
     pub height: u64,
     pub target: String,
-    pub xn: String,
+    // #[serde(ignore)]
+    // pub xn: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -4511,6 +4511,7 @@ dependencies = [
  "rustyline-derive",
  "serde",
  "serde_json",
+ "sha3",
  "strum",
  "tari_common",
  "tari_common_types",

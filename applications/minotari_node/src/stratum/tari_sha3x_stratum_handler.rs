@@ -77,7 +77,7 @@ impl<
         let random_bytes = rand::random::<u16>();
         let xn = hex::encode(&random_bytes.to_le_bytes());
         let algo = "sha3x".to_string();
-        let job_target = hex::encode((u64::MAX / target.min(endpoint_difficulty).max(1)).to_le_bytes());
+        let job_target = hex::encode((u64::MAX / target).to_le_bytes());
         let chain_target = hex::encode(target.to_le_bytes());
 
         if blob.is_empty() {
@@ -93,7 +93,7 @@ impl<
             created_at: chrono::Utc::now().naive_utc(),
             miner_address: login.clone(),
             chain_target: chain_target.clone(),
-            xn: random_bytes as u32,
+            xn: random_bytes,
         };
         self.job_repository.insert_job(job_record).await?;
 
@@ -105,7 +105,7 @@ impl<
                 blob: hex::encode(blob),
                 height,
                 target: job_target,
-                xn,
+                // xn,
             },
             status: "OK".to_string(),
         })
@@ -124,9 +124,9 @@ impl<
         dbg!(extra_nonce.to_le_bytes());
         let nonce_bytes = nonce.to_be_bytes();
         dbg!(nonce_bytes);
-        if nonce.to_be_bytes()[..2] != extra_nonce.to_le_bytes()[..2] {
-            return Err(anyhow::anyhow!("Nonce does not match extra nonce"));
-        }
+        // if nonce.to_be_bytes()[..2] != extra_nonce.to_le_bytes()[..2] {
+        //     return Err(anyhow::anyhow!("Nonce does not match extra nonce"));
+        // }
 
         // Quick check for the target.
         let result = hex::decode(result)?;
