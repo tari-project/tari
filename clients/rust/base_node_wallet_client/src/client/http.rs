@@ -121,11 +121,7 @@ impl BaseNodeWalletClient for Client {
     }
 
     async fn is_online(&self) -> bool {
-        self.last_latency
-            .read()
-            .await
-            .map(|latency| latency.1.elapsed() < std::time::Duration::from_secs(60))
-            .unwrap_or(false)
+        self.get_tip_info().await.is_ok()
     }
 
     async fn get_tip_info(&self) -> Result<TipInfoResponse, anyhow::Error> {

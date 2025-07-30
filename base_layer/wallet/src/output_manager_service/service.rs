@@ -414,7 +414,7 @@ where
                 let outputs = self.fetch_unspent_outputs()?;
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
-            OutputManagerRequest::ValidateUtxos => {
+            OutputManagerRequest::ValidateTxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
             OutputManagerRequest::RevalidateTxos => self
