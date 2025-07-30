@@ -46,13 +46,19 @@ use crate::stratum::SubmitJobQueueReceiver;
 
 const LOG_TARGET: &str = "minotari::base_node::stratum::block_template_repository";
 
+pub struct BlockTemplate {
+    pub blob: Vec<u8>,
+    pub height: u64,
+    pub target: u64,
+    pub seed_hash: Option<Vec<u8>>,
+}
 #[async_trait::async_trait]
 pub trait BlockTemplateRepository {
     async fn get_block_template(
         &self,
         algo: PowAlgorithm,
         solo_address: Option<TariAddress>,
-    ) -> Result<(Vec<u8>, u64, u64), anyhow::Error>;
+    ) -> Result<BlockTemplate, anyhow::Error>;
 }
 
 #[derive(Clone)]
@@ -87,13 +93,25 @@ impl DefaultBlockTemplateRepository {
                                   }
                                   Some((job, responder)) = job_receiver.recv() => {
                                       debug!(target: LOG_TARGET, "Received job submission for job ID: {}", job.job_id);
-                                      let block_template =templates.get(&job.blob);
+                                      let block_template =templates.get(&job.original_mining_hash);
                                       if let Some(block) = block_template {
                                           debug!(target: LOG_TARGET, "Found block template for job ID: {}", job.job_id);
 
                                           let mut block = block.clone();
-                                          block.header.nonce = job.nonce.to_be();
-                                          dbg!(&block.header);
+                                          match job.pow_algo {
+                                            PowAlgorithm::RandomXT => {
+                                              block.header.nonce = job.nonce;
+                                            }
+                                            PowAlgorithm::Sha3x => {
+                                              block.header.nonce = job.nonce.to_be();
+                                            }
+                                            _ => {
+                                              warn!(target: LOG_TARGET, "Unsupported PoW algorithm for job ID: {}", job.job_id);
+                                               let _ = responder.send(Err("Unsupported PoW algorithm".to_string()));
+
+                                              continue;
+                                            }
+                                          }
 
                 let mut mining_hash: Vec<u8> = job.blob.clone();
                 // let mining_hash2: Vec<u8> = Hex::from_hex("5cf4f1ea1092bac8cf446433d9e61f3e97f3a61053ff1ceec7f8ac6dc7b9babb").unwrap();
@@ -318,11 +336,19 @@ impl BlockTemplateRepository for DefaultBlockTemplateRepository {
         &self,
         algo: PowAlgorithm,
         solo_address: Option<TariAddress>,
-    ) -> Result<(Vec<u8>, u64, u64), anyhow::Error> {
+    ) -> Result<BlockTemplate, anyhow::Error> {
         if let Some(address) = solo_address {
             debug!(target: LOG_TARGET, "Creating block template for solo mining with address: {}", address);
             let (block, mining_hash, vm_key, miner_data) = self.create_block(algo, address).await?;
-            Ok((mining_hash, block.header.height, miner_data.target_difficulty))
+            Ok(BlockTemplate {
+                blob: mining_hash,
+                height: block.header.height,
+                target: miner_data.target_difficulty,
+                seed_hash: match algo {
+                    PowAlgorithm::RandomXT => Some(vm_key),
+                    PowAlgorithm::Sha3x | PowAlgorithm::RandomXM => None,
+                },
+            })
         } else {
             warn!(target: LOG_TARGET, "Cannot create block template for non-solo mining");
             Err(anyhow!("Block template creation for non-solo mining is not supported"))

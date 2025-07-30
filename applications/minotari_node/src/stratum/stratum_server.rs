@@ -163,7 +163,8 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                 // Handle the request based on its type
                                                 match request {
                                                     StratumRequest::Login { id, login, pass, agent, algo } => {
-                                                        let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
+
+                                                        // let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
                                                         let login_parts = login.split("=").collect::<Vec<_>>();
                                                         let login_address = login_parts[0].to_string();
                                                         let login_difficulty = match login_parts.len() {
@@ -186,22 +187,22 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 
                                                         if login_difficulty < self.min_difficulty {
                                                             info!(target: LOG_TARGET, "Login difficulty {} is less than minimum difficulty {}", login_difficulty, self.min_difficulty);
-                                                            writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Login difficulty {} is less than minimum difficulty {}\", \"result\": null}}\n", id, login_difficulty, self.min_difficulty).as_bytes()).await.unwrap();
+                                                            let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Login difficulty {} is less than minimum difficulty {}\", \"result\": null}}\n", id, login_difficulty, self.min_difficulty).as_bytes()).await;
                                                             continue;
                                                         }
 
-                                                        let response = handler.login(id.clone(), login_address, true, algo, pass, agent, login_difficulty).await;
+                                                        let response = handler.login(id.clone(), login_address, true, &algo, pass, agent, login_difficulty).await;
                                                         match response {
                                                             Ok(resp) => {
                                                                 info!(target: LOG_TARGET, "Handled login request with id: {}", id);
                                                                 let json_response = serde_json::to_string(&resp).unwrap();
-                                                                let res_packet = format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {}, \"error\": null}}\n", id, json_response);
+                                                                let res_packet = format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {}}}\n", id, json_response);
                                                                 debug!(target: LOG_TARGET, "Login response: {}", res_packet);
-                                                                writer.write_all(res_packet.as_bytes()).await.unwrap();
+                                                                let _res = writer.write_all(res_packet.as_bytes()).await;
                                                             },
                                                             Err(e) => {
                                                                 warn!(target: LOG_TARGET, "Failed to handle login request: {}", e);
-                                                                writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle login request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
+                                                                let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle login request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
                                                             }
                                                         }
                                                     },
@@ -210,7 +211,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                             Ok(n) => n,
                                                             Err(e) => {
                                                                 warn!(target: LOG_TARGET, "Failed to parse nonce: {}", e);
-                                                                writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, "Nonce is not valid").as_bytes()).await.unwrap();
+                                                                let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, "Nonce is not valid").as_bytes()).await;
                                                                 continue;
                                                             }
                                                         };
@@ -219,11 +220,13 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                             Ok(resp) => {
                                                                 info!(target: LOG_TARGET, "Handled submit request with id: {}", id);
                                                                 let json_response = serde_json::to_string(&resp).unwrap();
-                                                                writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.unwrap();
+                                                                let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.inspect_err(|e| {
+                                                                    warn!(target: LOG_TARGET, "Failed to write response: {}", e);
+                                                                }       );
                                                             },
                                                             Err(e) => {
                                                                 warn!(target: LOG_TARGET, "Failed to handle submit request: {}", e);
-                                                                writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
+                                                                let _res = writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
                                                             }
                                                         }
                                                     }
@@ -269,7 +272,7 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         id: String,
         login: String,
         is_solo: bool,
-        algo: String,
+        algo: &[String],
         pass: String,
         agent: String,
         endpoint_difficulty: u64,
@@ -292,8 +295,8 @@ pub(crate) struct StratumJob {
     pub blob: String,
     pub height: u64,
     pub target: String,
-    // #[serde(ignore)]
-    // pub xn: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
