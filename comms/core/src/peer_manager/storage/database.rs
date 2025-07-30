@@ -703,8 +703,8 @@ impl PeerDatabaseSql {
                     .filter(multi_addresses::address.eq(address_update.address.clone()))
                     .filter(multi_addresses::peer_id.eq(peer_id)),
             )
-                .set(&address_update)
-                .execute(conn)?;
+            .set(&address_update)
+            .execute(conn)?;
             // If the address does not exist, add it
             if updated == 0 {
                 let new_address_sql = NewMultiaddrWithStatsSql::from((address_update.clone(), peer_id));

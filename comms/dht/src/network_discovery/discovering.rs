@@ -144,39 +144,36 @@ impl Discovering {
 
     async fn request_from_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
         let rpc_connect_timeout = self.config().network_discovery.bootstrap_rpc_connect_timeout;
-        let rpc_result = tokio::time::timeout(rpc_connect_timeout, conn.connect_rpc::<DhtClient>()).await;
-        let client = match rpc_result {
-            Ok(Ok(client)) => {
-                trace!(
-                    target: LOG_TARGET,
-                    "Discovering: Successfully connected RPC client to sync peer '{}'",
-                    conn.peer_node_id()
-                );
-                client
-            },
-            Ok(Err(e)) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Discovering: Failed to connect RPC client to sync peer {}: {}",
-                    conn.peer_node_id(),
-                    e
-                );
-                return Err(e.into());
-            },
-            Err(_) => {
+        let client = tokio::time::timeout(rpc_connect_timeout, conn.connect_rpc::<DhtClient>())
+            .await
+            .map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Discovering: RPC connect_rpc to sync peer '{}' timed out after {:?}",
                     conn.peer_node_id(),
                     rpc_connect_timeout,
                 );
-                return Err(NetworkDiscoveryError::Timeout {
+                NetworkDiscoveryError::Timeout {
                     operation: "connect_rpc".to_string(),
                     peer: conn.peer_node_id().to_hex(),
                     duration: format!("{:.2?}", rpc_connect_timeout),
-                });
-            },
-        };
+                }
+            })?
+            .inspect_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Discovering: Failed to connect RPC client to sync peer {}: {}",
+                    conn.peer_node_id(),
+                    e
+                );
+            })?;
+
+        trace!(
+            target: LOG_TARGET,
+            "Discovering: Successfully connected RPC client to sync peer '{}'",
+            conn.peer_node_id()
+        );
+
         let peer_node_id = conn.peer_node_id();
 
         debug!(
@@ -195,7 +192,7 @@ impl Discovering {
         sync_peer: &NodeId,
     ) -> Result<ClientStreaming<GetPeersResponse>, NetworkDiscoveryError> {
         let rpc_get_peers_stream_timeout = self.config().network_discovery.bootstrap_rpc_get_peers_stream_timeout;
-        let stream_result = tokio::time::timeout(
+        let peer_stream = tokio::time::timeout(
             rpc_get_peers_stream_timeout,
             client.get_peers(GetPeersRequest {
                 n: self.params.num_peers_to_request,
@@ -221,40 +218,34 @@ impl Discovering {
                     }),
             }),
         )
-        .await;
+        .await
+        .map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Discovering: RPC get_peers from sync peer '{}' timed out after {:?}",
+                sync_peer, rpc_get_peers_stream_timeout
+            );
+            NetworkDiscoveryError::Timeout {
+                operation: "get_peers".to_string(),
+                peer: sync_peer.to_hex(),
+                duration: format!("{:.2?}", rpc_get_peers_stream_timeout),
+            }
+        })?
+        .inspect_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Discovering: Failed to initiate get_peers stream from sync peer '{}': {}. This sync peer will be \
+                skipped.",
+                sync_peer,
+                e
+            );
+        })?;
 
-        let peer_stream = match stream_result {
-            Ok(Ok(stream)) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Discovering: Successfully initiated get_peers stream from sync peer '{}'",
-                    sync_peer
-                );
-                stream
-            },
-            Ok(Err(e)) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Discovering: Failed to initiate get_peers stream from sync peer '{}': {}. This sync peer will be \
-                    skipped.",
-                    sync_peer,
-                    e
-                );
-                return Err(e.into());
-            },
-            Err(_) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Discovering: RPC get_peers from sync '{}' timed out after {:?}",
-                    sync_peer, rpc_get_peers_stream_timeout
-                );
-                return Err(NetworkDiscoveryError::Timeout {
-                    operation: "get_peers".to_string(),
-                    peer: sync_peer.to_hex(),
-                    duration: format!("{:.2?}", rpc_get_peers_stream_timeout),
-                });
-            },
-        };
+        debug!(
+            target: LOG_TARGET,
+            "Discovering: Successfully initiated get_peers stream from sync peer '{}'",
+            sync_peer
+        );
 
         Ok(peer_stream)
     }
@@ -265,21 +256,21 @@ impl Discovering {
         sync_peer: &NodeId,
     ) -> Result<Option<Result<GetPeersResponse, RpcStatus>>, NetworkDiscoveryError> {
         let rpc_streaming_timeout = self.config().network_discovery.bootstrap_rpc_streaming_timeout;
-        match tokio::time::timeout(rpc_streaming_timeout, stream.next()).await {
-            Ok(response) => Ok(response),
-            Err(_) => {
+
+        tokio::time::timeout(rpc_streaming_timeout, stream.next())
+            .await
+            .map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Discovering: RPC get_peer_response from stream '{}' timed out after {:?}",
                     sync_peer, rpc_streaming_timeout
                 );
-                Err(NetworkDiscoveryError::Timeout {
+                NetworkDiscoveryError::Timeout {
                     operation: "get_peer_response".to_string(),
                     peer: sync_peer.to_hex(),
                     duration: format!("{:.2?}", rpc_streaming_timeout),
-                })
-            },
-        }
+                }
+            })
     }
 
     async fn request_peers(&mut self, sync_peer: &NodeId, client: rpc::DhtClient) -> Result<(), NetworkDiscoveryError> {
@@ -299,52 +290,45 @@ impl Discovering {
                 warn!(target: LOG_TARGET, "Discovering: Sync peer `{}` sent more peers than we requested.", sync_peer);
                 return Err(NetworkDiscoveryError::TooManyPeersReceived);
             }
-            let GetPeersResponse { peer } = match resp {
-                Ok(val) => val,
-                Err(err) => {
+            let GetPeersResponse { peer } = resp.map_err(|err| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Discovering: Sync peer `{}` sent an error response: {:?}",
+                    sync_peer, err
+                );
+                NetworkDiscoveryError::from(err)
+            })?;
+            let peer = peer
+                .ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived)
+                .inspect_err(|err| {
                     warn!(
                         target: LOG_TARGET,
-                        "Discovering: Sync peer `{}` sent invalid response: {:?}",
+                        "Discovering: Sync peer `{}` sent an empty peer message: {:?}",
                         sync_peer, err
                     );
-                    return Err(NetworkDiscoveryError::from(err));
-                },
-            };
-
-            let peer = match peer.ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived) {
-                Ok(val) => val,
-                Err(err) => {
+                })?;
+            let new_peer: UnvalidatedPeerInfo = peer
+                .try_into()
+                .map_err(NetworkDiscoveryError::InvalidPeerDataReceived)
+                .inspect_err(|err| {
                     warn!(
-                        target: LOG_TARGET, "Discovering: Sync peer `{}` sent an empty peer message: {:?}",
+                        target: LOG_TARGET,
+                        "Discovering: Sync peer `{}` sent invalid peer data: {:?}",
                         sync_peer, err
                     );
-                    return Err(err);
-                },
-            };
-            let new_peer: UnvalidatedPeerInfo =
-                match peer.try_into().map_err(NetworkDiscoveryError::InvalidPeerDataReceived) {
-                    Ok(val) => val,
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Discovering: Sync peer `{}` sent invalid data: {:?}",
-                            sync_peer, err
-                        );
-                        return Err(err);
-                    },
-                };
+                })?;
+
             if !peers_received.insert(new_peer.public_key.clone()) {
                 let err = NetworkDiscoveryError::DuplicatePeerReceived;
                 warn!(target: LOG_TARGET, "Discovering: Sync peer `{}` sent duplicate peer: {:?}", sync_peer, err);
                 return Err(err);
             }
-            if let Err(err) = self.validate_and_add_peer(new_peer).await {
+            self.validate_and_add_peer(new_peer).await.inspect_err(|err| {
                 warn!(
                     target: LOG_TARGET,
                     "Discovering: Failed to validate and add peer from sync peer `{}`: {:?}", sync_peer, err
                 );
-                return Err(err);
-            }
+            })?;
         }
 
         Ok(())
