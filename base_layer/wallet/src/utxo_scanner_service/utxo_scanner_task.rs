@@ -607,47 +607,16 @@ where
         Ok(found_outputs)
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)>, anyhow::Error> {
         let start = Instant::now();
-
-        // Enhanced logging: Track all input outputs
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Starting scan_for_outputs with {} total outputs",
-            self.mode, outputs.len()
-        );
-        for (idx, output) in outputs.iter().enumerate() {
-            trace!(
-                target: LOG_TARGET,
-                "{:?}: Input output[{}]: hash={}, commitment={}, value={} µT",
-                self.mode, idx, output.hash().to_hex(), output.commitment.to_hex(),
-                output.minimum_value_promise.as_u64()
-            );
-        }
-        // Step 1: Scan for one-sided payments
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Step 1 - Scanning for one-sided payments",
-            self.mode
-        );
-
-        let one_sided_recovered = self
+        let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = self
             .resources
             .output_manager_service
             .scan_outputs_for_one_sided_payments(outputs.clone().into_iter().map(|o| (o, None)).collect())
-            .await?;
-
-        info!(
-            target: LOG_TARGET,
-            "{:?}: One-sided scanner found {} outputs",
-            self.mode, one_sided_recovered.len()
-        );
-
-        let mut found_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = one_sided_recovered
+            .await?
             .into_iter()
             .map(|ro| -> Result<_, anyhow::Error> {
                 let status = if ro.output.features.is_coinbase() {
@@ -659,132 +628,45 @@ where
                     .iter()
                     .find(|o| o.hash() == ro.hash)
                     .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-
-                info!(
-                    target: LOG_TARGET,
-                    "{:?}: One-sided found: hash={}, value={} µT, status={}, tx_id={}",
-                    self.mode, ro.hash.to_hex(), ro.output.value.as_u64(), status, ro.tx_id
-                );
-
                 Ok((ro.output, status, ro.tx_id, output.clone()))
             })
             .collect::<Result<Vec<_>, _>>()?;
         let one_sided_time = start.elapsed();
-
-        // Step 2: Filter outputs for recoverable scan
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Step 2 - Filtering outputs for recoverable scan",
-            self.mode
-        );
-
-        let found_hashes: Vec<String> = found_outputs.iter().map(|f| f.3.hash().to_hex()).collect();
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Found hashes from one-sided scan: {:?}",
-            self.mode, found_hashes
-        );
-
-        let other_outputs: Vec<(TransactionOutput, Option<TxId>)> = outputs
+        let other_outputs = outputs
             .iter()
-            .filter(|o| {
-                let output_hash = o.hash().to_hex();
-                let is_already_found = found_outputs.iter().any(|f| f.3.hash() == o.hash());
-                if is_already_found {
-                    trace!(
-                        target: LOG_TARGET,
-                        "{:?}: Filtering OUT output hash={} (already found by one-sided scanner)",
-                        self.mode, output_hash
-                    );
-                } else {
-                    trace!(
-                        target: LOG_TARGET,
-                        "{:?}: Including output hash={} for recoverable scan",
-                        self.mode, output_hash
-                    );
-                }
-                !is_already_found
-            })
+            .filter(|o| !found_outputs.iter().any(|f| f.3.hash() == o.hash()))
             .map(|o| (o.clone(), None))
             .collect();
-
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Filtered to {} outputs for recoverable scan (from {} total, {} already found)",
-            self.mode, other_outputs.len(), outputs.len(), found_outputs.len()
-        );
         let start = Instant::now();
-
-        // Step 3: Scan for recoverable outputs
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Step 3 - Scanning filtered outputs for recoverable ones",
-            self.mode
+        found_outputs.append(
+            &mut self
+                .resources
+                .output_manager_service
+                .scan_for_recoverable_outputs(other_outputs)
+                .await?
+                .into_iter()
+                .map(|ro| -> Result<_, anyhow::Error> {
+                    let status = if ro.output.features.is_coinbase() {
+                        ImportStatus::CoinbaseUnconfirmed
+                    } else {
+                        ImportStatus::Imported
+                    };
+                    let output = outputs
+                        .iter()
+                        .find(|o| o.hash() == ro.hash)
+                        .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
+                    Ok((ro.output, status, ro.tx_id, output.clone()))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
         );
-
-        let recoverable_found = self
-            .resources
-            .output_manager_service
-            .scan_for_recoverable_outputs(other_outputs)
-            .await?;
-
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Recoverable scanner found {} outputs",
-            self.mode, recoverable_found.len()
-        );
-
-        let mut recoverable_outputs: Vec<(WalletOutput, ImportStatus, TxId, TransactionOutput)> = recoverable_found
-            .into_iter()
-            .map(|ro| -> Result<_, anyhow::Error> {
-                let status = if ro.output.features.is_coinbase() {
-                    ImportStatus::CoinbaseUnconfirmed
-                } else {
-                    ImportStatus::Imported
-                };
-                let output = outputs
-                    .iter()
-                    .find(|o| o.hash() == ro.hash)
-                    .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-
-                info!(
-                    target: LOG_TARGET,
-                    "{:?}: Recoverable found: hash={}, value={} µT, status={}, tx_id={}",
-                    self.mode, ro.hash.to_hex(), ro.output.value.as_u64(), status, ro.tx_id
-                );
-
-                // Check for potential duplicates
-                if found_outputs.iter().any(|f| f.3.hash() == output.hash()) {
-                    warn!(
-                        target: LOG_TARGET,
-                        "{:?}: POTENTIAL DUPLICATE DETECTED! Output hash={} found by both scanners",
-                        self.mode, output.hash().to_hex()
-                    );
-                }
-
-                Ok((ro.output, status, ro.tx_id, output.clone()))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        found_outputs.append(&mut recoverable_outputs);
         let scanned_time = start.elapsed();
-
-        // Final summary
-        info!(
+        trace!(
             target: LOG_TARGET,
-            "{:?}: Scan complete - Total found: {} outputs (one-sided: {} ms, recoverable: {} ms)",
-            self.mode, found_outputs.len(), one_sided_time.as_millis(), scanned_time.as_millis()
+            "{:?}: Scanned for outputs: outputs took {} ms , one-sided took {} ms",
+            self.mode,
+            scanned_time.as_millis(),
+            one_sided_time.as_millis(),
         );
-
-        // Log final results summary
-        for (idx, (wallet_output, import_status, tx_id, _)) in found_outputs.iter().enumerate() {
-            info!(
-                target: LOG_TARGET,
-                "{:?}: Final result[{}]: value={} µT, status={}, tx_id={}",
-                self.mode, idx, wallet_output.value.as_u64(), import_status, tx_id
-            );
-        }
-
         Ok(found_outputs)
     }
 
@@ -794,20 +676,9 @@ where
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
     ) -> Result<(u64, MicroMinotari), anyhow::Error> {
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Starting import of {} UTXOs to transaction service at height {}",
-            self.mode, utxos.len(), current_height
-        );
-
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
-        for (idx, (wo, import_status, tx_id, to)) in utxos.iter().enumerate() {
-            info!(
-                target: LOG_TARGET,
-                "{:?}: Processing UTXO[{}]: value={} µT, status={}, tx_id={}",
-                self.mode, idx, wo.value.as_u64(), import_status, tx_id
-            );
+        for (wo, import_status, tx_id, to) in utxos {
             let source_address = if wo.features.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
@@ -818,13 +689,6 @@ where
             } else {
                 TariAddress::default()
             };
-
-            info!(
-                target: LOG_TARGET,
-                "{:?}: Importing UTXO[{}] with source_address={}, attempting transaction service import",
-                self.mode, idx, source_address
-            );
-
             match self
                 .import_key_manager_utxo_to_transaction_service(
                     wo.clone(),
@@ -852,24 +716,9 @@ where
                         tx_id
                     );
                 },
-                Err(e) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "{:?}: Failed to import UTXO with value {} µT, tx_id={}, error={}",
-                        self.mode, wo.value.as_u64(), tx_id, e
-                    );
-                    return Err(e.into());
-                },
+                Err(e) => return Err(e.into()),
             }
         }
-
-        info!(
-            target: LOG_TARGET,
-            "{:?}: Import complete - Recovered {} UTXOs totaling {} µT (avg: {} µT per UTXO)",
-            self.mode, num_recovered, total_amount.as_u64(),
-            if num_recovered > 0 { total_amount.as_u64() / num_recovered } else { 0 }
-        );
-
         Ok((num_recovered, total_amount))
     }
 
@@ -901,48 +750,28 @@ where
         mined_timestamp: DateTime<Utc>,
         scanned_output: TransactionOutput,
     ) -> Result<TxId, WalletError> {
-        info!(
-            target: LOG_TARGET,
-            "{:?}: About to import UTXO - tx_id={}, commitment={}, value={} µT, status={}, height={}, source_address={}",
-            self.mode, tx_id, scanned_output.commitment.to_hex(), wallet_output.value.as_u64(),
-            import_status, current_height, source_address
-        );
-
-        let result_tx_id = self
+        let tx_id = self
             .resources
             .transaction_service
             .import_utxo_with_status(
                 wallet_output.value,
-                source_address.clone(),
+                source_address,
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
                 Some(mined_timestamp),
-                scanned_output.clone(),
-                wallet_output.payment_id.clone(),
+                scanned_output,
+                wallet_output.payment_id,
             )
-            .await;
+            .await?;
 
-        match &result_tx_id {
-            Ok(imported_tx_id) => {
-                info!(
-                    target: LOG_TARGET,
-                    "{:?}: SUCCESSFULLY imported UTXO - original_tx_id={}, imported_tx_id={}, commitment={}, value={} µT, status={} - This will affect balance calculation!",
-                    self.mode, tx_id, imported_tx_id, scanned_output.commitment.to_hex(),
-                    wallet_output.value.as_u64(), import_status
-                );
-            },
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "{:?}: FAILED to import UTXO - tx_id={}, commitment={}, value={} µT, status={}, error={}",
-                    self.mode, tx_id, scanned_output.commitment.to_hex(),
-                    wallet_output.value.as_u64(), import_status, e
-                );
-            },
-        }
+        info!(
+            target: LOG_TARGET,
+            "{:?}: UTXO with value {},  imported into wallet as 'ImportStatus::{}'",
+            self.mode, wallet_output.value, import_status
+        );
 
-        result_tx_id.map_err(|e| e.into())
+        Ok(tx_id)
     }
 
     async fn get_scanning_start_header_height_hash(
