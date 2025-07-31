@@ -1,0 +1,1 @@
+-- Nothing here, this migration is a no-op.
