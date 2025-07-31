@@ -3203,8 +3203,10 @@ where
                     .await
                     .map_err(TransactionServiceError::from),
                 WalletTransaction::Completed(tx) => self
-                    .db
-                    .cancel_pending_transaction(tx.tx_id)
+                    .resources
+                    .output_manager_service
+                    .cancel_transaction(tx.tx_id)
+                    .await
                     .map_err(TransactionServiceError::from),
             };
         };
