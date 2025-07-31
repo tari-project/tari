@@ -144,7 +144,7 @@ use crate::{
             models::{
                 CompletedTransaction,
                 TxCancellationReason,
-                WalletTransaction::{Completed, PendingInbound, PendingOutbound},
+                WalletTransaction::{self, Completed, PendingInbound, PendingOutbound},
             },
         },
         tasks::{
@@ -3176,6 +3176,39 @@ where
 
     /// Cancel a pending transaction
     async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        let transaction = self.db.get_any_transaction(tx_id)?;
+
+        if let Some(transaction) = transaction {
+            let status = match &transaction {
+                WalletTransaction::PendingInbound(tx) => &tx.status,
+                WalletTransaction::PendingOutbound(tx) => &tx.status,
+                WalletTransaction::Completed(tx) => &tx.status,
+            };
+
+            if !matches!(
+                status,
+                TransactionStatus::OneSidedUnconfirmed | TransactionStatus::OneSidedConfirmed
+            ) {
+                return Err(TransactionServiceError::FailedToCancelOneSidedTransaction(format!(
+                    "Invalid transaction status: {}",
+                    status
+                )));
+            }
+
+            return match &transaction {
+                WalletTransaction::PendingInbound(_) | WalletTransaction::PendingOutbound(_) => self
+                    .resources
+                    .output_manager_service
+                    .clear_short_term_encumberances()
+                    .await
+                    .map_err(TransactionServiceError::from),
+                WalletTransaction::Completed(tx) => self
+                    .db
+                    .cancel_pending_transaction(tx.tx_id)
+                    .map_err(TransactionServiceError::from),
+            };
+        };
+
         self.db.cancel_pending_transaction(tx_id).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
