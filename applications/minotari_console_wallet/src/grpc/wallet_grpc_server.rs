@@ -310,7 +310,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<GetPaymentIdAddressRequest>,
     ) -> Result<Response<GetCompleteAddressResponse>, Status> {
         let message = request.into_inner();
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "get_payment_id_address: payment_id: '{:?}' / '{}'",
             message.payment_id, String::from_utf8_lossy(&message.payment_id),
@@ -321,21 +321,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .get_wallet_interactive_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
-        debug!(target: LOG_TARGET, "get_payment_id_address: interactive:      '{}'", interactive_address.to_base58());
+        trace!(target: LOG_TARGET, "get_payment_id_address: interactive:      '{}'", interactive_address.to_base58());
         let interactive_address = interactive_address
             .with_memo_field_payment_id(message.payment_id.clone())
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
-        debug!(target: LOG_TARGET, "get_payment_id_address: interactive + id: '{}'", interactive_address.to_base58());
+        trace!(target: LOG_TARGET, "get_payment_id_address: interactive + id: '{}'", interactive_address.to_base58());
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
-        debug!(target: LOG_TARGET, "get_payment_id_address: one_sided:        '{}'", one_sided_address.to_base58());
+        trace!(target: LOG_TARGET, "get_payment_id_address: one_sided:        '{}'", one_sided_address.to_base58());
         let one_sided_address = one_sided_address
             .with_memo_field_payment_id(message.payment_id)
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
-        debug!(target: LOG_TARGET, "get_payment_id_address: one_sided + id:   '{}'", one_sided_address.to_base58());
+        trace!(target: LOG_TARGET, "get_payment_id_address: one_sided + id:   '{}'", one_sided_address.to_base58());
         Ok(Response::new(GetCompleteAddressResponse {
             interactive_address: interactive_address.to_vec(),
             one_sided_address: one_sided_address.to_vec(),

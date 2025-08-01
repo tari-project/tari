@@ -322,7 +322,7 @@ impl MemoField {
         }
     }
 
-    /// Helper function to create a validated `InnerMemoField::Open` from user data and transaction type
+    /// Helper function to create a validated `MemoField::Open` from user data and transaction type
     pub fn new_open(payment_id: Vec<u8>, tx_type: TxType) -> Result<Self, String> {
         // Open Memo: 1 byte for tag + payment_id.len() bytes + 1 byte for tx_type
         let total_size = 1 + payment_id.len() + 1;
@@ -341,7 +341,7 @@ impl MemoField {
         })
     }
 
-    /// Helper function to create a validated `InnerMemoField::Open` from a string and transaction type
+    /// Helper function to create a validated `MemoField::Open` from a string and transaction type
     pub fn new_open_from_string(s: &str, tx_type: TxType) -> Result<Self, String> {
         Self::new_open(s.as_bytes().to_vec(), tx_type)
     }
@@ -445,7 +445,7 @@ impl MemoField {
         }
     }
 
-    /// Helper function to set the 'amount' of a 'InnerMemoField::TransactionInfo'
+    /// Helper function to set the 'amount' of a 'MemoField::TransactionInfo'
     pub fn transaction_info_set_amount(&mut self, amount: MicroMinotari) {
         if let InnerMemoField::TransactionInfo { amount: ref mut a, .. } = self.inner {
             *a = amount;
@@ -461,7 +461,7 @@ impl MemoField {
         }
     }
 
-    /// Helper function to set the 'recipient_address' of a 'InnerMemoField::TransactionInfo'
+    /// Helper function to set the 'recipient_address' of a 'MemoField::TransactionInfo'
     pub fn transaction_info_set_address(&mut self, address: TariAddress) -> Result<(), String> {
         if let InnerMemoField::TransactionInfo {
             ref mut recipient_address,
@@ -535,7 +535,7 @@ impl MemoField {
         }
     }
 
-    /// Helper function to set the 'payment_id' of a 'InnerMemoField::TransactionInfo'
+    /// Helper function to set the 'payment_id' of a 'MemoField::TransactionInfo'
     pub fn transaction_info_set_payment_id(&mut self, payment_id: Vec<u8>) -> Result<(), String> {
         if let InnerMemoField::TransactionInfo {
             ref recipient_address,
@@ -571,8 +571,8 @@ impl MemoField {
         }
     }
 
-    /// Helper function to convert a 'InnerMemoField::Open' or 'InnerMemoField::Empty' to a
-    /// 'InnerMemoField::AddressAndData', with the optional 'tx_type' only applicable to 'InnerMemoField::Open',
+    /// Helper function to convert a 'MemoField::Open' or 'MemoField::Empty' to a
+    /// 'MemoField::AddressAndData', with the optional 'tx_type' only applicable to 'MemoField::Open',
     /// otherwise 'payment_id' is kept as is.
     pub fn add_sender_address(
         self,
@@ -984,7 +984,7 @@ impl MemoField {
         }
     }
 
-    /// Helper function to create a `InnerMemoField::Open` from a string and the transaction type
+    /// Helper function to create a `MemoField::Open` from a string and the transaction type
     ///
     /// # Deprecated
     /// Use `new_open_from_string` instead for proper validation
@@ -997,7 +997,7 @@ impl MemoField {
         }
     }
 
-    /// Helper function to create a `InnerMemoField::Open` from a bytes and the transaction type
+    /// Helper function to create a `MemoField::Open` from a bytes and the transaction type
     ///
     /// # Deprecated
     /// Use `new_open` instead for proper validation
@@ -1148,7 +1148,7 @@ impl MemoField {
                 Ok(u64::from_le_bytes(bytes))
             },
             _ => Err(format!(
-                "Invalid memo: expected 8 bytes in 'InnerMemoField::U256' or 'InnerMemoField::Open' , received {:?}",
+                "Invalid memo: expected 8 bytes in 'MemoField::U256' or 'MemoField::Open' , received {:?}",
                 self.inner
             )),
         }
