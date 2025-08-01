@@ -229,7 +229,14 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                 let _res = writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
                                                             }
                                                         }
-                                                    }
+                                                    },
+                                                    StratumRequest::Subscribe { id, agent, address, worker } => {
+                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Not supported\"}}\n", id).as_bytes()).await;
+                                                    },
+                                                    StratumRequest::Authorize { id, login, pass } => {
+                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Not supported\"}}\n", id).as_bytes()).await;
+                                                    },
+
                                                 }
                                                 // match handler.handle_request(request) {
                                                 //     Ok(resp) => {
@@ -394,6 +401,17 @@ pub enum StratumRequest {
         nonce: String,
         result: String,
     },
+    Subscribe {
+        id: String,
+        agent: String,
+        address: String,
+        worker: Option<String>,
+    },
+    Authorize {
+        id: String,
+        login: String,
+        pass: String,
+    },
 }
 
 impl StratumRequest {
@@ -401,6 +419,69 @@ impl StratumRequest {
         match self {
             StratumRequest::Login { id, .. } => id.as_str(),
             StratumRequest::Submit { id, .. } => id.as_str(),
+            StratumRequest::Subscribe { id, .. } => id.as_str(),
+            StratumRequest::Authorize { id, .. } => id.as_str(),
+        }
+    }
+}
+
+struct StratumV1StreamAdapter {}
+
+impl StratumStreamAdapter for StratumV1StreamAdapter {
+    fn try_convert(line: String) -> anyhow::Result<StratumRequest> {
+        let json: serde_json::Value = serde_json::from_str(&line)?;
+        let method = json["method"]
+            .as_str()
+            .ok_or(anyhow::anyhow!("Json missing method field"))?;
+        let id = json["id"]
+            .as_i64()
+            .ok_or(anyhow::anyhow!("Invalid JSON. Json missing id field"))?
+            .to_string();
+        match method {
+            "mining.subscribe" => {
+                let params = json["params"]
+                    .as_array()
+                    .ok_or(anyhow::anyhow!("Invalid JSON.params missing"))?;
+                let agent = params.get(0);
+                let agent = agent.and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                let address_and_worker = params
+                    .get(1)
+                    .and_then(|v| v.as_str())
+                    .ok_or(anyhow::anyhow!("Invalid JSON. address missing"))?
+                    .to_string();
+                let address_parts = address_and_worker.split('.').collect::<Vec<_>>();
+                let address = address_parts[0].to_string();
+                let worker = if address_parts.len() > 1 {
+                    Some(address_parts[1].to_string())
+                } else {
+                    None
+                };
+                Ok(StratumRequest::Subscribe {
+                    id,
+                    agent: agent.unwrap_or_default(),
+                    address,
+                    worker,
+                })
+            },
+            "mining.authorize" => {
+                let params = json["params"]
+                    .as_array()
+                    .ok_or(anyhow::anyhow!("Invalid JSON.params missing"))?;
+                let login = params
+                    .get(0)
+                    .and_then(|v| v.as_str())
+                    .ok_or(anyhow::anyhow!("Invalid JSON. login missing"))?
+                    .to_string();
+                let pass = params
+                    .get(1)
+                    .and_then(|v| v.as_str())
+                    .ok_or(anyhow::anyhow!("Invalid JSON. pass missing"))?
+                    .to_string();
+                Ok(StratumRequest::Authorize { id, login, pass })
+            },
+
+            _ => Err(anyhow::anyhow!("Unknown method")),
         }
     }
 }
