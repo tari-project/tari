@@ -22,7 +22,7 @@
 
 use std::{
     cmp,
-    cmp::Ordering,
+    cmp::{min, Ordering},
     collections::VecDeque,
     convert::TryFrom,
     mem,
@@ -69,6 +69,7 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::{
     smt_hasher::SmtHasher,
+    AccumulatedDataRebuildStatus,
     MinedInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
@@ -120,7 +121,7 @@ use crate::{
     },
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
-    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     validation::{
         helpers::calc_median_timestamp,
@@ -368,6 +369,83 @@ where B: BlockchainBackend
         }
 
         self.rebuild_payref_indexes_background_task()?;
+        self.rebuild_accumulated_data_background_task()?;
+
+        Ok(())
+    }
+
+    /// This function will rebuild the accumulated data in the background if they are corrupt, up to the last stored
+    /// chain header.
+    pub fn rebuild_accumulated_data_background_task(&self) -> Result<(), ChainStorageError> {
+        let initial_status = {
+            let db = self.db_read_access()?;
+            db.fetch_accumulated_data_rebuild_status()?
+        };
+        debug!(target: LOG_TARGET, "[AccData] Rebuilding accumulated data status: {:?}", initial_status);
+        if initial_status.is_rebuilt {
+            debug!(target: LOG_TARGET, "[AccData] Accumulated data has already been rebuilt.");
+            return Ok(());
+        }
+
+        let db_rw_lock = self.db.clone();
+        let rules = self.consensus_manager.clone();
+
+        tokio::task::spawn(async move {
+            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
+            // The genesis block will not be at fault - start at height 1 if no data exists.
+            let start_height = initial_status.last_rebuild_height.unwrap_or(1);
+            let mut last_status = initial_status.clone();
+            debug!(
+                target: LOG_TARGET,
+                "[AccData] Start rebuilding accumulated data from height {}",
+                start_height
+            );
+
+            let mut height = start_height;
+            loop {
+                let db = db_rw_lock.clone();
+                let difficulty_calculator = difficulty_calculator.clone();
+                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
+                // shut down when base node shutdown is triggered
+                let res = tokio::task::spawn_blocking(move || {
+                    process_accumulated_data_for_height(db, difficulty_calculator, height)
+                })
+                .await;
+                match res {
+                    Ok(Ok(current_status)) => {
+                        last_status = current_status;
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[AccData] Rebuilding accumulated data failed. Initial status: {:?}. \
+                            Last updated status: {:?} ({})",
+                            initial_status, last_status, e
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[AccData] Rebuilding accumulated data failed. Initial status: {:?}. \
+                            Last updated status: {:?} ({})",
+                            initial_status, last_status, e
+                        );
+                        break;
+                    },
+                }
+
+                if last_status.is_rebuilt {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[AccData] Rebuilding accumulated data from height {} completed, Final status: {:?}",
+                        start_height, last_status
+                    );
+                    break;
+                }
+                height = height.saturating_add(1);
+            }
+        });
 
         Ok(())
     }
@@ -2385,8 +2463,17 @@ fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
     db: &mut T,
     candidate_block: Arc<Block>,
 ) -> Result<FixedHash, ChainStorageError> {
-    let vm_height = tari_rx_vm_key_height(candidate_block.header.height);
-    let mut current_header = candidate_block.header.clone();
+    get_vm_key_for_candidate_header(db, candidate_block.header.clone())
+}
+
+// this si tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
+// so we need to search for it.
+fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
+    db: &mut T,
+    header: BlockHeader,
+) -> Result<FixedHash, ChainStorageError> {
+    let vm_height = tari_rx_vm_key_height(header.height);
+    let mut current_header = header.clone();
     while current_header.height != vm_height {
         let h = db.fetch_chain_header_in_all_chains(&current_header.prev_hash)?;
         let chain_header = db.fetch_chain_header_by_height(h.height())?;
@@ -2831,7 +2918,7 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
     (start, end)
 }
 
-/// Process a batch of outputs in one block for PayRef migration
+// Process a batch of outputs in one block for PayRef migration
 fn process_payref_for_height<B: BlockchainBackend>(
     db: Arc<RwLock<B>>,
     height: u64,
@@ -2855,6 +2942,39 @@ fn process_payref_for_height<B: BlockchainBackend>(
             metadata_at_start.best_block_height(), height
         );
     }
+
+    Ok(status)
+}
+
+// Process accumulated data rebuild for the given height
+fn process_accumulated_data_for_height<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    difficulty_calculator: DifficultyCalculator,
+    height: u64,
+) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {}", height);
+
+    let write_txn = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+    let last_chain_header = write_txn.fetch_last_chain_header()?;
+    // Safety check to ensure we do not rebuild accumulated data for a height that has been reorged out.
+    let height = min(height, last_chain_header.height());
+
+    // Rebuild the accumulated data for the given height
+    let chain_header = write_txn.fetch_chain_header_by_height(height)?;
+    let header = chain_header.header().clone();
+    let prev_chain_header = write_txn.fetch_chain_header_by_height(height.saturating_sub(1))?;
+
+    let achieved_difficulty = difficulty_calculator.check_achieved_and_target_difficulty(&*write_txn, &header)?;
+
+    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
+        .with_hash(header.hash())
+        .with_achieved_target_difficulty(achieved_difficulty)
+        .with_total_kernel_offset(header.total_kernel_offset.clone())
+        .build()?;
+
+    let status = write_txn.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
 
     Ok(status)
 }
