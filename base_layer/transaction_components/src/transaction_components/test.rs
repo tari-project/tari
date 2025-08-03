@@ -54,7 +54,7 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
-    validation::{transaction::TransactionInternalConsistencyValidator, ValidationError},
+    validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
 };
 
 #[tokio::test]

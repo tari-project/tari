@@ -11,13 +11,12 @@ members = [
     "base_layer/common_types",
     "base_layer/transaction_components",
     "base_layer/contacts",
-    "base_layer/key_manager",
     "base_layer/mmr",
     "base_layer/p2p",
     "base_layer/service_framework",
     "base_layer/sidechain",
     "base_layer/wallet",
-    #"base_layer/wallet_ffi",
+    "base_layer/wallet_ffi",
     "clients/rust/base_node_grpc_client",
     "clients/rust/wallet_grpc_client",
     "comms/core",
@@ -41,7 +40,7 @@ members = [
     "applications/minotari_ledger_wallet/comms",
     "applications/minotari_ledger_wallet/common",
     "applications/minotari_utils",
-   # "integration_tests",
+    "integration_tests",
     "hashing",
 ]
 # Add here until we move to edition=2021
@@ -63,7 +62,6 @@ tari_core = { path = "base_layer/core", default-features = false }
 tari_crypto = { version = "0.22.1" }
 tari_features = { path = "common/tari_features" }
 tari_hashing = { path = "hashing" }
-tari_key_manager = { path = "base_layer/key_manager" }
 tari_libtor = { path = "infrastructure/libtor" }
 tari_metrics = { path = "infrastructure/metrics" }
 tari_mmr = { path = "base_layer/mmr" }

@@ -20,20 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
+use tari_common_types::seeds::error::CipherError;
+
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
-use tari_common_types::tari_address::TariAddressError;
+use tari_common_types::{seeds::error::MnemonicError, tari_address::TariAddressError};
 use tari_comms::{multiaddr, peer_manager::PeerManagerError};
 use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
-use tari_core::transactions::transaction_key_manager::error::KeyManagerServiceError;
 use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
-use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use tari_transaction_components::key_manager::error::KeyManagerServiceError;
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -301,19 +302,19 @@ impl From<WalletError> for LibWalletError {
                 code: 428,
                 message: format!("{:?}", w),
             },
-            WalletError::KeyManagerError(KeyManagerError::InvalidData) => Self {
+            WalletError::CipherError(CipherError::InvalidData) => Self {
                 code: 429,
                 message: format!("{:?}", w),
             },
-            WalletError::KeyManagerError(KeyManagerError::VersionMismatch) => Self {
+            WalletError::CipherError(CipherError::VersionMismatch) => Self {
                 code: 430,
                 message: format!("{:?}", w),
             },
-            WalletError::KeyManagerError(KeyManagerError::DecryptionFailed) => Self {
+            WalletError::CipherError(CipherError::DecryptionFailed) => Self {
                 code: 431,
                 message: format!("{:?}", w),
             },
-            WalletError::KeyManagerError(KeyManagerError::CrcError) => Self {
+            WalletError::CipherError(CipherError::CrcError) => Self {
                 code: 432,
                 message: format!("{:?}", w),
             },

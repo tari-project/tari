@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
-use tari_transaction_components::{
+
+use crate::{
+    consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     tari_amount::MicroMinotari,
     transaction_components::{OutputType::Coinbase, Transaction},
-    validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
+    validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, AggregatedBodyValidationError},
 };
-
-use crate::{consensus::BaseConsensusManager, validation::ValidationError};
 
 pub struct TransactionInternalConsistencyValidator {
     aggregate_body_validator: AggregateBodyInternalConsistencyValidator,
@@ -37,13 +37,13 @@ pub struct TransactionInternalConsistencyValidator {
 impl TransactionInternalConsistencyValidator {
     pub fn new(
         bypass_range_proof_verification: bool,
-        consensus_manager: BaseConsensusManager,
+        consensus_manager: ConsensusManager,
         factories: CryptoFactories,
     ) -> Self {
         Self {
             aggregate_body_validator: AggregateBodyInternalConsistencyValidator::new(
                 bypass_range_proof_verification,
-                consensus_manager.consensus_manager(),
+                consensus_manager,
                 factories,
             ),
         }
@@ -61,37 +61,31 @@ impl TransactionInternalConsistencyValidator {
         reward: Option<MicroMinotari>,
         prev_header: Option<HashOutput>,
         height: u64,
-    ) -> Result<(), ValidationError> {
-        Ok(self.aggregate_body_validator.validate(
-            &tx.body,
-            &tx.offset,
-            &tx.script_offset,
-            reward,
-            prev_header,
-            height,
-        )?)
+    ) -> Result<(), AggregatedBodyValidationError> {
+        self.aggregate_body_validator
+            .validate(&tx.body, &tx.offset, &tx.script_offset, reward, prev_header, height)
     }
 
     pub fn validate_with_current_tip(
         &self,
         tx: &Transaction,
         tip_metadata: ChainMetadata,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), AggregatedBodyValidationError> {
         if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
-            return Err(ValidationError::OutputTypeNotPermitted { output_type: Coinbase });
+            return Err(AggregatedBodyValidationError::OutputTypeNotPermitted { output_type: Coinbase });
         }
 
         // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
         // only coinbases may have the extra field set (the only field that the fn argument affects).
         tx.body.check_output_features(1)?;
 
-        Ok(self.aggregate_body_validator.validate(
+        self.aggregate_body_validator.validate(
             &tx.body,
             &tx.offset,
             &tx.script_offset,
             None,
             Some(*tip_metadata.best_block_hash()),
             tip_metadata.best_block_height(),
-        )?)
+        )
     }
 }

@@ -29,7 +29,7 @@ use std::{
 use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::memo_field::MemoField;
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 
 use super::ffi::{
     Balance,

@@ -20,9 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_transaction_components::{crypto_factories::CryptoFactories, transaction_components::Transaction};
+use tari_transaction_components::{
+    crypto_factories::CryptoFactories,
+    transaction_components::Transaction,
+    validation::transaction::TransactionInternalConsistencyValidator,
+};
 
-use super::{TransactionChainLinkedValidator, TransactionInternalConsistencyValidator};
+use super::TransactionChainLinkedValidator;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::BaseConsensusManager,
@@ -44,7 +48,7 @@ impl<B: BlockchainBackend> TransactionFullValidator<B> {
     ) -> Self {
         let internal_validator = TransactionInternalConsistencyValidator::new(
             bypass_range_proof_verification,
-            consensus_manager.clone(),
+            consensus_manager.consensus_manager(),
             factories,
         );
         let chain_validator = TransactionChainLinkedValidator::new(db.clone(), consensus_manager);

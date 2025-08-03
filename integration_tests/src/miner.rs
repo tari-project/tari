@@ -32,10 +32,9 @@ use minotari_node_grpc_client::BaseNodeGrpcClient;
 use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
-use tari_core::{
+use tari_transaction_components::{
     consensus::ConsensusManager,
     proof_of_work::PowAlgorithm,
-    transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
         transaction_components::{
@@ -44,9 +43,9 @@ use tari_core::{
             RangeProofType,
             WalletOutput,
         },
-        transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
-    },
+        key_manager::{ TariKeyId},
 };
+use tari_core::transactions::transaction_key_manager::MemoryDbKeyManager;
 use tonic::transport::Channel;
 
 use crate::TariWorld;

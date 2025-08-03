@@ -29,7 +29,7 @@
 
 mod error;
 pub use error::AggregatedBodyValidationError;
-
 pub mod helpers;
+pub mod transaction;
 
 pub mod aggregate_body;

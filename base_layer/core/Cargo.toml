@@ -45,7 +45,6 @@ tari_shutdown = { workspace = true }
 tari_storage = { workspace = true }
 tari_test_utils = { workspace = true }
 tari_utilities = { workspace = true, features = ["borsh"] }
-tari_key_manager = { workspace = true, features = ["key_manager_service"] }
 tari_common_sqlite = { workspace = true }
 tari_hashing = { workspace = true }
 tari_sidechain = { workspace = true }

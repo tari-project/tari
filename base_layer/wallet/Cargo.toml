@@ -22,7 +22,6 @@ tari_comms_dht = { workspace = true }
 tari_contacts = { workspace = true }
 tari_crypto = { workspace = true }
 tari_max_size = { workspace = true }
-tari_key_manager = { workspace = true, features = ["key_manager_service"] }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_script = { workspace = true }
 tari_service_framework = { workspace = true }

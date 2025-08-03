@@ -46,6 +46,7 @@
 //!    to the `AvailableBalance`.
 
 #![recursion_limit = "1024"]
+use tari_common_types::seeds::mnemonic_wordlists;
 
 use core::ptr;
 use std::{
@@ -118,6 +119,11 @@ use tari_common_sqlite::connection::DbConnectionUrl;
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
     payment_reference::generate_payment_reference,
+    seeds::{
+        cipher_seed::CipherSeed,
+        mnemonic::{Mnemonic, MnemonicLanguage},
+        seed_words::SeedWords,
+    },
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{
@@ -134,36 +140,29 @@ use tari_common_types::{
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::{DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
 use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
-use tari_core::{
-    borsh::FromBytes,
-    consensus::ConsensusManager,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoinBaseExtra,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            UnblindedOutput,
-        },
-        transaction_key_manager::TransactionKeyManagerInterface,
-        CryptoFactories,
-    },
-};
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{ByteArray, Hidden},
 };
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    mnemonic::{Mnemonic, MnemonicLanguage},
-    SeedWords,
-};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    crypto_factories::CryptoFactories,
+    helpers::borsh::FromBytes,
+    key_manager::TransactionKeyManagerInterface,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        UnblindedOutput,
+    },
+};
 use tari_utilities::{
     encoding::MBase58,
     hex::{Hex, HexError},
@@ -204,9 +203,9 @@ pub type TariPrivateKey = tari_common_types::types::PrivateKey;
 pub type TariRangeProof = RangeProof;
 pub type TariOutputFeatures = OutputFeatures;
 pub type TariCommsConfig = tari_p2p::P2pConfig;
-pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
-pub type TariCovenant = tari_core::covenants::Covenant;
-pub type TariEncryptedOpenings = tari_core::transactions::transaction_components::EncryptedData;
+pub type TariTransactionKernel = tari_transaction_components::transaction_components::TransactionKernel;
+pub type TariCovenant = tari_transaction_components::transaction_components::covenants::Covenant;
+pub type TariEncryptedOpenings = tari_transaction_components::transaction_components::EncryptedData;
 pub type TariComAndPubSignature = ComAndPubSignature;
 pub type TariUnblindedOutput = UnblindedOutput;
 pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
@@ -3486,7 +3485,6 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
     language: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariSeedWords {
-    use tari_key_manager::mnemonic_wordlists;
 
     if error_out.is_null() {
         return ptr::null_mut();
@@ -3647,8 +3645,6 @@ pub unsafe extern "C" fn seed_words_push_word(
     passphrase: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
-    use tari_key_manager::mnemonic::Mnemonic;
-
     if error_out.is_null() {
         return SeedWordPushResult::InvalidErrorPointer as u8;
     }
@@ -3724,7 +3720,7 @@ pub unsafe extern "C" fn seed_words_push_word(
                         "Problem building valid private seed from seed phrase: {:?}",
                         e
                     );
-                    *error_out = LibWalletError::from(WalletError::KeyManagerError(e)).code;
+                    *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                     return SeedWordPushResult::InvalidSeedPhrase as u8;
                 };
             }
@@ -6459,8 +6455,6 @@ pub unsafe extern "C" fn wallet_create(
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
 ) -> *mut TariWallet {
-    use tari_key_manager::mnemonic::Mnemonic;
-
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -6544,7 +6538,7 @@ pub unsafe extern "C" fn wallet_create(
             Ok(seed) => Some(seed),
             Err(e) => {
                 error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
-                *error_out = LibWalletError::from(WalletError::KeyManagerError(e)).code;
+                *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                 return ptr::null_mut();
             },
         }
@@ -6805,13 +6799,7 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let auto_update = AutoUpdateConfig::default();
-    let consensus_manager = match ConsensusManager::builder(network).build() {
-        Ok(cm) => cm,
-        Err(_) => {
-            *error_out = 10;
-            return ptr::null_mut();
-        },
-    };
+    let consensus_manager = ConsensusManager::builder(network).build();
 
     let user_agent = format!("tari/wallet_ffi/{}", env!("CARGO_PKG_VERSION"));
     let w = runtime.block_on(Wallet::start(

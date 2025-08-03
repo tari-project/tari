@@ -526,7 +526,6 @@ mod test {
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         crypto_factories::CryptoFactories,
         tari_amount::uT,
-        test_helpers::TestParams,
         transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
         CoinbaseBuilder,
@@ -786,25 +785,23 @@ mod test {
     use tari_script::push_pubkey_script;
 
     use crate::{
+        aggregated_body::AggregateBody,
+        generate_coinbase_with_wallet_output,
+        tari_amount::MicroMinotari,
         test_helpers::create_consensus_constants,
-        transactions::{
-            aggregated_body::AggregateBody,
-            generate_coinbase_with_wallet_output,
-            tari_amount::MicroMinotari,
-            transaction_components::{
-                memo_field::{MemoField, TxType},
-                CoinBaseExtra,
-                KernelBuilder,
-                RangeProofType,
-                TransactionKernelVersion,
-            },
-            transaction_key_manager::{
-                create_memory_db_key_manager,
-                MemoryDbKeyManager,
-                TariKeyId,
-                TransactionKeyManagerInterface,
-                TxoStage,
-            },
+        transaction_components::{
+            memo_field::{MemoField, TxType},
+            CoinBaseExtra,
+            KernelBuilder,
+            RangeProofType,
+            TransactionKernelVersion,
+        },
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerInterface,
+            TxoStage,
         },
     };
 
