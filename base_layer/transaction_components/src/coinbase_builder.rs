@@ -516,7 +516,7 @@ mod test {
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,
-        types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, Signature},
+        types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
     };
     use tari_crypto::keys::SecretKey;
     use tari_utilities::ByteArray;
