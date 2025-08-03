@@ -35,12 +35,15 @@ use tari_common_types::types::{
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
-use tari_transaction_components::{
+use tari_utilities::hex::Hex;
+
+use crate::{
     aggregated_body::AggregateBody,
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
     tari_amount::MicroMinotari,
     transaction_components::{
+        transaction_output::batch_verify_range_proofs,
         KernelSum,
         SideChainFeature,
         TransactionError,
@@ -48,13 +51,7 @@ use tari_transaction_components::{
         TransactionKernel,
         TransactionOutput,
     },
-};
-use tari_utilities::hex::Hex;
-
-use crate::{
-    consensus::BaseConsensusManager,
     validation::{
-        aggregate_body::batch_verify_range_proofs,
         helpers::{
             check_covenant_length,
             check_permitted_output_types,
@@ -66,7 +63,7 @@ use crate::{
             validate_kernel_version,
             validate_output_version,
         },
-        ValidationError,
+        AggregatedBodyValidationError,
     },
 };
 
@@ -75,14 +72,14 @@ pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_valida
 #[derive(Clone)]
 pub struct AggregateBodyInternalConsistencyValidator {
     bypass_range_proof_verification: bool,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: ConsensusManager,
     factories: CryptoFactories,
 }
 
 impl AggregateBodyInternalConsistencyValidator {
     pub fn new(
         bypass_range_proof_verification: bool,
-        consensus_manager: BaseConsensusManager,
+        consensus_manager: ConsensusManager,
         factories: CryptoFactories,
     ) -> Self {
         Self {
@@ -108,7 +105,7 @@ impl AggregateBodyInternalConsistencyValidator {
         total_reward: Option<MicroMinotari>,
         prev_header: Option<HashOutput>,
         height: u64,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), AggregatedBodyValidationError> {
         let total_reward = total_reward.unwrap_or(MicroMinotari::zero());
 
         // old internal validator
@@ -147,21 +144,21 @@ impl AggregateBodyInternalConsistencyValidator {
     }
 }
 
-fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Result<(), AggregatedBodyValidationError> {
     if let Some(template_reg) = sidechain_feature.code_template_registration() {
         let message =
             template_reg.create_signature_message(template_reg.author_signature.get_compressed_public_nonce());
         let signature = template_reg
             .author_signature
             .to_schnorr_signature()
-            .map_err(|_| ValidationError::TemplateAuthorSignatureNotValid)?;
+            .map_err(|_| AggregatedBodyValidationError::TemplateAuthorSignatureNotValid)?;
         let author_public_key = template_reg
             .author_public_key
             .to_public_key()
-            .map_err(|_| ValidationError::TemplateAuthorSignatureNotValid)?;
+            .map_err(|_| AggregatedBodyValidationError::TemplateAuthorSignatureNotValid)?;
 
         if !signature.verify_raw_uniform(&author_public_key, &message) {
-            return Err(ValidationError::TemplateAuthorSignatureNotValid);
+            return Err(AggregatedBodyValidationError::TemplateAuthorSignatureNotValid);
         }
     }
     Ok(())
@@ -170,7 +167,7 @@ fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Res
 pub fn validate_individual_output(
     output: &TransactionOutput,
     consensus_constants: &ConsensusConstants,
-) -> Result<(), ValidationError> {
+) -> Result<(), AggregatedBodyValidationError> {
     check_permitted_output_types(consensus_constants, output)?;
     check_script_size(output, consensus_constants.max_script_byte_size())?;
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
@@ -184,7 +181,7 @@ pub fn validate_individual_output(
 
 /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
 /// will be added to the public key used in the signature verification.
-fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError> {
+fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), AggregatedBodyValidationError> {
     trace!(target: LOG_TARGET, "Checking kernel signatures",);
     for kernel in body.kernels() {
         kernel.verify_signature().map_err(|e| {
@@ -196,7 +193,7 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
 }
 
 /// Verify that the TariScript is not larger than the max size
-fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Result<(), ValidationError> {
+fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Result<(), AggregatedBodyValidationError> {
     check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
@@ -210,7 +207,7 @@ fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Resu
 fn check_encrypted_data_byte_size(
     output: &TransactionOutput,
     max_encrypted_data_size: usize,
-) -> Result<(), ValidationError> {
+) -> Result<(), AggregatedBodyValidationError> {
     check_tari_encrypted_data_byte_size(output.encrypted_data(), max_encrypted_data_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
@@ -222,17 +219,17 @@ fn check_encrypted_data_byte_size(
 
 /// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a
 /// aggregated body
-fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
+fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), AggregatedBodyValidationError> {
     if !is_all_unique_and_sorted(body.inputs()) {
-        return Err(ValidationError::UnsortedOrDuplicateInput);
+        return Err(AggregatedBodyValidationError::UnsortedOrDuplicateInput);
     }
 
     if !is_all_unique_and_sorted(body.outputs()) {
-        return Err(ValidationError::UnsortedOrDuplicateOutput);
+        return Err(AggregatedBodyValidationError::UnsortedOrDuplicateOutput);
     }
 
     if !is_all_unique_and_sorted(body.kernels()) {
-        return Err(ValidationError::UnsortedOrDuplicateKernel);
+        return Err(AggregatedBodyValidationError::UnsortedOrDuplicateKernel);
     }
 
     Ok(())
@@ -246,7 +243,7 @@ fn validate_kernel_sum(
     body: &AggregateBody,
     offset_and_reward: CompressedCommitment,
     factory: &CommitmentFactory,
-) -> Result<(), ValidationError> {
+) -> Result<(), AggregatedBodyValidationError> {
     trace!(target: LOG_TARGET, "Checking kernel total");
     let KernelSum { sum: excess, fees } = sum_kernels(body, offset_and_reward)?;
     let sum_io = sum_commitments(body)?;
@@ -260,13 +257,16 @@ fn validate_kernel_sum(
         fees.to_hex()
     );
     if excess.to_commitment()? != &sum_io.to_commitment()? + &fees {
-        return Err(ValidationError::InvalidAccountingBalance);
+        return Err(AggregatedBodyValidationError::InvalidAccountingBalance);
     }
 
     Ok(())
 }
 /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-fn sum_kernels(body: &AggregateBody, offset_with_fee: CompressedCommitment) -> Result<KernelSum, ValidationError> {
+fn sum_kernels(
+    body: &AggregateBody,
+    offset_with_fee: CompressedCommitment,
+) -> Result<KernelSum, AggregatedBodyValidationError> {
     // Sum all kernel excesses and fees
     let mut kernel_sum = KernelSum {
         fees: MicroMinotari(0),
@@ -276,7 +276,7 @@ fn sum_kernels(body: &AggregateBody, offset_with_fee: CompressedCommitment) -> R
         kernel_sum.fees = kernel_sum
             .fees
             .checked_add(kernel.fee)
-            .ok_or(ValidationError::InvalidAccountingBalance)?;
+            .ok_or(AggregatedBodyValidationError::InvalidAccountingBalance)?;
         kernel_sum.sum =
             CompressedCommitment::from_commitment(&kernel_sum.sum.to_commitment()? + &kernel.excess.to_commitment()?);
     }
@@ -284,7 +284,7 @@ fn sum_kernels(body: &AggregateBody, offset_with_fee: CompressedCommitment) -> R
 }
 
 /// Calculate the sum of the outputs - inputs
-fn sum_commitments(body: &AggregateBody) -> Result<CompressedCommitment, ValidationError> {
+fn sum_commitments(body: &AggregateBody) -> Result<CompressedCommitment, AggregatedBodyValidationError> {
     let mut sum_inputs = UncompressedCommitment::default();
     for inputs in body.inputs() {
         sum_inputs = &sum_inputs + &inputs.commitment()?.to_commitment()?;
@@ -314,7 +314,7 @@ fn validate_script_and_script_offset(
     factory: &CommitmentFactory,
     prev_header: Option<HashOutput>,
     height: u64,
-) -> Result<(), ValidationError> {
+) -> Result<(), AggregatedBodyValidationError> {
     trace!(target: LOG_TARGET, "Checking script and script offset");
     // lets count up the input script public keys
     let mut input_keys = UncompressedPublicKey::default();
@@ -334,12 +334,14 @@ fn validate_script_and_script_offset(
     }
     let lhs = input_keys - output_keys;
     if lhs != script_offset.to_public_key()? {
-        return Err(ValidationError::TransactionError(TransactionError::ScriptOffset));
+        return Err(AggregatedBodyValidationError::TransactionError(
+            TransactionError::ScriptOffset,
+        ));
     }
     Ok(())
 }
 
-fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), ValidationError> {
+fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), AggregatedBodyValidationError> {
     for input in body.inputs() {
         input.covenant()?.execute(height, input, body.outputs())?;
     }
@@ -350,10 +352,12 @@ fn check_weight(
     body: &AggregateBody,
     height: u64,
     consensus_constants: &ConsensusConstants,
-) -> Result<(), ValidationError> {
+) -> Result<(), AggregatedBodyValidationError> {
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
-        .map_err(|e| ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e)))?;
+        .map_err(|e| {
+            AggregatedBodyValidationError::SerializationError(format!("Unable to calculate body weight: {}", e))
+        })?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
@@ -366,7 +370,7 @@ fn check_weight(
 
         Ok(())
     } else {
-        Err(ValidationError::BlockTooLarge {
+        Err(AggregatedBodyValidationError::BlockTooLarge {
             actual_weight: block_weight,
             max_weight,
         })
@@ -374,9 +378,9 @@ fn check_weight(
 }
 
 /// Checks that all transactions (given by their kernels) are spendable at the given height
-fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Result<(), ValidationError> {
+fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Result<(), AggregatedBodyValidationError> {
     if kernels.iter().any(|k| k.lock_height > height) {
-        return Err(ValidationError::MaturityError);
+        return Err(AggregatedBodyValidationError::MaturityError);
     }
     Ok(())
 }
@@ -398,7 +402,7 @@ fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Transa
 /// This function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
-fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
+fn check_total_burned(body: &AggregateBody) -> Result<(), AggregatedBodyValidationError> {
     let mut burned_outputs = HashSet::new();
     for output in body.outputs() {
         if output.is_burned() {
@@ -408,21 +412,24 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
     }
     for kernel in body.kernels() {
         if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
-            return Err(ValidationError::InvalidBurnError(
+            return Err(AggregatedBodyValidationError::InvalidBurnError(
                 "Burned kernel does not match burned output".to_string(),
             ));
         }
     }
 
     if !burned_outputs.is_empty() {
-        return Err(ValidationError::InvalidBurnError(
+        return Err(AggregatedBodyValidationError::InvalidBurnError(
             "Burned output has no matching burned kernel".to_string(),
         ));
     }
     Ok(())
 }
 
-fn check_sidechain_features(constants: &ConsensusConstants, output: &TransactionOutput) -> Result<(), ValidationError> {
+fn check_sidechain_features(
+    constants: &ConsensusConstants,
+    output: &TransactionOutput,
+) -> Result<(), AggregatedBodyValidationError> {
     let Some(sidechain_feature) = output.features.sidechain_feature.as_ref() else {
         return Ok(());
     };
@@ -433,9 +440,11 @@ fn check_sidechain_features(constants: &ConsensusConstants, output: &Transaction
 
     Ok(())
 }
-fn check_sidechain_id_proof_of_knowledge(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+fn check_sidechain_id_proof_of_knowledge(
+    sidechain_feature: &SideChainFeature,
+) -> Result<(), AggregatedBodyValidationError> {
     if !sidechain_feature.is_sidechain_id_valid() {
-        return Err(ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof);
+        return Err(AggregatedBodyValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof);
     }
 
     Ok(())
@@ -445,44 +454,49 @@ fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
     sidechain_feature: &SideChainFeature,
-) -> Result<(), ValidationError> {
+) -> Result<(), AggregatedBodyValidationError> {
     let Some(reg) = sidechain_feature.validator_node_registration() else {
         return Ok(());
     };
 
     if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
-        return Err(ValidationError::ValidatorNodeRegistrationMinDepositAmount {
-            min: consensus_constants.validator_node_registration_min_deposit_amount(),
-            actual: utxo.minimum_value_promise,
-        });
+        return Err(
+            AggregatedBodyValidationError::ValidatorNodeRegistrationMinDepositAmount {
+                min: consensus_constants.validator_node_registration_min_deposit_amount(),
+                actual: utxo.minimum_value_promise,
+            },
+        );
     }
     if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
-        return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
+        return Err(AggregatedBodyValidationError::ValidatorNodeRegistrationMinLockHeight {
             min: consensus_constants.validator_node_registration_min_lock_height(),
             actual: utxo.features.maturity,
         });
     }
 
     if !reg.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
-        return Err(ValidationError::InvalidValidatorNodeSignature);
+        return Err(AggregatedBodyValidationError::InvalidValidatorNodeSignature);
     }
 
     Ok(())
 }
 
-fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Result<(), ValidationError> {
+fn check_validator_node_exit_utxo(sidechain_feature: &SideChainFeature) -> Result<(), AggregatedBodyValidationError> {
     let Some(exit) = sidechain_feature.validator_node_exit() else {
         return Ok(());
     };
 
     if !exit.is_valid_signature_for(sidechain_feature.sidechain_id.as_ref().map(|id| id.public_key())) {
-        return Err(ValidationError::InvalidValidatorNodeSignature);
+        return Err(AggregatedBodyValidationError::InvalidValidatorNodeSignature);
     }
 
     Ok(())
 }
 
-fn validate_versions(body: &AggregateBody, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+fn validate_versions(
+    body: &AggregateBody,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), AggregatedBodyValidationError> {
     // validate input version
     for input in body.inputs() {
         validate_input_version(consensus_constants, input)?;

@@ -75,7 +75,6 @@ pub type Challenge = Blake2b<U64>;
 /// Define the data type that is used to store results of a hash output
 pub type HashOutput = FixedHash;
 
-
 pub const RANGE_PROOF_BIT_LENGTH: usize = 64; // 2^64
 pub const RANGE_PROOF_AGGREGATION_FACTOR: usize = 1;
 

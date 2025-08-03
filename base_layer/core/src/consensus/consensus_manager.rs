@@ -103,7 +103,7 @@ impl BaseConsensusManager {
         self.inner.consensus_manager.consensus_constants_vec()
     }
 
-    pub fn consensus_manager(&self) -> Arc<ConsensusManager> {
+    pub fn consensus_manager(&self) -> ConsensusManager {
         self.inner.consensus_manager.clone()
     }
 
@@ -236,7 +236,7 @@ impl BaseConsensusManager {
 /// This is the used to control all consensus values.
 #[derive(Debug)]
 struct BaseConsensusManagerInner {
-    pub consensus_manager: Arc<ConsensusManager>,
+    pub consensus_manager: ConsensusManager,
 
     pub gen_block: Option<ChainBlock>,
     /// The comparer used to determine which chain is stronger for reorgs.
@@ -290,7 +290,7 @@ impl BaseConsensusManagerBuilder {
             return Err(BaseConsensusBuilderError::CannotSetGenesisBlock);
         }
 
-        let consensus_manager = Arc::new(self.consensus_manager_builder.build());
+        let consensus_manager = self.consensus_manager_builder.build();
 
         let inner = BaseConsensusManagerInner {
             consensus_manager,

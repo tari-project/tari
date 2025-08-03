@@ -35,6 +35,7 @@ use tari_transaction_components::{
         TransactionInput,
         ValidatorNodeRegistration,
     },
+    validation::helpers::{check_tari_encrypted_data_byte_size, check_tari_script_byte_size},
 };
 use tari_utilities::hex::Hex;
 
@@ -47,8 +48,6 @@ use crate::{
             check_eviction_proof,
             check_input_is_utxo,
             check_not_duplicate_txo,
-            check_tari_encrypted_data_byte_size,
-            check_tari_script_byte_size,
             check_validator_node_exit,
             check_validator_node_registration,
         },

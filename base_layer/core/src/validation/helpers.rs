@@ -28,24 +28,15 @@ use tari_common_types::{
     types::{CompressedPublicKey, FixedHash},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
-use tari_script::TariScript;
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     proof_of_work::{Difficulty, PowAlgorithm, PowError},
-    transaction_components::{
-        covenants::Covenant,
-        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-        EncryptedData,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
-    },
+    transaction_components::{TransactionInput, TransactionOutput},
 };
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
-    borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::BaseConsensusManager,
     proof_of_work::{
@@ -161,23 +152,6 @@ pub fn check_target_difficulty(
     }
 }
 
-pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd + 'a>(items: I) -> bool {
-    let mut items = items.into_iter();
-    let prev_item = items.next();
-    if prev_item.is_none() {
-        return true;
-    }
-    let mut prev_item = prev_item.unwrap();
-    for item in items {
-        if item <= prev_item {
-            return false;
-        }
-        prev_item = item;
-    }
-
-    true
-}
-
 /// This function checks that an input is a valid spendable UTXO in the database. It cannot confirm
 /// zero confermation transactions.
 pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInput) -> Result<(), ValidationError> {
@@ -222,35 +196,6 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         "Input ({}, {}) does not exist in the database yet", input.commitment()?.to_hex(), output_hash.to_hex()
     );
     Err(ValidationError::UnknownInput)
-}
-
-/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
-pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
-    let script_size = script
-        .get_serialized_size()
-        .map_err(|e| ValidationError::SerializationError(format!("Failed to get serialized script size: {}", e)))?;
-    if script_size > max_script_size {
-        return Err(ValidationError::TariScriptExceedsMaxSize {
-            max_script_size,
-            actual_script_size: script_size,
-        });
-    }
-    Ok(())
-}
-
-/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
-pub fn check_tari_encrypted_data_byte_size(
-    encrypted_data: &EncryptedData,
-    max_encrypted_data_size: usize,
-) -> Result<(), ValidationError> {
-    let encrypted_data_size = encrypted_data.as_bytes().len();
-    if encrypted_data_size > max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL {
-        return Err(ValidationError::EncryptedDataExceedsMaxSize {
-            max_encrypted_data_size: max_encrypted_data_size + STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-            actual_encrypted_data_size: encrypted_data_size,
-        });
-    }
-    Ok(())
 }
 
 /// This function checks that the outputs do not already exist in the TxO set.
@@ -509,132 +454,6 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             expected: mmr_roots.validator_node_size,
             actual: header.validator_node_size,
         }));
-    }
-    Ok(())
-}
-
-pub fn check_permitted_output_types(
-    constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    if !constants
-        .permitted_output_types()
-        .contains(&output.features.output_type)
-    {
-        return Err(ValidationError::OutputTypeNotPermitted {
-            output_type: output.features.output_type,
-        });
-    }
-
-    Ok(())
-}
-
-pub fn check_covenant_length(covenant: &Covenant, max_token_len: u32) -> Result<(), ValidationError> {
-    if covenant.num_tokens() > max_token_len as usize {
-        return Err(ValidationError::CovenantTooLarge {
-            max_size: max_token_len as usize,
-            actual_size: covenant.num_tokens(),
-        });
-    }
-
-    Ok(())
-}
-
-pub fn check_permitted_range_proof_types(
-    constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    let binding = constants.permitted_range_proof_types();
-    let permitted_range_proof_types = binding.iter().find(|&&t| t.0 == output.features.output_type).ok_or(
-        ValidationError::OutputTypeNotMatchedToRangeProofType {
-            output_type: output.features.output_type,
-        },
-    )?;
-
-    if !permitted_range_proof_types
-        .1
-        .contains(&output.features.range_proof_type)
-    {
-        return Err(ValidationError::RangeProofTypeNotPermitted {
-            range_proof_type: output.features.range_proof_type,
-        });
-    }
-
-    Ok(())
-}
-
-pub fn validate_input_version(
-    consensus_constants: &ConsensusConstants,
-    input: &TransactionInput,
-) -> Result<(), ValidationError> {
-    if !consensus_constants.input_version_range().contains(&input.version) {
-        let msg = format!(
-            "Transaction input contains a version not allowed by consensus ({:?})",
-            input.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    Ok(())
-}
-
-pub fn validate_output_version(
-    consensus_constants: &ConsensusConstants,
-    output: &TransactionOutput,
-) -> Result<(), ValidationError> {
-    let valid_output_version = consensus_constants
-        .output_version_range()
-        .outputs
-        .contains(&output.version);
-
-    if !valid_output_version {
-        let msg = format!(
-            "Transaction output version is not allowed by consensus ({:?})",
-            output.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    let valid_features_version = consensus_constants
-        .output_version_range()
-        .features
-        .contains(&output.features.version);
-
-    if !valid_features_version {
-        let msg = format!(
-            "Transaction output features version is not allowed by consensus ({:?})",
-            output.features.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
-    }
-
-    for opcode in output.script.as_slice() {
-        if !consensus_constants
-            .output_version_range()
-            .opcode
-            .contains(&opcode.get_version())
-        {
-            let msg = format!(
-                "Transaction output script opcode is not allowed by consensus ({})",
-                opcode
-            );
-            return Err(ValidationError::ConsensusError(msg));
-        }
-    }
-
-    Ok(())
-}
-
-pub fn validate_kernel_version(
-    consensus_constants: &ConsensusConstants,
-    kernel: &TransactionKernel,
-) -> Result<(), ValidationError> {
-    if !consensus_constants.kernel_version_range().contains(&kernel.version) {
-        let msg = format!(
-            "Transaction kernel version is not allowed by consensus ({:?})",
-            kernel.version
-        );
-        return Err(ValidationError::ConsensusError(msg));
     }
     Ok(())
 }

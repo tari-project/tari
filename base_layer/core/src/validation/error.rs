@@ -25,6 +25,7 @@ use tari_transaction_components::{
     proof_of_work::{DifficultyError, PowError},
     tari_amount::MicroMinotari,
     transaction_components::{covenants::CovenantError, OutputType, RangeProofType, TransactionError},
+    validation::AggregatedBodyValidationError,
     BanPeriod,
     BanReason,
 };
@@ -168,6 +169,8 @@ pub enum ValidationError {
     OutputSpendRuleDisallow { output_type: OutputType, details: String },
     #[error("Output type '{output_type}' does not match sidechain data")]
     OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
+    #[error("Validation error: {0}")]
+    AggregatedBodyValidation(#[from] AggregatedBodyValidationError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -237,6 +240,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
+            err @ ValidationError::AggregatedBodyValidation(_) |
             err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,

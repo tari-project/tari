@@ -1,4 +1,4 @@
-// Copyright 2022. The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,5 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-mod aggregate_body_chain_validator;
-pub use aggregate_body_chain_validator::AggregateBodyChainLinkedValidator;
+
+//! The validation module defines the [Validation] trait which describes all code that can perform block,
+//! transaction, or other validation tasks. Validators implement the [Validation] trait and can be chained together
+//! in a [ValidationPipeline] object to carry out complex validation routines.
+//!
+//! This module also defines a mock [MockValidator] that is useful for testing components that require validation
+//! without having to bring in all sorts of blockchain and communications paraphernalia.
+
+mod error;
+pub use error::AggregatedBodyValidationError;
+
+pub mod helpers;
+
+pub mod aggregate_body;

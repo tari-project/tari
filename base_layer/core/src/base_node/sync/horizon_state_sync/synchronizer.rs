@@ -33,7 +33,8 @@ use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofServic
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_transaction_components::{
-    transaction_components::{TransactionKernel, TransactionOutput},
+    transaction_components::{transaction_output::batch_verify_range_proofs, TransactionKernel, TransactionOutput},
+    validation::{aggregate_body::validate_individual_output, helpers::validate_output_version},
     BanPeriod,
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -55,11 +56,7 @@ use crate::{
     common::rolling_avg::RollingAverageTime,
     consensus::BaseConsensusManager,
     proto::base_node::{sync_utxos_response::Txo, SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
-    validation::{
-        aggregate_body::{batch_verify_range_proofs, validate_individual_output},
-        helpers::validate_output_version,
-        FinalHorizonStateValidation,
-    },
+    validation::FinalHorizonStateValidation,
     PrunedKernelMmr,
 };
 

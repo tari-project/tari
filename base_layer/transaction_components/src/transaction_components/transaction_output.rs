@@ -538,7 +538,7 @@ impl Ord for TransactionOutput {
     }
 }
 // /// Performs batched range proof verification for an arbitrary number of outputs
-pub(crate) fn batch_verify_range_proofs(
+pub fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {

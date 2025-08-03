@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
-use tari_common_types::key_branches::{ PRE_MINE};
+
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use digest::consts::{U32, U64};
@@ -39,7 +39,7 @@ use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
-    key_branches::TransactionKeyManagerBranch,
+    key_branches::{TransactionKeyManagerBranch, PRE_MINE},
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     types::{

@@ -25,12 +25,10 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     tari_amount::MicroMinotari,
     transaction_components::{OutputType::Coinbase, Transaction},
+    validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
 };
 
-use crate::{
-    consensus::BaseConsensusManager,
-    validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, ValidationError},
-};
+use crate::{consensus::BaseConsensusManager, validation::ValidationError};
 
 pub struct TransactionInternalConsistencyValidator {
     aggregate_body_validator: AggregateBodyInternalConsistencyValidator,
@@ -45,7 +43,7 @@ impl TransactionInternalConsistencyValidator {
         Self {
             aggregate_body_validator: AggregateBodyInternalConsistencyValidator::new(
                 bypass_range_proof_verification,
-                consensus_manager,
+                consensus_manager.consensus_manager(),
                 factories,
             ),
         }
@@ -64,8 +62,14 @@ impl TransactionInternalConsistencyValidator {
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {
-        self.aggregate_body_validator
-            .validate(&tx.body, &tx.offset, &tx.script_offset, reward, prev_header, height)
+        Ok(self.aggregate_body_validator.validate(
+            &tx.body,
+            &tx.offset,
+            &tx.script_offset,
+            reward,
+            prev_header,
+            height,
+        )?)
     }
 
     pub fn validate_with_current_tip(
@@ -81,13 +85,13 @@ impl TransactionInternalConsistencyValidator {
         // only coinbases may have the extra field set (the only field that the fn argument affects).
         tx.body.check_output_features(1)?;
 
-        self.aggregate_body_validator.validate(
+        Ok(self.aggregate_body_validator.validate(
             &tx.body,
             &tx.offset,
             &tx.script_offset,
             None,
             Some(*tip_metadata.best_block_hash()),
             tip_metadata.best_block_height(),
-        )
+        )?)
     }
 }

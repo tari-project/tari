@@ -25,17 +25,14 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::consensus_constants::ConsensusConstants,
     crypto_factories::CryptoFactories,
+    validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
 };
 use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::Block,
     consensus::BaseConsensusManager,
-    validation::{
-        aggregate_body::AggregateBodyInternalConsistencyValidator,
-        InternalConsistencyValidator,
-        ValidationError,
-    },
+    validation::{InternalConsistencyValidator, ValidationError},
 };
 
 pub const LOG_TARGET: &str = "c::val::block_body_internal_consistency_validator";
@@ -55,7 +52,7 @@ impl BlockBodyInternalConsistencyValidator {
     ) -> Self {
         let aggregate_body_validator = AggregateBodyInternalConsistencyValidator::new(
             bypass_range_proof_verification,
-            consensus_manager.clone(),
+            consensus_manager.consensus_manager(),
             factories.clone(),
         );
         Self {
