@@ -56,7 +56,7 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
 };
-use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components:: memo_field::{MemoField}};
+use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;

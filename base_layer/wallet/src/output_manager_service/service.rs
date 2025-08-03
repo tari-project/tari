@@ -69,6 +69,7 @@ use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{
         covenants::Covenant,
+        memo_field::{MemoField, TxType},
         one_sided::{
             public_key_to_output_encryption_key,
             shared_secret_to_output_encryption_key,
@@ -89,7 +90,7 @@ use tari_transaction_components::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
-use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
+
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,

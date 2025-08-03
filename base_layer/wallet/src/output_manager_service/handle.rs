@@ -38,6 +38,7 @@ use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{
         covenants::Covenant,
+        memo_field::MemoField,
         transaction_metadata::TransactionMetadata,
         OutputFeatures,
         Transaction,
@@ -49,7 +50,7 @@ use tari_transaction_components::{
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
-use tari_transaction_components::transaction_components::memo_field::MemoField;
+
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::{Balance, OutputInfoByTxId, UseOutput},

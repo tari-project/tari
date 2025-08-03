@@ -92,8 +92,8 @@ use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{
         covenants::Covenant,
-        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         memo_field::{MemoField, TxType},
+        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         transaction_metadata::TransactionMetadata,
         BuildInfo,
         CodeTemplateRegistration,
