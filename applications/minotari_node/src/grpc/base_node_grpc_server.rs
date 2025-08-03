@@ -80,7 +80,7 @@ use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
-        payment_id::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         CoinBaseExtra,
         KernelBuilder,
         RangeProofType,

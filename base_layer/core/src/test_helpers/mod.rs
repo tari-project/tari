@@ -22,7 +22,6 @@
 
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
-
 use std::sync::Arc;
 
 use blake2::Blake2b;
@@ -56,7 +55,7 @@ use tari_transaction_components::{
     proof_of_work::Difficulty,
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         CoinBaseExtra,
         RangeProofType,
         Transaction,

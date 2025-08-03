@@ -38,7 +38,7 @@ use tari_transaction_components::{
     consensus::ConsensusConstants,
     fee::Fee,
     tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, Transaction},
+    transaction_components::{ memo_field::{MemoField}, Transaction},
 };
 
 use crate::transaction_service::error::TransactionStorageError;

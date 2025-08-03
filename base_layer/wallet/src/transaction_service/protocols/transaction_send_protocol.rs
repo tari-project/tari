@@ -49,7 +49,7 @@ use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{
         covenants::Covenant,
-        payment_id::PaymentId,
+        memo_field::MemoField,
         transaction_metadata::TransactionMetadata,
         OutputFeatures,
     },

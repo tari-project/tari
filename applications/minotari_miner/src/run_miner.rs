@@ -66,7 +66,7 @@ use tari_transaction_components::{
     proof_of_work::PowAlgorithm,
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         CoinBaseExtra,
     },
 };

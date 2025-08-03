@@ -511,10 +511,7 @@ mod test {
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
-    use crate::{
-        transaction_components::{EncryptedData, OutputFeatures, TransactionInputVersion,
-                                 covenants::Covenant},
-    };
+    use crate::transaction_components::{covenants::Covenant, EncryptedData, OutputFeatures, TransactionInputVersion};
 
     #[test]
     fn test_sorted() {

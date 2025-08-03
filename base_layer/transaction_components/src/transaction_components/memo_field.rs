@@ -36,7 +36,7 @@ use tari_common_types::{
 };
 use tari_utilities::hex::Hex;
 
-use crate::transactions::{
+use crate::{
     tari_amount::MicroMinotari,
     transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
 };

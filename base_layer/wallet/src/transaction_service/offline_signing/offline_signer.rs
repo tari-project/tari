@@ -31,14 +31,9 @@ use tari_script::push_pubkey_script;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
-    transaction_components::{
-        covenants::Covenant,
-        payment_id::{PaymentId, TxType},
-        transaction_metadata::TransactionMetadata,
-        OutputFeatures,
-    },
+    transaction_components::{covenants::Covenant, transaction_metadata::TransactionMetadata, OutputFeatures},
 };
-
+use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::UtxoSelectionCriteria,

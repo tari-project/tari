@@ -24,15 +24,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
 use tari_transaction_components::{
     tari_amount::MicroMinotari,
-    transaction_components::{
-        payment_id::PaymentId,
-        transaction_metadata::TransactionMetadata,
-        OutputFeatures,
-        Transaction,
-        WalletOutput,
-    },
+    transaction_components::{transaction_metadata::TransactionMetadata, OutputFeatures, Transaction, WalletOutput},
 };
-
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 use crate::transaction_service::{
     error::TransactionServiceError,
     offline_signing::marshal_output_pair::MarshalOutputPair,

@@ -44,7 +44,7 @@ use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::PaymentId,
+        memo_field::MemoField,
         BuildInfo,
         CodeTemplateRegistration,
         OutputFeatures,

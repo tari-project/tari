@@ -457,9 +457,8 @@ mod test {
             CIPHER_SEED_VERSION,
         },
         error::CipherError,
-        seed_words::get_birthday_from_unix_epoch_in_seconds,
         mnemonic::{Mnemonic, MnemonicLanguage},
-        seed_words::SeedWords,
+        seed_words::{get_birthday_from_unix_epoch_in_seconds, SeedWords},
     };
 
     #[test]

@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
@@ -134,7 +133,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{types::CommsPublicKey, CommsNode};
+use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::transaction_protocol::recipient::RecipientState;
 use tari_crypto::hash_domain;
 use tari_transaction_components::{
@@ -142,7 +141,7 @@ use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
     tari_amount::MicroMinotari,
     transaction_components::{
-        payment_id::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         OutputFeatures,
         UnblindedOutput,
     },

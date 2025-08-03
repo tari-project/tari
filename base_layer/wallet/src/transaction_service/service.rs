@@ -93,7 +93,7 @@ use tari_transaction_components::{
     transaction_components::{
         covenants::Covenant,
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-        payment_id::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         transaction_metadata::TransactionMetadata,
         BuildInfo,
         CodeTemplateRegistration,

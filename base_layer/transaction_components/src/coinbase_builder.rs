@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-
 use log::*;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
@@ -46,8 +45,8 @@ use crate::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         covenants::Covenant,
+        memo_field::{MemoField, TxType},
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-        payment_id::{PaymentId, TxType},
         transaction_metadata::TransactionMetadata,
         CoinBaseExtra,
         KernelBuilder,
@@ -517,21 +516,20 @@ mod test {
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,
-        types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
+        types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, Signature},
     };
-    use tari_common_types::types::CompressedSignature;
     use tari_crypto::keys::SecretKey;
     use tari_utilities::ByteArray;
 
     use crate::{
+        coinbase_builder::CoinbaseBuildError,
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
-            coinbase_builder::CoinbaseBuildError,
-            crypto_factories::CryptoFactories,
-            tari_amount::uT,
-            test_helpers::TestParams,
-            transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
-            CoinbaseBuilder,
+        crypto_factories::CryptoFactories,
+        tari_amount::uT,
+        test_helpers::TestParams,
+        transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
+        CoinbaseBuilder,
     };
 
     fn get_builder() -> (

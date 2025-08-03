@@ -38,7 +38,7 @@ use tari_transaction_components::{
     tari_amount::*,
     transaction_components::{
         covenants::Covenant,
-        payment_id::{PaymentId, TxType},
+        memo_field::{MemoField, TxType},
         transaction_metadata::TransactionMetadata,
         OutputFeatures,
         TransactionOutput,
@@ -56,6 +56,7 @@ use crate::{
         KernelFeatures,
     },
 };
+
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
@@ -29,7 +28,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
 use tari_script::TariScript;
-use tari_transaction_components::transaction_components::payment_id::PaymentId;
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 use tari_utilities::ByteArray;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};

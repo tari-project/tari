@@ -31,9 +31,9 @@ use tari_common_types::{
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    transaction_components::{payment_id::PaymentId, WalletOutput},
+    transaction_components::WalletOutput,
 };
-
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
     storage::{OutputSource, OutputStatus},

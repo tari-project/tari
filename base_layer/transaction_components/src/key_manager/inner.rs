@@ -39,15 +39,7 @@ use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
-    key_branches::{
-        TransactionKeyManagerBranch,
-        KERNEL_NONCE,
-        METADATA_EPHEMERAL_NONCE,
-        NONCE,
-        ONE_SIDED_SENDER_OFFSET,
-        RANDOM_KEY,
-        SENDER_OFFSET,
-    },
+    key_branches::TransactionKeyManagerBranch,
     seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     types::{
@@ -91,19 +83,17 @@ use crate::key_manager::{
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 use crate::key_manager::interface::KeyManagerState;
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
-use crate::key_manager::interface::TransactionKeyManagerBackend;
 use crate::{
     crypto_factories::CryptoFactories,
-    key_manager::ConfidentialOutputHasher,
     key_manager::{
-        interface::TxoStage,
-        // storage::database::{TransactionKeyManagerBackend, TransactionKeyManagerDatabase},
+        interface::{TransactionKeyManagerBackend, TxoStage},
+        ConfidentialOutputHasher,
         TariKeyId,
     },
     tari_amount::MicroMinotari,
     transaction_components::{
+        memo_field::MemoField,
         one_sided::diffie_hellman_stealth_domain_hasher,
-        payment_id::PaymentId,
         EncryptedData,
         KernelFeatures,
         RangeProofType,

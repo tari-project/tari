@@ -44,7 +44,6 @@ use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{
         one_sided::shared_secret_to_output_encryption_key,
-        payment_id::PaymentId,
         EncryptedData,
         TransactionOutput,
         WalletOutput,

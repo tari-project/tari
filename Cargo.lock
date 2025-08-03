@@ -834,10 +834,8 @@ checksum = "7e36cc9d416881d2e24f9a963be5fb1cd90966419ac844274161d10488b3e825"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
- "js-sys",
  "num-traits",
  "serde",
- "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -1966,12 +1964,6 @@ checksum = "cd1511a7b6a56299bd043a9c167a6d2bfb37bf84a6dfceaba651168adfb43c87"
 dependencies = [
  "dtoa",
 ]
-
-[[package]]
-name = "dyn-clone"
-version = "1.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 
 [[package]]
 name = "eax"
@@ -4092,74 +4084,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "minotari_mcp_common"
-version = "5.0.0-pre.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "hex",
- "log",
- "minotari_node_grpc_client",
- "minotari_wallet_grpc_client",
- "prost 0.13.4",
- "prost-reflect",
- "regex",
- "schemars",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-test",
- "tonic 0.13.1",
- "unicode-normalization",
- "uuid",
- "which 5.0.0",
-]
-
-[[package]]
-name = "minotari_mcp_node"
-version = "5.0.0-pre.0"
-dependencies = [
- "async-trait",
- "chrono",
- "clap 3.2.25",
- "hex",
- "log",
- "minotari_app_grpc",
- "minotari_app_utilities",
- "minotari_mcp_common",
- "minotari_node_grpc_client",
- "serde",
- "serde_json",
- "tari_common",
- "thiserror 1.0.69",
- "tokio",
- "tonic 0.13.1",
-]
-
-[[package]]
-name = "minotari_mcp_wallet"
-version = "5.0.0-pre.0"
-dependencies = [
- "async-trait",
- "chrono",
- "clap 3.2.25",
- "hex",
- "log",
- "minotari_app_grpc",
- "minotari_app_utilities",
- "minotari_mcp_common",
- "minotari_wallet_grpc_client",
- "serde",
- "serde_json",
- "tari_common",
- "tari_utilities",
- "tokio",
- "tonic 0.13.1",
-]
-
-[[package]]
 name = "minotari_merge_mining_proxy"
 version = "5.0.0-pre.0"
 dependencies = [
@@ -5619,7 +5543,7 @@ dependencies = [
  "regex",
  "syn 1.0.109",
  "tempfile",
- "which 4.4.2",
+ "which",
 ]
 
 [[package]]
@@ -5666,16 +5590,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.90",
-]
-
-[[package]]
-name = "prost-reflect"
-version = "0.15.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37587d5a8a1b3dc9863403d084fc2254b91ab75a702207098837950767e2260b"
-dependencies = [
- "prost 0.13.4",
- "prost-types 0.13.4",
 ]
 
 [[package]]
@@ -6392,30 +6306,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "schemars"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
-dependencies = [
- "dyn-clone",
- "schemars_derive",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "schemars_derive"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_derive_internals",
- "syn 2.0.90",
-]
-
-[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6566,17 +6456,6 @@ name = "serde_derive"
 version = "1.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.90",
-]
-
-[[package]]
-name = "serde_derive_internals"
-version = "0.29.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7817,7 +7696,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_components"
-version = "4.9.1-pre.0"
+version = "5.0.0-pre.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8096,7 +7975,6 @@ dependencies = [
  "bytes 1.9.0",
  "libc",
  "mio 1.0.3",
- "parking_lot 0.12.3",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -8146,19 +8024,6 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util 0.7.13",
-]
-
-[[package]]
-name = "tokio-test"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2468baabc3311435b55dd935f702f42cd1b8abb7e754fb7dfb16bd36aa88f9f7"
-dependencies = [
- "async-stream",
- "bytes 1.9.0",
- "futures-core",
- "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -8666,7 +8531,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8c5f0a0af699448548ad1a2fbf920fb4bee257eae39953ba95cb84891a0446a"
 dependencies = [
  "getrandom 0.2.15",
- "serde",
 ]
 
 [[package]]
@@ -8876,19 +8740,6 @@ dependencies = [
  "home",
  "once_cell",
  "rustix",
-]
-
-[[package]]
-name = "which"
-version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bf3ea8596f3a0dd5980b46430f2058dfe2c36a27ccfbb1845d6fbfcd9ba6e14"
-dependencies = [
- "either",
- "home",
- "once_cell",
- "rustix",
- "windows-sys 0.48.0",
 ]
 
 [[package]]

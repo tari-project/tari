@@ -91,8 +91,8 @@ use tari_transaction_components::{
     tari_amount::{uT, MicroMinotari, Minotari},
     transaction_components::{
         covenants::Covenant,
+        memo_field::{MemoField, TxType},
         one_sided::shared_secret_to_output_encryption_key,
-        payment_id::{PaymentId, TxType},
         EncryptedData,
         OutputFeatures,
         Transaction,

@@ -22,7 +22,6 @@
 //
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
-
 use std::{
     cmp::Ordering,
     fmt::{Debug, Formatter},
@@ -40,7 +39,7 @@ use crate::{
     transaction_components,
     transaction_components::{
         covenants::Covenant,
-        payment_id::PaymentId,
+        memo_field::MemoField,
         transaction_input::{SpentOutput, TransactionInput},
         transaction_output::TransactionOutput,
         EncryptedData,

@@ -38,12 +38,7 @@ use tari_max_size::MaxSizeBytes;
 use tari_transaction_components::{
     generate_coinbase,
     proof_of_work::Difficulty,
-    transaction_components::{
-        payment_id::{PaymentId, TxType},
-        CoinBaseExtra,
-        TransactionKernel,
-        TransactionOutput,
-    },
+    transaction_components::{memo_field::MemoField, CoinBaseExtra, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::{hex::Hex, ByteArray};
 
@@ -258,6 +253,7 @@ impl BlockTemplateManager<'_> {
         Ok((coinbase_output, coinbase_kernel))
     }
 }
+use tari_transaction_components::transaction_components::memo_field::TxType;
 
 /// This is an interim solution to calculate the merkle root for the aux chains when multiple aux chains will be
 /// merge mined with Monero. It needs to be replaced with a more general solution in the future.

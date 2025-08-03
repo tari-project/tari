@@ -74,7 +74,6 @@ use tari_transaction_components::{
             shared_secret_to_output_encryption_key,
             shared_secret_to_output_spending_key,
         },
-        payment_id::{PaymentId, TxType},
         transaction_metadata::TransactionMetadata,
         EncryptedData,
         KernelFeatures,
@@ -90,7 +89,7 @@ use tari_transaction_components::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};
-
+use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,

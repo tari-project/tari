@@ -32,10 +32,10 @@ use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
-    transaction_components::{payment_id::PaymentId, OutputType, TransactionError, TransactionOutput, WalletOutput},
+    transaction_components::{OutputType, TransactionError, TransactionOutput, WalletOutput},
 };
 use tari_utilities::hex::Hex;
-
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 use crate::{
     output_manager_service::{
         error::{OutputManagerError, OutputManagerStorageError},
