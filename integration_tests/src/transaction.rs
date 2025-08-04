@@ -20,24 +20,24 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_script::{inputs, script, TariScript};
 use tari_transaction_components::{
     helpers::borsh::SerializedSize,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            covenants::Covenant,
-            OutputFeatures,
-            Transaction,
-            TransactionInput,
-            TransactionOutput,
-            WalletOutput,
-            WalletOutputBuilder,
-        },
-        key_manager::{ TariKeyId},
-        weight::TransactionWeight,
+    key_manager::TariKeyId,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        OutputFeatures,
+        Transaction,
+        TransactionInput,
+        TransactionOutput,
+        WalletOutput,
+        WalletOutputBuilder,
+    },
+    weight::TransactionWeight,
 };
-use tari_transaction_components::test_helpers::{create_transaction_with, TestParams};
-use tari_core::transactions::transaction_key_manager::MemoryDbKeyManager;
-use tari_script::{inputs, script, TariScript};
+use tari_core::transactions::test_helpers::{create_transaction_with, TestParams};
+use tari_transaction_key_manager::MemoryDbKeyManager;
 
 #[derive(Clone)]
 struct TestTransactionBuilder {

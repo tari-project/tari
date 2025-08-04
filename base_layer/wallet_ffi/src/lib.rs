@@ -46,8 +46,6 @@
 //!    to the `AvailableBalance`.
 
 #![recursion_limit = "1024"]
-use tari_common_types::seeds::mnemonic_wordlists;
-
 use core::ptr;
 use std::{
     convert::{TryFrom, TryInto},
@@ -122,6 +120,7 @@ use tari_common_types::{
     seeds::{
         cipher_seed::CipherSeed,
         mnemonic::{Mnemonic, MnemonicLanguage},
+        mnemonic_wordlists,
         seed_words::SeedWords,
     },
     tari_address::TariAddress,
@@ -3485,7 +3484,6 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
     language: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariSeedWords {
-
     if error_out.is_null() {
         return ptr::null_mut();
     }

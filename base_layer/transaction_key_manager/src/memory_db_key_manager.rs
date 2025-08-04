@@ -32,7 +32,7 @@ use tari_transaction_components::{
 };
 use zeroize::Zeroizing;
 
-use crate::transactions::transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
+use crate::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 pub type MemoryDbKeyManager = TransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
 
 fn random_string(len: usize) -> String {

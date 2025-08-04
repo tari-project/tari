@@ -62,6 +62,7 @@ use tari_transaction_components::{
         WalletOutput,
     },
 };
+use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -69,9 +70,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::BaseConsensusManager,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},
-    transactions::transaction_key_manager::MemoryDbKeyManager,
 };
-
 #[macro_use]
 mod block_spec;
 pub mod blockchain;

@@ -31,7 +31,6 @@ use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
     consensus::BaseConsensusManager,
     proof_of_work::{monero_rx, monero_rx::FixedByteArray},
-    transactions::transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     AuxChainHashes,
 };
 use tari_max_size::MaxSizeBytes;
@@ -40,6 +39,7 @@ use tari_transaction_components::{
     proof_of_work::Difficulty,
     transaction_components::{memo_field::MemoField, CoinBaseExtra, TransactionKernel, TransactionOutput},
 };
+use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{

@@ -49,12 +49,6 @@ pub use memory_db_key_manager::{
     MemoryDbKeyManager,
 };
 
-// pub mod error;
-// pub use error::CoreKeyManagerError;
-// pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
-
 pub mod storage;
 
 pub mod schema;
-
-// pub mod key_manager;

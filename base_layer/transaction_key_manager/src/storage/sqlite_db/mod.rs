@@ -42,14 +42,14 @@ use tari_transaction_components::key_manager::{
 use tari_utilities::acquire_read_lock;
 use tokio::time::Instant;
 
-use crate::transactions::transaction_key_manager::storage::{
+use crate::storage::{
     database::ImportedKey,
     sqlite_db::imported_keys::{ImportedKeySql, NewImportedKeySql},
 };
 mod imported_keys;
 mod key_manager_state;
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/transactions/transaction_key_manager/migrations");
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/migrations");
 const LOG_TARGET: &str = "wallet::key_manager_service::database::wallet";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.

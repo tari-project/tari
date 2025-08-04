@@ -70,7 +70,6 @@ use tari_core::{
     consensus::BaseConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
-    transactions::transaction_key_manager::create_memory_db_key_manager,
     validation::tari_rx_vm_key_height,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
@@ -89,6 +88,7 @@ use tari_transaction_components::{
         TransactionKernelVersion,
     },
 };
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};

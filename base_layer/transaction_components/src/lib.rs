@@ -19,7 +19,7 @@ pub mod proof_of_work;
 pub mod tari_amount;
 pub mod transaction_components;
 pub mod validation;
-pub mod test_helpers;
+// pub mod test_helpers;
 
 mod format_currency;
 pub use format_currency::format_currency;

@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
-use tari_common_types::seeds::error::CipherError;
-
 use minotari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
-use tari_common_types::{seeds::error::MnemonicError, tari_address::TariAddressError};
+use tari_common_types::{
+    seeds::error::{CipherError, MnemonicError},
+    tari_address::TariAddressError,
+};
 use tari_comms::{multiaddr, peer_manager::PeerManagerError};
 use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_crypto::{

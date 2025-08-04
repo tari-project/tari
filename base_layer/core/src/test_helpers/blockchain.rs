@@ -50,6 +50,7 @@ use tari_transaction_components::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
 };
+use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::ByteArray;
 
 use super::{create_block, mine_to_difficulty};
@@ -84,7 +85,6 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, BaseConsensusManager},
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
-    transactions::transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     validation::{
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         mocks::MockValidator,

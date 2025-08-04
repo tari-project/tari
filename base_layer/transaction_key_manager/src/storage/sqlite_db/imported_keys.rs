@@ -30,7 +30,7 @@ use tari_transaction_components::key_manager::error::KeyManagerStorageError;
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use zeroize::Zeroize;
 
-use crate::transactions::transaction_key_manager::{
+use crate::{
     schema::imported_keys::{private_key, public_key, table, timestamp},
     storage::{
         database::ImportedKey,

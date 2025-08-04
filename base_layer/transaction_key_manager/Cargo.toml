@@ -1,0 +1,77 @@
+[package]
+name = "tari_transaction_key_manager"
+description = "Core Tari key manager with storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+ledger = ["minotari_ledger_wallet_comms"]
+
+[dependencies]
+minotari_ledger_wallet_comms = { workspace = true, optional = true }
+tari_common = { workspace = true }
+tari_common_types = { workspace = true}
+tari_common_sqlite = { workspace = true }
+tari_transaction_components = { workspace = true, features = ["ledger"] }
+tari_utilities = { workspace = true, features = ["borsh"] }
+
+
+anyhow = "1.0.53"
+async-trait = { version = "0.1.50" }
+bitflags = { version = "2.4", features = ["serde"] }
+borsh = { version = "1.5.7", features = ["derive"] }
+
+bytes = "0.5"
+chacha20poly1305 = "0.10.1"
+chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+
+diesel = { version = "2.2.10", features = [
+    "sqlite",
+    "serde_json",
+    "chrono",
+    "64-column-tables",
+] }
+diesel_migrations = { version = "2.2" }
+derivative = "2.2.0"
+decimal-rs = "0.1.42"
+digest = "0.10"
+
+integer-encoding = "3.0"
+num-format = "0.4.0"
+newtype-ops = "0.1.4"
+num-traits = "0.2.15"
+num-derive = "0.4.2"
+
+primitive-types = { version = "0.12", features = ["serde"] }
+tokio = { version = "1.44", features = ["sync"] }
+log = "0.4"
+rand = "0.8"
+serde_repr = "0.1.8"
+strum = "0.22"
+strum_macros = "0.22"
+tari_crypto = { workspace = true, features = ["borsh"] }
+
+thiserror = "1.0.26"
+serde = { version = "1.0.106", features = ["derive"] }
+blake2 = "0.10"
+zeroize = "1"
+wasm-bindgen = "0.2.100"
+
+[dev-dependencies]
+chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(tari_target_network_mainnet)',
+    'cfg(tari_target_network_nextnet)',
+    'cfg(tari_target_network_testnet)',
+] }
+
+
+[package.metadata.cargo-machete]
+ignored = ["hickory-proto"] #fix hickory-proto version to same alpha.2

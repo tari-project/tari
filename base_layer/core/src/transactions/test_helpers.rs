@@ -33,16 +33,15 @@ use tari_common_types::{
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
-use super::transaction_components::{CoinBaseExtra, TransactionInputVersion, TransactionOutputVersion};
-use crate::{
-    borsh::SerializedSize,
+use tari_transaction_components::transaction_components::{CoinBaseExtra, TransactionInputVersion, TransactionOutputVersion};
+use tari_transaction_components::{
+    helpers::borsh::SerializedSize,
     consensus::ConsensusManager,
-    covenants::Covenant,
-    transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
+            covenants::Covenant,
             memo_field::MemoField,
             KernelBuilder,
             KernelFeatures,
@@ -54,20 +53,24 @@ use crate::{
             TransactionOutput,
             WalletOutput,
             WalletOutputBuilder,
+            transaction_metadata::TransactionMetadata
         },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
-            MemoryDbKeyManager,
+    weight::TransactionWeight,
+        key_manager::{
             TariKeyId,
             TransactionKeyManagerInterface,
             TransactionKeyManagerWrapper,
             TxoStage,
-        },
-        transaction_protocol::{transaction_initializer::SenderTransactionInitializer, TransactionMetadata},
-        weight::TransactionWeight,
-        SenderTransactionProtocol,
     },
+};
+use crate::transactions::{
+    transaction_protocol::{transaction_initializer::SenderTransactionInitializer},
+    SenderTransactionProtocol,
+};
+use tari_transaction_key_manager::{
+    MemoryDbKeyManager,
+    create_memory_db_key_manager,
+    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
 };
 
 pub async fn create_test_input<
@@ -326,7 +329,7 @@ pub async fn create_random_signature_from_secret_key(
 }
 
 pub fn create_consensus_manager() -> ConsensusManager {
-    ConsensusManager::builder(Network::LocalNet).build().unwrap()
+    ConsensusManager::builder(Network::LocalNet).build()
 }
 
 pub async fn create_coinbase_wallet_output(
@@ -640,7 +643,7 @@ pub async fn create_transaction_with(
     outputs: Vec<(WalletOutput, TariKeyId)>,
     key_manager: &MemoryDbKeyManager,
 ) -> Transaction {
-    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let constants = rules.consensus_constants(0).clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let change = TestParams::new(key_manager).await;
@@ -706,7 +709,6 @@ pub async fn create_stx_protocol_internal(
 ) -> SenderTransactionInitializer<MemoryDbKeyManager> {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
-        .unwrap()
         .consensus_constants(0)
         .clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());

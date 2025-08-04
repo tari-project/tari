@@ -55,12 +55,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{FixedHash, UncompressedPublicKey},
 };
-use tari_core::{
-    blocks::BlockHeader,
-    consensus::BaseConsensusManager,
-    proof_of_work::randomx_factory::RandomXFactory,
-    transactions::transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-};
+use tari_core::{blocks::BlockHeader, consensus::BaseConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
 use tari_transaction_components::{
     generate_coinbase,
     proof_of_work::PowAlgorithm,
@@ -70,6 +65,7 @@ use tari_transaction_components::{
         CoinBaseExtra,
     },
 };
+use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::hex::Hex;
 use tokio::{sync::Mutex, time::sleep};
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
