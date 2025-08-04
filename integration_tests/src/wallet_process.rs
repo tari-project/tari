@@ -190,14 +190,16 @@ pub async fn spawn_wallet(
     wait_for_service(grpc_port).await;
 
     let wallet_addr = format!("http://127.0.0.1:{}", grpc_port);
-    let mut wallet_client = WalletGrpcClient::connect(wallet_addr.as_str()).await.unwrap();
-    let wallet_address_bytes = wallet_client
-        .get_address(minotari_wallet_grpc_client::grpc::Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address;
-    let tari_address = TariAddress::from_bytes(&wallet_address_bytes).unwrap();
+    let tari_address = {
+        let mut wallet_client = WalletGrpcClient::connect(wallet_addr.as_str()).await.unwrap();
+        let wallet_address_bytes = wallet_client
+            .get_address(minotari_wallet_grpc_client::grpc::Empty {})
+            .await
+            .unwrap()
+            .into_inner()
+            .interactive_address;
+        TariAddress::from_bytes(&wallet_address_bytes).unwrap()
+    }; // wallet_client is automatically dropped here
     world
         .wallet_addresses
         .insert(wallet_name.clone(), tari_address.to_base58());
