@@ -245,7 +245,7 @@ jobs:
             echo ${TARI_NETWORK_CHANGELOG_FILE}
           fi
           cd ..
-          shasum -a 256 \
+          ${SHARUN} -a 256 \
             "lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}/lib${{ matrix.libffis }}.${{ env.TARGET_PLATFORM }}_${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}.a" \
             "lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}/lib${{ matrix.libffis }}.h" \
             "${TARI_NETWORK_CHANGELOG_FILE}" \
@@ -286,7 +286,6 @@ jobs:
         shell: bash
         working-directory: libffiss
         run: |
-          set -xo pipefail
           ls -alhtR
           find . -name "*.sha256" -type f -print | xargs cat >> libffiss.txt.sha256-combined
           cat libffiss.txt.sha256-combined
@@ -296,7 +295,7 @@ jobs:
             print $1, $2 }' \
               libffiss.txt.sha256-combined > libffiss.txt.sha256-verify
           cat libffiss.txt.sha256-verify
-          sha256sum -c libffiss.txt.sha256-verify
+          ${SHARUN} -c libffiss.txt.sha256-verify
           rm -fv libffiss.txt.sha256-verify libffiss.txt.sha256-combined
 
       - name: Assemble iOS universal libffis for ${{ matrix.tari_networks }}
@@ -330,7 +329,7 @@ jobs:
             "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/lib${{ matrix.libffis }}.ios_x86_64.a" \
             "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-aarch64/lib${{ matrix.libffis }}.ios_aarch64.a" \
               -output "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.a"
-          shasum -a 256 \
+          ${SHARUN} -a 256 \
             "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.a" \
             "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
               > "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.sha256"
@@ -378,7 +377,7 @@ jobs:
             -library "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-aarch64/lib${{ matrix.libffis }}.ios_aarch64.a" \
               -headers "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-aarch64/lib${{ matrix.libffis }}.h" \
             -output lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework
-          shasum -a 256 \
+          ${SHARUN} -a 256 \
             "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/Info.plist" \
             "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64/Headers" \
             "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64/lib${{ matrix.libffis }}.ios_aarch64.a" \
@@ -442,7 +441,7 @@ jobs:
           ls -alhtR
           find . -name "*.sha256" -type f -print | xargs cat >> libffiss.txt.sha256-verify
           cat libffiss.txt.sha256-verify
-          sha256sum -c libffiss.txt.sha256-verify
+          ${SHARUN} -c libffiss.txt.sha256-verify
           rm -fv libffiss.txt.sha256-verify
 
       - name: Create release
