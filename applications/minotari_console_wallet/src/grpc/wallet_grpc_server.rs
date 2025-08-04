@@ -827,6 +827,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     #[allow(clippy::too_many_lines)]
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
+
         let recipients = message
             .recipients
             .into_iter()
@@ -922,6 +923,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .get_wallet_one_sided_address()
                         .await
                         .map_err(|e| Status::internal(format!("{:?}", e)))?;
+
                     let wallet_tx = timeout(Duration::from_millis(100), async {
                         loop {
                             let tx = self

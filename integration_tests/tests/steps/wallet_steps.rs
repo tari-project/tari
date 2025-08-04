@@ -873,7 +873,6 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 ) {
     let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
-
     let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let payment_recipient = PaymentRecipient {
@@ -893,6 +892,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
         .to_bytes(),
         user_payment_id: None,
     };
+
     let transfer_req = TransferRequest {
         recipients: vec![payment_recipient],
     };
@@ -924,6 +924,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             .await
             .unwrap()
             .into_inner();
+
         let tx_info = tx_info_res.transactions.first().unwrap();
 
         // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
@@ -938,11 +939,12 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
             break;
         } else if i % 5 == 0 {
             cucumber_steps_log(format!(
-                "Wait for one sided transaction from {} to {} with amount {} at fee {} to be broadcast",
+                "Wait for one sided transaction from {} to {} with amount {} at fee {} to be broadcast (attempt {})",
                 sender.clone(),
                 receiver.clone(),
                 amount,
-                fee
+                fee,
+                i + 1
             ));
         } else {
             // Nothing here
@@ -960,16 +962,11 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
-
     // insert tx_id's to the corresponding world mapping
     let source_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
-
     source_tx_ids.push(tx_id);
-
     let dest_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
-
     dest_tx_ids.push(tx_id);
-
     cucumber_steps_log(format!(
         "One sided transaction with amount {} from {} to {} at fee {} succeeded",
         amount, sender, receiver, fee

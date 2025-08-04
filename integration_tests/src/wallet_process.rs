@@ -51,6 +51,7 @@ pub struct WalletProcess {
     pub temp_dir_path: PathBuf,
     pub base_node_name: Option<String>,
     pub peer_seeds: Vec<String>,
+    pub http_port: u64,
     is_running: bool,
 }
 
@@ -111,6 +112,11 @@ pub async fn spawn_wallet(
     let mut send_to_thread_shutdown = shutdown.clone();
 
     let temp_dir = temp_dir_path.clone();
+    let http_port = world
+        .base_nodes
+        .get(base_node_name.as_ref().unwrap())
+        .unwrap()
+        .http_port;
 
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
@@ -143,6 +149,7 @@ pub async fn spawn_wallet(
         wallet_app_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
         wallet_app_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+        wallet_app_config.wallet.http_server_url = format!("http://127.0.0.1:{}", http_port);
         wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![wallet_app_config
             .wallet
             .p2p
@@ -162,7 +169,11 @@ pub async fn spawn_wallet(
 
         wallet_app_config.wallet.set_base_path(temp_dir_path.clone());
 
-        let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+        let rt = runtime::Builder::new_multi_thread()
+            .thread_stack_size(4 * 1024 * 1024)// 4 MB stack size per thread (4 * 1024 * 1024 = 4,194,304 bytes)
+            .enable_all()
+            .build()
+            .unwrap();
 
         let mut cli = cli.unwrap_or_else(get_default_cli);
         // We expect only file_name to be passed from cucumber.rs, now we put it in the right directory.
@@ -202,6 +213,7 @@ pub async fn spawn_wallet(
         kill_signal: shutdown,
         peer_seeds,
         is_running: true,
+        http_port,
     });
 }
 
