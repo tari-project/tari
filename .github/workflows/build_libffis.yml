@@ -288,12 +288,14 @@ jobs:
         run: |
           ls -alhtR
           find . -name "*.sha256" -type f -print | xargs cat >> libffiss.txt.sha256-combined
+          echo "Pre update ..."
           cat libffiss.txt.sha256-combined
           # Rewrite the file paths to include ${{ matrix.tari_networks }}
           awk -v net="${{ matrix.tari_networks }}" \
-            '{ sub(/lib${{ matrix.libffis }}/, "lib${{ matrix.libffis }}-" net, $2);
+            '{ sub(/lib${{ matrix.libffis }}/, " lib${{ matrix.libffis }}-" net, $2);
             print $1, $2 }' \
               libffiss.txt.sha256-combined > libffiss.txt.sha256-verify
+          echo "Post update for ${{ matrix.tari_networks }} ..."
           cat libffiss.txt.sha256-verify
           ${SHARUN} -c libffiss.txt.sha256-verify
           rm -fv libffiss.txt.sha256-verify libffiss.txt.sha256-combined
