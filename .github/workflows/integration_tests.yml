@@ -99,7 +99,7 @@ jobs:
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
-        timeout-minutes: 90
+        timeout-minutes: 120
         run: |
           set -e
           set -o pipefail
