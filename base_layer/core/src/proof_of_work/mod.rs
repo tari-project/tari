@@ -55,6 +55,8 @@ mod proof_of_work_algorithm;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub use proof_of_work_algorithm::PowAlgorithm;
 
+#[cfg(feature = "base_node")]
+pub mod cuckaroo_pow;
 /// Crates for proof of work sha3_pow
 #[cfg(feature = "base_node")]
 mod sha3x_pow;

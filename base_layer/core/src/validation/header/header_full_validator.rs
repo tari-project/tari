@@ -216,5 +216,8 @@ fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusCon
             }
             Ok(())
         },
+        PowAlgorithm::Cuckaroo => {
+            todo!()
+        },
     }
 }

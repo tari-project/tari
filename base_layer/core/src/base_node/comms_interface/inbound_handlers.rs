@@ -48,6 +48,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
+        cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -638,6 +639,10 @@ where B: BlockchainBackend + 'static
                     .await?
                     .hash();
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
+            },
+            PowAlgorithm::Cuckaroo => {
+                // cuckaroo_difficulty(&new_block.header)?
+                todo!()
             },
         };
         if achieved < min_difficulty {

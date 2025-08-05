@@ -298,6 +298,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             HashRateMovingAverage::new(PowAlgorithm::RandomXM, self.consensus_rules.clone());
         let mut tari_randomx_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::RandomXT, self.consensus_rules.clone());
+        let mut cuckaroo_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, self.consensus_rules.clone());
 
         let page_iter =
             NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
@@ -340,6 +342,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         PowAlgorithm::RandomXM => &mut monero_randomx_hash_rate_moving_average,
                         PowAlgorithm::RandomXT => &mut tari_randomx_hash_rate_moving_average,
                         PowAlgorithm::Sha3x => &mut sha3x_hash_rate_moving_average,
+                        PowAlgorithm::Cuckaroo => &mut cuckaroo_hash_rate_moving_average,
                     };
                     current_hash_rate_moving_average.add(current_height, current_difficulty);
 
@@ -896,6 +899,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 }
             },
+            PowAlgorithm::Cuckaroo => {
+                todo!();
+                return Err(obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument("Cuckaroo is not supported for new block template"),
+                ));
+            },
         };
 
         let status_watch = self.state_machine_handle.get_status_info_watch();
@@ -991,6 +1001,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
             PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
+            PowAlgorithm::Cuckaroo => new_block.header.mining_hash().to_vec(),
         };
         let block: Option<tari_rpc::Block> = Some(
             new_block
@@ -1308,6 +1319,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::Cuckaroo => new_block.header.mining_hash().to_vec(),
         };
         let vm_key = *handler
             .get_header(tari_rx_vm_key_height(new_block.header.height))
@@ -1557,6 +1569,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::Cuckaroo => new_block.header.mining_hash().to_vec(),
         };
         let block: Option<tari_rpc::Block> = Some(
             new_block
@@ -1655,6 +1668,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::Cuckaroo => new_block.header.mining_hash().to_vec(),
         };
         let gen_hash = handler
             .get_header(0)

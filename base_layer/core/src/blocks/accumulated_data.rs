@@ -148,6 +148,9 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
             ),
+            PowAlgorithm::Cuckaroo => {
+                todo!()
+            },
         };
 
         let total_kernel_offset = self
