@@ -21,7 +21,9 @@ env:
   TOOLCHAIN: 'stable'
   ## Must be a JSon string
   BUILD_LIBFFIS: '["minotari_wallet_ffi"]'
+  BUILD_TARI_NETWORKS: '["mainnet","esme"]'
   matrix-json-file: '.github/workflows/build_libffis.json'
+  SHARUN: 'shasum --algorithm 256'
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
@@ -36,6 +38,8 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       libffiss: ${{ steps.set-matrix.outputs.libffiss }}
+      tari_networks: ${{ steps.set-matrix.outputs.tari_networks }}
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -56,6 +60,29 @@ jobs:
           #
           ## Setup json array
           matrix=$(echo ${matrix_selection} | jq -s -c)
+
+          #
+          # Extend Matrix with network details
+          AinputJQ=(
+            '{"tari_network": "mainnet","tari_target_network": "mainnet"}'
+            '{"tari_network": "esme","tari_target_network": "testnet"}'
+          )
+          #  '{"tari_network": "nextnet","tari_target_network": "nextnet"}'
+          echo ${AinputJQ[@]}
+          echo ${matrix_selection} | jq -s -c > matrix-temp.json
+          # Make TempJQ Array
+          tempJQ=()
+          for inputJQ in "${AinputJQ[@]}"; do
+            #echo "inputJQ $inputJQ for network"
+            tempJQ+=( $( jq --argjson inputJQ "$inputJQ" \
+                '.[] += $inputJQ' matrix-temp.json | \
+              jq '.[]' ) \
+            )
+          done
+          # Array to String - Setup the json build matrix
+          # matrix=$(echo ${tempJQ[@]} | jq -s -c '{"builds": .}')
+          matrix=$(echo ${tempJQ[@]} | jq -s -c)
+
           #
           ## Setup the json build matrix
           # matrix=$(echo ${matrix_selection} | jq -s -c '{"builds": .}')
@@ -64,6 +91,7 @@ jobs:
           echo $matrix | jq .
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT
           echo "libffiss=${BUILD_LIBFFIS}" >> $GITHUB_OUTPUT
+          echo "tari_networks=${BUILD_TARI_NETWORKS}" >> $GITHUB_OUTPUT
 
   matrix-check:
     # Debug matrix
@@ -87,9 +115,15 @@ jobs:
           echo $libffiss | json2yaml
 
   builds:
+    name: ${{ matrix.builds.target }} for ${{ matrix.builds.tari_network }} on ${{ matrix.builds.runs-on }}
     needs: matrix-prep
+    continue-on-error: ${{ startsWith(github.ref, 'refs/tags/') || matrix.builds.best_effort || false }}
+    outputs:
+      TARI_NETWORK: ${{ steps.set-tari-network.outputs.TARI_NETWORK }}
+
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix:
         libffis: ${{ fromJson(needs.matrix-prep.outputs.libffiss) }}
         builds: ${{ fromJson(needs.matrix-prep.outputs.matrix) }}
@@ -101,18 +135,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Declare TestNet for tags
-        # Don't forget to comment out the below if, when force testing with GHA_NETWORK
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        env:
-          GHA_NETWORK: ${{ github.ref_name }}
-          # GHA_NETWORK: "v1.0.0-rc.4"
+        id: set-tari-network
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{ env.GHA_NETWORK }}
+          source ./buildtools/multinet_envs.sh ${{ matrix.builds.tari_network }}
           echo ${TARI_NETWORK}
           echo ${TARI_TARGET_NETWORK}
           echo ${TARI_NETWORK_CHANGELOG}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
+          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_OUTPUT
           echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_ENV
           echo "TARI_NETWORK_CHANGELOG=${TARI_NETWORK_CHANGELOG}" >> $GITHUB_ENV
 
@@ -205,7 +236,8 @@ jobs:
         run: |
           mkdir -p "${{ runner.temp }}/lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}"
           cd "${{ runner.temp }}/lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}"
-          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/lib${{ matrix.libffis }}.a" "lib${{ matrix.libffis }}.${{ env.TARGET_PLATFORM }}_${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}.a"
+          cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/lib${{ matrix.libffis }}.a" \
+            "lib${{ matrix.libffis }}.${{ env.TARGET_PLATFORM }}_${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}.a"
           cp -v "$GITHUB_WORKSPACE/base_layer/${{ env.TARGET_NAME }}_ffi/${{ env.TARGET_NAME }}.h" lib${{ matrix.libffis }}.h
           if [ -f "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" ]; then
             cp -v "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
@@ -213,7 +245,7 @@ jobs:
             echo ${TARI_NETWORK_CHANGELOG_FILE}
           fi
           cd ..
-          shasum -a 256 \
+          ${SHARUN} -a 256 \
             "lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}/lib${{ matrix.libffis }}.${{ env.TARGET_PLATFORM }}_${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}.a" \
             "lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}/lib${{ matrix.libffis }}.h" \
             "${TARI_NETWORK_CHANGELOG_FILE}" \
@@ -223,16 +255,14 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}
+          name: lib${{ matrix.libffis }}-${{ matrix.builds.tari_network }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}
           path: ${{ runner.temp }}/lib${{ matrix.libffis }}-${{ env.TARGET_PLATFORM }}-${{ env.TARGET_ARCH }}${{ env.TARGET_SIM }}
 
-  ios_assemble:
-    name: Assemble iOS multiArch for ${{ matrix.libffis }}
+  multi_assemble:
+    name: Assemble ${{ matrix.tari_networks }} multiArch for ${{ matrix.libffis }}
     # Disable iOS Assembly workflow
     #if: ${{ false }}
-    #continue-on-error: true
 
-    # Limits to only iOS builds?
     runs-on: macos-latest
     needs: [matrix-prep, builds]
 
@@ -240,38 +270,48 @@ jobs:
       fail-fast: false
       matrix:
         libffis: ${{ fromJson(needs.matrix-prep.outputs.libffiss) }}
+        tari_networks: ${{ fromJson(needs.matrix-prep.outputs.tari_networks) }}
 
     steps:
       - name: Install macOS dependencies
         run: brew install coreutils
 
-      - name: Download iOS libffiss for ${{ matrix.libffis }}
+      - name: Download libffiss for ${{ matrix.libffis }} on ${{ matrix.tari_networks }}
         uses: actions/download-artifact@v4
         with:
           path: libffiss
-          pattern: lib${{ matrix.libffis }}-ios-*
+          pattern: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-*
 
       - name: Verify checksums
         shell: bash
         working-directory: libffiss
         run: |
           ls -alhtR
-          find . -name "*.sha256" -type f -print | xargs cat >> libffiss.txt.sha256-verify
+          find . -name "*.sha256" -type f -print | xargs cat >> libffiss.txt.sha256-combined
+          echo "Pre update ..."
+          cat libffiss.txt.sha256-combined
+          # Rewrite the file paths to include ${{ matrix.tari_networks }}
+          awk -v net="${{ matrix.tari_networks }}" \
+            '{ sub(/lib${{ matrix.libffis }}/, " lib${{ matrix.libffis }}-" net, $2);
+            print $1, $2 }' \
+              libffiss.txt.sha256-combined > libffiss.txt.sha256-verify
+          echo "Post update for ${{ matrix.tari_networks }} ..."
           cat libffiss.txt.sha256-verify
-          sha256sum -c libffiss.txt.sha256-verify
+          ${SHARUN} -c libffiss.txt.sha256-verify
+          rm -fv libffiss.txt.sha256-verify libffiss.txt.sha256-combined
 
-      - name: Assemble iOS universal libffis
+      - name: Assemble iOS universal libffis for ${{ matrix.tari_networks }}
         shell: bash
         working-directory: libffiss
         run: |
           ls -alhtR
-          mkdir lib${{ matrix.libffis }}-ios-universal
-          cp -v "lib${{ matrix.libffis }}-ios-x86_64/lib${{ matrix.libffis }}.h" \
-            lib${{ matrix.libffis }}-ios-universal/
+          mkdir lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal
+          cp -v "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/lib${{ matrix.libffis }}.h" \
+            lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/
           echo "Check for changelog"
-          if [ -f lib${{ matrix.libffis }}-ios-x86_64/changelog-*.md ]; then
+          if [ -f lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/changelog-*.md ]; then
             echo "Changelog found"
-            envChangelogFull=$(ls lib${{ matrix.libffis }}-ios-x86_64/changelog-*.md)
+            envChangelogFull=$(ls lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/changelog-*.md)
             echo ${envChangelogFull}
             # Strip suffix
             #envChangelog=${envChangelogFull::-3}
@@ -280,44 +320,44 @@ jobs:
             # Strip prefix
             TARI_NETWORK_CHANGELOG=${envChangelog##*/changelog-}
             echo ${TARI_NETWORK_CHANGELOG}
-            cp -v "lib${{ matrix.libffis }}-ios-x86_64/changelog-${TARI_NETWORK_CHANGELOG}.md" \
-              lib${{ matrix.libffis }}-ios-universal/
-            TARI_NETWORK_CHANGELOG_FILE=lib${{ matrix.libffis }}-ios-universal/changelog-${TARI_NETWORK_CHANGELOG}.md
+            cp -v "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/changelog-${TARI_NETWORK_CHANGELOG}.md" \
+              lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/
+            TARI_NETWORK_CHANGELOG_FILE=lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/changelog-${TARI_NETWORK_CHANGELOG}.md
             echo ${TARI_NETWORK_CHANGELOG_FILE}
           else
             echo "No changelog found"
           fi
           lipo -create \
-            "lib${{ matrix.libffis }}-ios-x86_64/lib${{ matrix.libffis }}.ios_x86_64.a" \
-            "lib${{ matrix.libffis }}-ios-aarch64/lib${{ matrix.libffis }}.ios_aarch64.a" \
-              -output "lib${{ matrix.libffis }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.a"
-          shasum -a 256 \
-            "lib${{ matrix.libffis }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.a" \
-            "lib${{ matrix.libffis }}-ios-universal/lib${{ matrix.libffis }}.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "lib${{ matrix.libffis }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.sha256"
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/lib${{ matrix.libffis }}.ios_x86_64.a" \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-aarch64/lib${{ matrix.libffis }}.ios_aarch64.a" \
+              -output "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.a"
+          ${SHARUN} -a 256 \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.a" \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
+              > "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal/lib${{ matrix.libffis }}.ios_universal.sha256"
           ls -alhtR
 
-      - name: Upload iOS universal libffis artifacts
+      - name: Upload iOS universal libffis artifacts for ${{ matrix.tari_networks }}
         uses: actions/upload-artifact@v4
         with:
-          name: lib${{ matrix.libffis }}-ios-universal
-          path: libffiss/lib${{ matrix.libffis }}-ios-universal
+          name: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal
+          path: libffiss/lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal
 
-      - name: Assemble iOS libffis xcframework
+      - name: Assemble iOS libffis xcframework for ${{ matrix.tari_networks }}
         shell: bash
         working-directory: libffiss
         run: |
           ls -alhtR
-          mkdir lib${{ matrix.libffis }}-ios-universal-sim
+          mkdir lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal-sim
           lipo -create \
-            "lib${{ matrix.libffis }}-ios-x86_64/lib${{ matrix.libffis }}.ios_x86_64.a" \
-            "lib${{ matrix.libffis }}-ios-aarch64-sim/lib${{ matrix.libffis }}.ios_aarch64-sim.a" \
-              -output "lib${{ matrix.libffis }}-ios-universal-sim/lib${{ matrix.libffis }}.ios_universal-sim.a"
-          mkdir lib${{ matrix.libffis }}-ios-xcframework
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/lib${{ matrix.libffis }}.ios_x86_64.a" \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-aarch64-sim/lib${{ matrix.libffis }}.ios_aarch64-sim.a" \
+              -output "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal-sim/lib${{ matrix.libffis }}.ios_universal-sim.a"
+          mkdir lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework
           echo "Check for changelog"
-          if [ -f lib${{ matrix.libffis }}-ios-x86_64/changelog-*.md ]; then
+          if [ -f lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/changelog-*.md ]; then
             echo "Changelog found"
-            envChangelogFull=$(ls lib${{ matrix.libffis }}-ios-x86_64/changelog-*.md)
+            envChangelogFull=$(ls lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/changelog-*.md)
             echo ${envChangelogFull}
             # Strip suffix
             #envChangelog=${envChangelogFull::-3}
@@ -326,41 +366,64 @@ jobs:
             # Strip prefix
             TARI_NETWORK_CHANGELOG=${envChangelog##*/changelog-}
             echo ${TARI_NETWORK_CHANGELOG}
-            cp -v "lib${{ matrix.libffis }}-ios-x86_64/changelog-${TARI_NETWORK_CHANGELOG}.md" \
-              lib${{ matrix.libffis }}-ios-xcframework/
-            TARI_NETWORK_CHANGELOG_FILE=lib${{ matrix.libffis }}-ios-xcframework/changelog-${TARI_NETWORK_CHANGELOG}.md
+            cp -v "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/changelog-${TARI_NETWORK_CHANGELOG}.md" \
+              lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/
+            TARI_NETWORK_CHANGELOG_FILE=lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/changelog-${TARI_NETWORK_CHANGELOG}.md
             echo ${TARI_NETWORK_CHANGELOG_FILE}
           else
             echo "No changelog found"
           fi
           xcodebuild -create-xcframework \
-            -library "lib${{ matrix.libffis }}-ios-universal-sim/lib${{ matrix.libffis }}.ios_universal-sim.a" \
-              -headers "lib${{ matrix.libffis }}-ios-x86_64/lib${{ matrix.libffis }}.h" \
-            -library "lib${{ matrix.libffis }}-ios-aarch64/lib${{ matrix.libffis }}.ios_aarch64.a" \
-              -headers "lib${{ matrix.libffis }}-ios-aarch64/lib${{ matrix.libffis }}.h" \
-            -output lib${{ matrix.libffis }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework
-          shasum -a 256 \
-            "lib${{ matrix.libffis }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/Info.plist" \
-            "lib${{ matrix.libffis }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64/Headers" \
-            "lib${{ matrix.libffis }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64/lib${{ matrix.libffis }}.ios_aarch64.a" \
-            "lib${{ matrix.libffis }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64_x86_64-simulator/Headers" \
-            "lib${{ matrix.libffis }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64_x86_64-simulator/lib${{ matrix.libffis }}.ios_universal-sim.a" \
+            -library "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-universal-sim/lib${{ matrix.libffis }}.ios_universal-sim.a" \
+              -headers "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-x86_64/lib${{ matrix.libffis }}.h" \
+            -library "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-aarch64/lib${{ matrix.libffis }}.ios_aarch64.a" \
+              -headers "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-aarch64/lib${{ matrix.libffis }}.h" \
+            -output lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework
+          ${SHARUN} -a 256 \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/Info.plist" \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64/Headers" \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64/lib${{ matrix.libffis }}.ios_aarch64.a" \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64_x86_64-simulator/Headers" \
+            "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}_ios.xcframework/ios-arm64_x86_64-simulator/lib${{ matrix.libffis }}.ios_universal-sim.a" \
             "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "lib${{ matrix.libffis }}-ios-xcframework/lib${{ matrix.libffis }}.ios_xcframework.sha256"
+              > "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework/lib${{ matrix.libffis }}.ios_xcframework.sha256"
           ls -alhtR
 
-      - name: Upload iOS xcframework libffis artifacts
+      - name: Upload iOS xcframework libffis artifacts for ${{ matrix.tari_networks }}
         uses: actions/upload-artifact@v4
         with:
-          name: lib${{ matrix.libffis }}-ios-xcframework
-          path: libffiss/lib${{ matrix.libffis }}-ios-xcframework
+          name: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework
+          path: libffiss/lib${{ matrix.libffis }}-${{ matrix.tari_networks }}-ios-xcframework
+
+      - name: Assemble libffis archive for ${{ matrix.tari_networks }}
+        env:
+          BINFILE: "lib${{ matrix.libffis }}-${{ matrix.tari_networks }}_archive"
+        shell: bash
+        working-directory: libffiss
+        run: |
+          ls -alhtR
+          7z a "../${{ env.BINFILE }}.zip" *
+          cd ..
+          echo "Compute archive shasum"
+          ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
+          echo "Show the shasum"
+          cat "${{ env.BINFILE }}.zip.sha256"
+          echo "Checksum verification archive is "
+          ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
+          ls -alht
+
+      - name: Upload libffis archive for ${{ matrix.tari_networks }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}_archive
+          path: lib${{ matrix.libffis }}-${{ matrix.tari_networks }}_archive.zip*
 
   create_release:
     name: Create release for ffi libraries
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
     runs-on: ubuntu-latest
-    needs: [matrix-prep, builds, ios_assemble]
+    needs: [matrix-prep, builds, multi_assemble]
 
     permissions:
       contents: write
@@ -370,6 +433,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: libffiss
+          pattern: lib*_archive
+          merge-multiple: true
 
       - name: Verify checksums
         shell: bash
@@ -378,41 +443,13 @@ jobs:
           ls -alhtR
           find . -name "*.sha256" -type f -print | xargs cat >> libffiss.txt.sha256-verify
           cat libffiss.txt.sha256-verify
-          sha256sum -c libffiss.txt.sha256-verify
-          rm -fv ibffiss.txt.sha256-verify
-
-      - name: Archive iOS xcframework(s)
-        shell: bash
-        working-directory: libffiss
-        run: |
-          # Spaces are important - string to array
-          FFI_DIRS=( $(echo ${BUILD_LIBFFIS} | jq -r '.[]') )
-          mkdir -p releases
-          for FFI_DIR in "${FFI_DIRS[@]}"; do
-            echo "xcframework for ${FFI_DIR}"
-            if [ -d lib${FFI_DIR}-ios-xcframework ]; then
-              7z a lib${FFI_DIR}.ios-xcframework.zip lib${FFI_DIR}-ios-xcframework/*
-              rm -fvr lib${FFI_DIR}-ios-xcframework
-              shasum -a 256 \
-                "lib${FFI_DIR}.ios-xcframework.zip" \
-                  > "lib${FFI_DIR}.ios-xcframework.zip.sha256"
-              mv -v lib${FFI_DIR}.ios-xcframework.zip* releases
-            fi
-          done
-
-      - name: Release preparation from assets
-        shell: bash
-        working-directory: libffiss
-        run: |
-          find . -regextype posix-extended -regex '.*\.(a|h|md|sha256)' -type f \
-            -not \( -path "./releases" -prune \) \
-            -exec cp -fv {} ./releases/ \;
-          ls -alhtR
+          ${SHARUN} -c libffiss.txt.sha256-verify
+          rm -fv libffiss.txt.sha256-verify
 
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "libffiss/releases/*"
+          artifacts: "libffiss/*"
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: true
           draft: true

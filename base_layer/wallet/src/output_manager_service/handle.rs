@@ -156,6 +156,7 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    ClearShortTermEncumberances,
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -285,6 +286,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
         }
     }
 }
@@ -338,6 +340,7 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
+    ClearShortTermEncumberances,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -1001,6 +1004,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputInfoByTxId(output_info_by_tx_id) => Ok(output_info_by_tx_id),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn clear_short_term_encumberances(&mut self) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ClearShortTermEncumberances)
+            .await??
+        {
+            OutputManagerResponse::ClearShortTermEncumberances => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

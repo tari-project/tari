@@ -86,13 +86,13 @@ impl EncryptedData {
         commitment: &CompressedCommitment,
         value: MicroMinotari,
         mask: &PrivateKey,
-        payment_id: MemoField,
+        memo: MemoField,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
-        let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + payment_id.get_size()]);
+        let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + memo.get_size()]);
         bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
         bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
-        bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&payment_id.to_bytes());
+        bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&memo.to_bytes());
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -105,10 +105,10 @@ impl EncryptedData {
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
 
         // Put everything together: nonce, ciphertext, tag
-        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + payment_id.get_size()];
+        let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + memo.get_size()];
         data[..SIZE_TAG].clone_from_slice(&tag);
         data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
-        data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + payment_id.get_size()]
+        data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + memo.get_size()]
             .clone_from_slice(bytes.as_slice());
         Ok(Self {
             data: MaxSizeBytes::try_from(data)
