@@ -32,7 +32,7 @@ use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
 };
 
 use crate::{

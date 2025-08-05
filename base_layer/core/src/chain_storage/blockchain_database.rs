@@ -67,7 +67,7 @@ use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
-    proof_of_work::PowAlgorithm,
+    tari_proof_of_work::PowAlgorithm,
     transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     BanPeriod,
 };

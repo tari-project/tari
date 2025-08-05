@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
-use tari_transaction_components::proof_of_work::ProofOfWork;
+use tari_transaction_components::tari_proof_of_work::ProofOfWork;
 use tari_utilities::epoch_time::EpochTime;
 use utoipa::{
     openapi::{schema::SchemaType, Object, Schema, Type},

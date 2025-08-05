@@ -22,7 +22,7 @@
 use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
-    proof_of_work::{DifficultyError, PowError},
+    tari_proof_of_work::{DifficultyError, PowError},
     tari_amount::MicroMinotari,
     transaction_components::{covenants::CovenantError, OutputType, RangeProofType, TransactionError},
     validation::AggregatedBodyValidationError,

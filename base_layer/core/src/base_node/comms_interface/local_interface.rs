@@ -29,7 +29,7 @@ use tari_common_types::{
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tari_transaction_components::{
-    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{TransactionKernel, TransactionOutput},
 };
 use tokio::sync::broadcast;

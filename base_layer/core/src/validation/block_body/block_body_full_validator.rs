@@ -22,7 +22,7 @@
 
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_transaction_components::{crypto_factories::CryptoFactories, proof_of_work::PowAlgorithm};
+use tari_transaction_components::{crypto_factories::CryptoFactories, tari_proof_of_work::PowAlgorithm};
 use tari_utilities::hex::Hex;
 
 use super::BlockBodyInternalConsistencyValidator;

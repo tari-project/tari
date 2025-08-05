@@ -36,7 +36,7 @@ use tari_core::consensus::BaseConsensusManager;
 use tari_transaction_components::{
     generate_coinbase_with_wallet_output,
     key_manager::TariKeyId,
-    proof_of_work::PowAlgorithm,
+    tari_proof_of_work::PowAlgorithm,
     tari_amount::MicroMinotari,
     transaction_components::{
         memo_field::{MemoField, TxType},

@@ -78,7 +78,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
         error::KeyManagerServiceError,
-        key_manager::TariKeyManager,
+        tari_key_manager::TariKeyManager,
         KeyDigest,
         KeyManagerBranch,
         SecretTransactionKeyManagerInterface,

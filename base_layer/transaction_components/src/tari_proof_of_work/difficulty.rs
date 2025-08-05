@@ -28,7 +28,7 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_utilities::epoch_time::EpochTime;
 
-use crate::proof_of_work::error::DifficultyError;
+use crate::tari_proof_of_work::error::DifficultyError;
 
 /// Minimum difficulty, enforced in diff retargeting
 /// avoids getting stuck when trying to increase difficulty subject to dampening

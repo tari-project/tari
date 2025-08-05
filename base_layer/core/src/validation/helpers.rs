@@ -31,7 +31,7 @@ use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
-    proof_of_work::{Difficulty, PowAlgorithm, PowError},
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
     transaction_components::{TransactionInput, TransactionOutput},
 };
 

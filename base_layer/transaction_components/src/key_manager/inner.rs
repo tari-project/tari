@@ -75,7 +75,7 @@ use zeroize::Zeroize;
 use crate::key_manager::{
     error::KeyManagerServiceError,
     interface::TariKeyAndId,
-    key_manager::TariKeyManager,
+    tari_key_manager::TariKeyManager,
     AddResult,
     KeyDigest,
 };

@@ -23,7 +23,7 @@
 use std::collections::VecDeque;
 
 use tari_core::consensus::BaseConsensusManager;
-use tari_transaction_components::proof_of_work::{Difficulty, PowAlgorithm};
+use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
 const HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
 

@@ -31,7 +31,7 @@ use tari_transaction_components::{
         ConsensusManagerBuilder,
         NetworkConsensus,
     },
-    proof_of_work::PowAlgorithm,
+    tari_proof_of_work::PowAlgorithm,
     tari_amount::MicroMinotari,
     transaction_components::TransactionKernel,
 };

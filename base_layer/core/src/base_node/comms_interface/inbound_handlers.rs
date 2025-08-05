@@ -31,7 +31,7 @@ use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
-    proof_of_work::{Difficulty, PowAlgorithm, PowError},
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;

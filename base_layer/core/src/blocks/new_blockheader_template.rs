@@ -25,7 +25,7 @@ use std::fmt::{Display, Error, Formatter};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, PrivateKey};
-use tari_transaction_components::proof_of_work::ProofOfWork;
+use tari_transaction_components::tari_proof_of_work::ProofOfWork;
 use tari_utilities::hex::Hex;
 
 use crate::blocks::block_header::BlockHeader;

@@ -77,7 +77,7 @@ use tari_transaction_components::{
     consensus::NetworkConsensus,
     generate_coinbase_with_wallet_output,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,

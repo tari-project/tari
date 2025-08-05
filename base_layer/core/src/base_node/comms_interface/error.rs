@@ -25,7 +25,7 @@ use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
     consensus::ConsensusManagerError,
-    proof_of_work::DifficultyError,
+    tari_proof_of_work::DifficultyError,
     transaction_components::TransactionError,
     BanPeriod,
     BanReason,

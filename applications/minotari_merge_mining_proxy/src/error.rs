@@ -33,7 +33,7 @@ use tari_core::{consensus::BaseConsensusBuilderError, proof_of_work::monero_rx::
 use tari_max_size::{MaxSizeBytesError, MaxSizeVecError};
 use tari_transaction_components::{
     key_manager::{error::KeyManagerServiceError, CoreKeyManagerError},
-    proof_of_work::DifficultyError,
+    tari_proof_of_work::DifficultyError,
     CoinbaseBuildError,
 };
 use thiserror::Error;

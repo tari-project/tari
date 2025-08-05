@@ -30,7 +30,7 @@ use tari_common_types::{
     types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
 };
 use tari_transaction_components::{
-    proof_of_work::PowAlgorithm,
+    tari_proof_of_work::PowAlgorithm,
     transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::epoch_time::EpochTime;

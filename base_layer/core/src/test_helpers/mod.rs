@@ -52,7 +52,7 @@ use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    proof_of_work::Difficulty,
+    tari_proof_of_work::Difficulty,
     tari_amount::MicroMinotari,
     transaction_components::{
         memo_field::{MemoField, TxType},

@@ -22,7 +22,7 @@
 
 use thiserror::Error;
 
-use crate::{proof_of_work::difficulty::Difficulty, BanPeriod, BanReason};
+use crate::{tari_proof_of_work::difficulty::Difficulty, BanPeriod, BanReason};
 
 /// Errors that can occur when validating a proof of work
 #[derive(Debug, Error)]

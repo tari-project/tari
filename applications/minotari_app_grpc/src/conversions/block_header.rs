@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_core::blocks::BlockHeader;
-use tari_transaction_components::proof_of_work::ProofOfWork;
+use tari_transaction_components::tari_proof_of_work::ProofOfWork;
 use tari_utilities::{epoch_time::EpochTime, ByteArray};
 
 use crate::tari_rpc as grpc;

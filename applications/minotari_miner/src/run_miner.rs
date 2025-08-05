@@ -58,7 +58,7 @@ use tari_common_types::{
 use tari_core::{blocks::BlockHeader, consensus::BaseConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
 use tari_transaction_components::{
     generate_coinbase,
-    proof_of_work::PowAlgorithm,
+    tari_proof_of_work::PowAlgorithm,
     tari_amount::MicroMinotari,
     transaction_components::{
         memo_field::{MemoField, TxType},

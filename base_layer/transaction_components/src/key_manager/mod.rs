@@ -52,7 +52,7 @@ pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 
-pub mod key_manager;
+pub mod tari_key_manager;
 
 pub const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";
 use tari_hashing::ConfidentialOutputHashDomain;

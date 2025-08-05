@@ -15,7 +15,7 @@ pub use coinbase_builder::{
 pub mod consensus;
 pub mod fee;
 pub mod key_manager;
-pub mod proof_of_work;
+pub mod tari_proof_of_work;
 pub mod tari_amount;
 pub mod transaction_components;
 pub mod validation;

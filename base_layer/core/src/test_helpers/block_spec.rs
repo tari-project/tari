@@ -26,7 +26,7 @@ pub struct BlockSpecs {
     specs: Vec<BlockSpec>,
 }
 
-use tari_transaction_components::proof_of_work::Difficulty;
+use tari_transaction_components::tari_proof_of_work::Difficulty;
 impl BlockSpecs {
     pub fn len(&self) -> usize {
         self.specs.len()

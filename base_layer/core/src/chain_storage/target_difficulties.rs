@@ -22,7 +22,7 @@
 
 use std::collections::HashMap;
 
-use tari_transaction_components::proof_of_work::{Difficulty, PowAlgorithm};
+use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
 use crate::{blocks::BlockHeader, consensus::BaseConsensusManager, proof_of_work::TargetDifficultyWindow};
 

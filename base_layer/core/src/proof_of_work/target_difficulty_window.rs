@@ -22,7 +22,7 @@
 
 use std::cmp;
 
-use tari_transaction_components::proof_of_work::{Difficulty, DifficultyAdjustment};
+use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyAdjustment};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::proof_of_work::lwma_diff::LinearWeightedMovingAverage;

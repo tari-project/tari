@@ -27,7 +27,7 @@ use std::{
 
 use primitive_types::U512;
 use tari_common_types::types::PrivateKey;
-use tari_transaction_components::proof_of_work::Difficulty;
+use tari_transaction_components::tari_proof_of_work::Difficulty;
 use tari_utilities::ByteArray;
 
 use super::core as proto;

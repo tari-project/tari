@@ -14,7 +14,7 @@
 use std::{cmp::min, collections::VecDeque, convert::TryFrom};
 
 use log::*;
-use tari_transaction_components::proof_of_work::{Difficulty, DifficultyAdjustment, DifficultyError};
+use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyAdjustment, DifficultyError};
 use tari_utilities::epoch_time::EpochTime;
 /// This is the recommended maximum block time ratio for LWMA-1
 pub const LWMA_MAX_BLOCK_TIME_RATIO: u64 = 6;

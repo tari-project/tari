@@ -47,7 +47,7 @@ use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     key_manager::TariKeyId,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{RangeProofType, TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
 };
 use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};

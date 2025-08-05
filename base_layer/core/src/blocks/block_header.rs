@@ -51,7 +51,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_transaction_components::{
     consensus::DomainSeparatedConsensusHasher,
-    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
+    tari_proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;

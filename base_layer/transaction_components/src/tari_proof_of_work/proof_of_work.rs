@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use tari_max_size::MaxSizeBytes;
 use tari_utilities::hex::Hex;
 
-use crate::proof_of_work::proof_of_work_algorithm::PowAlgorithm;
+use crate::tari_proof_of_work::proof_of_work_algorithm::PowAlgorithm;
 
 #[allow(dead_code)]
 pub trait AchievedDifficulty {}

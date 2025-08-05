@@ -123,7 +123,7 @@ use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
     tari_amount::MicroMinotari,
     transaction_components::{
         OutputType,

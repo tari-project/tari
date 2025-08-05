@@ -25,7 +25,7 @@ use tari_common_types::{chain_metadata::ChainMetaDataError, types::FixedHashSize
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use tari_transaction_components::{
-    proof_of_work::PowError,
+    tari_proof_of_work::PowError,
     transaction_components::TransactionError,
     BanPeriod,
     BanReason,

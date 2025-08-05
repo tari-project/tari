@@ -24,7 +24,7 @@ use std::cmp::Ordering;
 use log::*;
 use primitive_types::U512;
 use tari_common_types::types::{FixedHash, HashOutput};
-use tari_transaction_components::proof_of_work::PowAlgorithm;
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{

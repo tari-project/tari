@@ -28,7 +28,7 @@ use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
-    proof_of_work::{Difficulty, PowAlgorithm, PowData, ProofOfWork},
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowData, ProofOfWork},
     transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
 

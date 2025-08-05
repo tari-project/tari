@@ -26,7 +26,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
-    proof_of_work::Difficulty,
+    tari_proof_of_work::Difficulty,
     tari_amount::MicroMinotari,
     transaction_components::TransactionError,
 };
