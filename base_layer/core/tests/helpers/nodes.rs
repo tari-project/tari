@@ -107,6 +107,7 @@ impl NodeInterfaces {
 pub struct BaseNodeBuilder {
     node_identity: Option<Arc<NodeIdentity>>,
     peers: Option<Vec<Arc<NodeIdentity>>>,
+    seed_peer: Option<Arc<NodeIdentity>>,
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
     liveness_service_config: Option<LivenessConfig>,
@@ -123,6 +124,7 @@ impl BaseNodeBuilder {
         Self {
             node_identity: None,
             peers: None,
+            seed_peer: None,
             mempool_config: None,
             mempool_service_config: None,
             liveness_service_config: None,
@@ -142,6 +144,12 @@ impl BaseNodeBuilder {
     /// Set the initial peers that will be available in the peer manager.
     pub fn with_peers(mut self, peers: Vec<Arc<NodeIdentity>>) -> Self {
         self.peers = Some(peers);
+        self
+    }
+
+    /// Set the seed peer that will be available in the peer manager.
+    pub fn with_seed_peer(mut self, seed_peer: Arc<NodeIdentity>) -> Self {
+        self.seed_peer = Some(seed_peer);
         self
     }
 
@@ -220,6 +228,7 @@ impl BaseNodeBuilder {
         let node_interfaces = setup_base_node_services(
             node_identity,
             self.peers.unwrap_or_default(),
+            self.seed_peer,
             blockchain_db,
             mempool,
             consensus_manager.clone(),
@@ -253,7 +262,8 @@ pub async fn create_network_with_multiple_base_nodes_with_config<P: AsRef<Path>>
     consensus_manager: ConsensusManager,
     data_path: P,
     network: Network,
-) -> (Vec<NodeInterfaces>, ConsensusManager) {
+    with_seed_node: bool,
+) -> (Vec<NodeInterfaces>, Option<NodeInterfaces>, ConsensusManager) {
     let num_of_nodes = mempool_service_configs.len();
     if num_of_nodes != liveness_service_configs.len() ||
         num_of_nodes != blockchain_db_configs.len() ||
@@ -271,26 +281,36 @@ pub async fn create_network_with_multiple_base_nodes_with_config<P: AsRef<Path>>
         );
     }
     let mut node_interfaces = Vec::with_capacity(num_of_nodes);
+    let mut seed_peer = None;
     for i in 0..num_of_nodes {
-        let (node, _) = BaseNodeBuilder::new(network.into())
+        let mut builder = BaseNodeBuilder::new(network.into())
             .with_node_identity(node_identities[i].clone())
             .with_peers(node_identities.iter().take(i).cloned().collect())
             .with_mempool_service_config(mempool_service_configs[i].clone())
             .with_liveness_service_config(liveness_service_configs[i].clone())
             .with_p2p_config(p2p_configs[i].clone())
-            .with_consensus_manager(consensus_manager.clone())
+            .with_consensus_manager(consensus_manager.clone());
+        // The final node will be the seed node if `with_seed_node` is true.
+        if with_seed_node && i < num_of_nodes - 1 {
+            builder = builder.with_seed_peer(node_identities[num_of_nodes - 1].clone());
+        }
+        let (node, _) = builder
             .start(
                 data_path.as_ref().join(i.to_string()).as_os_str().to_str().unwrap(),
                 blockchain_db_configs[i],
             )
             .await;
-        node_interfaces.push(node);
+        if with_seed_node && i == num_of_nodes - 1 {
+            seed_peer = Some(node);
+        } else {
+            node_interfaces.push(node);
+        }
     }
 
     let node_interface_refs = node_interfaces.iter().collect::<Vec<&NodeInterfaces>>();
     wait_until_online(node_interface_refs.as_slice()).await;
 
-    (node_interfaces, consensus_manager)
+    (node_interfaces, seed_peer, consensus_manager)
 }
 
 // Helper function for creating a random node indentity.
@@ -309,11 +329,13 @@ pub fn random_node_identity() -> Arc<NodeIdentity> {
 async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
+    seed_peer: Option<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector,
     data_path: &str,
     shutdown: &Shutdown,
 ) -> (UnspawnedCommsNode, Dht, MessagingEventSender) {
     let peers = peers.into_iter().map(|p| p.to_peer()).collect();
+    let seed_peer = seed_peer.map(|p| p.to_peer());
 
     let (comms, dht, messaging_events) = initialize_local_test_comms(
         node_identity,
@@ -321,6 +343,7 @@ async fn setup_comms_services(
         data_path,
         Duration::from_secs(2 * 60),
         peers,
+        seed_peer,
         shutdown.to_signal(),
     )
     .await
@@ -333,6 +356,7 @@ async fn setup_comms_services(
 async fn setup_base_node_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
+    seed_peer: Option<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<TempDatabase>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
@@ -344,8 +368,15 @@ async fn setup_base_node_services(
     let subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
 
-    let (comms, dht, messaging_events) =
-        setup_comms_services(node_identity.clone(), peers, publisher.clone(), data_path, &shutdown).await;
+    let (comms, dht, messaging_events) = setup_comms_services(
+        node_identity.clone(),
+        peers,
+        seed_peer,
+        publisher.clone(),
+        data_path,
+        &shutdown,
+    )
+    .await;
 
     let mock_state_machine = MockBaseNodeStateMachine::new();
     let randomx_factory = RandomXFactory::new(2);

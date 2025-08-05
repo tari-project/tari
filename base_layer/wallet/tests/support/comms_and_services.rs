@@ -53,6 +53,7 @@ pub async fn setup_comms_services(
         &database_path,
         discovery_request_timeout,
         peers,
+        None,
         shutdown_signal,
     )
     .await

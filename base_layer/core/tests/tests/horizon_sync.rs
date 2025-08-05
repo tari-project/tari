@@ -42,17 +42,20 @@ async fn test_initial_horizon_sync_from_archival_node_happy_path() {
 
     // Create the network with Alice (pruning node) and Bob (archival node)
     let pruning_horizon = 5;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            BlockchainDatabaseConfig {
-                orphan_storage_capacity: 5,
-                pruning_horizon,
-                pruning_interval: 5,
-                track_reorgs: false,
-                cleanup_orphans_at_startup: false,
-            },
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![
+                BlockchainDatabaseConfig {
+                    orphan_storage_capacity: 5,
+                    pruning_horizon,
+                    pruning_interval: 5,
+                    track_reorgs: false,
+                    cleanup_orphans_at_startup: false,
+                },
+                BlockchainDatabaseConfig::default(),
+            ],
+            false,
+        )
         .await;
     let mut alice_state_machine = state_machines.remove(0);
     let alice_node = peer_nodes.remove(0);
@@ -295,27 +298,30 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     // Create the network with Alice (pruning node) and Bob (archival node) and Carol (pruning node)
     let pruning_horizon_alice = 4;
     let pruning_horizon_carol = 12;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            // Alice is a pruned node
-            BlockchainDatabaseConfig {
-                orphan_storage_capacity: 5,
-                pruning_horizon: pruning_horizon_alice,
-                pruning_interval: 5,
-                track_reorgs: false,
-                cleanup_orphans_at_startup: false,
-            },
-            // Carol is a pruned node
-            BlockchainDatabaseConfig {
-                orphan_storage_capacity: 5,
-                pruning_horizon: pruning_horizon_carol,
-                pruning_interval: 5,
-                track_reorgs: false,
-                cleanup_orphans_at_startup: false,
-            },
-            // Bob is an archival node
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![
+                // Alice is a pruned node
+                BlockchainDatabaseConfig {
+                    orphan_storage_capacity: 5,
+                    pruning_horizon: pruning_horizon_alice,
+                    pruning_interval: 5,
+                    track_reorgs: false,
+                    cleanup_orphans_at_startup: false,
+                },
+                // Carol is a pruned node
+                BlockchainDatabaseConfig {
+                    orphan_storage_capacity: 5,
+                    pruning_horizon: pruning_horizon_carol,
+                    pruning_interval: 5,
+                    track_reorgs: false,
+                    cleanup_orphans_at_startup: false,
+                },
+                // Bob is an archival node
+                BlockchainDatabaseConfig::default(),
+            ],
+            false,
+        )
         .await;
     let mut alice_state_machine = state_machines.remove(0);
     let mut carol_state_machine = state_machines.remove(0);
@@ -674,27 +680,30 @@ async fn test_initial_horizon_sync_from_prune_node_happy_path() {
     // Create the network with Alice (pruning node) and Bob (archival node) and Carol (pruning node)
     let pruning_horizon_alice = 4;
     let pruning_horizon_carol = 12;
-    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
-        sync::create_network_with_multiple_nodes(vec![
-            // Alice is a pruned node
-            BlockchainDatabaseConfig {
-                orphan_storage_capacity: 5,
-                pruning_horizon: pruning_horizon_alice,
-                pruning_interval: 5,
-                track_reorgs: false,
-                cleanup_orphans_at_startup: false,
-            },
-            // Carol is a pruned node
-            BlockchainDatabaseConfig {
-                orphan_storage_capacity: 5,
-                pruning_horizon: pruning_horizon_carol,
-                pruning_interval: 5,
-                track_reorgs: false,
-                cleanup_orphans_at_startup: false,
-            },
-            // Bob is an archival node
-            BlockchainDatabaseConfig::default(),
-        ])
+    let (mut state_machines, mut peer_nodes, _, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(
+            vec![
+                // Alice is a pruned node
+                BlockchainDatabaseConfig {
+                    orphan_storage_capacity: 5,
+                    pruning_horizon: pruning_horizon_alice,
+                    pruning_interval: 5,
+                    track_reorgs: false,
+                    cleanup_orphans_at_startup: false,
+                },
+                // Carol is a pruned node
+                BlockchainDatabaseConfig {
+                    orphan_storage_capacity: 5,
+                    pruning_horizon: pruning_horizon_carol,
+                    pruning_interval: 5,
+                    track_reorgs: false,
+                    cleanup_orphans_at_startup: false,
+                },
+                // Bob is an archival node
+                BlockchainDatabaseConfig::default(),
+            ],
+            false,
+        )
         .await;
     let mut alice_state_machine = state_machines.remove(0);
     let mut carol_state_machine = state_machines.remove(0);

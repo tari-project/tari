@@ -136,18 +136,24 @@ pub async fn horizon_sync_execute(
 /// Helper function to create a network with multiple nodes
 pub async fn create_network_with_multiple_nodes(
     blockchain_db_configs: Vec<BlockchainDatabaseConfig>,
+    with_seed_node: bool,
 ) -> (
     Vec<BaseNodeStateMachine<TempDatabase>>,
     Vec<NodeInterfaces>,
+    Option<NodeInterfaces>,
     ChainBlock,
     ConsensusManager,
     MemoryDbKeyManager,
     WalletOutput,
 ) {
-    let num_nodes = blockchain_db_configs.len();
-    if num_nodes < 2 {
+    if blockchain_db_configs.len() < 2 {
         panic!("Must have at least 2 nodes");
     }
+    let mut blockchain_db_configs = blockchain_db_configs;
+    if with_seed_node {
+        blockchain_db_configs.push(BlockchainDatabaseConfig::default());
+    }
+    let num_nodes = blockchain_db_configs.len();
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let key_manager = create_memory_db_key_manager().unwrap();
@@ -158,7 +164,7 @@ pub async fn create_network_with_multiple_nodes(
         .with_block(initial_block.clone())
         .build()
         .unwrap();
-    let (node_interfaces, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
+    let (node_interfaces, seed_node, consensus_manager) = create_network_with_multiple_base_nodes_with_config(
         vec![MempoolServiceConfig::default(); num_nodes],
         vec![
             LivenessConfig {
@@ -172,6 +178,7 @@ pub async fn create_network_with_multiple_nodes(
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
         network,
+        with_seed_node,
     )
     .await;
     let shutdown = Shutdown::new();
@@ -200,6 +207,7 @@ pub async fn create_network_with_multiple_nodes(
     (
         state_machines,
         node_interfaces,
+        seed_node,
         initial_block,
         consensus_manager,
         key_manager,

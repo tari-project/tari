@@ -151,7 +151,8 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     connector: InboundDomainConnector,
     data_path: P,
     discovery_request_timeout: Duration,
-    seed_peers: Vec<Peer>,
+    peers: Vec<Peer>,
+    seed_peer: Option<Peer>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError>
 where
@@ -169,7 +170,7 @@ where
         .allow_test_addresses()
         .with_listener_address(node_identity.first_public_address().unwrap())
         .with_listener_liveness_max_sessions(1)
-        .with_node_identity(node_identity)
+        .with_node_identity(node_identity.clone())
         .with_user_agent(&"/test/1.0")
         .with_peer_storage(peer_database)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
@@ -178,7 +179,21 @@ where
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
-    add_seed_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
+    if let Some(seed) = seed_peer {
+        add_seed_peers(&comms.peer_manager(), &comms.node_identity(), vec![seed]).await?;
+    }
+    for mut peer in peers {
+        if &peer.public_key == node_identity.public_key() {
+            continue;
+        }
+        peer.add_flags(PeerFlags::NONE);
+
+        comms
+            .peer_manager()
+            .add_or_update_peer(peer)
+            .await
+            .map_err(CommsInitializationError::FailedToAddSeedPeer)?;
+    }
 
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();

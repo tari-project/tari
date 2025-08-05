@@ -46,6 +46,7 @@ pub async fn setup_comms_services(
         data_path,
         Duration::from_secs(1),
         peers,
+        None,
         shutdown_signal,
     )
     .await

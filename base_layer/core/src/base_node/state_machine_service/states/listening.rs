@@ -30,6 +30,7 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::NodeId;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
@@ -163,6 +164,14 @@ impl Listening {
         let mut initial_sync_counter = 0;
         let mut ahead_of_peers_counter = 0;
         let mut initial_sync_peer_list = Vec::new();
+        let seed_peers = shared
+            .peer_manager
+            .get_seed_peers()
+            .await
+            .unwrap_or_else(|_| vec![])
+            .iter()
+            .map(|n| n.node_id.clone())
+            .collect::<Vec<_>>();
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
             match metadata_event.as_ref().map(|v| v.deref()) {
@@ -279,6 +288,14 @@ impl Listening {
                             self.set_synced_response(shared);
                         }
                     }
+
+                    let sync_mode = match filter_out_seed_peers_from_sync_status(&sync_mode, &seed_peers) {
+                        None => {
+                            warn!(target: LOG_TARGET, "All potential sync peers were seed peers. Waiting for better options.");
+                            continue;
+                        },
+                        Some(val) => val,
+                    };
 
                     // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
                     // immediately return fallen behind with the peer that has a higher pow than us
@@ -512,8 +529,55 @@ fn determine_sync_mode(
     }
 }
 
+fn filter_out_seed_peers_from_sync_status(sync_mode: &SyncStatus, seed_peers: &[NodeId]) -> Option<SyncStatus> {
+    match sync_mode {
+        SyncStatus::Lagging { local, sync_peers, .. } |
+        SyncStatus::BehindButNotYetLagging { local, sync_peers, .. } => {
+            let filtered_peers: Vec<_> = sync_peers
+                .iter()
+                .filter(|p| {
+                    if seed_peers.contains(p.node_id()) {
+                        debug!(target: LOG_TARGET, "Peer {} is a seed peer, ignoring it", p.node_id());
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .cloned()
+                .collect();
+
+            if filtered_peers.is_empty() {
+                debug!(target: LOG_TARGET, "No sync peers available after filtering seed peers");
+                return None;
+            }
+
+            // Clone only the metadata we need here
+            let best_peer_metadata = filtered_peers
+                .iter()
+                .max_by_key(|p| p.claimed_difficulty())
+                .map(|p| p.claimed_chain_metadata().clone());
+
+            best_peer_metadata.map(|network| match sync_mode {
+                SyncStatus::Lagging { .. } => SyncStatus::Lagging {
+                    local: (*local).clone(),
+                    network,
+                    sync_peers: filtered_peers,
+                },
+                SyncStatus::BehindButNotYetLagging { .. } => SyncStatus::BehindButNotYetLagging {
+                    local: (*local).clone(),
+                    network,
+                    sync_peers: filtered_peers,
+                },
+                _ => unreachable!(),
+            })
+        },
+        _ => Some(sync_mode.clone()),
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
 
     use primitive_types::U512;
     use rand::rngs::OsRng;
@@ -521,6 +585,7 @@ mod test {
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 
     use super::*;
+    use crate::base_node::sync::SyncPeer;
 
     fn random_node_id() -> NodeId {
         let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
@@ -564,5 +629,89 @@ mod test {
 
         let sync_mode = determine_sync_mode(2, behind_node.claimed_chain_metadata(), &archival_node);
         assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
+    }
+
+    fn create_sync_peer(node_id: NodeId, chain_metadata: ChainMetadata) -> SyncPeer {
+        SyncPeer::from(PeerChainMetadata::new(
+            node_id,
+            chain_metadata,
+            Some(Duration::from_millis(400)),
+        ))
+    }
+
+    #[test]
+    fn test_filter_out_seed_peers_from_sync_status() {
+        let seed_peer_1 = random_node_id();
+        let seed_peer_2 = random_node_id();
+        let non_seed_peer_1 = random_node_id();
+        let non_seed_peer_2 = random_node_id();
+
+        let seed_peers = vec![seed_peer_1.clone(), seed_peer_2.clone()];
+
+        let local_metadata =
+            ChainMetadata::new(999, FixedHash::from([0; 32]), 0, 0, U512::from(300), 1672531000).unwrap();
+        let network_metadata =
+            ChainMetadata::new(1001, FixedHash::from([1; 32]), 0, 0, U512::from(350), 1672532000).unwrap();
+
+        let all_sync_peers = vec![
+            create_sync_peer(seed_peer_1.clone(), network_metadata.clone()),
+            create_sync_peer(seed_peer_2.clone(), network_metadata.clone()),
+            create_sync_peer(non_seed_peer_1.clone(), network_metadata.clone()),
+            create_sync_peer(non_seed_peer_2.clone(), network_metadata.clone()),
+        ];
+        let seed_sync_peers = vec![
+            create_sync_peer(seed_peer_1.clone(), network_metadata.clone()),
+            create_sync_peer(seed_peer_2.clone(), network_metadata.clone()),
+        ];
+
+        // Case 1: SyncStatus::Lagging with valid non-seed peers
+        let sync_status = SyncStatus::Lagging {
+            local: local_metadata.clone(),
+            network: network_metadata.clone(),
+            sync_peers: all_sync_peers.clone(),
+        };
+        let result = filter_out_seed_peers_from_sync_status(&sync_status, &seed_peers);
+        assert!(result.is_some());
+        if let SyncStatus::Lagging { sync_peers, .. } = result.unwrap() {
+            assert_eq!(sync_peers.len(), 2);
+            assert!(sync_peers.iter().all(|p| !seed_peers.contains(p.node_id())));
+        }
+
+        // Case 2: SyncStatus::Lagging with only seed peers
+        let sync_status = SyncStatus::Lagging {
+            local: local_metadata.clone(),
+            network: network_metadata.clone(),
+            sync_peers: seed_sync_peers.clone(),
+        };
+        let result = filter_out_seed_peers_from_sync_status(&sync_status, &seed_peers);
+        assert!(result.is_none());
+
+        // Case 3: SyncStatus::BehindButNotYetLagging with valid non-seed peers
+        let sync_status = SyncStatus::BehindButNotYetLagging {
+            local: local_metadata.clone(),
+            network: network_metadata.clone(),
+            sync_peers: all_sync_peers.clone(),
+        };
+        let result = filter_out_seed_peers_from_sync_status(&sync_status, &seed_peers);
+        assert!(result.is_some());
+        if let SyncStatus::BehindButNotYetLagging { sync_peers, .. } = result.unwrap() {
+            assert_eq!(sync_peers.len(), 2);
+            assert!(sync_peers.iter().all(|p| !seed_peers.contains(p.node_id())));
+        }
+
+        // Case 4: SyncStatus::BehindButNotYetLagging with only seed peers
+        let sync_status = SyncStatus::BehindButNotYetLagging {
+            local: local_metadata.clone(),
+            network: network_metadata.clone(),
+            sync_peers: seed_sync_peers.clone(),
+        };
+        let result = filter_out_seed_peers_from_sync_status(&sync_status, &seed_peers);
+        assert!(result.is_none());
+
+        // Case 5: SyncStatus::UpToDate (should remain unchanged)
+        let sync_status = SyncStatus::UpToDate;
+        let result = filter_out_seed_peers_from_sync_status(&sync_status, &seed_peers);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SyncStatus::UpToDate);
     }
 }
