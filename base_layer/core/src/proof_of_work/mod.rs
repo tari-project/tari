@@ -81,3 +81,6 @@ pub mod lwma_diff;
 /// Crates for proof of work randomx_factory
 #[cfg(feature = "base_node")]
 pub mod randomx_factory;
+
+#[cfg(feature = "base_node")]
+pub mod siphash;
