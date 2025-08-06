@@ -2,9 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use blake2::{
     digest::{Update, VariableOutput},
-    Blake2b,
     Blake2bVar,
-    Digest,
 };
 use thiserror::Error;
 
