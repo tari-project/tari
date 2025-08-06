@@ -59,6 +59,7 @@ async fn select_peers_for_discovery_round(
                     config.network_discovery.max_sync_peers,
                     excluded_peers,
                     Some(PeerFeatures::COMMUNICATION_NODE),
+                    None,
                     Some(STALE_PEER_THRESHOLD_DURATION),
                     true,
                     None,
@@ -77,7 +78,7 @@ async fn select_peers_for_discovery_round(
             );
             context
                 .peer_manager
-                .random_peers(config.network_discovery.max_sync_peers, excluded_peers)
+                .random_peers(config.network_discovery.max_sync_peers, excluded_peers, None)
                 .await?
         },
     };

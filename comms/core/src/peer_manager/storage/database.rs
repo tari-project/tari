@@ -1383,6 +1383,7 @@ impl PeerDatabaseSql {
         &self,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         at_least_one_external_addresses: bool,
@@ -1403,6 +1404,10 @@ impl PeerDatabaseSql {
             .filter(peers::node_id.ne_all(excluded_node_ids_hex))
             .distinct()
             .into_boxed(); // Enables dynamic query building
+
+        if let Some(flags) = peer_flags {
+            query = query.filter(peers::flags.eq(flags.to_i32()));
+        }
 
         if exclude_if_all_address_failed {
             query = query
@@ -1464,6 +1469,7 @@ impl PeerDatabaseSql {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
@@ -1479,6 +1485,7 @@ impl PeerDatabaseSql {
             let node_ids_hex = self.get_active_peer_node_ids(
                 excluded_peers,
                 features,
+                peer_flags,
                 stale_peer_threshold,
                 exclude_if_all_address_failed,
                 external_addresses_only,
@@ -1518,6 +1525,7 @@ impl PeerDatabaseSql {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         external_addresses_only: bool,
     ) -> Result<Vec<Peer>, StorageError> {
@@ -1531,6 +1539,7 @@ impl PeerDatabaseSql {
             let node_ids_hex = self.get_active_peer_node_ids(
                 excluded_peers,
                 features,
+                peer_flags,
                 stale_peer_threshold,
                 true,
                 external_addresses_only,
@@ -1546,7 +1555,12 @@ impl PeerDatabaseSql {
 
     /// Get a random set of `n` peers from the database that are not banned and not deleted and have at least one
     /// external address
-    pub fn get_n_random_peers(&self, n: usize, exclude_node_ids: &[NodeId]) -> Result<Vec<Peer>, StorageError> {
+    pub fn get_n_random_peers(
+        &self,
+        n: usize,
+        exclude_node_ids: &[NodeId],
+        peer_flags: Option<PeerFlags>,
+    ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
         }
@@ -1556,7 +1570,7 @@ impl PeerDatabaseSql {
 
         conn.transaction::<_, StorageError, _>(|conn| {
             // Step 1: Filtered, random and truncated list of node_ids
-            let node_ids: Vec<String> = peers::table
+            let mut query = peers::table
                 .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
                 .filter(peers::deleted_at.is_null())
                 .filter(
@@ -1574,7 +1588,13 @@ impl PeerDatabaseSql {
                 .limit(i64::try_from(n).unwrap_or(i64::MAX))
                 .select(peers::node_id)
                 .distinct()
-                .load::<String>(conn)?;
+                .into_boxed(); // Enables dynamic query building
+
+            if let Some(flags) = peer_flags {
+                query = query.filter(peers::flags.eq(flags.to_i32()));
+            }
+
+            let node_ids: Vec<String> = query.load::<String>(conn)?;
 
             if node_ids.is_empty() {
                 return Ok(Vec::new());
@@ -2106,6 +2126,7 @@ mod tests {
                 5,
                 &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
                 Some(PeerFeatures::MESSAGE_PROPAGATION),
+                None,
                 Some(Duration::from_secs(60)),
                 true,
                 None,
@@ -2120,6 +2141,7 @@ mod tests {
                 5,
                 &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
                 Some(PeerFeatures::DHT_STORE_FORWARD),
+                None,
                 Some(Duration::from_secs(60)),
                 true,
                 None,
@@ -2134,6 +2156,7 @@ mod tests {
                 5,
                 &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
                 Some(PeerFeatures::COMMUNICATION_NODE),
+                None,
                 Some(Duration::from_secs(60)),
                 true,
                 None,
@@ -2149,6 +2172,7 @@ mod tests {
                 5,
                 &[wallet_peers[6].node_id.clone(), wallet_peers[7].node_id.clone()],
                 Some(PeerFeatures::COMMUNICATION_CLIENT),
+                None,
                 Some(Duration::from_secs(60)),
                 true,
                 None,
@@ -2300,6 +2324,7 @@ mod tests {
                 5,
                 &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
                 Some(PeerFeatures::COMMUNICATION_NODE),
+                None,
                 Some(Duration::from_secs(60)),
                 true,
                 None,
@@ -2334,6 +2359,7 @@ mod tests {
                 5,
                 &[node_peers[6].node_id.clone(), node_peers[7].node_id.clone()],
                 Some(PeerFeatures::COMMUNICATION_NODE),
+                None,
                 Some(Duration::from_secs(60)),
                 true,
                 None,
@@ -2371,6 +2397,7 @@ mod tests {
                 5,
                 &[wallet_peers[6].node_id.clone(), wallet_peers[7].node_id.clone()],
                 Some(PeerFeatures::COMMUNICATION_CLIENT),
+                None,
                 Some(Duration::from_secs(60)),
                 true,
                 None,
@@ -2407,7 +2434,7 @@ mod tests {
 
         // Test 'random_peers_sqlite'
         let random_peers = peers_db
-            .get_n_random_peers(5, &[node_peers[0].node_id.clone()])
+            .get_n_random_peers(5, &[node_peers[0].node_id.clone()], None)
             .unwrap();
         assert_eq!(random_peers.len(), 5);
         // Verify deleted & banned
@@ -2649,7 +2676,9 @@ mod tests {
         assert_eq!(peers_db.size(), 40);
 
         // Assert that retrieved peers have internal and external addresses
-        let nodes_with_all_addresses = peers_db.get_n_random_active_peers(100, &[], None, None, false).unwrap();
+        let nodes_with_all_addresses = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, false)
+            .unwrap();
         assert_eq!(nodes_with_all_addresses.len(), 40);
         // - Has external address
         assert!(nodes_with_all_addresses
@@ -2670,8 +2699,9 @@ mod tests {
         assert_eq!(peers_db.size(), 48);
 
         // Assert that retrieved peers have external addresses only
-        let nodes_with_external_addresses_only =
-            peers_db.get_n_random_active_peers(100, &[], None, None, true).unwrap();
+        let nodes_with_external_addresses_only = peers_db
+            .get_n_random_active_peers(100, &[], None, None, None, true)
+            .unwrap();
         assert_eq!(nodes_with_external_addresses_only.len(), 40);
         // - Has external address only
         assert!(nodes_with_external_addresses_only

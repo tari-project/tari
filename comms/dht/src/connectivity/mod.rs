@@ -50,7 +50,15 @@ use tari_comms::{
         ConnectivitySelection,
     },
     multiaddr,
-    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
+    peer_manager::{
+        NodeDistance,
+        NodeId,
+        Peer,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
+        STALE_PEER_THRESHOLD_DURATION,
+    },
     Minimized,
     NodeIdentity,
     PeerConnection,
@@ -88,6 +96,8 @@ pub(crate) struct DhtConnectivity {
     neighbours: Vec<NodeId>,
     /// A randomly-selected set of peers, excluding neighbouring peers.
     random_pool: Vec<NodeId>,
+    /// The list of seed peers.
+    seed_peers: Vec<NodeId>,
     /// The random pool history.
     previous_random: Vec<NodeId>,
     /// Used to track when the random peer pool was last refreshed
@@ -128,6 +138,7 @@ impl DhtConnectivity {
             cooldown_in_effect: None,
             shutdown_signal,
             previous_random: vec![],
+            seed_peers: vec![],
         }
     }
 
@@ -158,6 +169,13 @@ impl DhtConnectivity {
             tokio::time::sleep(delay).await;
             debug!(target: LOG_TARGET, "DHT connectivity starting after delayed for {:.0?}", delay);
         }
+        self.seed_peers = self
+            .peer_manager
+            .get_seed_peers()
+            .await?
+            .iter()
+            .map(|p| p.node_id.clone())
+            .collect();
         self.refresh_neighbour_pool(true).await?;
 
         let mut ticker = time::interval(self.config.connectivity.update_interval);
@@ -520,6 +538,15 @@ impl DhtConnectivity {
             return Ok(());
         }
 
+        if self.is_seed_peer(conn.peer_node_id()) {
+            debug!(
+                target: LOG_TARGET,
+                "Seed peer '{}' connected",
+                conn.peer_node_id()
+            );
+            return Ok(());
+        }
+
         if self.is_pool_peer(conn.peer_node_id()) {
             debug!(
                 target: LOG_TARGET,
@@ -852,7 +879,9 @@ impl DhtConnectivity {
 
     async fn remove_unmanaged_peers_from_pools(&mut self) -> Result<(), DhtConnectivityError> {
         self.remove_allow_list_peers_from_pools().await?;
-        self.remove_exlcuded_peers_from_pools().await
+        self.remove_exlcuded_peers_from_pools().await?;
+        self.remove_seed_peers_from_pools();
+        Ok(())
     }
 
     async fn remove_allow_list_peers_from_pools(&mut self) -> Result<(), DhtConnectivityError> {
@@ -860,6 +889,11 @@ impl DhtConnectivity {
         self.neighbours.retain(|n| !allow_list.contains(n));
         self.random_pool.retain(|n| !allow_list.contains(n));
         Ok(())
+    }
+
+    fn remove_seed_peers_from_pools(&mut self) {
+        self.neighbours.retain(|n| !self.seed_peers.contains(n));
+        self.random_pool.retain(|n| !self.seed_peers.contains(n));
     }
 
     async fn remove_exlcuded_peers_from_pools(&mut self) -> Result<(), DhtConnectivityError> {
@@ -899,6 +933,10 @@ impl DhtConnectivity {
 
     async fn is_allow_list_peer(&mut self, node_id: &NodeId) -> Result<bool, DhtConnectivityError> {
         Ok(self.peer_allow_list().await?.contains(node_id))
+    }
+
+    fn is_seed_peer(&self, node_id: &NodeId) -> bool {
+        self.seed_peers.contains(node_id)
     }
 
     fn is_pool_peer(&self, node_id: &NodeId) -> bool {
@@ -972,8 +1010,9 @@ impl DhtConnectivity {
         // Currently, that means:
         // - the peer isn't banned;
         // - it has the required feature;
-        // - it didn't recently fail to connect; and
-        // - it is not in the exclusion list in closest_request.
+        // - it didn't recently fail to connect;
+        // - it is not in the exclusion list in closest_request and
+        // - it is not a seed peer.
         let peers = self
             .peer_manager
             .closest_n_active_peers(
@@ -981,6 +1020,7 @@ impl DhtConnectivity {
                 n,
                 &excluded,
                 Some(PeerFeatures::COMMUNICATION_NODE),
+                Some(PeerFlags::NONE),
                 stale_peer_threshold,
                 exclude_if_all_address_failed,
                 exclusion_distance,
@@ -995,7 +1035,10 @@ impl DhtConnectivity {
     async fn fetch_random_peers(&mut self, n: usize, excluded: &[NodeId]) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let mut excluded = excluded.to_vec();
         excluded.extend(self.peer_allow_list().await?);
-        let peers = self.peer_manager.random_peers(n, &excluded).await?;
+        let peers = self
+            .peer_manager
+            .random_peers(n, &excluded, Some(PeerFlags::NONE)) // Also exclude seed peers
+            .await?;
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 

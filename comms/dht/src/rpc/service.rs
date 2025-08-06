@@ -24,7 +24,7 @@ use std::{cmp, convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
-    peer_manager::{NodeId, Peer, PeerFeatures, STALE_PEER_THRESHOLD_DURATION},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
     utils,
     PeerManager,
@@ -163,6 +163,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
                 message.n as usize,
                 &excluded,
                 features,
+                Some(PeerFlags::NONE),
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,

@@ -226,39 +226,15 @@ listener_self_liveness_check_interval = 15
 # The `DbConnectionUrl` for the Dht database. Default: In-memory database
 database_url = "data/base_node/dht.db"
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
-#num_neighbouring_nodes = 6
-# Number of random peers to include. Default: 4
-#num_random_nodes = 6
+#num_neighbouring_nodes = 8
+# Number of random peers to include. Default: 8
+#num_random_nodes = 8
 # Connections above the configured number of neighbouring and random nodes will be removed (default: false)
 #minimize_connections = false
 # Send to this many peers when using the broadcast strategy. Default: 8
 #broadcast_factor = 8
 # Send to this many peers when using the propagate strategy. Default: 4
 #propagation_factor = 4
-
-# The amount of time added to the current time will be used to check if the message has expired or not. Default: 3 hours
-#saf.msg_validity = 10_800 # 3 * 60 * 60 // 3 hours
-# The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 100,000
-#saf.msg_storage_capacity = 100_000
-# A request to retrieve stored messages will be ignored if the requesting node is not within one of this nodes _n_
-# closest nodes. Default 10
-#saf.num_closest_nodes = 10
-# The maximum number of messages to return from a store and forward retrieval request. Default: 100
-#saf.max_returned_messages = 50
-# The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
-# Default: 6 hours
-#saf.low_priority_msg_storage_ttl = 21_600 # 6 * 60 * 60 // 6 hours
-# The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
-# Default: 3 days
-#saf.high_priority_msg_storage_ttl = 259_200 # 3 * 24 * 60 * 60 // 3 days
-# The limit on the message size to store in SAF storage in bytes. Default 500 KiB
-#saf.max_message_size = 524_288 # 512 * 1024
-# When true, store and forward messages are requested from peers on connect (Default: true)
-#saf.auto_request = true
-# The maximum allowed time between asking for a message and accepting a response
-#saf.max_inflight_request_age = 120
-# The maximum number of peer nodes that a message must be closer than to get stored by SAF. Default: 8
-#saf.num_neighbouring_nodes = 8
 
 # The max capacity of the message hash cache. Default: 2,500
 #dedup_cache_capacity = 2_500
