@@ -15,7 +15,7 @@ message BaseNodeServiceResponse {
     oneof response {
         BlockResponse block_response = 5;
         // Indicates a HistoricalBlocks response.
-        HistoricalBlocks historical_blocks = 6;
+        // HistoricalBlocks historical_blocks = 6;
         FetchMempoolTransactionsResponse fetch_mempool_transactions_by_excess_sigs_response = 7;
     }
     bool is_synced = 13;

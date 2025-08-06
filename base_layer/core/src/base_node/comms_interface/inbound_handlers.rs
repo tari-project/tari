@@ -641,8 +641,10 @@ where B: BlockchainBackend + 'static
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
             },
             PowAlgorithm::Cuckaroo => {
-                // cuckaroo_difficulty(&new_block.header)?
-                todo!()
+                let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+                let cuckaroo_cycle = constants.cuckaroo_cycle_length();
+                let edge_bits = constants.cuckaroo_edge_bits();
+                cuckaroo_difficulty(&new_block.header, cuckaroo_cycle, edge_bits)?
             },
         };
         if achieved < min_difficulty {

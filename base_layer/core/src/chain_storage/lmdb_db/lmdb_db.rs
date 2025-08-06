@@ -3700,24 +3700,25 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                             value: height.to_string(),
                         }
                     })?;
-                let new_block_accum_data = BlockHeaderAccumulatedData {
-                    hash: block_accum_data.hash,
-                    total_kernel_offset: block_accum_data.total_kernel_offset,
-                    achieved_difficulty: block_accum_data.achieved_difficulty,
-                    total_accumulated_difficulty: U512::from(block_accum_data.total_accumulated_difficulty),
-                    accumulated_monero_randomx_difficulty: block_accum_data.accumulated_randomx_difficulty,
-                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-                    accumulated_sha3x_difficulty: block_accum_data.accumulated_sha3x_difficulty,
-                    target_difficulty: block_accum_data.target_difficulty,
-                };
+                todo!("implement");
+                // let new_block_accum_data = BlockHeaderAccumulatedData {
+                //     hash: block_accum_data.hash,
+                //     total_kernel_offset: block_accum_data.total_kernel_offset,
+                //     achieved_difficulty: block_accum_data.achieved_difficulty,
+                //     total_accumulated_difficulty: U512::from(block_accum_data.total_accumulated_difficulty),
+                //     accumulated_monero_randomx_difficulty: block_accum_data.accumulated_randomx_difficulty,
+                //     accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+                //     accumulated_sha3x_difficulty: block_accum_data.accumulated_sha3x_difficulty,
+                //     target_difficulty: block_accum_data.target_difficulty,
+                // };
 
-                lmdb_replace(
-                    &txn,
-                    &db.header_accumulated_data_db,
-                    &height,
-                    &new_block_accum_data,
-                    None,
-                )?;
+                // lmdb_replace(
+                //     &txn,
+                //     &db.header_accumulated_data_db,
+                //     &height,
+                //     &new_block_accum_data,
+                //     None,
+                // )?;
 
                 // Update stats progress
                 if height % 50 == 0 {
@@ -3734,23 +3735,24 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let orphan_headers_accum_data: Vec<(Vec<u8>, V0BLockHeaderAccumulatedData)> =
                 lmdb_all(&txn, &db.orphan_header_accumulated_data_db)?;
             for (hash, orphan_header_accum_data) in orphan_headers_accum_data {
-                let new_orphan_block_accum_data = BlockHeaderAccumulatedData {
-                    hash: orphan_header_accum_data.hash,
-                    total_kernel_offset: orphan_header_accum_data.total_kernel_offset,
-                    achieved_difficulty: orphan_header_accum_data.achieved_difficulty,
-                    total_accumulated_difficulty: U512::from(orphan_header_accum_data.total_accumulated_difficulty),
-                    accumulated_monero_randomx_difficulty: orphan_header_accum_data.accumulated_randomx_difficulty,
-                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-                    accumulated_sha3x_difficulty: orphan_header_accum_data.accumulated_sha3x_difficulty,
-                    target_difficulty: orphan_header_accum_data.target_difficulty,
-                };
-                lmdb_replace(
-                    &txn,
-                    &db.block_accumulated_data_db,
-                    &hash,
-                    &new_orphan_block_accum_data,
-                    None,
-                )?;
+                // let new_orphan_block_accum_data = BlockHeaderAccumulatedData {
+                //     hash: orphan_header_accum_data.hash,
+                //     total_kernel_offset: orphan_header_accum_data.total_kernel_offset,
+                //     achieved_difficulty: orphan_header_accum_data.achieved_difficulty,
+                //     total_accumulated_difficulty: U512::from(orphan_header_accum_data.total_accumulated_difficulty),
+                //     accumulated_monero_randomx_difficulty: orphan_header_accum_data.accumulated_randomx_difficulty,
+                //     accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+                //     accumulated_sha3x_difficulty: orphan_header_accum_data.accumulated_sha3x_difficulty,
+                //     target_difficulty: orphan_header_accum_data.target_difficulty,
+                // };
+                // lmdb_replace(
+                //     &txn,
+                //     &db.block_accumulated_data_db,
+                //     &hash,
+                //     &new_orphan_block_accum_data,
+                //     None,
+                // )?;
+                todo!("implement");
             }
             txn.commit()?;
             let txn = db.write_transaction()?;

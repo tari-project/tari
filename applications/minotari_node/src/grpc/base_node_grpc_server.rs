@@ -900,11 +900,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 }
             },
             PowAlgorithm::Cuckaroo => {
-                todo!();
-                return Err(obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument("Cuckaroo is not supported for new block template"),
-                ));
+                match self
+                    .data_cache
+                    .get_cuckaroo_new_block_template(metadata.best_block_hash())
+                    .await
+                {
+                    Some(template) => template,
+                    None => {
+                        let new_template =
+                            handler
+                                .get_new_block_template(algo, request.max_weight)
+                                .await
+                                .map_err(|e| {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Could not get new block template: {}",
+                                        e
+                                    );
+                                    obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
+                                })?;
+                        self.data_cache
+                            .set_cuckaroo_new_block_template(new_template.clone(), *metadata.best_block_hash())
+                            .await;
+                        new_template
+                    },
+                }
             },
         };
 

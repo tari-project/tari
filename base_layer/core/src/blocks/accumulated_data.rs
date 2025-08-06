@@ -123,7 +123,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             field: "Current achieved difficulty",
         })?;
 
-        let (monero_randomx_diff, tari_randomx_diff, sha3x_diff) = match achieved_target.pow_algo() {
+        let (monero_randomx_diff, tari_randomx_diff, sha3x_diff, cuckaroo_diff) = match achieved_target.pow_algo() {
             PowAlgorithm::RandomXM => (
                 previous_accum
                     .accumulated_monero_randomx_difficulty
@@ -131,6 +131,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_tari_randomx_difficulty,
                 previous_accum.accumulated_sha3x_difficulty,
+                previous_accum.accumulated_cuckaroo_difficulty,
             ),
             PowAlgorithm::RandomXT => (
                 previous_accum.accumulated_monero_randomx_difficulty,
@@ -139,6 +140,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_sha3x_difficulty,
+                previous_accum.accumulated_cuckaroo_difficulty,
             ),
             PowAlgorithm::Sha3x => (
                 previous_accum.accumulated_monero_randomx_difficulty,
@@ -147,10 +149,17 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .accumulated_sha3x_difficulty
                     .checked_add_difficulty(achieved_target.target())
                     .ok_or(BlockError::DifficultyOverflow)?,
+                previous_accum.accumulated_cuckaroo_difficulty,
             ),
-            PowAlgorithm::Cuckaroo => {
-                todo!()
-            },
+            PowAlgorithm::Cuckaroo => (
+                previous_accum.accumulated_monero_randomx_difficulty,
+                previous_accum.accumulated_tari_randomx_difficulty,
+                previous_accum.accumulated_sha3x_difficulty,
+                previous_accum
+                    .accumulated_cuckaroo_difficulty
+                    .checked_add_difficulty(achieved_target.target())
+                    .ok_or(BlockError::DifficultyOverflow)?,
+            ),
         };
 
         let total_kernel_offset = self
@@ -171,22 +180,24 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             accumulated_monero_randomx_difficulty: monero_randomx_diff,
             accumulated_tari_randomx_difficulty: tari_randomx_diff,
             accumulated_sha3x_difficulty: sha3x_diff,
+            accumulated_cuckaroo_difficulty: cuckaroo_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
             target: LOG_TARGET,
-            "Calculated: Tot_acc_diff {}, Monero RandomX {}, Tari RandomX {}, SHA3 {}",
+            "Calculated: Tot_acc_diff {}, Monero RandomX {}, Tari RandomX {}, SHA3 {}, Cuckaroo {}",
             result.total_accumulated_difficulty,
             result.accumulated_monero_randomx_difficulty,
             result.accumulated_tari_randomx_difficulty,
             result.accumulated_sha3x_difficulty,
+            result.accumulated_cuckaroo_difficulty,
         );
         Ok(result)
     }
 }
 
 /// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
-#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct BlockHeaderAccumulatedData {
     /// The block hash.
     pub hash: HashOutput,
@@ -199,20 +210,52 @@ pub struct BlockHeaderAccumulatedData {
     pub total_accumulated_difficulty: U512,
     /// The total accumulated difficulty for Merged mined monero RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
+    accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
+    accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
+    accumulated_sha3x_difficulty: AccumulatedDifficulty,
+    /// The total accumulated difficulty for Cuckaroo proof of work for all blocks since Genesis,
+    accumulated_cuckaroo_difficulty: AccumulatedDifficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
 
 impl BlockHeaderAccumulatedData {
+    pub fn genesis(hash: HashOutput, total_kernel_offset: PrivateKey) -> Self {
+        Self {
+            hash,
+            total_kernel_offset,
+            achieved_difficulty: Difficulty::min(),
+            total_accumulated_difficulty: 1.into(),
+            accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
+            target_difficulty: Difficulty::min(),
+        }
+    }
+
     pub fn builder(previous: &BlockHeaderAccumulatedData) -> BlockHeaderAccumulatedDataBuilder<'_> {
         BlockHeaderAccumulatedDataBuilder::from_previous(previous)
+    }
+
+    pub fn accumulated_monero_randomx_difficulty(&self) -> AccumulatedDifficulty {
+        self.accumulated_monero_randomx_difficulty
+    }
+
+    pub fn accumulated_tari_randomx_difficulty(&self) -> AccumulatedDifficulty {
+        self.accumulated_tari_randomx_difficulty
+    }
+
+    pub fn accumulated_sha3x_difficulty(&self) -> AccumulatedDifficulty {
+        self.accumulated_sha3x_difficulty
+    }
+
+    pub fn accumulated_cuckaroo_difficulty(&self) -> AccumulatedDifficulty {
+        self.accumulated_cuckaroo_difficulty
     }
 }
 

@@ -90,28 +90,28 @@ message HistoricalBlock {
     // The underlying block
     Block block = 3;
     // Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
-    BlockHeaderAccumulatedData accumulated_data = 4;
+    // BlockHeaderAccumulatedData accumulated_data = 4;
 }
 
-// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
-message BlockHeaderAccumulatedData {
-    // The achieved difficulty for solving the current block using the specified proof of work algorithm.
-    uint64 achieved_difficulty = 1;
-    // The total accumulated difficulty for Monero RandomX proof of work for all blocks since Genesis,
-    // but not including this block, tracked separately.
-    bytes accumulated_monero_randomx_difficulty = 2;
-    // The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
-    // but not including this block, tracked separately.
-    bytes accumulated_tari_randomx_difficulty = 8;
-    // The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
-    // but not including this block, tracked separately.
-    bytes accumulated_sha3x_difficulty = 3;
-    // The target difficulty for solving the current block using the specified proof of work algorithm.
-    uint64 target_difficulty = 4;
-    // The total accumulated offset for all kernels in the block.
-    bytes total_kernel_offset = 5;
-    // The block hash
-    bytes hash = 6;
-    // The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked separately.
-    bytes total_accumulated_difficulty = 7;
-}
+// // Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
+// message BlockHeaderAccumulatedData {
+//     // The achieved difficulty for solving the current block using the specified proof of work algorithm.
+//     uint64 achieved_difficulty = 1;
+//     // The total accumulated difficulty for Monero RandomX proof of work for all blocks since Genesis,
+//     // but not including this block, tracked separately.
+//     bytes accumulated_monero_randomx_difficulty = 2;
+//     // The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
+//     // but not including this block, tracked separately.
+//     bytes accumulated_tari_randomx_difficulty = 8;
+//     // The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
+//     // but not including this block, tracked separately.
+//     bytes accumulated_sha3x_difficulty = 3;
+//     // The target difficulty for solving the current block using the specified proof of work algorithm.
+//     uint64 target_difficulty = 4;
+//     // The total accumulated offset for all kernels in the block.
+//     bytes total_kernel_offset = 5;
+//     // The block hash
+//     bytes hash = 6;
+//     // The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked separately.
+//     bytes total_accumulated_difficulty = 7;
+// }

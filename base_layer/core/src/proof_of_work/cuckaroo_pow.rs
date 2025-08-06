@@ -38,7 +38,7 @@ pub enum CuckarooVerificationError {
 pub fn cuckaroo_result(
     header: &BlockHeader,
     required_cycle_length: usize,
-    edge_bits: u32,
+    edge_bits: u8,
 ) -> Result<Vec<u8>, anyhow::Error> {
     let pow = header.pow.to_bytes();
 
@@ -90,7 +90,7 @@ fn verify(
     siphash_keys: &[u64; 4],
     nonces: &[u64],
     cycle_length: usize,
-    edge_bits: u32,
+    edge_bits: u8,
 ) -> Result<(), CuckarooVerificationError> {
     let node_mask = (1u64 << edge_bits) - 1;
     let mut uvs = Vec::with_capacity(cycle_length);
@@ -196,7 +196,7 @@ fn verify_from_edges(
 pub fn cuckaroo_difficulty(
     header: &BlockHeader,
     required_cycle_length: usize,
-    num_bits: u32,
+    num_bits: u8,
 ) -> Result<Difficulty, anyhow::Error> {
     let difficulty = cuckaroo_result(header, required_cycle_length, num_bits)?;
     Ok(Difficulty::big_endian_difficulty(&difficulty)?)

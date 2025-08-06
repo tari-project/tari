@@ -77,6 +77,8 @@ pub enum CommsInterfaceError {
     DifficultyError(#[from] DifficultyError),
     #[error("Transaction error: {0}")]
     TransactionError(#[from] TransactionError),
+    #[error("An error occurred: {0}")]
+    Other(#[from] anyhow::Error),
 }
 
 impl CommsInterfaceError {
@@ -107,6 +109,7 @@ impl CommsInterfaceError {
             CommsInterfaceError::InternalError(_) |
             CommsInterfaceError::ApiError(_) |
             CommsInterfaceError::BlockError(_) |
+            CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }
     }
