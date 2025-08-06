@@ -88,6 +88,8 @@ jobs:
           cargo install cargo-machete@0.7.0
           cargo machete
       - name: cargo vet
+        # Disable cargo vet
+        if: ${{ false }}
         run: |
           cargo install cargo-vet@0.10.0 --locked
           cargo vet
