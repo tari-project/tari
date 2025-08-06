@@ -481,9 +481,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     best_block_header.accumulated_data().total_accumulated_difficulty,
                 );
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    actual: None,
-                    local: best_block_header.accumulated_data().total_accumulated_difficulty,
+                    claimed: Box::new(sync_peer.claimed_chain_metadata().accumulated_difficulty()),
+                    actual: Box::new(None),
+                    local: Box::new(best_block_header.accumulated_data().total_accumulated_difficulty),
                 });
             }
             debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.node_id());
@@ -564,9 +564,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         info!(target: LOG_TARGET, "Starting header sync from peer {}", sync_peer);
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
-        let mut has_switched_to_new_chain = false;
-        let pending_len = self.header_validator.valid_headers().len();
-
         // Find the hash to start syncing the rest of the headers.
         // The expectation cannot fail because there has been at least one valid header returned (checked in
         // determine_sync_status)
@@ -579,7 +576,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // If we already have a stronger chain at this point, switch over to it.
         // just in case we happen to be exactly HEADER_SYNC_INITIAL_MAX_HEADERS headers behind.
         let has_better_pow = self.pending_chain_has_higher_pow(&split_info.best_block_header);
-
+        let mut has_switched_to_new_chain = false;
         if has_better_pow {
             debug!(
                 target: LOG_TARGET,
@@ -590,6 +587,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             has_switched_to_new_chain = true;
         }
 
+        let pending_len = self.header_validator.valid_headers().len();
         if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
             // available headers from the peer.
@@ -597,12 +595,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 // Because the pow is less or equal than the current chain the peer had to have lied about their pow
                 debug!(target: LOG_TARGET, "No further headers to download");
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    actual: Some(total_accumulated_difficulty),
-                    local: split_info
-                        .best_block_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
+                    claimed: Box::new(sync_peer.claimed_chain_metadata().accumulated_difficulty()),
+                    actual: Box::new(Some(total_accumulated_difficulty)),
+                    local: Box::new(
+                        split_info
+                            .best_block_header
+                            .accumulated_data()
+                            .total_accumulated_difficulty,
+                    ),
                 });
             }
             // The pow is higher, we swapped to the higher chain, we have all the better chain headers, we can move on
@@ -726,15 +726,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             {
                 // We should only return this error if the peer sent a PoW less than they advertised.
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    actual: self
-                        .header_validator
-                        .current_valid_chain_tip_header()
-                        .map(|h| h.accumulated_data().total_accumulated_difficulty),
-                    local: split_info
-                        .best_block_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
+                    claimed: Box::new(sync_peer.claimed_chain_metadata().accumulated_difficulty()),
+                    actual: Box::new(
+                        self.header_validator
+                            .current_valid_chain_tip_header()
+                            .map(|h| h.accumulated_data().total_accumulated_difficulty),
+                    ),
+                    local: Box::new(
+                        split_info
+                            .best_block_header
+                            .accumulated_data()
+                            .total_accumulated_difficulty,
+                    ),
                 });
             } else {
                 warn!(
@@ -761,12 +764,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // some other external factor like a disconnect etc), we detect the and ban the peer.
         if last_total_accumulated_difficulty < claimed_total_accumulated_diff {
             return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                claimed: claimed_total_accumulated_diff,
-                actual: Some(last_total_accumulated_difficulty),
-                local: split_info
-                    .best_block_header
-                    .accumulated_data()
-                    .total_accumulated_difficulty,
+                claimed: Box::new(claimed_total_accumulated_diff),
+                actual: Box::new(Some(last_total_accumulated_difficulty)),
+                local: Box::new(
+                    split_info
+                        .best_block_header
+                        .accumulated_data()
+                        .total_accumulated_difficulty,
+                ),
             });
         }
 

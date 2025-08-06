@@ -64,6 +64,82 @@ struct State {
     vm_key: Vec<(u64, FixedHash)>,
 }
 
+impl State {
+    /// Add a new header to the valid headers list, ensuring that it is valid in relation to the last header; this can
+    /// only verify validity, not correctness.
+    pub fn push_valid_header(&mut self, header: ChainHeader) -> Result<(), BlockHeaderSyncError> {
+        if let Some(prev) = self.valid_headers.last() {
+            // Verify chained hashes
+            if &header.header().prev_hash != prev.hash() {
+                return Err(BlockHeaderSyncError::InternalStateError(format!(
+                    "Header #{} has mismatching prev_hash: expected {}, got {}",
+                    header.header().height,
+                    prev.hash().to_hex(),
+                    header.header().prev_hash.to_hex()
+                )));
+            }
+
+            // Verify heights
+            if header.header().height != prev.header().height + 1 {
+                return Err(BlockHeaderSyncError::InternalStateError(format!(
+                    "Header #{} is not sequential after #{}",
+                    header.header().height,
+                    prev.header().height
+                )));
+            }
+
+            // Verify accumulated difficulties
+            // - SHA3X
+            if header.accumulated_data().accumulated_sha3x_difficulty <
+                prev.accumulated_data().accumulated_sha3x_difficulty
+            {
+                return Err(BlockHeaderSyncError::InternalStateError(format!(
+                    "Header #{} has invalid SHA3X accumulated difficulty: new {} < prev {}",
+                    header.header().height,
+                    header.accumulated_data().accumulated_sha3x_difficulty,
+                    prev.accumulated_data().accumulated_sha3x_difficulty,
+                )));
+            }
+            // - RandomXM
+            if header.accumulated_data().accumulated_tari_randomx_difficulty <
+                prev.accumulated_data().accumulated_tari_randomx_difficulty
+            {
+                return Err(BlockHeaderSyncError::InternalStateError(format!(
+                    "Header #{} has invalid RandomXT accumulated difficulty: new {} < prev {}",
+                    header.header().height,
+                    header.accumulated_data().accumulated_tari_randomx_difficulty,
+                    prev.accumulated_data().accumulated_tari_randomx_difficulty,
+                )));
+            }
+            // - RandomXT
+            if header.accumulated_data().accumulated_monero_randomx_difficulty <
+                prev.accumulated_data().accumulated_monero_randomx_difficulty
+            {
+                return Err(BlockHeaderSyncError::InternalStateError(format!(
+                    "Header #{} has invalid RandomXM accumulated difficulty: new {} < prev {}",
+                    header.header().height,
+                    header.accumulated_data().accumulated_monero_randomx_difficulty,
+                    prev.accumulated_data().accumulated_monero_randomx_difficulty,
+                )));
+            }
+            // - Total accumulated difficulty
+            if header.accumulated_data().total_accumulated_difficulty <=
+                prev.accumulated_data().total_accumulated_difficulty
+            {
+                return Err(BlockHeaderSyncError::InternalStateError(format!(
+                    "Header #{} has non-increasing accumulated difficulty: new {} <= prev {}",
+                    header.header().height,
+                    header.accumulated_data().total_accumulated_difficulty,
+                    prev.accumulated_data().total_accumulated_difficulty,
+                )));
+            }
+        }
+
+        self.valid_headers.push(header);
+        Ok(())
+    }
+}
+
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub fn new(db: AsyncBlockchainDb<B>, consensus_rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
         let difficulty_calculator = DifficultyCalculator::new(consensus_rules.clone(), randomx_factory);
@@ -235,7 +311,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             // we need to save the hash of this header and height
             state.vm_key.push((chain_header.header().height, *chain_header.hash()));
         }
-        state.valid_headers.push(chain_header);
+        state.push_valid_header(chain_header)?;
 
         Ok(total_accumulated_difficulty)
     }
@@ -404,6 +480,258 @@ mod test {
             unpack_enum!(BlockHeaderValidationError::InvalidHeight { actual, expected } = header_err);
             assert_eq!(actual, 14);
             assert_eq!(expected, 13);
+        }
+    }
+
+    mod push_valid_header_tests {
+        use super::*;
+        use crate::{
+            blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+            proof_of_work::AccumulatedDifficulty,
+        };
+
+        fn setup_state() -> State {
+            let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+            State {
+                current_height: 0,
+                timestamps: RollingVec::new(10),
+                target_difficulties: TargetDifficulties::new(&rules, 0).unwrap(),
+                previous_accum: BlockHeaderAccumulatedData {
+                    accumulated_sha3x_difficulty: AccumulatedDifficulty::default(),
+                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::default(),
+                    accumulated_monero_randomx_difficulty: AccumulatedDifficulty::default(),
+                    total_accumulated_difficulty: U512::zero(),
+                    ..Default::default()
+                },
+                previous_header: BlockHeader::new(0),
+                valid_headers: Vec::new(),
+                vm_key: Vec::new(),
+            }
+        }
+
+        #[test]
+        fn it_adds_valid_header() {
+            let mut state = setup_state();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 1;
+            let header1 = ChainHeader::try_construct(block_header.clone(), BlockHeaderAccumulatedData {
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u128(100).unwrap(),
+                accumulated_tari_randomx_difficulty: AccumulatedDifficulty::from_u128(100).unwrap(),
+                accumulated_monero_randomx_difficulty: AccumulatedDifficulty::from_u128(100).unwrap(),
+                total_accumulated_difficulty: U512::from(300),
+                hash: block_header.hash(),
+                ..Default::default()
+            })
+            .unwrap();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 2;
+            block_header.prev_hash = *header1.hash();
+            let header2 = ChainHeader::try_construct(block_header.clone(), BlockHeaderAccumulatedData {
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u128(200).unwrap(),
+                accumulated_tari_randomx_difficulty: AccumulatedDifficulty::from_u128(200).unwrap(),
+                accumulated_monero_randomx_difficulty: AccumulatedDifficulty::from_u128(200).unwrap(),
+                total_accumulated_difficulty: U512::from(600),
+                hash: block_header.hash(),
+                ..Default::default()
+            })
+            .unwrap();
+
+            // Add the first header
+            state.push_valid_header(header1.clone()).unwrap();
+            assert_eq!(state.valid_headers.len(), 1);
+            assert_eq!(state.valid_headers[0].header().height, 1);
+
+            // Add the second header
+            state.push_valid_header(header2.clone()).unwrap();
+            assert_eq!(state.valid_headers.len(), 2);
+            assert_eq!(state.valid_headers[1].header().height, 2);
+        }
+
+        #[test]
+        fn it_fails_on_invalid_prev_hash() {
+            let mut state = setup_state();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 1;
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                ..Default::default()
+            };
+            let header1 = ChainHeader::try_construct(block_header, accum_data).unwrap();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 2;
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                ..Default::default()
+            };
+            let header2 = ChainHeader::try_construct(block_header, accum_data).unwrap();
+
+            state.push_valid_header(header1).unwrap();
+            let result = state.push_valid_header(header2);
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Header #2 has mismatching prev_hash:"), "{}", err);
+        }
+
+        #[test]
+        fn it_fails_on_non_sequential_height() {
+            let mut state = setup_state();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 1;
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                ..Default::default()
+            };
+            let header1 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 3; // Non-sequential height
+            block_header.prev_hash = *header1.hash();
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                ..Default::default()
+            };
+            let header2 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            state.push_valid_header(header1).unwrap();
+            let result = state.push_valid_header(header2);
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("Header #3 is not sequential after #1"), "{}", err);
+        }
+
+        #[test]
+        fn it_fails_on_invalid_sha3x_difficulty() {
+            let mut state = setup_state();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 1;
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u128(100).unwrap(),
+                ..Default::default()
+            };
+            let header1 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 2;
+            block_header.prev_hash = *header1.hash();
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u128(99).unwrap(),
+                ..Default::default()
+            };
+            let header2 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            state.push_valid_header(header1).unwrap();
+            let result = state.push_valid_header(header2);
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("Header #2 has invalid SHA3X accumulated difficulty:"),
+                "{}",
+                err
+            );
+        }
+
+        #[test]
+        fn it_fails_on_invalid_tari_randomx_difficulty() {
+            let mut state = setup_state();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 1;
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                accumulated_tari_randomx_difficulty: AccumulatedDifficulty::from_u128(100).unwrap(),
+                ..Default::default()
+            };
+            let header1 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 2;
+            block_header.prev_hash = *header1.hash();
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                accumulated_tari_randomx_difficulty: AccumulatedDifficulty::from_u128(99).unwrap(),
+                ..Default::default()
+            };
+            let header2 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            state.push_valid_header(header1).unwrap();
+            let result = state.push_valid_header(header2);
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("Header #2 has invalid RandomXT accumulated difficulty:"),
+                "{}",
+                err
+            );
+        }
+
+        #[test]
+        fn it_fails_on_invalid_monero_randomx_difficulty() {
+            let mut state = setup_state();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 1;
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                accumulated_monero_randomx_difficulty: AccumulatedDifficulty::from_u128(100).unwrap(),
+                ..Default::default()
+            };
+            let header1 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 2;
+            block_header.prev_hash = *header1.hash();
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                accumulated_monero_randomx_difficulty: AccumulatedDifficulty::from_u128(99).unwrap(),
+                ..Default::default()
+            };
+            let header2 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            state.push_valid_header(header1).unwrap();
+            let result = state.push_valid_header(header2);
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("Header #2 has invalid RandomXM accumulated difficulty:"),
+                "{}",
+                err
+            );
+        }
+
+        #[test]
+        fn it_fails_on_invalid_total_accumulated_difficulty() {
+            let mut state = setup_state();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 1;
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                total_accumulated_difficulty: U512::from(600),
+                ..Default::default()
+            };
+            let header1 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            let mut block_header = BlockHeader::new(1);
+            block_header.height = 2;
+            block_header.prev_hash = *header1.hash();
+            let accum_data = BlockHeaderAccumulatedData {
+                hash: block_header.hash(),
+                total_accumulated_difficulty: U512::from(600),
+                ..Default::default()
+            };
+            let header2 = ChainHeader::try_construct(block_header.clone(), accum_data).unwrap();
+
+            state.push_valid_header(header1).unwrap();
+            let result = state.push_valid_header(header2);
+            let err = result.unwrap_err().to_string();
+            assert!(
+                err.contains("Header #2 has non-increasing accumulated difficulty:"),
+                "{}",
+                err
+            );
         }
     }
 }

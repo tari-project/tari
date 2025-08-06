@@ -83,9 +83,9 @@ pub enum BlockHeaderSyncError {
          {local}"
     )]
     PeerSentInaccurateChainMetadata {
-        claimed: U512,
-        actual: Option<U512>,
-        local: U512,
+        claimed: Box<U512>,
+        actual: Box<Option<U512>>,
+        local: Box<U512>,
     },
     #[error("This peer sent too many headers ({0}) in response to a chain split request")]
     PeerSentTooManyHeaders(usize),
@@ -99,6 +99,8 @@ pub enum BlockHeaderSyncError {
     AllSyncPeersExceedLatency,
     #[error("Unable to get TargetDifficulties: ({0})")]
     TargetDifficultiesError(String),
+    #[error("Inconsistent header state detected: ({0})")]
+    InternalStateError(String),
 }
 
 impl BlockHeaderSyncError {
@@ -112,7 +114,10 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
-            BlockHeaderSyncError::PeerNotFound => None,
+            BlockHeaderSyncError::PeerNotFound |
+            BlockHeaderSyncError::InternalStateError(_) => None,
+
+            // possible ban
             BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),
 
             // short ban
