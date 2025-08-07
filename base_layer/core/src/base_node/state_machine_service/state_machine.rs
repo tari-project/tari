@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::{future::Future, sync::Arc, time::Duration};
 
 use futures::{future, future::Either};
@@ -45,6 +46,7 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };
+
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
@@ -150,7 +152,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         #[allow(clippy::enum_glob_use)]
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::Lagging};
         match (state, event) {
+            // Transition to 'Listening'
             (Starting(s), Initialized(network_silence)) => Listening(s.into(), network_silence),
+
+            // Transition to 'HeaderSync'
             (
                 Listening(..),
                 FallenBehind(Lagging {
@@ -160,42 +165,75 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 }),
             ) => {
                 db.set_disable_add_block_flag();
-                HeaderSync(HeaderSyncState::new(sync_peers, local_metadata))
+                HeaderSync(HeaderSyncState::new(sync_peers, local_metadata, None))
             },
+
+            // Transition to 'HeaderSync'
+            (BlockSync(_s), ResumeHeaderSync(sp, md, ss)) => {
+                db.set_disable_add_block_flag();
+                HeaderSync(HeaderSyncState::new(sp, md, Some(*ss)))
+            },
+
+            // Transition to 'Waiting'
             (HeaderSync(s), HeaderSyncFailed(_err)) => {
                 db.clear_disable_add_block_flag();
                 Waiting(s.into())
             },
+
+            // Transition to 'Listening'
             (HeaderSync(s), Continue | NetworkSilence) => {
                 db.clear_disable_add_block_flag();
                 Listening(s.into(), false)
             },
+
+            // Transition to 'DecideNextSync'
             (HeaderSync(s), HeadersSynchronized(..)) => DecideNextSync(s.into()),
 
+            // Transition to 'HorizonStateSync'
             (DecideNextSync(_), ProceedToHorizonSync(peers)) => HorizonStateSync(peers.into()),
+
+            // Transition to 'Listening'
             (DecideNextSync(s), Continue) => {
                 db.clear_disable_add_block_flag();
                 Listening(s.into(), false)
             },
-            (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
+
+            // Transition to 'BlockSync'
+            (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(Box::new(s.into())),
+
+            // Transition to 'Waiting'
             (HorizonStateSync(s), HorizonStateSyncFailure) => {
                 db.clear_disable_add_block_flag();
                 Waiting(s.into())
             },
 
-            (DecideNextSync(_), ProceedToBlockSync(peers)) => BlockSync(peers.into()),
-            (BlockSync(s), BlocksSynchronized) => {
-                db.clear_disable_add_block_flag();
-                Listening(s.into(), false)
-            },
-            (BlockSync(s), BlockSyncFailed) => {
-                db.clear_disable_add_block_flag();
-                Waiting(s.into())
+            // Transition to 'BlockSync'
+            (DecideNextSync(s), ProceedToBlockSync(peers)) => {
+                BlockSync(Box::new((peers, s.header_sync_session_status()).into()))
             },
 
+            // Transition to 'Listening'
+            (BlockSync(s), BlocksSynchronized) => {
+                db.clear_disable_add_block_flag();
+                Listening((*s).into(), false)
+            },
+
+            // Transition to 'Waiting'
+            (BlockSync(s), BlockSyncFailed) => {
+                db.clear_disable_add_block_flag();
+                Waiting((*s).into())
+            },
+
+            // Transition to 'Listening'
             (Waiting(s), Continue) => Listening(s.into(), false),
+
+            // Panic on FatalError
             (_, FatalError(s)) => panic!("{}", s),
+
+            // Transition to 'Shutdown'
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
+
+            // Unhandled event
             (s, e) => {
                 warn!(
                     target: LOG_TARGET,

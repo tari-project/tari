@@ -30,7 +30,7 @@ use crate::{
     base_node::{
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, HorizonStateSync, StateEvent, StateInfo, StatusInfo},
-        sync::{BlockSynchronizer, SyncPeer},
+        sync::{BlockSynchronizer, HeaderSyncSessionStatus, SyncPeer, TipHeaderSyncStatus},
         BaseNodeStateMachine,
     },
     chain_storage::{BlockAddResult, BlockchainBackend},
@@ -42,11 +42,12 @@ const LOG_TARGET: &str = "c::bn::block_sync";
 pub struct BlockSync {
     sync_peers: Vec<SyncPeer>,
     is_synced: bool,
+    header_sync_session_status: Option<HeaderSyncSessionStatus>,
 }
 
 impl BlockSync {
-    // converting u64 to i64 is okay as the its only used for metrics
     #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::too_many_lines)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
@@ -56,6 +57,7 @@ impl BlockSync {
             shared.db.clone(),
             shared.connectivity.clone(),
             &mut self.sync_peers,
+            self.header_sync_session_status.clone(),
             shared.sync_validators.block_body.clone(),
         );
 
@@ -104,10 +106,24 @@ impl BlockSync {
 
         let timer = Instant::now();
         let state_event = match synchronizer.synchronize().await {
-            Ok(()) => {
+            Ok(metadata) => {
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
-                self.is_synced = true;
-                StateEvent::BlocksSynchronized
+                if let Some(mut session) = self.header_sync_session_status.clone() {
+                    match session.tip_header_sync_status() {
+                        TipHeaderSyncStatus::NotAttempted | TipHeaderSyncStatus::Reached => {
+                            self.is_synced = true;
+                            StateEvent::BlocksSynchronized
+                        },
+                        TipHeaderSyncStatus::NotReached => {
+                            self.is_synced = false;
+                            session.last_committed_block_hash = Some(*metadata.best_block_hash());
+                            StateEvent::ResumeHeaderSync(self.sync_peers.clone(), metadata, Box::new(session))
+                        },
+                    }
+                } else {
+                    self.is_synced = true;
+                    StateEvent::BlocksSynchronized
+                }
             },
             Err(err) => {
                 let _ignore = shared.status_event_sender.send(StatusInfo {
@@ -146,8 +162,19 @@ impl BlockSync {
         state_event
     }
 
+    /// Returns true if the block sync is complete and the node is synced.
     pub fn is_synced(&self) -> bool {
         self.is_synced
+    }
+
+    /// Returns the sync peers used for block synchronization.
+    pub fn into_sync_peers(&self) -> Vec<SyncPeer> {
+        self.sync_peers.clone()
+    }
+
+    /// Returns the header sync session status if it exists.
+    pub fn header_sync_session_status(&self) -> Option<HeaderSyncSessionStatus> {
+        self.header_sync_session_status.clone()
     }
 }
 
@@ -162,6 +189,17 @@ impl From<Vec<SyncPeer>> for BlockSync {
         Self {
             sync_peers,
             is_synced: false,
+            header_sync_session_status: None,
+        }
+    }
+}
+
+impl From<(Vec<SyncPeer>, HeaderSyncSessionStatus)> for BlockSync {
+    fn from((sync_peers, session): (Vec<SyncPeer>, HeaderSyncSessionStatus)) -> Self {
+        Self {
+            sync_peers,
+            is_synced: false,
+            header_sync_session_status: Some(session),
         }
     }
 }

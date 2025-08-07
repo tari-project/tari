@@ -36,7 +36,15 @@ pub use block_sync::{BlockSyncError, BlockSynchronizer};
 #[cfg(feature = "base_node")]
 mod header_sync;
 #[cfg(feature = "base_node")]
-pub use header_sync::{AttemptSyncResult, BlockHeaderSyncError, HeaderSyncStatus, HeaderSynchronizer};
+pub use header_sync::{
+    AttemptSyncResult,
+    BlockHeaderSyncError,
+    HeaderSyncSessionStatus,
+    HeaderSyncStatus,
+    HeaderSynchronizer,
+    TipBlockSyncStatus,
+    TipHeaderSyncStatus,
+};
 
 #[cfg(feature = "base_node")]
 mod horizon_state_sync;

@@ -26,4 +26,11 @@ pub use error::BlockHeaderSyncError;
 mod validator;
 
 mod synchronizer;
-pub use synchronizer::{AttemptSyncResult, HeaderSyncStatus, HeaderSynchronizer};
+pub use synchronizer::{
+    AttemptSyncResult,
+    HeaderSyncSessionStatus,
+    HeaderSyncStatus,
+    HeaderSynchronizer,
+    TipBlockSyncStatus,
+    TipHeaderSyncStatus,
+};

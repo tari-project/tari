@@ -32,11 +32,12 @@ use crate::{
     base_node::{
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, StateEvent, StateInfo, StatusInfo},
-        sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeer},
+        sync::{BlockHeaderSyncError, HeaderSyncSessionStatus, HeaderSynchronizer, SyncPeer, TipHeaderSyncStatus},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
 };
+
 const LOG_TARGET: &str = "c::bn::header_sync";
 
 #[derive(Clone, Debug)]
@@ -44,10 +45,15 @@ pub struct HeaderSyncState {
     sync_peers: Vec<SyncPeer>,
     is_synced: bool,
     local_metadata: ChainMetadata,
+    header_sync_session_status: Option<HeaderSyncSessionStatus>,
 }
 
 impl HeaderSyncState {
-    pub fn new(mut sync_peers: Vec<SyncPeer>, local_metadata: ChainMetadata) -> Self {
+    pub fn new(
+        mut sync_peers: Vec<SyncPeer>,
+        local_metadata: ChainMetadata,
+        header_sync_session_status: Option<HeaderSyncSessionStatus>,
+    ) -> Self {
         // Sort by latency lowest to highest
         sync_peers.sort_by(|a, b| match a.claimed_difficulty().cmp(&b.claimed_difficulty()) {
             Ordering::Less => Ordering::Less,
@@ -67,6 +73,7 @@ impl HeaderSyncState {
             sync_peers,
             is_synced: false,
             local_metadata,
+            header_sync_session_status,
         }
     }
 
@@ -76,6 +83,10 @@ impl HeaderSyncState {
 
     pub fn into_sync_peers(self) -> Vec<SyncPeer> {
         self.sync_peers
+    }
+
+    pub fn header_sync_session_status(&self) -> Option<HeaderSyncSessionStatus> {
+        self.header_sync_session_status.clone()
     }
 
     fn remove_sync_peer(&mut self, node_id: &NodeId) {
@@ -122,6 +133,7 @@ impl HeaderSyncState {
             &mut self.sync_peers,
             shared.randomx_factory.clone(),
             &self.local_metadata,
+            self.header_sync_session_status.clone(),
         );
 
         let status_event_sender = shared.status_event_sender.clone();
@@ -172,15 +184,19 @@ impl HeaderSyncState {
                     sync_peer,
                     timer.elapsed()
                 );
-                // Move the sync peer used in header sync to the front of the queue
-                if let Some(pos) = self.sync_peers.iter().position(|p| *p == sync_peer) {
-                    if pos > 0 {
-                        let sync_peer = self.sync_peers.remove(pos);
-                        self.sync_peers.insert(0, sync_peer);
+                self.header_sync_session_status = Some(sync_result.session_status.clone());
+                if sync_result.session_status.tip_header_sync_status() == TipHeaderSyncStatus::Reached {
+                    // Move the sync peer used in header sync to the front of the queue
+                    if let Some(pos) = self.sync_peers.iter().position(|p| *p == sync_peer) {
+                        if pos > 0 {
+                            let sync_peer = self.sync_peers.remove(pos);
+                            self.sync_peers.insert(0, sync_peer);
+                        }
                     }
+                    // Synced only if we reached the tip
+                    self.is_synced = true;
                 }
-                self.is_synced = true;
-                StateEvent::HeadersSynchronized(sync_peer, sync_result)
+                StateEvent::HeadersSynchronized(sync_peer, Box::new(sync_result))
             },
             Err(err) => {
                 let _ignore = shared.status_event_sender.send(StatusInfo {

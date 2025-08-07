@@ -25,10 +25,10 @@ use log::*;
 use crate::{
     base_node::{
         state_machine_service::{
-            states::{HeaderSyncState, StateEvent},
+            states::{BlockSync, HeaderSyncState, StateEvent},
             BaseNodeStateMachine,
         },
-        sync::SyncPeer,
+        sync::{HeaderSyncSessionStatus, SyncPeer},
     },
     chain_storage::BlockchainBackend,
 };
@@ -39,6 +39,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::sync_decide";
 pub struct DecideNextSync {
     sync_peers: Vec<SyncPeer>,
     is_synced: bool,
+    header_sync_session_status: HeaderSyncSessionStatus,
 }
 
 impl DecideNextSync {
@@ -95,8 +96,7 @@ impl DecideNextSync {
             }
         }
 
-        // This is not a pruned node or horizon sync is not possible, try for block sync
-
+        // This is not a header-block sync session, try for block sync
         // Filter sync peers that are able to provide full blocks from our current tip
         let sync_peers = self
             .sync_peers
@@ -120,13 +120,33 @@ impl DecideNextSync {
         );
         ProceedToBlockSync(sync_peers)
     }
+
+    /// Return the header sync session status
+    pub fn header_sync_session_status(&self) -> HeaderSyncSessionStatus {
+        self.header_sync_session_status.clone()
+    }
 }
 
 impl From<HeaderSyncState> for DecideNextSync {
     fn from(sync: HeaderSyncState) -> Self {
         let is_synced = sync.is_synced();
+        let header_sync_session_status = sync.header_sync_session_status().unwrap_or_default();
         let mut sync_peers = sync.into_sync_peers();
         sync_peers.sort();
-        DecideNextSync { sync_peers, is_synced }
+        DecideNextSync {
+            sync_peers,
+            is_synced,
+            header_sync_session_status,
+        }
+    }
+}
+
+impl From<BlockSync> for DecideNextSync {
+    fn from(sync: BlockSync) -> Self {
+        Self {
+            sync_peers: sync.into_sync_peers(),
+            is_synced: sync.is_synced(),
+            header_sync_session_status: sync.header_sync_session_status().unwrap_or_default(),
+        }
     }
 }

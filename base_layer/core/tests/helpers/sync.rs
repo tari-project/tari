@@ -79,6 +79,7 @@ pub fn initialize_sync_headers_with_ping_pong_data(
             None,
         ))],
         local_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
+        None,
     )
 }
 
@@ -381,6 +382,7 @@ pub fn state_event(event: &StateEvent) -> String {
         StateEvent::HorizonStateSynchronized => "HorizonStateSynchronized".to_string(),
         StateEvent::HorizonStateSyncFailure => "HorizonStateSyncFailure".to_string(),
         StateEvent::BlocksSynchronized => "BlocksSynchronized".to_string(),
+        StateEvent::ResumeHeaderSync(..) => "ResumeHeaderSync".to_string(),
         StateEvent::BlockSyncFailed => "BlockSyncFailed".to_string(),
         StateEvent::FallenBehind(_) => "FallenBehind".to_string(),
         StateEvent::NetworkSilence => "NetworkSilence".to_string(),

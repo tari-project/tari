@@ -36,7 +36,7 @@ use crate::base_node::{
         Starting,
         Waiting,
     },
-    sync::{AttemptSyncResult, HorizonSyncInfo, SyncPeer},
+    sync::{AttemptSyncResult, HeaderSyncSessionStatus, HorizonSyncInfo, SyncPeer},
 };
 
 #[derive(Debug)]
@@ -45,7 +45,7 @@ pub enum BaseNodeState {
     HeaderSync(HeaderSyncState),
     DecideNextSync(DecideNextSync),
     HorizonStateSync(HorizonStateSync),
-    BlockSync(BlockSync),
+    BlockSync(Box<BlockSync>),
     // The best network chain metadata
     Listening(Listening, bool),
     // We're in a paused state, and will return to Listening after a timeout
@@ -56,13 +56,14 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized(bool), // Initialized with or without network silence
-    HeadersSynchronized(SyncPeer, AttemptSyncResult),
+    HeadersSynchronized(SyncPeer, Box<AttemptSyncResult>),
     HeaderSyncFailed(String),
     ProceedToHorizonSync(Vec<SyncPeer>),
     ProceedToBlockSync(Vec<SyncPeer>),
     HorizonStateSynchronized,
     HorizonStateSyncFailure,
     BlocksSynchronized,
+    ResumeHeaderSync(Vec<SyncPeer>, ChainMetadata, Box<HeaderSyncSessionStatus>),
     BlockSyncFailed,
     FallenBehind(SyncStatus),
     NetworkSilence,
@@ -143,13 +144,14 @@ impl Display for StateEvent {
         use StateEvent::*;
         match self {
             Initialized(..) => write!(f, "Initialized"),
-            BlocksSynchronized => write!(f, "Synchronised Blocks"),
             HeadersSynchronized(peer, result) => write!(f, "Headers Synchronized from peer `{}` ({:?})", peer, result),
             HeaderSyncFailed(err) => write!(f, "Header Synchronization Failed ({})", err),
             ProceedToHorizonSync(_) => write!(f, "Proceed to horizon sync"),
             ProceedToBlockSync(_) => write!(f, "Proceed to block sync"),
             HorizonStateSynchronized => write!(f, "Horizon State Synchronized"),
             HorizonStateSyncFailure => write!(f, "Horizon State Synchronization Failed"),
+            BlocksSynchronized => write!(f, "Synchronised Blocks"),
+            ResumeHeaderSync(..) => write!(f, "Header-block sync session in progress, resume header sync"),
             BlockSyncFailed => write!(f, "Block Synchronization Failed"),
             FallenBehind(s) => write!(f, "Fallen behind main chain - {}", s),
             NetworkSilence => write!(f, "Network Silence"),

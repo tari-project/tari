@@ -236,7 +236,7 @@ impl Display for BlockHeaderAccumulatedData {
 
 /// A block linked to a chain.
 /// A ChainHeader guarantees (i.e cannot be constructed) that the block and accumulated data correspond by hash.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 pub struct ChainHeader {
     header: BlockHeader,
     accumulated_data: BlockHeaderAccumulatedData,
