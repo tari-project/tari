@@ -38,6 +38,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
+        cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -141,7 +142,13 @@ pub fn check_target_difficulty(
         PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
         PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
-        PowAlgorithm::Cuckaroo => todo!(),
+        PowAlgorithm::Cuckaroo => {
+            let cuckaroo_cycle_length = consensus
+                .consensus_constants(block_header.height)
+                .cuckaroo_cycle_length();
+            let cuckaroo_bits = consensus.consensus_constants(block_header.height).cuckaroo_edge_bits();
+            cuckaroo_difficulty(block_header, cuckaroo_cycle_length, cuckaroo_bits)?
+        },
     };
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
         Some(achieved_target) => Ok(achieved_target),

@@ -168,6 +168,8 @@ pub enum ValidationError {
     OutputSpendRuleDisallow { output_type: OutputType, details: String },
     #[error("Output type '{output_type}' does not match sidechain data")]
     OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
+    #[error("Other error: {0}")]
+    Other(#[from] anyhow::Error),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -242,7 +244,9 @@ impl ValidationError {
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
-            ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
+            ValidationError::FatalStorageError(_) |
+            ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
+            ValidationError::Other(_) => None,
         }
     }
 }
