@@ -1191,23 +1191,11 @@ impl LMDBDatabase {
         match version {
             BlockVersion::V0 | BlockVersion::V1 => {
                 let row: LmdbRowBlockHeaderAccumulatedDataV1 = accum_data.into();
-                lmdb_insert(
-                    txn,
-                    &self.header_accumulated_data_db,
-                    &header.height,
-                    &row,
-                    "header_accumulated_data_db",
-                )?;
+                lmdb_insert_typed(txn, &self.header_accumulated_data_db, &header.height, &row)?;
             },
             BlockVersion::V2 => {
                 let row: LmdbRowBlockHeaderAccumulatedDataV2 = accum_data.into();
-                lmdb_insert(
-                    txn,
-                    &self.header_accumulated_data_v2_db,
-                    &header.height,
-                    &row,
-                    "header_accumulated_data_v2_db",
-                )?;
+                lmdb_insert_typed(txn, &self.header_accumulated_data_v2_db, &header.height, &row)?;
             },
         }
 
@@ -1248,6 +1236,12 @@ impl LMDBDatabase {
             )));
         }
 
+        let version = header.version;
+        let block_version = BlockVersion::try_from(version).map_err(|e| ChainStorageError::InvalidArguments {
+            func: "delete_header",
+            arg: "version",
+            message: format!("Invalid blockchain version: {} :{}", version, e),
+        })?;
         let hash = header.hash();
 
         // Check that there are no utxos or kernels linked to this.
@@ -1268,12 +1262,14 @@ impl LMDBDatabase {
 
         lmdb_delete(txn, &self.block_hashes_db, hash.as_slice(), "block_hashes_db")?;
         lmdb_delete(txn, &self.headers_db, &height, "headers_db")?;
-        lmdb_delete(
-            txn,
-            &self.header_accumulated_data_db,
-            &height,
-            "header_accumulated_data_db",
-        )?;
+        match block_version {
+            BlockVersion::V0 | BlockVersion::V1 => {
+                lmdb_delete_typed(txn, &self.header_accumulated_data_db, &height)?;
+            },
+            BlockVersion::V2 => {
+                lmdb_delete_typed(txn, &self.header_accumulated_data_v2_db, &height)?;
+            },
+        }
         lmdb_delete(
             txn,
             &self.kernel_mmr_size_index,
@@ -2587,7 +2583,7 @@ impl BlockchainBackend for LMDBDatabase {
             })?;
 
         let accum_data = self
-            .fetch_header_accumulated_data_by_height(&txn, height)?
+            .fetch_header_accumulated_data_by_height(&txn, height, header.version)?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "BlockHeaderAccumulatedData",
                 field: "height",
@@ -2610,9 +2606,12 @@ impl BlockchainBackend for LMDBDatabase {
         hash: &HashOutput,
     ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let height = self.fetch_height_from_hash(&txn, hash)?;
-        if let Some(h) = height {
-            self.fetch_header_accumulated_data_by_height(&txn, h)
+        if let Some(height) = self.fetch_height_from_hash(&txn, hash)? {
+            if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &self.headers_db, &height)? {
+                self.fetch_header_accumulated_data_by_height(&txn, header.height, header.version)
+            } else {
+                Ok(None)
+            }
         } else {
             Ok(None)
         }
@@ -2627,20 +2626,15 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(chain_header);
         }
 
-        let orphan_accum: Option<BlockHeaderAccumulatedData> =
-            lmdb_get(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())?;
-
-        if let Some(accum) = orphan_accum {
-            let orphan =
-                self.fetch_orphan(&txn, hash)?
-                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                        function: "fetch_chain_header_in_all_chains",
-                        details: format!(
-                            "Orphan accumulated data exists but the corresponding orphan header {} does not",
-                            hash.to_hex()
-                        ),
-                    })?;
-            let chain_header = ChainHeader::try_construct(orphan.header, accum).ok_or_else(|| {
+        if let Some(orphan) = lmdb_get_typed(&txn, &self.orphans_typed, hash.deref())? {
+            let orphan_accum = self
+                .fetch_orphan_header_accumulated_data(&txn, orphan.header.version, hash.deref())?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "orphan header accumulated data",
+                    field: "hash",
+                    value: hash.to_hex(),
+                })?;
+            let chain_header = ChainHeader::try_construct(orphan.header, orphan_accum).ok_or_else(|| {
                 ChainStorageError::DataInconsistencyDetected {
                     function: "fetch_chain_header_in_all_chains",
                     details: format!("accumulated data mismatch for orphan header {}", hash.to_hex()),
@@ -2677,7 +2671,7 @@ impl BlockchainBackend for LMDBDatabase {
             })?;
 
         let accum_data = self
-            .fetch_header_accumulated_data_by_height(&txn, height)?
+            .fetch_header_accumulated_data_by_height(&txn, height, header.version)?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "BlockHeaderAccumulatedData",
                 field: "height",
@@ -2886,7 +2880,7 @@ impl BlockchainBackend for LMDBDatabase {
         })?;
         let height = header.height;
         let accumulated_data = self
-            .fetch_header_accumulated_data_by_height(&txn, height)?
+            .fetch_header_accumulated_data_by_height(&txn, height, header.version)?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "BlockHeaderAccumulatedData",
                 field: "height",
@@ -2908,13 +2902,14 @@ impl BlockchainBackend for LMDBDatabase {
 
         let metadata = self.fetch_chain_metadata()?;
         let height = metadata.best_block_height();
-        let header = lmdb_get(&txn, &self.headers_db, &height)?.ok_or_else(|| ChainStorageError::ValueNotFound {
-            entity: "Header",
-            field: "height",
-            value: height.to_string(),
-        })?;
+        let header: BlockHeader =
+            lmdb_get(&txn, &self.headers_db, &height)?.ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "Header",
+                field: "height",
+                value: height.to_string(),
+            })?;
         let accumulated_data = self
-            .fetch_header_accumulated_data_by_height(&txn, metadata.best_block_height())?
+            .fetch_header_accumulated_data_by_height(&txn, metadata.best_block_height(), header.version)?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "BlockHeaderAccumulatedData",
                 field: "height",
@@ -3030,13 +3025,12 @@ impl BlockchainBackend for LMDBDatabase {
                 value: hash.to_hex(),
             })?;
 
-        let accumulated_data =
-            lmdb_get(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())?.ok_or_else(|| {
-                ChainStorageError::ValueNotFound {
-                    entity: "Orphan accumulated data",
-                    field: "hash",
-                    value: hash.to_hex(),
-                }
+        let accumulated_data = self
+            .fetch_orphan_header_accumulated_data(&txn, orphan.header.version, hash.as_slice())?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "Orphan accumulated data",
+                field: "hash",
+                value: hash.to_hex(),
             })?;
 
         let height = orphan.header.height;
@@ -3077,7 +3071,8 @@ impl BlockchainBackend for LMDBDatabase {
                     value: chain_tip.hash.to_hex(),
                 }
             })?;
-            let accumulated_data = lmdb_get(&txn, &self.orphan_header_accumulated_data_db, chain_tip.hash.as_slice())?
+            let accumulated_data = self
+                .fetch_orphan_header_accumulated_data(&txn, orphan.version(), chain_tip.hash.as_slice())?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "Orphan accumulated data",
                     field: "hash",
@@ -3122,24 +3117,18 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
         let txn = self.read_transaction()?;
         match lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? {
-            Some(block) => {
-                match lmdb_get::<_, BlockHeaderAccumulatedData>(
-                    &txn,
-                    &self.orphan_header_accumulated_data_db,
-                    hash.as_slice(),
-                )? {
-                    Some(accumulated_data) => {
-                        let chain_block =
-                            ChainBlock::try_construct(Arc::new(block), accumulated_data).ok_or_else(|| {
-                                ChainStorageError::DataInconsistencyDetected {
-                                    function: "fetch_orphan_chain_block",
-                                    details: format!("Accumulated data mismatch for hash {}", hash.to_hex()),
-                                }
-                            })?;
-                        Ok(Some(chain_block))
-                    },
-                    None => Ok(None),
-                }
+            Some(block) => match self.fetch_orphan_header_accumulated_data(&txn, block.version(), hash.deref())? {
+                Some(accumulated_data) => {
+                    let chain_block =
+                        ChainBlock::try_construct(Arc::new(block), accumulated_data).ok_or_else(|| {
+                            ChainStorageError::DataInconsistencyDetected {
+                                function: "fetch_orphan_chain_block",
+                                details: format!("Accumulated data mismatch for hash {}", hash.to_hex()),
+                            }
+                        })?;
+                    Ok(Some(chain_block))
+                },
+                None => Ok(None),
             },
             None => Ok(None),
         }
