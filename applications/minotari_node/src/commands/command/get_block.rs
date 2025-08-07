@@ -88,12 +88,7 @@ impl CommandContext {
                 println!("-- Accumulated data --");
                 println!("{}", block_data);
             },
-            Format::Json => println!(
-                "{}",
-                block
-                    .to_json()
-                    .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
-            ),
+            Format::Json => panic!("JSON format not supported for blocks in this command"),
         }
         Ok(())
     }
@@ -103,24 +98,26 @@ impl CommandContext {
         match block {
             Some(block) => match format {
                 Format::Text => println!("{}", block),
-                Format::Json => println!(
-                    "{}",
-                    block
-                        .to_json()
-                        .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
-                ),
+                Format::Json => panic!("JSON format not supported for blocks in this command"),
+                // println!(
+                //     "{}",
+                //     block
+                //         .to_json()
+                //         .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
+                // ),
             },
             None => {
                 let block = self.blockchain_db.fetch_orphan(hash).await?;
                 println!("Found in orphan database");
                 match format {
                     Format::Text => println!("{}", block),
-                    Format::Json => println!(
-                        "{}",
-                        block
-                            .to_json()
-                            .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
-                    ),
+                    Format::Json => panic!("JSON format not supported for blocks in this command"),
+                    // println!(
+                    //     "{}",
+                    //     block
+                    //         .to_json()
+                    //         .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
+                    // ),
                 }
             },
         };

@@ -73,9 +73,9 @@ impl TryFrom<u16> for BlockVersion {
 
     fn try_from(value: u16) -> Result<Self, &'static str> {
         match value {
-            0 => BlockVersion::V0,
-            1 => BlockVersion::V1,
-            2 => BlockVersion::V2,
+            0 => Ok(BlockVersion::V0),
+            1 => Ok(BlockVersion::V1),
+            2 => Ok(BlockVersion::V2),
             _ => Err("Unsupported blockchain version"),
         }
     }
@@ -465,7 +465,7 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 2,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
@@ -530,7 +530,7 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 6,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit,
             difficulty_block_window,
@@ -595,7 +595,7 @@ impl ConsensusConstants {
         let consensus_constants1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 6,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -649,6 +649,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 60,
         });
+        con2.blockchain_version = BlockVersion::V0; // Historical error, should be V1
         con2.proof_of_work = algos;
 
         let mut con3 = con2.clone();
@@ -674,7 +675,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 60,
         });
-        con3.blockchain_version = 2;
+        con3.blockchain_version = BlockVersion::V2;
         con3.proof_of_work = algos;
         let consensus_constants = vec![consensus_constants1, con2, con3];
         consensus_constants
@@ -702,7 +703,7 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -756,7 +757,7 @@ impl ConsensusConstants {
         let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -812,7 +813,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 360,
         });
-        con_3.blockchain_version = 1;
+        con_3.blockchain_version = BlockVersion::V1;
         con_3.valid_blockchain_version_range = 1..=1;
         con_3.proof_of_work = algos;
 
@@ -839,7 +840,7 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 360,
         });
-        con_4.blockchain_version = 2;
+        con_4.blockchain_version = BlockVersion::V2;
         con_4.proof_of_work = algos;
 
         let consensus_constants = vec![con_1, con_2, con_3, con_4];
@@ -863,7 +864,7 @@ impl ConsensusConstants {
         let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 720,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
@@ -924,13 +925,13 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 360,
         });
-        con_4.blockchain_version = 1;
+        con_4.blockchain_version = BlockVersion::V1;
         con_4.valid_blockchain_version_range = 1..=1;
         con_4.proof_of_work = algos;
 
         let mut con_5 = con_4.clone();
         con_5.effective_from_height = 85_000;
-        con_5.blockchain_version = 2;
+        con_5.blockchain_version = BlockVersion::V2;
         con_5.valid_blockchain_version_range = 2..=2;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
@@ -1081,7 +1082,7 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_blockchain_version(mut self, version: u16) -> Self {
+    pub fn with_blockchain_version(mut self, version: BlockVersion) -> Self {
         self.consensus.blockchain_version = version;
         self
     }

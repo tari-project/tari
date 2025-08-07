@@ -3809,32 +3809,31 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             db.set_stats_total_height(chain_height);
             for height in 0..=chain_height {
                 let block_accum_data: V0BLockHeaderAccumulatedData =
-                    lmdb_get(&txn, &db.header_accumulated_data_db, &height)?.ok_or_else(|| {
+                    lmdb_get(&txn, &db.header_accumulated_data_db.db, &height)?.ok_or_else(|| {
                         ChainStorageError::ValueNotFound {
                             entity: "BlockAccumulatedData",
                             field: "height",
                             value: height.to_string(),
                         }
                     })?;
-                todo!("implement");
-                // let new_block_accum_data = BlockHeaderAccumulatedData {
-                //     hash: block_accum_data.hash,
-                //     total_kernel_offset: block_accum_data.total_kernel_offset,
-                //     achieved_difficulty: block_accum_data.achieved_difficulty,
-                //     total_accumulated_difficulty: U512::from(block_accum_data.total_accumulated_difficulty),
-                //     accumulated_monero_randomx_difficulty: block_accum_data.accumulated_randomx_difficulty,
-                //     accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-                //     accumulated_sha3x_difficulty: block_accum_data.accumulated_sha3x_difficulty,
-                //     target_difficulty: block_accum_data.target_difficulty,
-                // };
+                let new_block_accum_data = LmdbRowBlockHeaderAccumulatedDataV1 {
+                    hash: block_accum_data.hash,
+                    total_kernel_offset: block_accum_data.total_kernel_offset,
+                    achieved_difficulty: block_accum_data.achieved_difficulty,
+                    total_accumulated_difficulty: U512::from(block_accum_data.total_accumulated_difficulty),
+                    accumulated_monero_randomx_difficulty: block_accum_data.accumulated_randomx_difficulty,
+                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+                    accumulated_sha3x_difficulty: block_accum_data.accumulated_sha3x_difficulty,
+                    target_difficulty: block_accum_data.target_difficulty,
+                };
 
-                // lmdb_replace(
-                //     &txn,
-                //     &db.header_accumulated_data_db,
-                //     &height,
-                //     &new_block_accum_data,
-                //     None,
-                // )?;
+                lmdb_replace(
+                    &txn,
+                    &db.header_accumulated_data_db.db,
+                    &height,
+                    &new_block_accum_data,
+                    None,
+                )?;
 
                 // Update stats progress
                 if height % 50 == 0 {
@@ -3849,26 +3848,25 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 migrate_from_version
             );
             let orphan_headers_accum_data: Vec<(Vec<u8>, V0BLockHeaderAccumulatedData)> =
-                lmdb_all(&txn, &db.orphan_header_accumulated_data_db)?;
+                lmdb_all(&txn, &db.orphan_header_accumulated_data_db.db)?;
             for (hash, orphan_header_accum_data) in orphan_headers_accum_data {
-                // let new_orphan_block_accum_data = BlockHeaderAccumulatedData {
-                //     hash: orphan_header_accum_data.hash,
-                //     total_kernel_offset: orphan_header_accum_data.total_kernel_offset,
-                //     achieved_difficulty: orphan_header_accum_data.achieved_difficulty,
-                //     total_accumulated_difficulty: U512::from(orphan_header_accum_data.total_accumulated_difficulty),
-                //     accumulated_monero_randomx_difficulty: orphan_header_accum_data.accumulated_randomx_difficulty,
-                //     accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-                //     accumulated_sha3x_difficulty: orphan_header_accum_data.accumulated_sha3x_difficulty,
-                //     target_difficulty: orphan_header_accum_data.target_difficulty,
-                // };
-                // lmdb_replace(
-                //     &txn,
-                //     &db.block_accumulated_data_db,
-                //     &hash,
-                //     &new_orphan_block_accum_data,
-                //     None,
-                // )?;
-                todo!("implement");
+                let new_orphan_block_accum_data = LmdbRowBlockHeaderAccumulatedDataV1 {
+                    hash: orphan_header_accum_data.hash,
+                    total_kernel_offset: orphan_header_accum_data.total_kernel_offset,
+                    achieved_difficulty: orphan_header_accum_data.achieved_difficulty,
+                    total_accumulated_difficulty: U512::from(orphan_header_accum_data.total_accumulated_difficulty),
+                    accumulated_monero_randomx_difficulty: orphan_header_accum_data.accumulated_randomx_difficulty,
+                    accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+                    accumulated_sha3x_difficulty: orphan_header_accum_data.accumulated_sha3x_difficulty,
+                    target_difficulty: orphan_header_accum_data.target_difficulty,
+                };
+                lmdb_replace(
+                    &txn,
+                    &db.orphan_header_accumulated_data_db.db,
+                    &hash,
+                    &new_orphan_block_accum_data,
+                    None,
+                )?;
             }
             txn.commit()?;
             let txn = db.write_transaction()?;
@@ -3904,8 +3902,8 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let mut last_correct_height = 0;
             for (height, correct_difficulty) in known_good_difficulties {
                 let txn = db.read_transaction()?;
-                let accum_data: Option<BlockHeaderAccumulatedData> =
-                    lmdb_get(&txn, &db.header_accumulated_data_db, &height)?;
+                let accum_data: Option<LmdbRowBlockHeaderAccumulatedDataV1> =
+                    lmdb_get(&txn, &db.header_accumulated_data_db.db, &height)?;
                 if let Some(accum_data) = accum_data {
                     if accum_data.total_accumulated_difficulty == correct_difficulty {
                         info!(

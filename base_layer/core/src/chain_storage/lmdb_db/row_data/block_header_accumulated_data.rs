@@ -13,9 +13,9 @@ pub struct LmdbRowBlockHeaderAccumulatedDataV1 {
     pub total_kernel_offset: PrivateKey,
     pub achieved_difficulty: Difficulty,
     pub total_accumulated_difficulty: U512,
-    accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
-    accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
-    accumulated_sha3x_difficulty: AccumulatedDifficulty,
+    pub accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
+    pub accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
+    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
     pub target_difficulty: Difficulty,
 }
 
@@ -29,7 +29,7 @@ impl From<LmdbRowBlockHeaderAccumulatedDataV1> for BlockHeaderAccumulatedData {
             accumulated_monero_randomx_difficulty: data.accumulated_monero_randomx_difficulty,
             accumulated_tari_randomx_difficulty: data.accumulated_tari_randomx_difficulty,
             accumulated_sha3x_difficulty: data.accumulated_sha3x_difficulty,
-            accumulated_cuckaroo_difficulty: Difficulty::min(),
+            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: data.target_difficulty,
         }
     }
@@ -39,7 +39,7 @@ impl From<&BlockHeaderAccumulatedData> for LmdbRowBlockHeaderAccumulatedDataV1 {
     fn from(data: &BlockHeaderAccumulatedData) -> Self {
         LmdbRowBlockHeaderAccumulatedDataV1 {
             hash: data.hash,
-            total_kernel_offset: data.total_kernel_offset,
+            total_kernel_offset: data.total_kernel_offset.clone(),
             achieved_difficulty: data.achieved_difficulty,
             total_accumulated_difficulty: data.total_accumulated_difficulty,
             accumulated_monero_randomx_difficulty: data.accumulated_monero_randomx_difficulty,
@@ -56,10 +56,10 @@ pub struct LmdbRowBlockHeaderAccumulatedDataV2 {
     pub total_kernel_offset: PrivateKey,
     pub achieved_difficulty: Difficulty,
     pub total_accumulated_difficulty: U512,
-    accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
-    accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
-    accumulated_sha3x_difficulty: AccumulatedDifficulty,
-    accumulated_cuckaroo_difficulty: AccumulatedDifficulty,
+    pub accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
+    pub accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
+    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
+    pub accumulated_cuckaroo_difficulty: AccumulatedDifficulty,
     pub target_difficulty: Difficulty,
 }
 
@@ -67,7 +67,7 @@ impl From<LmdbRowBlockHeaderAccumulatedDataV2> for BlockHeaderAccumulatedData {
     fn from(data: LmdbRowBlockHeaderAccumulatedDataV2) -> Self {
         BlockHeaderAccumulatedData {
             hash: data.hash,
-            total_kernel_offset: data.total_kernel_offset,
+            total_kernel_offset: data.total_kernel_offset.clone(),
             achieved_difficulty: data.achieved_difficulty,
             total_accumulated_difficulty: data.total_accumulated_difficulty,
             accumulated_monero_randomx_difficulty: data.accumulated_monero_randomx_difficulty,
@@ -83,7 +83,7 @@ impl From<&BlockHeaderAccumulatedData> for LmdbRowBlockHeaderAccumulatedDataV2 {
     fn from(data: &BlockHeaderAccumulatedData) -> Self {
         LmdbRowBlockHeaderAccumulatedDataV2 {
             hash: data.hash,
-            total_kernel_offset: data.total_kernel_offset,
+            total_kernel_offset: data.total_kernel_offset.clone(),
             achieved_difficulty: data.achieved_difficulty,
             total_accumulated_difficulty: data.total_accumulated_difficulty,
             accumulated_monero_randomx_difficulty: data.accumulated_monero_randomx_difficulty,

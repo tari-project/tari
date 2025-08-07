@@ -210,15 +210,15 @@ pub struct BlockHeaderAccumulatedData {
     pub total_accumulated_difficulty: U512,
     /// The total accumulated difficulty for Merged mined monero RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
+    pub accumulated_monero_randomx_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
+    pub accumulated_tari_randomx_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    accumulated_sha3x_difficulty: AccumulatedDifficulty,
+    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for Cuckaroo proof of work for all blocks since Genesis,
-    accumulated_cuckaroo_difficulty: AccumulatedDifficulty,
+    pub accumulated_cuckaroo_difficulty: AccumulatedDifficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
