@@ -150,6 +150,7 @@ pub async fn spawn_wallet(
         wallet_app_config.wallet.p2p.transport.tcp.listener_address =
             Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
         wallet_app_config.wallet.http_server_url = format!("http://127.0.0.1:{}", http_port);
+        wallet_app_config.wallet.fallback_http_server_url = format!("http://127.0.0.1:{}", http_port);
         wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![wallet_app_config
             .wallet
             .p2p

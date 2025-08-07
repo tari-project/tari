@@ -175,6 +175,8 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.report_grpc_error = true;
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(3);
         base_node_config.base_node.http_wallet_query_service.port = http_port.try_into().unwrap();
+        base_node_config.base_node.http_wallet_query_service.external_address =
+            Some(format!("http://127.0.0.1:{}", http_port).parse().unwrap());
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");
