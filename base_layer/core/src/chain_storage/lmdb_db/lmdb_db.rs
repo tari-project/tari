@@ -3912,8 +3912,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // MIGRATION: Total accumulated difficulty migration - re-calculate accumulated difficulties from the last known
         // good accumulated difficulty
         if migrate_from_version == 5 {
-            let mut known_good_difficulties = get_correct_accumulated_difficulty_v1();
-            known_good_difficulties.append(&mut get_correct_accumulated_difficulty_v5());
+            let mut known_good_difficulties = get_correct_accumulated_difficulty_v1_and_v5();
             known_good_difficulties.sort_by(|a, b| a.0.cmp(&b.0));
             let current_height = {
                 let txn = db.read_transaction()?;
@@ -4065,7 +4064,7 @@ pub struct OldChainTipData {
     pub total_accumulated_difficulty: U256,
 }
 
-fn get_correct_accumulated_difficulty_v1() -> Vec<(u64, U512)> {
+fn get_correct_accumulated_difficulty_v1_and_v5() -> Vec<(u64, U512)> {
     #[cfg(tari_target_network_mainnet)]
     {
         vec![
@@ -4092,43 +4091,6 @@ fn get_correct_accumulated_difficulty_v1() -> Vec<(u64, U512)> {
             (
                 20000,
                 U512::from_dec_str("678404434598953994059276298108149917133080906779800").expect("should not fail"),
-            ),
-        ]
-    }
-    #[cfg(tari_target_network_nextnet)]
-    {
-        vec![
-            (
-                1499,
-                U512::from_dec_str("17340317256602964156796").expect("should not fail"),
-            ),
-            (
-                2000,
-                U512::from_dec_str("267045542397987769905169797604842").expect("should not fail"),
-            ),
-            (
-                3000,
-                U512::from_dec_str("2261524423095838119669981829692352").expect("should not fail"),
-            ),
-        ]
-    }
-    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
-    vec![]
-}
-
-fn get_correct_accumulated_difficulty_v5() -> Vec<(u64, U512)> {
-    #[cfg(tari_target_network_mainnet)]
-    {
-        vec![
-            // We have known bad values at the next height, so this one can be a good reference point
-            (
-                15224,
-                U512::from_dec_str("3871015684656312884178488878324891222709240651028").expect("should not fail"),
-            ),
-            // We have known bad values at this height
-            (
-                15225,
-                U512::from_dec_str("3872628503165662556508806093911347954645375156922").expect("should not fail"),
             ),
             (
                 25000,
@@ -4175,6 +4137,18 @@ fn get_correct_accumulated_difficulty_v5() -> Vec<(u64, U512)> {
     #[cfg(tari_target_network_nextnet)]
     {
         vec![
+            (
+                1499,
+                U512::from_dec_str("17340317256602964156796").expect("should not fail"),
+            ),
+            (
+                2000,
+                U512::from_dec_str("267045542397987769905169797604842").expect("should not fail"),
+            ),
+            (
+                3000,
+                U512::from_dec_str("2261524423095838119669981829692352").expect("should not fail"),
+            ),
             (
                 4000,
                 U512::from_dec_str("11229058627725787145292215785505760").expect("should not fail"),

@@ -2457,7 +2457,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     Ok(())
 }
 
-// this si tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
+// this is tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
 // so we need to search for it.
 fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
     db: &mut T,
@@ -2466,7 +2466,7 @@ fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
     get_vm_key_for_candidate_header(db, candidate_block.header.clone())
 }
 
-// this si tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
+// this is tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
 // so we need to search for it.
 fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
     db: &mut T,
