@@ -294,6 +294,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_METADATA,
         LMDB_DB_HEADERS,
         LMDB_DB_HEADER_ACCUMULATED_DATA,
+        LMDB_DB_HEADER_ACCUMULATED_DATA_V2,
         LMDB_DB_BLOCK_ACCUMULATED_DATA,
         LMDB_DB_BLOCK_HASHES,
         LMDB_DB_UTXOS,
@@ -310,6 +311,7 @@ pub fn get_all_database_names() -> Vec<&'static str> {
         LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX,
         LMDB_DB_ORPHANS,
         LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA,
+        LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA_V2,
         LMDB_DB_MONERO_SEED_HEIGHT,
         LMDB_DB_MONERO_SEED_HEIGHT_INDEX,
         LMDB_DB_ORPHAN_CHAIN_TIPS,
@@ -348,6 +350,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
         .add_database(LMDB_DB_METADATA, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADERS, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADER_ACCUMULATED_DATA, flags | db::INTEGERKEY)
+        .add_database(LMDB_DB_HEADER_ACCUMULATED_DATA_V2, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_BLOCK_ACCUMULATED_DATA, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_BLOCK_HASHES, flags)
         .add_database(LMDB_DB_UTXOS, flags)
@@ -364,6 +367,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
         .add_database(LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX, flags)
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA, flags)
+        .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA_V2, flags)
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT_INDEX, flags)
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
