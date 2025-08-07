@@ -50,6 +50,47 @@ use crate::{
 
 const ANNUAL_BLOCKS: u64 = 30 /* blocks/hr */ * 24 /* hr /d */ * 366 /* days / yr */;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockVersion {
+    V0 = 0,
+    V1 = 1,
+    V2 = 2,
+}
+
+impl BlockVersion {
+    pub fn from_u16(value: u16) -> Option<Self> {
+        match value {
+            0 => Some(BlockVersion::V0),
+            1 => Some(BlockVersion::V1),
+            2 => Some(BlockVersion::V2),
+            _ => None,
+        }
+    }
+}
+
+impl TryFrom<u16> for BlockVersion {
+    type Error = &'static str;
+
+    fn try_from(value: u16) -> Result<Self, &'static str> {
+        match value {
+            0 => BlockVersion::V0,
+            1 => BlockVersion::V1,
+            2 => BlockVersion::V2,
+            _ => Err("Unsupported blockchain version"),
+        }
+    }
+}
+
+impl From<BlockVersion> for u16 {
+    fn from(value: BlockVersion) -> Self {
+        match value {
+            BlockVersion::V0 => 0,
+            BlockVersion::V1 => 1,
+            BlockVersion::V2 => 2,
+        }
+    }
+}
+
 /// This is the inner struct used to control all consensus values.
 #[derive(Debug, Clone)]
 pub struct ConsensusConstants {
@@ -58,7 +99,7 @@ pub struct ConsensusConstants {
     /// The minimum maturity a coinbase utxo must have, in number of blocks
     coinbase_min_maturity: u64,
     /// Current version of the blockchain
-    blockchain_version: u16,
+    blockchain_version: BlockVersion,
     /// The blockchain version that are accepted. Values outside of this range will be rejected.
     valid_blockchain_version_range: RangeInclusive<u16>,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is accepted.
@@ -197,7 +238,7 @@ impl ConsensusConstants {
     }
 
     /// Current version of the blockchain.
-    pub fn blockchain_version(&self) -> u16 {
+    pub fn blockchain_version(&self) -> BlockVersion {
         self.blockchain_version
     }
 

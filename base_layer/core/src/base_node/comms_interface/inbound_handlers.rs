@@ -294,7 +294,7 @@ where B: BlockchainBackend + 'static
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
-                header.version = constants.blockchain_version();
+                header.version = constants.blockchain_version().into();
                 header.pow.pow_algo = request.algo;
 
                 let constants_weight = constants.max_block_transaction_weight();

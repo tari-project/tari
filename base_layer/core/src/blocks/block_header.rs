@@ -56,7 +56,7 @@ use thiserror::Error;
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
     blocks::BlocksHashDomain,
-    consensus::DomainSeparatedConsensusHasher,
+    consensus::{consensus_constants::BlockVersion, DomainSeparatedConsensusHasher},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 

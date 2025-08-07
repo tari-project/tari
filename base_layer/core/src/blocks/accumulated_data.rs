@@ -197,7 +197,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
 }
 
 /// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockHeaderAccumulatedData {
     /// The block hash.
     pub hash: HashOutput,
@@ -282,7 +282,7 @@ impl Display for BlockHeaderAccumulatedData {
 
 /// A block linked to a chain.
 /// A ChainHeader guarantees (i.e cannot be constructed) that the block and accumulated data correspond by hash.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChainHeader {
     header: BlockHeader,
     accumulated_data: BlockHeaderAccumulatedData,
