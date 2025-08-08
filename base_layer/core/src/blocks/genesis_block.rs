@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::hex::*;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
+    proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},

@@ -360,7 +360,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 "{}",block
             );
 
-            let timer = Instant::now();
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)

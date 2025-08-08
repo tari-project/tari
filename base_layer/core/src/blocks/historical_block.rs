@@ -22,7 +22,6 @@
 
 use std::{fmt, fmt::Display, sync::Arc};
 
-use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 
 use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};

@@ -33,7 +33,6 @@ use tari_utilities::hex::Hex;
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
-    consensus::consensus_constants::BlockVersion,
     transactions::transaction_components::{OutputType, TransactionKernel, TransactionOutput},
 };
 

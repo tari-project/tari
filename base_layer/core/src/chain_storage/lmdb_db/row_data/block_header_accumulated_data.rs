@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{HashOutput, PrivateKey};
 
 use crate::{
-    blocks::{BlockAccumulatedData, BlockHeaderAccumulatedData},
+    blocks::BlockHeaderAccumulatedData,
     proof_of_work::{AccumulatedDifficulty, Difficulty},
 };
 

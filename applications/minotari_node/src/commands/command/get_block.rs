@@ -26,7 +26,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::types::HashOutput;
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};

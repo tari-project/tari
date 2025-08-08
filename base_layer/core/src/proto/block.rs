@@ -20,20 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    mem,
-};
+use std::convert::{TryFrom, TryInto};
 
-use primitive_types::U512;
 use tari_common_types::types::PrivateKey;
 use tari_utilities::ByteArray;
 
 use super::core as proto;
-use crate::{
-    blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty},
-};
+use crate::blocks::{Block, HistoricalBlock, NewBlock};
 
 //---------------------------------- Block --------------------------------------------//
 

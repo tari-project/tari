@@ -238,7 +238,6 @@ mod test {
     #[test]
     fn test_cuckaroo_verify_endpoints_dont_match() {
         let uvs = vec![(0, 1), (1, 2), (2, 3), (3, 4)];
-        let keys = [123u64, 123u64, 234u64, 23423u64];
         let result = verify_from_edges(&uvs, 4);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::EndpointsDontMatch);

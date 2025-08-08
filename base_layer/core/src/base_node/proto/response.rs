@@ -27,12 +27,12 @@ use std::{
 };
 
 use tari_common_types::types::PrivateKey;
-use tari_utilities::{convert::try_convert_all, ByteArray};
+use tari_utilities::ByteArray;
 
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface::{FetchMempoolTransactionsResponse, NodeCommsResponse},
-    blocks::{Block, BlockHeader, HistoricalBlock},
+    blocks::{Block, BlockHeader},
     proto,
 };
 
@@ -77,7 +77,7 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
 
     fn try_from(response: NodeCommsResponse) -> Result<Self, Self::Error> {
-        use NodeCommsResponse::{FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
+        use NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse;
         match response {
             NodeCommsResponse::Block(block) => Ok(ProtoNodeCommsResponse::BlockResponse((*block).try_into()?)),
             // HistoricalBlocks(historical_blocks) => {

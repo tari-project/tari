@@ -210,7 +210,6 @@ use crate::{
     },
     consensus::{consensus_constants::BlockVersion, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::blockchain,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroMinotari,
