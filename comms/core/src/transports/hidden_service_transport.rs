@@ -33,6 +33,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::transports::hidden_service_transport";
 
+#[allow(dead_code)]
 #[derive(thiserror::Error, Debug)]
 pub enum HiddenServiceTransportError {
     #[error("Tor hidden service transport error: `{0}`")]

@@ -34,6 +34,7 @@ use crate::{
 };
 
 /// Error type for inbound messages.
+#[allow(dead_code)]
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {
     #[error("PeerManagerError: {0}")]
