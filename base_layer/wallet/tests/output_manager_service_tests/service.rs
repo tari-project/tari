@@ -2241,15 +2241,29 @@ async fn scan_for_recovery_test() {
         )
         .await
         .unwrap();
+    let mut recovered_outputs_keys = Vec::new();
+    for o in &recovered_outputs {
+        let commitment_branch_public_key = oms
+            .key_manager_handle
+            .get_public_key_at_key_id(&o.output.spending_key_id)
+            .await
+            .unwrap();
+        recovered_outputs_keys.push(commitment_branch_public_key);
+    }
 
     // Check that the non-rewindable outputs are not preset, also check that one rewindable output that was already
     // contained in the OMS database is also not included in the returns outputs.
 
     assert_eq!(recovered_outputs.len(), NUM_RECOVERABLE - 1);
     for o in recoverable_wallet_outputs.iter().skip(1) {
-        assert!(recovered_outputs
+        let commitment_branch_public_key = oms
+            .key_manager_handle
+            .get_public_key_at_key_id(&o.spending_key_id)
+            .await
+            .unwrap();
+        assert!(recovered_outputs_keys
             .iter()
-            .any(|ro| ro.output.spending_key_id == o.spending_key_id));
+            .any(|ro| *ro == commitment_branch_public_key));
     }
 }
 
