@@ -144,7 +144,7 @@ impl From<HeaderSyncState> for DecideNextSync {
 impl From<BlockSync> for DecideNextSync {
     fn from(sync: BlockSync) -> Self {
         Self {
-            sync_peers: sync.into_sync_peers(),
+            sync_peers: sync.session_sync_peers(),
             is_synced: sync.is_synced(),
             header_sync_session_status: sync.header_sync_session_status().unwrap_or_default(),
         }

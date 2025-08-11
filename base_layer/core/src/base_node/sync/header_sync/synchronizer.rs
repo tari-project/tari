@@ -274,17 +274,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         //   peer, but they claimed better POW before we attempted sync.
         // - This method will return ban-able errors for certain offenses.
         let sync_session_size = if self.config.sync_session_size == 0 {
-            HEADER_SYNC_INITIAL_MAX_HEADERS
+            usize::try_from(u64::MAX).unwrap_or(18446744073709551615)
         } else {
-            min(self.config.sync_session_size, HEADER_SYNC_INITIAL_MAX_HEADERS)
+            self.config.sync_session_size
         };
+        let initial_header_count = min(self.config.sync_session_size, HEADER_SYNC_INITIAL_MAX_HEADERS);
         let (header_sync_status, peer_response) = self
             .determine_sync_status(
                 sync_peer,
                 best_header.clone(),
                 best_block_header.clone(),
                 &mut client,
-                sync_session_size,
+                initial_header_count,
             )
             .await?;
 
@@ -321,6 +322,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         *split_info,
                         max_latency,
                         sync_session_size,
+                        initial_header_count,
                     )
                     .await?;
                 Ok(AttemptSyncResult {
@@ -338,7 +340,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         &mut self,
         peer_node_id: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
-        header_count: usize,
+        initial_header_count: usize,
     ) -> Result<FindChainSplitResult, BlockHeaderSyncError> {
         const NUM_CHAIN_SPLIT_HEADERS: usize = 500;
         // Limit how far back we're willing to go. A peer might just say it does not have a chain split
@@ -386,7 +388,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
             let request = FindChainSplitRequest {
                 block_hashes: block_hashes.clone().iter().map(|v| v.to_vec()).collect(),
-                header_count: header_count as u64,
+                header_count: initial_header_count as u64,
             };
 
             let resp = match client.find_chain_split(request).await {
@@ -411,13 +413,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     return Err(err.into());
                 },
             };
-            if resp.headers.len() > header_count {
+            if resp.headers.len() > initial_header_count {
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` sent too many headers {}, only requested {}. Peer will be banned.",
                     peer_node_id,
                     resp.headers.len(),
-                    header_count,
+                    initial_header_count,
                 );
                 return Err(BlockHeaderSyncError::PeerSentTooManyHeaders(resp.headers.len()));
             }
@@ -469,11 +471,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         best_header: ChainHeader,
         best_block_header: ChainHeader,
         client: &mut rpc::BaseNodeSyncRpcClient,
-        sync_session_size: usize,
+        initial_header_count: usize,
     ) -> Result<(HeaderSyncStatus, FindChainSplitResult), BlockHeaderSyncError> {
         // This method will return ban-able errors for certain offenses.
         let chain_split_result = self
-            .find_chain_split(sync_peer.node_id(), client, sync_session_size)
+            .find_chain_split(sync_peer.node_id(), client, initial_header_count)
             .await?;
         if chain_split_result.reorg_steps_back > 0 {
             debug!(
@@ -581,6 +583,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         split_info: ChainSplitInfo,
         max_latency: Duration,
         sync_session_size: usize,
+        initial_header_count: usize,
     ) -> Result<HeaderSyncSessionStatus, BlockHeaderSyncError> {
         info!(target: LOG_TARGET, "Starting header sync from peer `{}`", sync_peer);
         let commit_every_n_headers = min(sync_session_size, 500);
@@ -622,7 +625,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_result.has_switched_to_new_chain = true;
         }
 
-        if pending_len < sync_session_size {
+        if pending_len < initial_header_count {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
             // available headers from the peer.
             if !has_better_pow {
@@ -642,15 +645,25 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             return Ok(sync_result);
         }
 
+        let remaining_headers = sync_session_size.saturating_sub(pending_len);
+        if remaining_headers == 0 {
+            // We have all the headers we need, we can move on to block sync.
+            debug!(target: LOG_TARGET, "No further headers to download");
+            if pending_len > 0 {
+                sync_result.last_committed_header = Some(self.commit_pending_headers().await?);
+            }
+            return Ok(sync_result);
+        }
         debug!(
             target: LOG_TARGET,
-            "Download remaining headers starting from header #{} from peer `{}`",
+            "Download remaining {} headers starting from header #{} from peer `{}`",
+            remaining_headers,
             start_header_height,
             sync_peer.node_id()
         );
         let request = SyncHeadersRequest {
             start_hash: start_header_hash.to_vec(),
-            count: sync_session_size as u64,
+            count: remaining_headers as u64,
         };
 
         let mut header_stream = client.sync_headers(request).await?;
@@ -666,9 +679,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let mut avg_latency = RollingAverageTime::new(min(20, sync_session_size));
         let mut prev_height: Option<u64> = None;
         while let Some(header) = header_stream.next().await {
-            if sync_result.headers_processed >= sync_session_size + pending_len {
-                break;
-            }
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let header = BlockHeader::try_from(header?).map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
@@ -988,9 +998,14 @@ impl Display for HeaderSyncSessionStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "HeaderSyncSessionStatus {{ last_committed_tip: {}, headers_processed: {}, remote_tip_hash: {}, \
-             has_switched_to_new_chain: {} }}",
+            "HeaderSyncSessionStatus {{ last_committed_header: {}, last_committed_block: {}, headers_processed: {}, \
+             remote_tip_header_hash: {}, has_switched_to_new_chain: {}, current_sync_peer_node_id: {} }}",
             if let Some(tip) = self.last_committed_header.clone() {
+                format!("{}", tip)
+            } else {
+                "None".to_string()
+            },
+            if let Some(tip) = self.last_committed_block_hash {
                 format!("{}", tip)
             } else {
                 "None".to_string()
@@ -1001,7 +1016,12 @@ impl Display for HeaderSyncSessionStatus {
             } else {
                 "None".to_string()
             },
-            self.has_switched_to_new_chain
+            self.has_switched_to_new_chain,
+            if let Some(node_id) = self.current_sync_peer_node_id.clone() {
+                node_id.to_hex()
+            } else {
+                "None".to_string()
+            },
         )
     }
 }

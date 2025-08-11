@@ -55,7 +55,7 @@ pub struct BlockchainSyncConfig {
     #[serde(default = "default_num_initial_sync_rounds_seed_bootstrap")]
     pub num_initial_sync_rounds_seed_bootstrap: usize,
     /// The maximum number of headers-with-blocks to sync in one session - multiple sync sessions will be performed
-    /// until header and block sync are complete. Providing `0` means the maximum permissible size. (Default: 150)
+    /// until header and block sync are complete. Providing `0` means the maximum permissible size. (Default: 1000)
     pub sync_session_size: usize,
 }
 
@@ -77,7 +77,7 @@ impl Default for BlockchainSyncConfig {
             validation_concurrency: 6,
             rpc_deadline: Duration::from_secs(240), // Syncing many full blocks over tor require this
             num_initial_sync_rounds_seed_bootstrap: default_num_initial_sync_rounds_seed_bootstrap(),
-            sync_session_size: 150,
+            sync_session_size: 1000,
         }
     }
 }

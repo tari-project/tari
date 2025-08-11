@@ -168,7 +168,7 @@ impl BlockSync {
     }
 
     /// Returns the sync peers used for block synchronization.
-    pub fn into_sync_peers(&self) -> Vec<SyncPeer> {
+    pub fn session_sync_peers(&self) -> Vec<SyncPeer> {
         self.sync_peers.clone()
     }
 
