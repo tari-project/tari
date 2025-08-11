@@ -1,5 +1,20 @@
 //  Copyright 2025, The Tari Project
 //
+//  Parts of this code modified from the Grin project
+//  Copyright 2021 The Grin Developers
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
 //
@@ -35,6 +50,10 @@ use crate::{
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CuckarooVerificationError {
+    #[error("PoW data contains non-zero padding")]
+    PowDataContainsNonZeroPadding,
+    #[error("PoW data is too short")]
+    PowDataTooShort,
     #[error("Block header has an invalid PoW algorithm for Cuckaroo")]
     BlockHeaderInvalidPowAlgorithm,
     #[error("Nonce is too large")]
@@ -75,18 +94,24 @@ pub fn cuckaroo_result(
     hasher.update(header.mining_hash().as_slice());
     let mut blob = Vec::with_capacity(32);
     hasher.finalize_variable(&mut blob)?;
-    let mut nonces = Vec::new();
 
     let pow_data = &pow[1..];
-
-    for i in 0..(pow_data.len() * 8 / edge_bits as usize) {
-        let mut nonce = 0u64;
-        for j in 0..edge_bits {
-            nonce |= ((pow_data[i * edge_bits as usize + j as usize] as u64) & 1) << j;
+    // Data after <required_cycle_length * edge_bits> is padding, it must be zero
+    for &byte in &pow_data[required_cycle_length * edge_bits as usize / 8..] {
+        if byte != 0 {
+            return Err(anyhow::anyhow!(
+                CuckarooVerificationError::PowDataContainsNonZeroPadding
+            ));
         }
-        nonces.push(nonce);
     }
 
+    let nonces = unpack_nonces(pow_data, edge_bits, required_cycle_length)?;
+    // There might be extra padding at  the end of the nonces.
+    for n in &nonces[required_cycle_length..] {
+        if *n != 0 {
+            return Err(anyhow::anyhow!(CuckarooVerificationError::PowDataTooShort));
+        }
+    }
     let siphash_keys = [
         u64::from_le_bytes(blob[0..8].try_into().unwrap()),
         u64::from_le_bytes(blob[8..16].try_into().unwrap()),
@@ -106,6 +131,68 @@ pub fn cuckaroo_result(
     hasher.finalize_variable(&mut res)?;
 
     Ok(res)
+}
+
+#[cfg(test)]
+fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
+    let mut target = vec![0u8; (uncompressed.len() * bit_width as usize + 7) / 8];
+    dbg!(&target);
+    let mut compressed = target.as_mut_slice();
+    let mut mini_buffer = 0u64;
+    let mut remaining = 64;
+    for el in uncompressed {
+        dbg!(el, bit_width, remaining, mini_buffer);
+
+        mini_buffer |= el << (64 - remaining);
+        dbg!(format!("mini_buffer: {:064b}", mini_buffer));
+        if bit_width < remaining {
+            remaining -= bit_width;
+        } else {
+            compressed[..8].copy_from_slice(&mini_buffer.to_le_bytes());
+            compressed = &mut compressed[8..];
+            mini_buffer = el >> remaining;
+            remaining = 64 + remaining - bit_width;
+        }
+    }
+    let mut remainder = compressed.len() % 8;
+    if remainder == 0 {
+        remainder = 8;
+    }
+    if mini_buffer > 0 {
+        compressed[..].copy_from_slice(&mini_buffer.to_le_bytes()[..remainder]);
+    }
+    dbg!(&target);
+    dbg!(format!("target: {:08b}", target[0]));
+    dbg!(format!("target: {:08b}", target[1]));
+    target
+}
+
+fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Vec<u64>, CuckarooVerificationError> {
+    let mut nonces = Vec::with_capacity(expected_length);
+    let node_mask = (1u64 << edge_bits) - 1;
+    let mut mini_buffer = 0u64;
+    let mut remaining = 64;
+    let mut bytes = pow.iter().copied();
+    while let Some(byte) = bytes.next() {
+        mini_buffer |= u64::from(byte) << (64 - remaining);
+        remaining -= 8;
+        while remaining <= 64 - edge_bits {
+            let nonce = mini_buffer & node_mask;
+            if nonce > node_mask {
+                return Err(CuckarooVerificationError::NonceTooLarge);
+            }
+            nonces.push(nonce);
+            mini_buffer >>= edge_bits;
+            remaining += edge_bits;
+        }
+    }
+
+    for n in nonces[expected_length..].iter() {
+        if *n != 0 {
+            return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
+        }
+    }
+    Ok(nonces.into_iter().take(expected_length).collect())
 }
 
 fn verify(
@@ -135,12 +222,7 @@ fn verify(
     verify_from_edges(&uvs, cycle_length)
 }
 
-fn verify_from_edges(
-    // siphash_keys: &[u64; 4],
-    // nonces: &[u64],
-    uvs: &[(u64, u64)],
-    cycle_length: usize,
-) -> Result<(), CuckarooVerificationError> {
+fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: usize) -> Result<(), CuckarooVerificationError> {
     let proof_size = uvs.len();
     if proof_size != cycle_length {
         if proof_size > cycle_length {
@@ -229,6 +311,78 @@ mod test {
     use super::*;
 
     const KEYS: [u64; 4] = [123u64, 123u64, 234u64, 23423u64];
+
+    #[test]
+    fn test_pack_nonces() {
+        let nonces = vec![0, 1, 2, 3];
+        let edge_bits = 3;
+        let packed = pack_nonces(&nonces, edge_bits);
+        assert_eq!(packed.len(), 2);
+        assert_eq!(packed[0], 0b10001000);
+        assert_eq!(packed[1], 0b00000110);
+
+        let actual = unpack_nonces(&packed, edge_bits, nonces.len()).unwrap();
+
+        assert_eq!(&actual, &nonces);
+    }
+
+    #[test]
+    fn test_unpack_nonces_with_nonzero_padding() {
+        let packed = vec![0b10001000, 0b00000110, 0b11000000];
+        let edge_bits = 3;
+        let result = unpack_nonces(&packed, edge_bits, 4);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            CuckarooVerificationError::PowDataContainsNonZeroPadding
+        );
+    }
+
+    #[test]
+    fn test_pack_nonces_29_bits() {
+        let nonces = vec![2u64.pow(29) - 1];
+
+        let edge_bits = 29;
+        let packed = pack_nonces(&nonces, edge_bits);
+        assert_eq!(packed.len(), 4);
+        assert_eq!(packed[0], 0b11111111);
+        assert_eq!(packed[1], 0b11111111);
+        assert_eq!(packed[2], 0b11111111);
+        assert_eq!(packed[3], 0b00011111);
+
+        let actual = unpack_nonces(&packed, edge_bits, nonces.len()).unwrap();
+
+        assert_eq!(&actual, &nonces);
+    }
+
+    #[test]
+    fn test_pack_nonces_29_bits2() {
+        let nonces = vec![2u64.pow(29) - 1, 0, 2u64.pow(29) - 1, 0];
+
+        let edge_bits = 29;
+        let packed = pack_nonces(&nonces, edge_bits);
+        assert_eq!(packed.len(), 15);
+        assert_eq!(packed[0], 0b11111111);
+        assert_eq!(packed[1], 0b11111111);
+        assert_eq!(packed[2], 0b11111111);
+        assert_eq!(packed[3], 0b00011111);
+        assert_eq!(packed[4], 0b00000000);
+        assert_eq!(packed[5], 0b00000000);
+        assert_eq!(packed[6], 0b00000000);
+        assert_eq!(packed[7], 0b11111100);
+        assert_eq!(packed[8], 0b11111111);
+        assert_eq!(packed[9], 0b11111111);
+        assert_eq!(packed[10], 0b01111111);
+        assert_eq!(packed[11], 0b00000000);
+        assert_eq!(packed[12], 0b00000000);
+        assert_eq!(packed[13], 0b00000000);
+        assert_eq!(packed[14], 0b00000000);
+
+        let actual = unpack_nonces(&packed, edge_bits, nonces.len()).unwrap();
+
+        assert_eq!(&actual, &nonces);
+    }
+
     #[test]
     fn test_cuckaroo_nonce_too_large() {
         let nonces = vec![0, 127, 128];

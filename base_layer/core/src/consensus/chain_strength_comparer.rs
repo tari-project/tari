@@ -84,7 +84,7 @@ impl ChainStrengthComparer for CuckarooCycleDifficultyComparer {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         a.accumulated_data()
             .accumulated_cuckaroo_difficulty()
-            .cmp(&&b.accumulated_data().accumulated_cuckaroo_difficulty())
+            .cmp(&b.accumulated_data().accumulated_cuckaroo_difficulty())
     }
 }
 #[derive(Default, Debug)]

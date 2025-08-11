@@ -26,7 +26,6 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::types::HashOutput;
-use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
@@ -62,14 +61,6 @@ impl HandleCommand<Args> for CommandContext {
 enum ArgsError {
     #[error("Block not found at height {height}")]
     NotFoundAt { height: u64 },
-    #[error("Serializing/Deserializing error: `{0}`")]
-    MessageFormatError(String),
-}
-
-impl From<MessageFormatError> for ArgsError {
-    fn from(e: MessageFormatError) -> Self {
-        ArgsError::MessageFormatError(e.to_string())
-    }
 }
 
 impl CommandContext {
@@ -88,7 +79,7 @@ impl CommandContext {
                 println!("-- Accumulated data --");
                 println!("{}", block_data);
             },
-            Format::Json => panic!("JSON format not supported for blocks in this command"),
+            Format::Json => eprintln!("JSON format not supported for blocks in this command"),
         }
         Ok(())
     }
@@ -99,25 +90,13 @@ impl CommandContext {
             Some(block) => match format {
                 Format::Text => println!("{}", block),
                 Format::Json => panic!("JSON format not supported for blocks in this command"),
-                // println!(
-                //     "{}",
-                //     block
-                //         .to_json()
-                //         .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
-                // ),
             },
             None => {
                 let block = self.blockchain_db.fetch_orphan(hash).await?;
                 println!("Found in orphan database");
                 match format {
                     Format::Text => println!("{}", block),
-                    Format::Json => panic!("JSON format not supported for blocks in this command"),
-                    // println!(
-                    //     "{}",
-                    //     block
-                    //         .to_json()
-                    //         .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
-                    // ),
+                    Format::Json => eprintln!("JSON format not supported for blocks in this command"),
                 }
             },
         };
