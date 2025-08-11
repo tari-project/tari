@@ -201,11 +201,11 @@ impl EmissionSchedule {
     /// the emission curve if you're interested in the supply as well as the reward.
     ///
     /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
-    pub fn iter(&self) -> EmissionRate {
+    pub fn iter(&self) -> EmissionRate<'_> {
         EmissionRate::new(self)
     }
 
-    fn inner_schedule(&self, height: u64) -> EmissionRate {
+    fn inner_schedule(&self, height: u64) -> EmissionRate<'_> {
         let mut iterator = self.iter();
         while iterator.block_height() < height {
             iterator.next();
