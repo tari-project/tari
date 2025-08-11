@@ -226,9 +226,9 @@ listener_self_liveness_check_interval = 15
 # The `DbConnectionUrl` for the Dht database. Default: In-memory database
 database_url = "data/base_node/dht.db"
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
-#num_neighbouring_nodes = 8
-# Number of random peers to include. Default: 8
-#num_random_nodes = 8
+#num_neighbouring_nodes = 6
+# Number of random peers to include. Default: 4
+#num_random_nodes = 6
 # Connections above the configured number of neighbouring and random nodes will be removed (default: false)
 #minimize_connections = false
 # Send to this many peers when using the broadcast strategy. Default: 8

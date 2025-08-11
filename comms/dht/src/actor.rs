@@ -469,17 +469,9 @@ impl DhtActor {
                 let node_identity = Arc::clone(&self.node_identity);
                 let connectivity = self.connectivity.clone();
                 let config = self.config.clone();
-                let seeds = self.seeds.clone();
                 Box::pin(async move {
-                    match Self::select_peers(
-                        &config,
-                        node_identity,
-                        peer_manager,
-                        connectivity,
-                        broadcast_strategy,
-                        &seeds,
-                    )
-                    .await
+                    match Self::select_peers(&config, node_identity, peer_manager, connectivity, broadcast_strategy)
+                        .await
                     {
                         Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
                         Err(err) => {
@@ -589,7 +581,6 @@ impl DhtActor {
         peer_manager: Arc<PeerManager>,
         mut connectivity: ConnectivityRequester,
         broadcast_strategy: BroadcastStrategy,
-        seeds: &[NodeId],
     ) -> Result<Vec<NodeId>, DhtActorError> {
         trace!(target: LOG_TARGET, "Select peers broadcast strategy: {}", broadcast_strategy);
         #[allow(clippy::enum_glob_use)]
@@ -618,15 +609,8 @@ impl DhtActor {
                 peers.into_iter().map(|p| p.peer_node_id().clone()).collect()
             },
             ClosestNodes(closest_request) => {
-                let connected_seeds_len = Self::get_connected_seeds(connectivity.clone(), seeds).await?.len();
-                Self::select_closest_nodes_connected(
-                    closest_request,
-                    config,
-                    connectivity,
-                    peer_manager.clone(),
-                    connected_seeds_len,
-                )
-                .await?
+                Self::select_closest_nodes_connected(closest_request, config, connectivity, peer_manager.clone())
+                    .await?
             },
             DirectOrClosestNodes(closest_request) => {
                 // First check if a direct connection exists
@@ -637,15 +621,8 @@ impl DhtActor {
                 {
                     vec![closest_request.node_id.clone()]
                 } else {
-                    let connected_seeds_len = Self::get_connected_seeds(connectivity.clone(), seeds).await?.len();
-                    Self::select_closest_nodes_connected(
-                        closest_request,
-                        config,
-                        connectivity,
-                        peer_manager.clone(),
-                        connected_seeds_len,
-                    )
-                    .await?
+                    Self::select_closest_nodes_connected(closest_request, config, connectivity, peer_manager.clone())
+                        .await?
                 }
             },
             Random(n, excluded) => {
@@ -660,10 +637,9 @@ impl DhtActor {
             SelectedPeers(peers) => peers,
             Broadcast(exclude) => {
                 // When selecting the  nodes, we want to make sure that we have enough non-seed node connections
-                let connected_seeds_len = Self::get_connected_seeds(connectivity.clone(), seeds).await?.len();
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::random_nodes(
-                        config.broadcast_factor + connected_seeds_len,
+                        config.broadcast_factor,
                         exclude.clone(),
                     ))
                     .await?;
@@ -691,9 +667,6 @@ impl DhtActor {
             },
             Propagate(destination, exclude) => {
                 let dest_node_id = destination.to_derived_node_id();
-                // When selecting the nodes, we want to make sure that we have enough non-seed node connections
-                let connected_seeds_len = Self::get_connected_seeds(connectivity.clone(), seeds).await?.len();
-
                 let connections = match dest_node_id {
                     Some(node_id) => {
                         let dest_connection = connectivity.get_connection(node_id.clone()).await?;
@@ -710,7 +683,7 @@ impl DhtActor {
                                 let mut connections = connectivity
                                     .select_connections(ConnectivitySelection::closest_to(
                                         node_id.clone(),
-                                        config.num_neighbouring_nodes + connected_seeds_len,
+                                        config.num_neighbouring_nodes,
                                         exclude.clone(),
                                     ))
                                     .await?;
@@ -718,7 +691,7 @@ impl DhtActor {
                                 // Exclude candidates that are further away from the destination than this node
                                 // unless this node has not selected a big enough sample i.e. this node is not well
                                 // connected
-                                if connections.len() >= config.propagation_factor + connected_seeds_len {
+                                if connections.len() >= config.propagation_factor {
                                     let dist_from_dest = node_identity.node_id().distance(&node_id);
                                     let before_len = connections.len();
                                     connections = connections
@@ -733,7 +706,7 @@ impl DhtActor {
                                     );
                                 }
 
-                                connections.truncate(config.propagation_factor + connected_seeds_len);
+                                connections.truncate(config.propagation_factor);
                                 connections
                             },
                         }
@@ -742,11 +715,11 @@ impl DhtActor {
                         debug!(
                             target: LOG_TARGET,
                             "No destination for propagation, sending to {} random peers",
-                            config.propagation_factor + connected_seeds_len
+                            config.propagation_factor
                         );
                         connectivity
                             .select_connections(ConnectivitySelection::random_nodes(
-                                config.propagation_factor + connected_seeds_len,
+                                config.propagation_factor,
                                 exclude.clone(),
                             ))
                             .await?
@@ -856,33 +829,12 @@ impl DhtActor {
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 
-    async fn get_connected_seeds(
-        mut connectivity: ConnectivityRequester,
-        seeds: &[NodeId],
-    ) -> Result<Vec<NodeId>, DhtActorError> {
-        let all_connections = connectivity
-            .select_connections(ConnectivitySelection::all_nodes(vec![]))
-            .await?
-            .iter()
-            .map(|c| c.peer_node_id().clone())
-            .collect::<Vec<_>>();
-        let connected_seeds = all_connections
-            .iter()
-            .filter(|&n| seeds.iter().any(|s| s == n))
-            .cloned()
-            .collect::<Vec<_>>();
-        Ok(connected_seeds)
-    }
-
     async fn select_closest_nodes_connected(
         closest_request: Box<BroadcastClosestRequest>,
         config: &DhtConfig,
         mut connectivity: ConnectivityRequester,
         peer_manager: Arc<PeerManager>,
-        connected_seeds_len: usize,
     ) -> Result<Vec<NodeId>, DhtActorError> {
-        // When selecting the closest nodes, we want to make sure that we have enough non-seed node connections to
-        // propagate the message to.
         let connections = connectivity
             .select_connections(ConnectivitySelection::closest_to(
                 closest_request.node_id.clone(),
@@ -904,12 +856,8 @@ impl DhtActor {
                 .chain(candidates.iter())
                 .cloned()
                 .collect::<Vec<_>>();
-            // If we don't have enough connections, let's select some more disconnected peers (at least 2, but account
-            // for connected seed peers)
-            let n = cmp::max(
-                config.broadcast_factor.saturating_sub(candidates.len()) + connected_seeds_len,
-                2,
-            );
+            // If we don't have enough connections, let's select some more disconnected peers (at least 2)
+            let n = cmp::max(config.broadcast_factor.saturating_sub(candidates.len()), 2);
             let additional = Self::select_closest_peers_for_propagation(
                 &peer_manager,
                 &closest_request.node_id,

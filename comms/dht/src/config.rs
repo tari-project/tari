@@ -37,10 +37,10 @@ pub struct DhtConfig {
     /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
     pub database_url: DbConnectionUrl,
     /// The maximum number of peer nodes that a node has to be closer to, to be considered a neighbour
-    /// Default: 8
+    /// Default: 6
     pub num_neighbouring_nodes: usize,
     /// Number of random peers to include
-    /// Default: 16
+    /// Default: 6
     pub num_random_nodes: usize,
     /// Connections above the configured number of neighbouring and random nodes will be removed
     /// (default: false)
@@ -167,8 +167,8 @@ impl Default for DhtConfig {
         // NB: please remember to update field comments to reflect these defaults
         Self {
             protocol_version: DhtProtocolVersion::latest(),
-            num_neighbouring_nodes: 8,
-            num_random_nodes: 16,
+            num_neighbouring_nodes: 6,
+            num_random_nodes: 6,
             minimize_connections: false,
             propagation_factor: 20,
             broadcast_factor: 8,
