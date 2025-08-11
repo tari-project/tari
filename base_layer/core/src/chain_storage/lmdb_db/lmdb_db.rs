@@ -3809,7 +3809,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 };
                 lmdb_replace(
                     &txn,
-                    &db.block_accumulated_data_db,
+                    &db.orphan_header_accumulated_data_db,
                     &hash,
                     &new_orphan_block_accum_data,
                     None,
@@ -3912,8 +3912,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         // MIGRATION: Total accumulated difficulty migration - re-calculate accumulated difficulties from the last known
         // good accumulated difficulty
         if migrate_from_version == 5 {
-            let mut known_good_difficulties = get_correct_accumulated_difficulty_v1_and_v5();
-            known_good_difficulties.sort_by(|a, b| a.0.cmp(&b.0));
+            let known_good_difficulties = get_correct_accumulated_difficulty();
             let current_height = {
                 let txn = db.read_transaction()?;
                 // New blockchains will not have a chain height, so we default to 0
@@ -4064,7 +4063,8 @@ pub struct OldChainTipData {
     pub total_accumulated_difficulty: U256,
 }
 
-fn get_correct_accumulated_difficulty_v1_and_v5() -> Vec<(u64, U512)> {
+#[allow(clippy::too_many_lines)]
+fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
     #[cfg(tari_target_network_mainnet)]
     {
         vec![
@@ -4125,12 +4125,24 @@ fn get_correct_accumulated_difficulty_v1_and_v5() -> Vec<(u64, U512)> {
                 U512::from_dec_str("96066111969358704467018539111557064475512637546744500").expect("should not fail"),
             ),
             (
-                63000,
-                U512::from_dec_str("111641644218991533385100887243426595248239027338339200").expect("should not fail"),
+                65000,
+                U512::from_dec_str("122329204015869322552594573890763356522390865852518912").expect("should not fail"),
             ),
             (
-                64000,
-                U512::from_dec_str("117075121726717237710388258706829255615906072403606360").expect("should not fail"),
+                66000,
+                U512::from_dec_str("127798908941293764804359619945328469097858898047617420").expect("should not fail"),
+            ),
+            (
+                67000,
+                U512::from_dec_str("133125643547966461551777199550825388308048635582895712").expect("should not fail"),
+            ),
+            (
+                68000,
+                U512::from_dec_str("139045167411840330538632079640917550928226767744777496").expect("should not fail"),
+            ),
+            (
+                69000,
+                U512::from_dec_str("145071463074257999779272218665263985719041319673857255").expect("should not fail"),
             ),
         ]
     }

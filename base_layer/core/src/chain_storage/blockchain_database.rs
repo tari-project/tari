@@ -2928,12 +2928,12 @@ fn process_payref_for_height<B: BlockchainBackend>(
 ) -> Result<PayrefRebuildStatus, ChainStorageError> {
     debug!(target: LOG_TARGET, "[PayRef] Processing index rebuilding for height {}", height);
 
-    let write_txn = db
+    let write_lock = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
 
     let status =
-        write_txn.build_payref_indexes_for_height(height, metadata_at_start.clone(), initialize_stats, finalize)?;
+        write_lock.build_payref_indexes_for_height(height, metadata_at_start.clone(), initialize_stats, finalize)?;
 
     if finalize || status.is_rebuilt {
         debug!(
@@ -2954,19 +2954,19 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
 ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
     debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {}", height);
 
-    let write_txn = db
+    let write_lock = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
-    let last_chain_header = write_txn.fetch_last_chain_header()?;
+    let last_chain_header = write_lock.fetch_last_chain_header()?;
     // Safety check to ensure we do not rebuild accumulated data for a height that has been reorged out.
     let height = min(height, last_chain_header.height());
 
     // Rebuild the accumulated data for the given height
-    let chain_header = write_txn.fetch_chain_header_by_height(height)?;
+    let chain_header = write_lock.fetch_chain_header_by_height(height)?;
     let header = chain_header.header().clone();
-    let prev_chain_header = write_txn.fetch_chain_header_by_height(height.saturating_sub(1))?;
+    let prev_chain_header = write_lock.fetch_chain_header_by_height(height.saturating_sub(1))?;
 
-    let achieved_difficulty = difficulty_calculator.check_achieved_and_target_difficulty(&*write_txn, &header)?;
+    let achieved_difficulty = difficulty_calculator.check_achieved_and_target_difficulty(&*write_lock, &header)?;
 
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
         .with_hash(header.hash())
@@ -2974,7 +2974,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
         .with_total_kernel_offset(header.total_kernel_offset.clone())
         .build()?;
 
-    let status = write_txn.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
+    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
 
     Ok(status)
 }
