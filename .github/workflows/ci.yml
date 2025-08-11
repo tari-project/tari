@@ -1,11 +1,11 @@
 ---
-name: 'CI'
+name: "CI"
 
-'on':
+"on":
   workflow_dispatch:
   push:
     branches:
-      - 'ci-*'
+      - "ci-*"
   pull_request:
     types:
       - opened
@@ -31,13 +31,13 @@ env:
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
-  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/development' || github.ref != 'refs/heads/nextnet' || github.ref != 'refs/heads/stagenet' }}
 
 jobs:
   ci:
     name: ci
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -80,7 +80,7 @@ jobs:
       - name: Install cargo-lints
         run: cargo install cargo-lints
       - name: Clippy check (with lints)
-        run: cargo +${{ env.nightly_toolchain }} lints clippy --all-targets --all-features
+        run: cargo lints clippy --all-targets --all-features
       - name: rust-toolchain.toml.bak renaming back
         run: mv rust-toolchain.toml.bak rust-toolchain.toml
       - name: cargo machete
@@ -96,7 +96,7 @@ jobs:
 
   ledger-build-tests:
     name: ledger build tests
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     env:
       DOCKER_IMAGE: "ghcr.io/ledgerhq/ledger-app-builder/ledger-app-builder:4.2.0"
     steps:
@@ -119,7 +119,7 @@ jobs:
     # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
     #  on stable Rust.
     name: cargo check with stable
-    runs-on: [ self-hosted, ubuntu-high-cpu ]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     env:
       RUSTUP_PERMIT_COPY_RENAME: true
     steps:
@@ -176,7 +176,7 @@ jobs:
 
   licenses:
     name: file licenses
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -191,7 +191,7 @@ jobs:
 
   test:
     name: test
-    runs-on: [ self-hosted, ubuntu-high-cpu ]
+    runs-on: [self-hosted, ubuntu-high-cpu]
     permissions:
       checks: write
       pull-requests: write
@@ -199,11 +199,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tari_target_network: [
-          { target: "testnet", network: "esmeralda" },
-          { target: "nextnet", network: "nextnet" },
-          { target: "mainnet", network: "stagenet" },
-        ]
+        tari_target_network:
+          [
+            { target: "testnet", network: "esmeralda" },
+            { target: "nextnet", network: "nextnet" },
+            { target: "mainnet", network: "stagenet" },
+          ]
     env:
       TARI_TARGET_NETWORK: ${{ matrix.tari_target_network.target }}
       TARI_NETWORK: ${{ matrix.tari_target_network.network }}
@@ -249,7 +250,7 @@ jobs:
       - name: cargo test
         run: cargo +${{ env.nightly_test_toolchain }} nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci --no-fail-fast
       - name: upload artifact
-        uses: actions/upload-artifact@v4  # upload test results as artifact
+        uses: actions/upload-artifact@v4 # upload test results as artifact
         if: always()
         with:
           name: test-results-${{ matrix.tari_target_network.target }}.${{ matrix.tari_target_network.network }}
@@ -258,7 +259,7 @@ jobs:
   # Allows other workflows to know the PR number
   artifacts:
     name: pr_2_artifact
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Save the PR number in an artifact
         shell: bash
@@ -275,7 +276,7 @@ jobs:
   # needed for test results
   event_file:
     name: "Upload Event File for Test Results"
-    runs-on: [ ubuntu-latest ]
+    runs-on: [ubuntu-latest]
     steps:
       - name: Upload
         uses: actions/upload-artifact@v4

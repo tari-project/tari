@@ -627,7 +627,7 @@ impl NibblePath {
     }
 
     /// Get a bit iterator iterates over the whole nibble path.
-    pub fn bits(&self) -> NibbleBitIterator {
+    pub fn bits(&self) -> NibbleBitIterator<'_> {
         NibbleBitIterator {
             nibble_path: self,
             pos: (0..self.num_nibbles * 4),
@@ -635,7 +635,7 @@ impl NibblePath {
     }
 
     /// Get a nibble iterator iterates over the whole nibble path.
-    pub fn nibbles(&self) -> NibbleIterator {
+    pub fn nibbles(&self) -> NibbleIterator<'_> {
         NibbleIterator::new(self, 0, self.num_nibbles)
     }
 

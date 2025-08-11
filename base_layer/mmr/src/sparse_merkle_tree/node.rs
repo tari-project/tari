@@ -111,7 +111,7 @@ hash_type!(ValueHash);
 hash_type!(NodeKey);
 
 impl NodeKey {
-    pub fn as_directions(&self) -> PathIterator {
+    pub fn as_directions(&self) -> PathIterator<'_> {
         PathIterator::new(self)
     }
 }
@@ -126,7 +126,7 @@ pub struct PathIterator<'a> {
 }
 
 impl PathIterator<'_> {
-    pub fn new(key: &NodeKey) -> PathIterator {
+    pub fn new(key: &NodeKey) -> PathIterator<'_> {
         PathIterator {
             cursor_front: 0,
             // KEY_LENGTH is currently 32 bytes, so this will not overflow
