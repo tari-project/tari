@@ -435,7 +435,8 @@ async fn test_validate_internal_consistency() {
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-    assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    // This will panic if not valid
+    let _unused = validator.validate(&tx, None, None, u64::MAX).unwrap();
 }
 
 #[tokio::test]
