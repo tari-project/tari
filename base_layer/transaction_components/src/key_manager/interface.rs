@@ -546,7 +546,7 @@ mod test {
     use tari_common_types::types::{CompressedPublicKey, PrivateKey};
     use tari_crypto::keys::SecretKey as SK;
 
-    use crate::transactions::transaction_key_manager::TariKeyId;
+    use crate::key_manager::TariKeyId;
 
     fn random_string(len: usize) -> String {
         iter::repeat(())

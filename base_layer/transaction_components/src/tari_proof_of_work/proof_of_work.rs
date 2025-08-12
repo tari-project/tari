@@ -87,7 +87,7 @@ impl Display for ProofOfWork {
 
 #[cfg(test)]
 mod test {
-    use crate::proof_of_work::proof_of_work::{PowAlgorithm, ProofOfWork};
+    use crate::tari_proof_of_work::proof_of_work::{PowAlgorithm, ProofOfWork};
 
     #[test]
     fn display() {

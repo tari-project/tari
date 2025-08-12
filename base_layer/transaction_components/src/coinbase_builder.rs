@@ -788,7 +788,6 @@ mod test {
         aggregated_body::AggregateBody,
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
-        test_helpers::create_consensus_constants,
         transaction_components::{
             memo_field::{MemoField, TxType},
             CoinBaseExtra,
@@ -796,14 +795,13 @@ mod test {
             RangeProofType,
             TransactionKernelVersion,
         },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
+        key_manager::{
             TariKeyId,
             TransactionKeyManagerInterface,
             TxoStage,
         },
     };
+    use tari_transaction_key_manager::{create_memory_db_key_manager,MemoryDbKeyManager};
 
     #[tokio::test]
     #[allow(clippy::too_many_lines)]

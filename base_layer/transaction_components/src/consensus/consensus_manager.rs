@@ -252,10 +252,12 @@ impl ConsensusManagerBuilder {
 
 #[cfg(test)]
 mod test {
+    /// The average amount of blocks per day based on the target block time
+    pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
     use std::str::FromStr;
 
     use super::*;
-    use crate::{blocks::pre_mine::BLOCKS_PER_DAY, consensus::consensus_constants::MAINNET_PRE_MINE_VALUE};
+    use crate::{ consensus::consensus_constants::MAINNET_PRE_MINE_VALUE};
 
     #[test]
     fn test_supply_at_block() {

@@ -352,7 +352,7 @@ mod test {
 
     use crate::{
         consensus::emission::{Emission, EmissionSchedule},
-        transactions::tari_amount::{MicroMinotari, T},
+        tari_amount::{MicroMinotari, T},
     };
 
     #[test]

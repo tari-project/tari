@@ -136,9 +136,9 @@ mod test {
     use tari_utilities::hex::{to_hex, Hex};
 
     use super::*;
-    use crate::{
-        covenant,
+    use crate::transaction_components::{
         covenants::{
+    covenant,
             arguments::CovenantArg,
             byte_codes::ARG_OUTPUT_FIELD,
             fields::OutputField,

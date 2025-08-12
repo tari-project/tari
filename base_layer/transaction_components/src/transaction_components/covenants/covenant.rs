@@ -191,14 +191,14 @@ impl FromIterator<CovenantToken> for Covenant {
 mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
 
-    use crate::{
-        covenant,
+    use crate::transaction_components::{
         covenants::{
             test::{create_input, create_outputs},
             Covenant,
         },
-        transactions::{test_helpers::UtxoTestParams, transaction_key_manager::create_memory_db_key_manager},
+        transactions::{test_helpers::UtxoTestParams},
     };
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_succeeds_when_empty() {

@@ -86,9 +86,8 @@ impl ImportedKeySql {
     /// Retrieve every imported key currently in the database.
     /// Returns a `Vec` of [ImportedKeySql], if none are found, it will return an empty `Vec`.
     pub fn index(conn: &mut SqliteConnection) -> Result<Vec<ImportedKeySql>, KeyManagerStorageError> {
-        Ok(imported_keys::table
-            .load::<ImportedKeySql>(conn)
-            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?)
+        imported_keys::table.load::<ImportedKeySql>(conn).map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))
+
     }
 
     #[allow(clippy::wrong_self_convention)]

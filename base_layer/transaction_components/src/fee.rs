@@ -78,7 +78,7 @@ mod test {
     use tari_script::ExecutionStack;
 
     use super::*;
-    use crate::transactions::transaction_components::{SpentOutput, TransactionInput};
+    use crate::transaction_components::{SpentOutput, TransactionInput};
 
     #[test]
     pub fn test_derive_clone() {

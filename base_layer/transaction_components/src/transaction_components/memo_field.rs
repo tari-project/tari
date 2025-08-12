@@ -1320,7 +1320,7 @@ mod test {
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 
     use super::*;
-    use crate::transactions::{
+    use crate::{
         tari_amount::MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
