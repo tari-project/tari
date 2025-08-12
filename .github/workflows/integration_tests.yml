@@ -42,7 +42,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Envs setup
         id: envs_setup
@@ -132,7 +132,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Envs setup
         id: envs_setup

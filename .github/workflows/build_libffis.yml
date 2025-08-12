@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set Matrix from JSon file
         id: set-matrix
@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Declare TestNet for tags
         id: set-tari-network
