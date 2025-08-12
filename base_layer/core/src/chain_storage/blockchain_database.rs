@@ -548,7 +548,7 @@ where B: BlockchainBackend
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
     // so that metadata and db are read in the correct order so that deadlocks don't occur
-    pub fn db_read_access(&self) -> Result<RwLockReadGuard<B>, ChainStorageError> {
+    pub fn db_read_access(&self) -> Result<RwLockReadGuard<'_, B>, ChainStorageError> {
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -559,7 +559,7 @@ where B: BlockchainBackend
     }
 
     #[cfg(test)]
-    pub fn test_db_write_access(&self) -> Result<RwLockWriteGuard<B>, ChainStorageError> {
+    pub fn test_db_write_access(&self) -> Result<RwLockWriteGuard<'_, B>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -569,7 +569,7 @@ where B: BlockchainBackend
         })
     }
 
-    fn db_write_access(&self) -> Result<RwLockWriteGuard<B>, ChainStorageError> {
+    fn db_write_access(&self) -> Result<RwLockWriteGuard<'_, B>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
