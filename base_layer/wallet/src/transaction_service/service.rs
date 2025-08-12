@@ -144,7 +144,7 @@ use crate::{
             models::{
                 CompletedTransaction,
                 TxCancellationReason,
-                WalletTransaction::{self, Completed, PendingInbound, PendingOutbound},
+                WalletTransaction::{Completed, PendingInbound, PendingOutbound},
             },
         },
         tasks::{
@@ -3179,35 +3179,19 @@ where
         let transaction = self.db.get_any_transaction(tx_id)?;
 
         if let Some(transaction) = transaction {
-            let status = match &transaction {
-                WalletTransaction::PendingInbound(tx) => &tx.status,
-                WalletTransaction::PendingOutbound(tx) => &tx.status,
-                WalletTransaction::Completed(tx) => &tx.status,
-            };
-
-            if !matches!(
-                status,
-                TransactionStatus::OneSidedUnconfirmed | TransactionStatus::OneSidedConfirmed
-            ) {
-                return Err(TransactionServiceError::FailedToCancelOneSidedTransaction(format!(
+            if transaction.is_mined() {
+                return Err(TransactionServiceError::FailedToCancelTransaction(format!(
                     "Invalid transaction status: {}",
-                    status
+                    transaction.status()
                 )));
             }
 
-            return match &transaction {
-                WalletTransaction::PendingInbound(_) | WalletTransaction::PendingOutbound(_) => self
-                    .resources
+            if transaction.is_pending() {
+                self.resources
                     .output_manager_service
                     .clear_short_term_encumberances()
                     .await
-                    .map_err(TransactionServiceError::from),
-                WalletTransaction::Completed(tx) => self
-                    .resources
-                    .output_manager_service
-                    .cancel_transaction(tx.tx_id)
-                    .await
-                    .map_err(TransactionServiceError::from),
+                    .map_err(TransactionServiceError::from)?
             };
         };
 

@@ -225,7 +225,7 @@ pub enum TransactionServiceError {
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
     #[error("Failed to cancel one sided transaction: {0}")]
-    FailedToCancelOneSidedTransaction(String),
+    FailedToCancelTransaction(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {
