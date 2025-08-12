@@ -35,7 +35,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    num::NonZeroUsize,
+};
 
 use blake2::{
     digest::{Update, VariableOutput},
@@ -50,6 +53,8 @@ use crate::{
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CuckarooVerificationError {
+    #[error("Unsupported cycle length")]
+    UnsupportedCycleLength,
     #[error("PoW data contains non-zero padding")]
     PowDataContainsNonZeroPadding,
     #[error("PoW data is too short")]
@@ -84,8 +89,15 @@ pub fn cuckaroo_result(
     edge_bits: u8,
 ) -> Result<Vec<u8>, CuckarooVerificationError> {
     let pow = header.pow.to_bytes();
-    let required_cycle_length = required_cycle_length as usize;
+    let required_cycle_length = NonZeroUsize::try_from(required_cycle_length as usize)
+        .map_err(|_| CuckarooVerificationError::UnsupportedCycleLength)?;
 
+    let packed_size = required_cycle_length.get() * edge_bits as usize;
+    let packed_bytes = (packed_size + 7) / 8;
+
+    if pow.is_empty() || pow.len() < 1 + packed_bytes {
+        return Err(CuckarooVerificationError::PowDataTooShort);
+    }
     // First byte must be 3 for Cuckaroo
     if pow[0] != 3 {
         return Err(CuckarooVerificationError::BlockHeaderInvalidPowAlgorithm);
@@ -100,17 +112,17 @@ pub fn cuckaroo_result(
 
     let pow_data = &pow[1..];
     // Data after <required_cycle_length * edge_bits> is padding, it must be zero
-    for &byte in &pow_data[required_cycle_length * edge_bits as usize / 8..] {
+    for &byte in &pow_data[packed_bytes..] {
         if byte != 0 {
             return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
     }
 
-    let nonces = unpack_nonces(pow_data, edge_bits, required_cycle_length)?;
+    let nonces = unpack_nonces(pow_data, edge_bits, required_cycle_length.get())?;
     // There might be extra padding at  the end of the nonces.
-    for n in &nonces[required_cycle_length..] {
+    for n in &nonces[required_cycle_length.get()..] {
         if *n != 0 {
-            return Err(CuckarooVerificationError::PowDataTooShort);
+            return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
     }
     let siphash_keys = [
@@ -194,12 +206,12 @@ fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Ve
 fn verify(
     siphash_keys: &[u64; 4],
     nonces: &[u64],
-    cycle_length: usize,
+    cycle_length: NonZeroUsize,
     edge_bits: u8,
 ) -> Result<(), CuckarooVerificationError> {
     let node_mask = (1u64 << edge_bits) - 1;
-    let mut uvs = Vec::with_capacity(cycle_length);
-    for i in 0..cycle_length {
+    let mut uvs = Vec::with_capacity(cycle_length.get());
+    for i in 0..cycle_length.get() {
         if nonces[i] > node_mask {
             return Err(CuckarooVerificationError::NonceTooLarge);
         }
@@ -218,10 +230,10 @@ fn verify(
     verify_from_edges(&uvs, cycle_length)
 }
 
-fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: usize) -> Result<(), CuckarooVerificationError> {
+fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: NonZeroUsize) -> Result<(), CuckarooVerificationError> {
     let proof_size = uvs.len();
-    if proof_size != cycle_length {
-        if proof_size > cycle_length {
+    if proof_size != cycle_length.get() {
+        if proof_size > cycle_length.get() {
             return Err(CuckarooVerificationError::CycleTooLong);
         }
         return Err(CuckarooVerificationError::CycleTooShort);
@@ -231,7 +243,7 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: usize) -> Result<(), Cuck
     let mut graph: HashMap<u64, Vec<u64>> = HashMap::new();
     let mut xor_sum = 0;
 
-    for i in 0..cycle_length {
+    for i in 0..cycle_length.get() {
         let (u, v) = uvs[i];
         graph.entry(u).or_default().push(v);
         graph.entry(v).or_default().push(u);
@@ -252,11 +264,14 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: usize) -> Result<(), Cuck
 
     let mut visited_edges = HashSet::new();
     let mut visited_nodes = HashSet::new();
-    let mut current = *graph.keys().next().unwrap();
+    let mut current = *graph.keys().next().expect("Graph cannot be empty");
     let start_node = current;
     let mut previous = None;
 
-    for _ in 0..cycle_length {
+    for _ in 0..cycle_length.get() {
+        if visited_nodes.contains(&current) {
+            return Err(CuckarooVerificationError::CycleDidNotUseAllEdges);
+        }
         visited_nodes.insert(current);
         let neighbors = &graph[&current];
 
@@ -286,7 +301,7 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: usize) -> Result<(), Cuck
         return Err(CuckarooVerificationError::CycleDoesNotEndAtStart);
     }
 
-    if visited_edges.len() != cycle_length {
+    if visited_edges.len() != cycle_length.get() {
         return Err(CuckarooVerificationError::CycleDidNotUseAllEdges);
     }
 
@@ -304,6 +319,7 @@ pub fn cuckaroo_difficulty(
 
 #[cfg(test)]
 mod test {
+
     use super::*;
 
     const KEYS: [u64; 4] = [123u64, 123u64, 234u64, 23423u64];
@@ -382,7 +398,7 @@ mod test {
     #[test]
     fn test_cuckaroo_nonce_too_large() {
         let nonces = vec![0, 127, 128];
-        let cycle_length = 3;
+        let cycle_length = NonZeroUsize::new(3).unwrap();
         let edge_bits = 7;
         let result = verify(&KEYS, &nonces, cycle_length, edge_bits);
         assert!(result.is_err());
@@ -392,7 +408,7 @@ mod test {
     #[test]
     fn test_cuckaroo_nonces_not_ascending_1() {
         let nonces = vec![0, 127, 127];
-        let result = verify(&KEYS, &nonces, 3, 7);
+        let result = verify(&KEYS, &nonces, NonZeroUsize::new(3).unwrap(), 7);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::NoncesNotAscending)
     }
@@ -401,7 +417,7 @@ mod test {
     fn test_cuckaroo_nonces_not_ascending_2() {
         let nonces = vec![0, 127, 126];
 
-        let result = verify(&KEYS, &nonces, 3, 7);
+        let result = verify(&KEYS, &nonces, NonZeroUsize::new(3).unwrap(), 7);
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::NoncesNotAscending)
@@ -410,14 +426,14 @@ mod test {
     #[test]
     fn test_cuckaroo_verify_endpoints_dont_match() {
         let uvs = vec![(0, 1), (1, 2), (2, 3), (3, 4)];
-        let result = verify_from_edges(&uvs, 4);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(4).unwrap());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::EndpointsDontMatch);
     }
     #[test]
     fn test_cuckaroo_verify_from_edges() {
         let uvs = vec![(0, 1), (1, 2), (2, 3), (3, 0)];
-        let result = verify_from_edges(&uvs, 4);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(4).unwrap());
 
         assert_eq!(result, Ok(()));
     }
@@ -425,7 +441,7 @@ mod test {
     #[test]
     fn test_cuckaroo_verify_from_edges_out_of_order() {
         let uvs = vec![(0, 1), (1, 2), (3, 0), (2, 3)];
-        let result = verify_from_edges(&uvs, 4);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(4).unwrap());
 
         assert_eq!(result, Ok(()));
 
@@ -433,14 +449,14 @@ mod test {
 
         let mut uvs = uvs;
         uvs.shuffle(&mut rand::thread_rng());
-        let result = verify_from_edges(&uvs, 4);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(4).unwrap());
         assert_eq!(result, Ok(()));
     }
 
     #[test]
     fn test_cuckaroo_cycle_too_short() {
         let uvs = vec![(0, 1), (1, 2)];
-        let result = verify_from_edges(&uvs, 3);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(3).unwrap());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::CycleTooShort);
     }
@@ -448,7 +464,7 @@ mod test {
     #[test]
     fn test_cuckaroo_cycle_too_long() {
         let uvs = vec![(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)];
-        let result = verify_from_edges(&uvs, 4);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(4).unwrap());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::CycleTooLong);
     }
@@ -457,7 +473,7 @@ mod test {
     #[test]
     fn test_cuckaroo_edge_already_visited() {
         let uvs = vec![(0, 1), (1, 2), (2, 3), (0, 1), (3, 0), (1, 0)];
-        let result = verify_from_edges(&uvs, 6);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(6).unwrap());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::EdgeAlreadyVisited);
     }
@@ -465,7 +481,7 @@ mod test {
     #[test]
     fn test_cuckaroo_node_has_more_than_two_edges() {
         let uvs = vec![(0, 1), (1, 2), (2, 3), (3, 0), (0, 2), (2, 0)];
-        let result = verify_from_edges(&uvs, 6);
+        let result = verify_from_edges(&uvs, NonZeroUsize::new(6).unwrap());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::NodeHasMoreThanTwoEdges);
     }
