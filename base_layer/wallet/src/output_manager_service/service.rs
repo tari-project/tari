@@ -197,6 +197,13 @@ where
         })
     }
 
+    pub fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerError> {
+        self.resources
+            .db
+            .clear_short_term_encumberances()
+            .map_err(OutputManagerError::from)
+    }
+
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
         let request_stream = self
             .request_stream
@@ -531,6 +538,9 @@ where
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
+            OutputManagerRequest::ClearShortTermEncumberances => self
+                .clear_short_term_encumberances()
+                .map(|_| OutputManagerResponse::ClearShortTermEncumberances),
         }
     }
 
