@@ -49,6 +49,8 @@ pub enum PowError {
     MergeMineError(#[from] MergeMineError),
     #[error("Cuckaroo proof of work data size mismatch (expected: {expected}, got: {actual})")]
     CuckarooPowDataSizeMismatch { expected: usize, actual: usize },
+    #[error("Cuckaroo proof of work data has non-zero padding (padding: {padding})")]
+    CuckarooPowDataNonZeroPadding { padding: u8 },
 }
 
 impl PowError {
@@ -60,6 +62,7 @@ impl PowError {
             err @ PowError::RandomxTPowDataTooLong |
             err @ PowError::AchievedDifficultyTooLow { .. } |
             err @ PowError::CuckarooPowDataSizeMismatch { .. } |
+            err @ PowError::CuckarooPowDataNonZeroPadding { .. } |
             err @ PowError::InvalidTargetDifficulty { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,

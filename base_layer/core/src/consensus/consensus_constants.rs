@@ -170,7 +170,7 @@ pub struct ConsensusConstants {
     /// Maximum number of validator nodes that can exit per epoch
     vn_registration_max_exits_per_epoch: u32,
     /// Cuckaroo cycle length
-    cuckaroo_cycle_length: usize,
+    cuckaroo_cycle_length: u8,
     /// Cuckaroo edge bits
     cuckaroo_edge_bits: u8,
 }
@@ -430,7 +430,7 @@ impl ConsensusConstants {
         self.proof_of_work.keys().copied().collect()
     }
 
-    pub fn cuckaroo_cycle_length(&self) -> usize {
+    pub fn cuckaroo_cycle_length(&self) -> u8 {
         self.cuckaroo_cycle_length
     }
 

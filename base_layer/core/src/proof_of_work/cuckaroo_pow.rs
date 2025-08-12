@@ -78,10 +78,11 @@ pub enum CuckarooVerificationError {
 
 pub fn cuckaroo_result(
     header: &BlockHeader,
-    required_cycle_length: usize,
+    required_cycle_length: u8,
     edge_bits: u8,
 ) -> Result<Vec<u8>, anyhow::Error> {
     let pow = header.pow.to_bytes();
+    let required_cycle_length = required_cycle_length as usize;
 
     // First byte must be 3 for Cuckaroo
     if pow[0] != 3 {
@@ -136,15 +137,11 @@ pub fn cuckaroo_result(
 #[cfg(test)]
 fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
     let mut target = vec![0u8; (uncompressed.len() * bit_width as usize + 7) / 8];
-    dbg!(&target);
     let mut compressed = target.as_mut_slice();
     let mut mini_buffer = 0u64;
     let mut remaining = 64;
     for el in uncompressed {
-        dbg!(el, bit_width, remaining, mini_buffer);
-
         mini_buffer |= el << (64 - remaining);
-        dbg!(format!("mini_buffer: {:064b}", mini_buffer));
         if bit_width < remaining {
             remaining -= bit_width;
         } else {
@@ -161,9 +158,6 @@ fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
     if mini_buffer > 0 {
         compressed[..].copy_from_slice(&mini_buffer.to_le_bytes()[..remainder]);
     }
-    dbg!(&target);
-    dbg!(format!("target: {:08b}", target[0]));
-    dbg!(format!("target: {:08b}", target[1]));
     target
 }
 
@@ -299,7 +293,7 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: usize) -> Result<(), Cuck
 
 pub fn cuckaroo_difficulty(
     header: &BlockHeader,
-    required_cycle_length: usize,
+    required_cycle_length: u8,
     num_bits: u8,
 ) -> Result<Difficulty, anyhow::Error> {
     let difficulty = cuckaroo_result(header, required_cycle_length, num_bits)?;

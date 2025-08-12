@@ -30,7 +30,7 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError, ProofOfWork},
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
         DifficultyCalculator,
@@ -186,39 +186,57 @@ fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: FixedHash) -> Result<
     Ok(())
 }
 
-/// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
-fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
-    use PowAlgorithm::{RandomXM, RandomXT, Sha3x};
-    let allowed_algos = consensus_constants.current_permitted_pow_algos();
-    if !allowed_algos.contains(&block_header.pow.pow_algo) {
+fn check_allowed_algos(pow: &ProofOfWork, allowed_algos: &[PowAlgorithm]) -> Result<(), ValidationError> {
+    if !allowed_algos.contains(&pow.pow_algo) {
         return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::InvalidPowAlgorithm(block_header.pow.pow_algo.to_string()),
+            BlockHeaderValidationError::InvalidPowAlgorithm(pow.pow_algo.to_string()),
         ));
     }
-    match block_header.pow.pow_algo {
-        RandomXM => {
-            if block_header.nonce != 0 {
+    Ok(())
+}
+
+/// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
+fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    let allowed_algos = consensus_constants.current_permitted_pow_algos();
+    check_allowed_algos(&block_header.pow, &allowed_algos)?;
+    check_pow_data_inner(
+        &block_header.pow,
+        block_header.nonce,
+        consensus_constants.cuckaroo_cycle_length(),
+        consensus_constants.cuckaroo_edge_bits(),
+    )
+}
+
+fn check_pow_data_inner(
+    pow: &ProofOfWork,
+    nonce: u64,
+    cuckaroo_cycle_length: u8,
+    cuckaroo_edge_bits: u8,
+) -> Result<(), ValidationError> {
+    match pow.pow_algo {
+        PowAlgorithm::RandomXM => {
+            if nonce != 0 {
                 return Err(ValidationError::BlockHeaderError(
                     BlockHeaderValidationError::InvalidNonce,
                 ));
             }
             Ok(())
         },
-        RandomXT => {
-            if block_header.pow.pow_data.len() > 32 {
+        PowAlgorithm::RandomXT => {
+            if pow.pow_data.len() > 32 {
                 return Err(PowError::RandomxTPowDataTooLong.into());
             }
             Ok(())
         },
-        Sha3x => {
-            if !block_header.pow.pow_data.is_empty() {
+        PowAlgorithm::Sha3x => {
+            if !pow.pow_data.is_empty() {
                 return Err(PowError::Sha3HeaderNonEmptyPowBytes.into());
             }
             Ok(())
         },
         PowAlgorithm::Cuckaroo => {
-            let cycle_length = consensus_constants.cuckaroo_cycle_length();
-            let edge_bits = consensus_constants.cuckaroo_edge_bits();
+            let cycle_length = cuckaroo_cycle_length as usize;
+            let edge_bits = cuckaroo_edge_bits as usize;
             let total_packed_size = cycle_length * edge_bits as usize;
             let remainder = total_packed_size % 8;
             let total_bytes = if remainder != 0 {
@@ -227,14 +245,136 @@ fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusCon
                 total_packed_size / 8
             };
 
-            if block_header.pow.pow_data.len() != total_bytes {
+            if pow.pow_data.len() != total_bytes {
                 return Err(PowError::CuckarooPowDataSizeMismatch {
                     expected: total_bytes,
-                    actual: block_header.pow.pow_data.len(),
+                    actual: pow.pow_data.len(),
                 }
                 .into());
             }
+
+            if remainder != 0 {
+                // Ensure that the last byte is not padded with zeros
+                let last_byte = pow.pow_data[total_bytes - 1];
+
+                let padding_mask = (1 << remainder) - 1;
+                let mask = 0xff ^ padding_mask; // Mask to check if the last byte is padded
+
+                if last_byte & mask != 0 {
+                    return Err(PowError::CuckarooPowDataNonZeroPadding {
+                        padding: last_byte & mask,
+                    }
+                    .into());
+                }
+            }
             Ok(())
         },
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_check_pow_data_allowed_algos() {
+        let allowed_algos = vec![PowAlgorithm::RandomXM];
+
+        let pow = ProofOfWork::new(PowAlgorithm::RandomXM);
+        let res = check_allowed_algos(&pow, &allowed_algos);
+        assert!(res.is_ok());
+        let pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+
+        let res = check_allowed_algos(&pow, &allowed_algos);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_check_pow_data_randomxm() {
+        let pow = ProofOfWork::new(PowAlgorithm::RandomXM);
+        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        assert!(res.is_ok());
+
+        let pow = ProofOfWork::new(PowAlgorithm::RandomXM);
+        let res = check_pow_data_inner(&pow, 1, 0, 0);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_check_pow_data_randomxt() {
+        let pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        assert!(res.is_ok());
+
+        let pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        assert!(res.is_ok());
+
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::RandomXT,
+            pow_data: vec![0; 33].try_into().unwrap(),
+        };
+        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_check_pow_data_sha3x() {
+        let pow = ProofOfWork::new(PowAlgorithm::Sha3x);
+        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        assert!(res.is_ok());
+
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Sha3x,
+            pow_data: vec![1].try_into().unwrap(),
+        };
+        let res = check_pow_data_inner(&pow, 0, 0, 0);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_check_pow_data_cuckaroo_data_size_mismatch() {
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Cuckaroo,
+            pow_data: vec![0u8; 10].try_into().unwrap(),
+        };
+        // Check with multiple of 8
+        let res = check_pow_data_inner(&pow, 0, 10, 8);
+        dbg!(&res);
+        assert!(res.is_ok());
+
+        // Check with non-multiple of 8
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Cuckaroo,
+            pow_data: vec![0u8; 11].try_into().unwrap(),
+        };
+        let res = check_pow_data_inner(&pow, 0, 9, 9);
+        assert!(res.is_ok());
+
+        // Check now with invalid data.
+
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Cuckaroo,
+            pow_data: vec![0u8; 11].try_into().unwrap(),
+        };
+        let res = check_pow_data_inner(&pow, 0, 10, 8);
+        assert!(res.is_err());
+
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Cuckaroo,
+            pow_data: vec![0u8; 12].try_into().unwrap(),
+        };
+        let res = check_pow_data_inner(&pow, 0, 9, 9);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_check_pow_data_cuckaroo_non_zero_padding() {
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::Cuckaroo,
+            pow_data: vec![128u8; 11].try_into().unwrap(),
+        };
+        let res = check_pow_data_inner(&pow, 0, 9, 9);
+        assert!(res.is_err());
     }
 }
