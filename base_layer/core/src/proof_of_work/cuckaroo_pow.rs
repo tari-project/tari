@@ -120,11 +120,17 @@ pub fn cuckaroo_result(
 
     let nonces = unpack_nonces(pow_data, edge_bits, required_cycle_length.get())?;
     // There might be extra padding at  the end of the nonces.
-    for n in &nonces[required_cycle_length.get()..] {
-        if *n != 0 {
-            return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
+
+    // This should not happen because unpack_nonces should return the correct
+    // length, but here for completeness
+    if nonces.len() > required_cycle_length.get() {
+        for n in &nonces[required_cycle_length.get()..] {
+            if *n != 0 {
+                return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
+            }
         }
     }
+
     let siphash_keys = [
         u64::from_le_bytes(blob[0..8].try_into().unwrap()),
         u64::from_le_bytes(blob[8..16].try_into().unwrap()),
