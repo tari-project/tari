@@ -1006,4 +1006,47 @@ mod test {
             Err(TariAddressError::InvalidAddressString)
         );
     }
+
+    #[test]
+    fn retrieve_memo_field() {
+        // Address 1
+        let pmnt_id_address = TariAddress::from_base58(
+            "f75xWw72BhjRuSatHg4MtqgqzejhZJEmHH7DyYceQDVfKdepfY22CfPJUFQyhkao28gp7cbVqVdR9zczg9eKpoYjGUBH6G32SB",
+        )
+        .unwrap();
+        assert_eq!(pmnt_id_address.get_memo_field_payment_id_bytes(), [
+            118, 103, 102, 118, 101
+        ]);
+        assert_eq!(
+            String::from_utf8_lossy(&pmnt_id_address.get_memo_field_payment_id_bytes()).to_string(),
+            "vgfve"
+        );
+        // Address 2
+        let pmnt_id_address = TariAddress::from_base58(
+            "f65xWw72BhjRuSatHg4MtqgqzejhZJEmHH7DyYceQDVfKdfPq5FDo1y7d7pnkm7nxfLy5JpcJMAoX2eiSvHmV7TeTo9k5tsAuR",
+        )
+        .unwrap();
+        assert_eq!(pmnt_id_address.get_memo_field_payment_id_bytes(), [
+            118, 103, 102, 118, 101
+        ]);
+        assert_eq!(
+            String::from_utf8_lossy(&pmnt_id_address.get_memo_field_payment_id_bytes()).to_string(),
+            "vgfve"
+        );
+        // Address 3
+        let address = TariAddress::from_base58(
+            "f23KSMumnDPez4mX9Lxxr1tFDvnkt6aJbsxYLps6sp53PSEHeFXggaGdL3vA4sCHjjbX9Q9KxqyYKUqmeyiWqgUuwFz",
+        )
+        .unwrap();
+        let pmnt_id_address = address
+            .with_memo_field_payment_id([72, 101, 108, 108, 111].to_vec())
+            .unwrap();
+        assert_eq!(pmnt_id_address.get_memo_field_payment_id_bytes(), [
+            72, 101, 108, 108, 111
+        ]);
+        assert_eq!(
+            String::from_utf8_lossy(&pmnt_id_address.get_memo_field_payment_id_bytes()).to_string(),
+            "Hello"
+        );
+    }
 }

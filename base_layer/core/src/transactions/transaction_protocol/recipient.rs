@@ -248,7 +248,12 @@ mod test {
             .try_output_key_recovery(data.output.commitment(), data.output.encrypted_data(), None)
             .await
             .unwrap();
-        assert_eq!(output.spending_key_id, mask);
+        let recovered_mask = key_manager.get_public_key_at_key_id(&mask).await.unwrap();
+        let original_mask = key_manager
+            .get_public_key_at_key_id(&output.spending_key_id)
+            .await
+            .unwrap();
+        assert_eq!(recovered_mask, original_mask);
         assert_eq!(output.value, value);
     }
 }

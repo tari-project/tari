@@ -393,7 +393,12 @@ mod test {
                     .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
                     .await
                     .unwrap();
-                assert_eq!(recovered_key_id, commitment_mask_key.key_id);
+                let recovered_mask = key_manager.get_public_key_at_key_id(&recovered_key_id).await.unwrap();
+                let original_mask = key_manager
+                    .get_public_key_at_key_id(&commitment_mask_key.key_id)
+                    .await
+                    .unwrap();
+                assert_eq!(recovered_mask, original_mask);
                 assert_eq!(recovered_value, value);
             },
             Err(e) => panic!("{}", e),

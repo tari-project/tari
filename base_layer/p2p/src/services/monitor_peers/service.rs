@@ -60,7 +60,7 @@ impl<T, const MAX_SIZE: usize> PeerLiveness<T, MAX_SIZE> {
         self.vec.push_back(item);
     }
 
-    pub fn iter(&self) -> std::collections::vec_deque::Iter<T> {
+    pub fn iter(&self) -> std::collections::vec_deque::Iter<'_, T> {
         self.vec.iter()
     }
 }

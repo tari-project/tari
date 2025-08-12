@@ -66,7 +66,7 @@ async fn get_key_at_test_with_encryption() {
     let key_1_2 = key_manager
         .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch1".to_string(),
-            index: 1,
+            index: key_1.key_id.managed_index().unwrap(),
         })
         .await
         .unwrap();
@@ -114,21 +114,21 @@ async fn key_manager_multiple_branches() {
     let key_1 = key_manager
         .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch1".to_string(),
-            index: 1,
+            index: key_1.key_id.managed_index().unwrap(),
         })
         .await
         .unwrap();
     let key_2 = key_manager
         .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch2".to_string(),
-            index: 1,
+            index: key_2.key_id.managed_index().unwrap(),
         })
         .await
         .unwrap();
     let key_3 = key_manager
         .get_public_key_at_key_id(&TariKeyId::Managed {
             branch: "branch3".to_string(),
-            index: 1,
+            index: key_3.key_id.managed_index().unwrap(),
         })
         .await
         .unwrap();
