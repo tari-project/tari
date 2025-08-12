@@ -19,7 +19,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 20
     Then I wait for wallet WALLET_B to have at least 2000000 uT
     # Spend one of the recovered UTXOs to self in a standard MW transaction
-    Then I send an one-sided transaction of 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
+    Then I send a one-sided transaction of 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
     Then I wait for wallet WALLET_B to have less than 1100000 uT
     When mining node MINER mines 5 blocks
     Then all nodes are at height 25
@@ -48,7 +48,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 20
     Then I wait for wallet WALLET_B to have at least 2000000 uT
     # Spend one of the recovered UTXOs to self in a standard MW transaction
-    Then I send an one-sided transaction of 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
+    Then I send a one-sided transaction of 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
     Then I wait for wallet WALLET_B to have less than 2100000 uT
     When mining node MINER mines 5 blocks
     Then all nodes are at height 25
@@ -165,14 +165,14 @@ Feature: Wallet Transactions
     When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I send an one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     When mining node MINER mines 6 blocks
     Then all nodes are at height 11
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
     Then I import WALLET_B unspent outputs as pre_mine outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
-    When I send an one-sided transaction of 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+    When I send a one-sided transaction of 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
     When mining node MINER mines 6 blocks
     Then all nodes are at height 17
     Then I wait for wallet WALLET_C to have at least 400000 uT
