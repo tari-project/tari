@@ -83,7 +83,7 @@ pub enum DifficultyAdjustmentError {
 }
 
 /// Errors that can occur when converting a difficulty
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum DifficultyError {
     #[error("Difficulty conversion less than the minimum difficulty")]
     InvalidDifficulty,

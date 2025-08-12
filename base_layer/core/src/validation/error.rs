@@ -30,7 +30,7 @@ use crate::{
     chain_storage::ChainStorageError,
     common::{BanPeriod, BanReason},
     covenants::CovenantError,
-    proof_of_work::{monero_rx::MergeMineError, DifficultyError, PowError},
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError, DifficultyError, PowError},
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{OutputType, RangeProofType, TransactionError},
@@ -168,8 +168,8 @@ pub enum ValidationError {
     OutputSpendRuleDisallow { output_type: OutputType, details: String },
     #[error("Output type '{output_type}' does not match sidechain data")]
     OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
-    #[error("Other error: {0}")]
-    Other(#[from] anyhow::Error),
+    #[error("Cuckaroo POW error: {0}")]
+    CuckarooPowError(#[from] CuckarooVerificationError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -239,14 +239,13 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
+            err @ ValidationError::CuckarooPowError(_) |
             err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
-            ValidationError::FatalStorageError(_) |
-            ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
-            ValidationError::Other(_) => None,
+            ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
         }
     }
 }

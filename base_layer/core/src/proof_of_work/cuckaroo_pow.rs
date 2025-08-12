@@ -45,7 +45,7 @@ use thiserror::Error;
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{siphash::siphash_block, Difficulty},
+    proof_of_work::{siphash::siphash_block, Difficulty, DifficultyError},
 };
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -74,35 +74,35 @@ pub enum CuckarooVerificationError {
     CycleDoesNotEndAtStart,
     #[error("Cycle did not use all edges")]
     CycleDidNotUseAllEdges,
+    #[error("Difficulty error: {0}")]
+    DifficultyError(#[from] DifficultyError),
 }
 
 pub fn cuckaroo_result(
     header: &BlockHeader,
     required_cycle_length: u8,
     edge_bits: u8,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> Result<Vec<u8>, CuckarooVerificationError> {
     let pow = header.pow.to_bytes();
     let required_cycle_length = required_cycle_length as usize;
 
     // First byte must be 3 for Cuckaroo
     if pow[0] != 3 {
-        return Err(anyhow::anyhow!(
-            CuckarooVerificationError::BlockHeaderInvalidPowAlgorithm
-        ));
+        return Err(CuckarooVerificationError::BlockHeaderInvalidPowAlgorithm);
     }
     let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
     hasher.update(&header.nonce.to_le_bytes());
     hasher.update(header.mining_hash().as_slice());
-    let mut blob = Vec::with_capacity(32);
-    hasher.finalize_variable(&mut blob)?;
+    let mut blob = vec![0u8; hasher.output_size()];
+    hasher
+        .finalize_variable(&mut blob)
+        .expect("Infallible because we've set the output size");
 
     let pow_data = &pow[1..];
     // Data after <required_cycle_length * edge_bits> is padding, it must be zero
     for &byte in &pow_data[required_cycle_length * edge_bits as usize / 8..] {
         if byte != 0 {
-            return Err(anyhow::anyhow!(
-                CuckarooVerificationError::PowDataContainsNonZeroPadding
-            ));
+            return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
     }
 
@@ -110,7 +110,7 @@ pub fn cuckaroo_result(
     // There might be extra padding at  the end of the nonces.
     for n in &nonces[required_cycle_length..] {
         if *n != 0 {
-            return Err(anyhow::anyhow!(CuckarooVerificationError::PowDataTooShort));
+            return Err(CuckarooVerificationError::PowDataTooShort);
         }
     }
     let siphash_keys = [
@@ -128,8 +128,10 @@ pub fn cuckaroo_result(
     for nonce in &nonces {
         hasher.update(&nonce.to_le_bytes());
     }
-    let mut res = Vec::with_capacity(32);
-    hasher.finalize_variable(&mut res)?;
+    let mut res = vec![0u8; hasher.output_size()];
+    hasher
+        .finalize_variable(&mut res)
+        .expect("Infallible because we've set the output size");
 
     Ok(res)
 }
@@ -295,7 +297,7 @@ pub fn cuckaroo_difficulty(
     header: &BlockHeader,
     required_cycle_length: u8,
     num_bits: u8,
-) -> Result<Difficulty, anyhow::Error> {
+) -> Result<Difficulty, CuckarooVerificationError> {
     let difficulty = cuckaroo_result(header, required_cycle_length, num_bits)?;
     Ok(Difficulty::big_endian_difficulty(&difficulty)?)
 }
