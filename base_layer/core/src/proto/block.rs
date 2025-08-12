@@ -59,30 +59,6 @@ impl TryFrom<Block> for proto::Block {
     }
 }
 
-//---------------------------------- HistoricalBlock --------------------------------------------//
-
-// impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
-//     type Error = String;
-
-//     fn try_from(historical_block: proto::HistoricalBlock) -> Result<Self, Self::Error> {
-//         let block = historical_block
-//             .block
-//             .map(TryInto::try_into)
-//             .ok_or_else(|| "block in historical block not provided".to_string())??;
-
-//         // let accumulated_data = historical_block
-//         //     .accumulated_data
-//         //     .map(TryInto::try_into)
-//         //     .ok_or_else(|| "accumulated_data in historical block not provided".to_string())??;
-
-//         Ok(HistoricalBlock::new(
-//             block,
-//             historical_block.confirmations,
-//             // accumulated_data,
-//         ))
-//     }
-// }
-
 impl TryFrom<HistoricalBlock> for proto::HistoricalBlock {
     type Error = String;
 
@@ -95,101 +71,6 @@ impl TryFrom<HistoricalBlock> for proto::HistoricalBlock {
         })
     }
 }
-
-// impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
-//     fn from(source: BlockHeaderAccumulatedData) -> Self {
-//         let accumulated_monero_randomx_difficulty = source.accumulated_monero_randomx_difficulty().to_be_bytes();
-//         let accumulated_tari_randomx_difficulty = source.accumulated_tari_randomx_difficulty().to_be_bytes();
-//         let accumulated_sha3x_difficulty = source.accumulated_sha3x_difficulty().to_be_bytes();
-//         let accumulated_cuckaroo_difficulty = source.accumulated_cuckaroo_difficulty().to_be_bytes();
-//         let mut total_accumulated_difficulty = [0u8; 32];
-//         source
-//             .total_accumulated_difficulty
-//             .to_big_endian(&mut total_accumulated_difficulty);
-//         Self {
-//             achieved_difficulty: source.achieved_difficulty.into(),
-//             accumulated_tari_randomx_difficulty,
-//             accumulated_monero_randomx_difficulty,
-//             accumulated_sha3x_difficulty,
-//             target_difficulty: source.target_difficulty.into(),
-//             total_kernel_offset: source.total_kernel_offset.to_vec(),
-//             hash: source.hash.to_vec(),
-//             total_accumulated_difficulty: total_accumulated_difficulty.to_vec(),
-//             accumulated_cuckaroo_difficulty,
-//         }
-//     }
-// }
-
-// impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
-//     type Error = String;
-
-//     fn try_from(source: proto::BlockHeaderAccumulatedData) -> Result<Self, Self::Error> {
-//         const TOTAL_ACC_DIFFICULTY_ARRAY_LEN: usize = 64;
-//         if source.total_accumulated_difficulty.len() != TOTAL_ACC_DIFFICULTY_ARRAY_LEN {
-//             return Err(format!(
-//                 "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
-//                 TOTAL_ACC_DIFFICULTY_ARRAY_LEN,
-//                 source.total_accumulated_difficulty.len()
-//             ));
-//         }
-//         let mut acc_diff = [0u8; TOTAL_ACC_DIFFICULTY_ARRAY_LEN];
-//         acc_diff.copy_from_slice(&source.total_accumulated_difficulty[0..TOTAL_ACC_DIFFICULTY_ARRAY_LEN]);
-//         let accumulated_difficulty = U512::from_big_endian(&acc_diff);
-
-//         const SINGLE_ACC_DIFFICULTY_ARRAY_LEN: usize = mem::size_of::<u128>();
-//         if source.accumulated_sha3x_difficulty.len() != SINGLE_ACC_DIFFICULTY_ARRAY_LEN {
-//             return Err(format!(
-//                 "Invalid accumulated Sha3x difficulty byte length. {} was expected but the actual length was {}",
-//                 SINGLE_ACC_DIFFICULTY_ARRAY_LEN,
-//                 source.accumulated_sha3x_difficulty.len()
-//             ));
-//         }
-//         let mut acc_diff = [0; SINGLE_ACC_DIFFICULTY_ARRAY_LEN];
-//         acc_diff.copy_from_slice(&source.accumulated_sha3x_difficulty[0..SINGLE_ACC_DIFFICULTY_ARRAY_LEN]);
-//         let accumulated_sha3x_difficulty = u128::from_be_bytes(acc_diff);
-
-//         if source.accumulated_monero_randomx_difficulty.len() != SINGLE_ACC_DIFFICULTY_ARRAY_LEN {
-//             return Err(format!(
-//                 "Invalid accumulated Monero RandomX difficulty byte length. {} was expected but the actual length was
-// \                  {}",
-//                 SINGLE_ACC_DIFFICULTY_ARRAY_LEN,
-//                 source.accumulated_monero_randomx_difficulty.len()
-//             ));
-//         }
-//         let mut acc_diff = [0; SINGLE_ACC_DIFFICULTY_ARRAY_LEN];
-//         acc_diff.copy_from_slice(&source.accumulated_monero_randomx_difficulty[0..SINGLE_ACC_DIFFICULTY_ARRAY_LEN]);
-//         let accumulated_monero_randomx_difficulty = u128::from_be_bytes(acc_diff);
-
-//         if source.accumulated_tari_randomx_difficulty.len() != SINGLE_ACC_DIFFICULTY_ARRAY_LEN {
-//             return Err(format!(
-//                 "Invalid accumulated Tari RandomX difficulty byte length. {} was expected but the actual length was
-// {}",                 SINGLE_ACC_DIFFICULTY_ARRAY_LEN,
-//                 source.accumulated_tari_randomx_difficulty.len()
-//             ));
-//         }
-//         let mut acc_diff = [0; SINGLE_ACC_DIFFICULTY_ARRAY_LEN];
-//         acc_diff.copy_from_slice(&source.accumulated_tari_randomx_difficulty[0..SINGLE_ACC_DIFFICULTY_ARRAY_LEN]);
-//         let accumulated_tari_randomx_difficulty = u128::from_be_bytes(acc_diff);
-
-//         let hash = source.hash.try_into().map_err(|_| "Malformed hash".to_string())?;
-//         Ok(Self {
-//             hash,
-//             achieved_difficulty: Difficulty::from_u64(source.achieved_difficulty).map_err(|e| e.to_string())?,
-//             total_accumulated_difficulty: accumulated_difficulty,
-//             accumulated_monero_randomx_difficulty: AccumulatedDifficulty::from_u128(
-//                 accumulated_monero_randomx_difficulty,
-//             )
-//             .map_err(|e| e.to_string())?,
-//             accumulated_tari_randomx_difficulty:
-// AccumulatedDifficulty::from_u128(accumulated_tari_randomx_difficulty)                 .map_err(|e| e.to_string())?,
-//             accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u128(accumulated_sha3x_difficulty)
-//                 .map_err(|e| e.to_string())?,
-//             target_difficulty: Difficulty::from_u64(source.target_difficulty).map_err(|e| e.to_string())?,
-//             total_kernel_offset: PrivateKey::from_canonical_bytes(source.total_kernel_offset.as_slice())
-//                 .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,
-//         })
-//     }
-// }
 
 //---------------------------------- NewBlock --------------------------------------------//
 

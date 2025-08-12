@@ -47,6 +47,8 @@ pub enum PowError {
     #[cfg(feature = "base_node")]
     #[error("Invalid merge mining data or operation: {0}")]
     MergeMineError(#[from] MergeMineError),
+    #[error("Cuckaroo proof of work data size mismatch (expected: {expected}, got: {actual})")]
+    CuckarooPowDataSizeMismatch { expected: usize, actual: usize },
 }
 
 impl PowError {
@@ -57,6 +59,7 @@ impl PowError {
             err @ PowError::Sha3HeaderNonEmptyPowBytes |
             err @ PowError::RandomxTPowDataTooLong |
             err @ PowError::AchievedDifficultyTooLow { .. } |
+            err @ PowError::CuckarooPowDataSizeMismatch { .. } |
             err @ PowError::InvalidTargetDifficulty { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,

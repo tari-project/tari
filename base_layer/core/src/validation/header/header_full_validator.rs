@@ -217,7 +217,23 @@ fn check_pow_data(block_header: &BlockHeader, consensus_constants: &ConsensusCon
             Ok(())
         },
         PowAlgorithm::Cuckaroo => {
-            // Cuckaroo checks this specifically.
+            let cycle_length = consensus_constants.cuckaroo_cycle_length();
+            let edge_bits = consensus_constants.cuckaroo_edge_bits();
+            let total_packed_size = cycle_length * edge_bits as usize;
+            let remainder = total_packed_size % 8;
+            let total_bytes = if remainder != 0 {
+                total_packed_size / 8 + 1
+            } else {
+                total_packed_size / 8
+            };
+
+            if block_header.pow.pow_data.len() != total_bytes {
+                return Err(PowError::CuckarooPowDataSizeMismatch {
+                    expected: total_bytes,
+                    actual: block_header.pow.pow_data.len(),
+                }
+                .into());
+            }
             Ok(())
         },
     }
