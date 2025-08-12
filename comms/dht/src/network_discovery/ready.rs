@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::peer_manager::{PeerFeatures, STALE_PEER_THRESHOLD_DURATION};
+use tari_comms::peer_manager::{PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION};
 
 use super::{
     state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
@@ -37,7 +37,7 @@ pub(super) struct DiscoveryReady {
     last_discovery: Option<DhtNetworkDiscoveryRoundInfo>,
 }
 
-// New helper function to select peers for discovery
+// Helper function to select peers for discovery
 async fn select_peers_for_discovery_round(
     context: &NetworkDiscoveryContext,
     last_round_info: Option<&DhtNetworkDiscoveryRoundInfo>,
@@ -59,7 +59,7 @@ async fn select_peers_for_discovery_round(
                     config.network_discovery.max_sync_peers,
                     excluded_peers,
                     Some(PeerFeatures::COMMUNICATION_NODE),
-                    None,
+                    Some(PeerFlags::NONE),
                     Some(STALE_PEER_THRESHOLD_DURATION),
                     true,
                     None,
@@ -78,7 +78,11 @@ async fn select_peers_for_discovery_round(
             );
             context
                 .peer_manager
-                .random_peers(config.network_discovery.max_sync_peers, excluded_peers, None)
+                .random_peers(
+                    config.network_discovery.max_sync_peers,
+                    excluded_peers,
+                    Some(PeerFlags::NONE),
+                )
                 .await?
         },
     };

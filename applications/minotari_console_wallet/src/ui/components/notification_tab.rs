@@ -80,7 +80,7 @@ impl<B: Backend> Component<B> for NotificationTab {
         Handle::current().block_on(app_state.mark_notifications_as_read());
     }
 
-    fn format_title(&self, title: &str, app_state: &AppState) -> Spans {
+    fn format_title(&self, title: &str, app_state: &AppState) -> Spans<'_> {
         // Create custom title based on notifications count.
         if app_state.unread_notifications_count() > 0 {
             Spans::from(Span::styled(

@@ -287,7 +287,6 @@ pub struct DhtActor {
     shutdown_signal: ShutdownSignal,
     request_rx: mpsc::UnboundedReceiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
-    seeds: Vec<NodeId>,
 }
 
 impl DhtActor {
@@ -319,7 +318,6 @@ impl DhtActor {
             discovery,
             shutdown_signal,
             request_rx,
-            seeds: Vec::new(),
         }
     }
 
@@ -350,13 +348,6 @@ impl DhtActor {
 
         let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval);
         dedup_cache_trim_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        self.seeds = self
-            .peer_manager
-            .get_seed_peers()
-            .await?
-            .iter()
-            .map(|s| s.node_id.clone())
-            .collect();
 
         loop {
             tokio::select! {
@@ -626,7 +617,7 @@ impl DhtActor {
                 }
             },
             Random(n, excluded) => {
-                // Send to a random set of peers of size n that are Communication Nodes but not seed nodes
+                // Send to a random set of peers of size n that are Communication Nodes
                 peer_manager
                     .random_peers(n, &excluded, Some(PeerFlags::NONE))
                     .await?
@@ -636,7 +627,6 @@ impl DhtActor {
             },
             SelectedPeers(peers) => peers,
             Broadcast(exclude) => {
-                // When selecting the  nodes, we want to make sure that we have enough non-seed node connections
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::random_nodes(
                         config.broadcast_factor,

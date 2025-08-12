@@ -85,7 +85,7 @@ impl ContactsTab {
     }
 
     // Helper function to create the column list to be rendered
-    pub fn create_column_view(windowed_view: &[UiContact]) -> MultiColumnList<Vec<ListItem>> {
+    pub fn create_column_view(windowed_view: &[UiContact]) -> MultiColumnList<'_, Vec<ListItem<'_>>> {
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();

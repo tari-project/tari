@@ -33,14 +33,6 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::transports::hidden_service_transport";
 
-#[derive(thiserror::Error, Debug)]
-pub enum HiddenServiceTransportError {
-    #[error("Tor hidden service transport error: `{0}`")]
-    HiddenServiceControllerError(#[from] crate::tor::HiddenServiceControllerError),
-    #[error("Tor hidden service socks error: `{0}`")]
-    SocksTransportError(#[from] io::Error),
-}
-
 struct HiddenServiceTransportInner {
     socks_transport: Option<SocksTransport>,
     hidden_service_ctl: Option<HiddenServiceController>,
