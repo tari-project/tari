@@ -942,7 +942,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
                 sender.clone(),
                 receiver.clone(),
                 amount,
-                fee
+                fee,
             ));
         } else {
             // Nothing here

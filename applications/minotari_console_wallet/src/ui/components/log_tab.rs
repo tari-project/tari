@@ -31,7 +31,7 @@ impl LogTab {
     }
 
     // Format the log line nicely. If it cannot be parsed then return raw line
-    fn format_line(&self, line: String) -> Spans {
+    fn format_line(&self, line: String) -> Spans<'_> {
         match self.re.captures(line.as_str()) {
             Some(caps) => Spans::from(vec![
                 Span::styled(caps["timestamp"].to_string(), Style::default().fg(Color::LightGreen)),

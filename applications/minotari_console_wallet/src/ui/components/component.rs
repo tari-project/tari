@@ -25,7 +25,7 @@ pub trait Component<B: Backend> {
     fn on_tick(&mut self, _app_state: &mut AppState) {}
 
     // Create custom title based on data in AppState.
-    fn format_title(&self, title: &str, _app_state: &AppState) -> Spans {
+    fn format_title(&self, title: &str, _app_state: &AppState) -> Spans<'_> {
         Spans::from(Span::styled(title.to_owned(), Style::default().fg(Color::White)))
     }
 }
