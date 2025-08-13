@@ -86,8 +86,8 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
     }
 
     match hashes.len() {
-        1 => Ok(hashes[0]),
-        2 => Ok(cn_fast_hash2(&hashes[0], &hashes[1])),
+        1 => Ok(*hashes.first().expect("Cannot fail")),
+        2 => Ok(cn_fast_hash2(hashes.first().expect("Cannot fail"), hashes.get(1).expect("Cannot fail"))),
         n => {
             let mut cnt = tree_hash_count(n)?;
             let mut buf = vec![Hash::null(); cnt];
@@ -95,12 +95,12 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
             // c is the number of elements between the number of hashes and the next power of 2.
             let c = 2 * cnt - hashes.len();
 
-            buf[..c].copy_from_slice(&hashes[..c]);
+            buf.get_mut(..c).expect("Cannot fail").copy_from_slice(hashes.get(..c).expect("Cannot fail"));
 
             // Hash the rest of the hashes together to
             let mut i: usize = c;
-            for b in &mut buf[c..cnt] {
-                *b = cn_fast_hash2(&hashes[i], &hashes[i + 1]);
+            for b in buf.get_mut(c..cnt).expect("Cannot fail") {
+                *b = cn_fast_hash2(hashes.get(i).expect("Cannot fail"), hashes.get(i + 1).expect("Cannot fail"));
                 i += 2;
             }
 
@@ -114,12 +114,12 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
                 cnt >>= 1;
                 let mut i = 0;
                 for j in 0..cnt {
-                    buf[j] = cn_fast_hash2(&buf[i], &buf[i + 1]);
+                    *buf.get_mut(j).expect("Cannot fail") = cn_fast_hash2(buf.get(i).expect("Cannot fail"), buf.get(i + 1).expect("Cannot fail"));
                     i += 2;
                 }
             }
 
-            Ok(cn_fast_hash2(&buf[0], &buf[1]))
+            Ok(cn_fast_hash2(buf.first().expect("Cannot fail"), buf.get(1).expect("Cannot fail")))
         },
     }
 }

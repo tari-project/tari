@@ -72,7 +72,7 @@ impl FixedByteArray {
 
     /// Returns the array as a slice of bytes.
     pub fn as_slice(&self) -> &[u8] {
-        &self[..self.len()]
+        self.get(..self.len()).expect("Cannot fail")
     }
 
     /// Returns true if the array is full.
@@ -102,7 +102,7 @@ impl Deref for FixedByteArray {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        &self.elems[..self.len as usize]
+        self.elems.get(..self.len as usize).expect("Cannot fail")
     }
 }
 
@@ -125,7 +125,7 @@ impl ByteArray for FixedByteArray {
         let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength {})?;
 
         let mut elems = [0u8; MAX_ARR_SIZE];
-        elems[..len as usize].copy_from_slice(&bytes[..len as usize]);
+        elems.get_mut(..len as usize).expect("Cannot fail").copy_from_slice(bytes.get(..len as usize).expect("Cannot fail"));
         Ok(Self { elems, len })
     }
 

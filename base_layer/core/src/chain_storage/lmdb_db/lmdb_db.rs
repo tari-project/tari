@@ -4061,7 +4061,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
             };
 
-            if known_good_difficulties.is_empty() || current_height < known_good_difficulties[0].0 {
+            if known_good_difficulties.is_empty() || current_height < known_good_difficulties.first().expect("is checked").0 {
                 // This will happen only happen if the db is below the fork height of the RxT fork
                 info!(
                     target: LOG_TARGET,
@@ -4090,7 +4090,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 continue;
             }
 
-            let mut last_correct_height = known_good_difficulties[0].0.saturating_sub(1);
+            let mut last_correct_height = known_good_difficulties.first().expect("is checked").0.saturating_sub(1);
             for (height, correct_difficulty) in known_good_difficulties {
                 let txn = db.read_transaction()?;
 

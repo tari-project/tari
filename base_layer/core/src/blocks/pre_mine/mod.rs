@@ -919,6 +919,7 @@ pub async fn create_pre_mine_genesis_block_info(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{fs, fs::File, io::Write, ops::Deref};
 
     use tari_common::configuration::Network;

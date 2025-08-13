@@ -164,8 +164,8 @@ impl EmissionSchedule {
             let mut carry_last = 0u8;
             for i in 0..len {
                 let index = len - 1 - i;
-                let carry = (num[index] >= 5).into();
-                num[index] = (2 * num[index]) % 10 + carry_last;
+                let carry = (*num.get(index).expect("should exists") >= 5).into();
+                *num.get_mut(index).expect("Should exists") = (2 * *num.get(index).expect("should exists")) % 10 + carry_last;
                 carry_last = carry;
             }
             carry_last > 0
