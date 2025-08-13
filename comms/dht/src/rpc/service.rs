@@ -163,6 +163,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
                 message.n as usize,
                 &excluded,
                 features,
+                None,
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,

@@ -34,6 +34,7 @@ use crate::{
         NodeDistance,
         NodeId,
         PeerFeatures,
+        PeerFlags,
         PeerManagerError,
     },
     types::{CommsDatabase, CommsPublicKey},
@@ -207,6 +208,7 @@ impl PeerStorageSql {
             n,
             excluded_peers,
             features,
+            None,
             Some(STALE_PEER_THRESHOLD_DURATION),
             external_addresses_only,
         )?)
@@ -236,6 +238,7 @@ impl PeerStorageSql {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
@@ -246,6 +249,7 @@ impl PeerStorageSql {
             n,
             excluded_peers,
             features,
+            peer_flags,
             stale_peer_threshold,
             exclude_if_all_address_failed,
             exclusion_distance,
@@ -259,8 +263,13 @@ impl PeerStorageSql {
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline  and have at least
     /// one external address
-    pub fn random_peers(&self, n: usize, exclude_peers: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.get_n_random_peers(n, exclude_peers)?)
+    pub fn random_peers(
+        &self,
+        n: usize,
+        exclude_peers: &[NodeId],
+        flags: Option<PeerFlags>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        Ok(self.peer_db.get_n_random_peers(n, exclude_peers, flags)?)
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
