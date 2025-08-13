@@ -10,6 +10,7 @@ use tari_sidechain::ShardGroup;
 
 use super::{
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
+    AccumulatedDataRebuildStatus,
     MinedInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
@@ -148,6 +149,8 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
     /// Returns the stored payref rebuild status.
     fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError>;
+    /// Returns the stored accumulated data rebuild status.
+    fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
     /// Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
@@ -156,6 +159,13 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         initialize_stats: Option<u64>,
         finalize: bool,
     ) -> Result<PayrefRebuildStatus, ChainStorageError>;
+    /// Builds the payref indexes for a given block height, with stats.
+    fn update_accumulated_difficulty(
+        &self,
+        height: u64,
+        header_accum_data: BlockHeaderAccumulatedData,
+        last_chain_header: ChainHeader,
+    ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count

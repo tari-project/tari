@@ -37,7 +37,7 @@ use tari_comms::{
 };
 use tari_utilities::hex::Hex;
 
-use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
+pub(crate) use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
     base_node::sync::{
         ban::PeerBanManager,
