@@ -48,6 +48,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
+        cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -293,7 +294,7 @@ where B: BlockchainBackend + 'static
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
-                header.version = constants.blockchain_version();
+                header.version = constants.blockchain_version().into();
                 header.pow.pow_algo = request.algo;
 
                 let constants_weight = constants.max_block_transaction_weight();
@@ -638,6 +639,12 @@ where B: BlockchainBackend + 'static
                     .await?
                     .hash();
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
+            },
+            PowAlgorithm::Cuckaroo => {
+                let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+                let cuckaroo_cycle = constants.cuckaroo_cycle_length();
+                let edge_bits = constants.cuckaroo_edge_bits();
+                cuckaroo_difficulty(&new_block.header, cuckaroo_cycle, edge_bits)?
             },
         };
         if achieved < min_difficulty {
@@ -1026,6 +1033,10 @@ where B: BlockchainBackend + 'static
                 },
                 PowAlgorithm::RandomXT => {
                     metrics::target_difficulty_tari_randomx()
+                        .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+                },
+                PowAlgorithm::Cuckaroo => {
+                    metrics::target_difficulty_cuckaroo()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }

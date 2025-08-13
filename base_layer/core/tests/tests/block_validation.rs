@@ -125,7 +125,7 @@ async fn test_monero_blocks() {
             max_difficulty: Difficulty::min(),
             target_time: 200,
         })
-        .with_blockchain_version(0)
+        .with_blockchain_version(tari_core::consensus::consensus_constants::BlockVersion::V0)
         .build();
     let cm = ConsensusManager::builder(network)
         .add_consensus_constants(cc)
@@ -1294,7 +1294,8 @@ async fn test_fee_overflow() {
     let mut header = BlockHeader::from_previous(blocks.last().unwrap().header());
     header.version = consensus_manager
         .consensus_constants(header.height)
-        .blockchain_version();
+        .blockchain_version()
+        .into();
     let height = header.height;
 
     let mut transactions_new = Vec::with_capacity(transactions.len());

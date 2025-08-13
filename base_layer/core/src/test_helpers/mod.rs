@@ -85,7 +85,7 @@ pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, consensus: &ConsensusManager) -> Block {
-    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
+    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version().into());
     header.height = block_height;
     header.into_builder().with_transactions(transactions).build()
 }
@@ -115,7 +115,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
     range_proof_type: Option<RangeProofType>,
 ) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
-    header.version = rules.consensus_constants(header.height).blockchain_version();
+    header.version = rules.consensus_constants(header.height).blockchain_version().into();
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
     let reward = spec.reward_override.unwrap_or_else(|| {

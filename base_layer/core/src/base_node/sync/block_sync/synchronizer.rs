@@ -360,7 +360,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 "{}",block
             );
 
-            let timer = Instant::now();
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
@@ -385,19 +384,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.hooks
                 .call_on_progress_block_hooks(block.clone(), tip_height, &sync_peer);
 
-            debug!(
-                target: LOG_TARGET,
-                "Block body #{} added in {:.0?}, Tot_acc_diff {}, MoneroRX {}, TariRx {}, SHA3 {}, latency: {:.2?}",
-                block.height(),
-                timer.elapsed(),
-                block
-                    .accumulated_data()
-                    .total_accumulated_difficulty,
-                block.accumulated_data().accumulated_monero_randomx_difficulty,
-                block.accumulated_data().accumulated_tari_randomx_difficulty,
-                block.accumulated_data().accumulated_sha3x_difficulty,
-                latency
-            );
             if let Some(avg_latency) = last_avg_latency {
                 if avg_latency > max_latency {
                     return Err(BlockSyncError::MaxLatencyExceeded {

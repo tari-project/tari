@@ -216,9 +216,15 @@ impl DbTransaction {
     /// Sets accumulated data for the orphan block, "upgrading" the orphan block to a chained orphan.
     /// Any existing accumulated data is overwritten.
     /// The transaction will rollback and write will return an error if the orphan block does not exist.
-    pub fn set_accumulated_data_for_orphan(&mut self, accumulated_data: BlockHeaderAccumulatedData) -> &mut Self {
-        self.operations
-            .push(WriteOperation::SetAccumulatedDataForOrphan(accumulated_data));
+    pub fn set_accumulated_data_for_orphan(
+        &mut self,
+        block_version: u16,
+        accumulated_data: BlockHeaderAccumulatedData,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::SetAccumulatedDataForOrphan {
+            version: block_version,
+            data: accumulated_data,
+        });
         self
     }
 
@@ -331,7 +337,10 @@ pub enum WriteOperation {
     DeleteAllInputsInBlock {
         block_hash: BlockHash,
     },
-    SetAccumulatedDataForOrphan(BlockHeaderAccumulatedData),
+    SetAccumulatedDataForOrphan {
+        version: u16,
+        data: BlockHeaderAccumulatedData,
+    },
     SetBestBlock {
         height: u64,
         hash: HashOutput,
@@ -421,8 +430,8 @@ impl fmt::Display for WriteOperation {
             ),
             DeleteAllKernelsInBlock { block_hash } => write!(f, "Delete kernels in block {}", block_hash),
             DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash),
-            SetAccumulatedDataForOrphan(accumulated_data) => {
-                write!(f, "Set accumulated data for orphan {}", accumulated_data)
+            SetAccumulatedDataForOrphan { version, data } => {
+                write!(f, "Set accumulated data for orphan {} version {}", data, version)
             },
             SetBestBlock {
                 height,
