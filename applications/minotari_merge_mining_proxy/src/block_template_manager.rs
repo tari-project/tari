@@ -261,15 +261,15 @@ impl BlockTemplateManager<'_> {
 /// This is an interim solution to calculate the merkle root for the aux chains when multiple aux chains will be
 /// merge mined with Monero. It needs to be replaced with a more general solution in the future.
 pub fn calculate_aux_chain_merkle_root(hashes: AuxChainHashes) -> Result<(monero::Hash, u32), MmProxyError> {
-    if hashes.is_empty() {
-        Err(MmProxyError::MissingDataError(
-            "No aux chain hashes provided".to_string(),
-        ))
-    } else if hashes.len() == 1 {
-        Ok((hashes[0], 0))
-    } else {
+    if hashes.len() > 1 {
         unimplemented!("Multiple aux chains for Monero is not supported yet, only Tari.");
     }
+    Ok((
+        *hashes.first().ok_or(MmProxyError::MissingDataError(
+            "No aux chain hashes provided".to_string(),
+        ))?,
+        0,
+    ))
 }
 
 /// Build the [FinalBlockTemplateData] from [template](NewBlockTemplateData) and with

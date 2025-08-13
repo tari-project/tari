@@ -82,20 +82,22 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
         trace!(
             target: LOG_TARGET,
             "No median timestamp available, estimating median as avg of [{}] and [{}]",
-            timestamps[mid_index - 1],
-            timestamps[mid_index],
+            timestamps.get(mid_index - 1).expect("Already checked"),
+            timestamps.get(mid_index).expect("Already checked"),
         );
         // To compute this mean, we use `u128` to avoid overflow with the internal `u64` typing
         // Note that the final cast back to `u64` will never truncate since each summand is bounded by `u64`
         // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
         EpochTime::from(
             u64::try_from(
-                (u128::from(timestamps[mid_index - 1].as_u64()) + u128::from(timestamps[mid_index].as_u64())) / 2,
+                (u128::from(timestamps.get(mid_index - 1).expect("Already checked").as_u64()) +
+                    u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
+                    2,
             )
             .unwrap_or(u64::MAX),
         )
     } else {
-        timestamps[mid_index]
+        *timestamps.get(mid_index).expect("Already checked")
     };
     trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
     Ok(median_timestamp)

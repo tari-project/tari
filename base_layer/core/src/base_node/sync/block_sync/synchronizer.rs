@@ -143,7 +143,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         let mut latency_counter = 0usize;
         for node_id in sync_peer_node_ids {
             let peer_index = self.get_sync_peer_index(&node_id).ok_or(BlockSyncError::PeerNotFound)?;
-            let sync_peer = &self.sync_peers[peer_index];
+            let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
             self.hooks.call_on_starting_hook(sync_peer);
             let mut conn = match self.connect_to_sync_peer(node_id.clone()).await {
                 Ok(val) => val,
@@ -176,8 +176,11 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let latency = client
                 .get_last_request_latency()
                 .expect("unreachable panic: last request latency must be set after connect");
-            self.sync_peers[peer_index].set_latency(latency);
-            let sync_peer = self.sync_peers[peer_index].clone();
+            self.sync_peers
+                .get_mut(peer_index)
+                .expect("Already checked")
+                .set_latency(latency);
+            let sync_peer = self.sync_peers.get(peer_index).expect("Already checked").clone();
             info!(
                 target: LOG_TARGET,
                 "Attempting to synchronize blocks with `{}` latency: {:.2?}", node_id, latency

@@ -46,7 +46,7 @@
 //!    to the `AvailableBalance`.
 
 #![recursion_limit = "1024"]
-
+#![allow(clippy::indexing_slicing)]
 use core::ptr;
 use std::{
     convert::{TryFrom, TryInto},

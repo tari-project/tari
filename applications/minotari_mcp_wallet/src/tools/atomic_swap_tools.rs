@@ -453,6 +453,7 @@ impl AtomicSwapStatusTool {
     }
 }
 
+#[allow(clippy::indexing_slicing)]
 #[async_trait::async_trait]
 impl McpTool for AtomicSwapStatusTool {
     fn name(&self) -> &str {

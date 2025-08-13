@@ -8,6 +8,7 @@
 // Currently notifications are only added from the wallet_event_monitor which has
 // add_notification method.
 
+#![allow(clippy::indexing_slicing)]
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,

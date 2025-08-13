@@ -516,6 +516,7 @@ pub async fn generate_coinbase_with_wallet_output(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,

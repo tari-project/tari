@@ -398,6 +398,7 @@ impl ResponseConverterFactory {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[tokio::test]

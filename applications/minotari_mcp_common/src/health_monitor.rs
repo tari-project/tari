@@ -97,7 +97,7 @@ impl HealthMonitor {
         // Extract host and port from endpoint
         let endpoint_parts: Vec<&str> = self.endpoint.splitn(2, "://").collect();
         let address = if endpoint_parts.len() == 2 {
-            endpoint_parts[1] // Remove scheme (http://, https://)
+            *endpoint_parts.get(1).expect("Already checked") // Remove scheme (http://, https://)
         } else {
             &self.endpoint
         };

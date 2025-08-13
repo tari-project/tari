@@ -204,7 +204,8 @@ impl AggregateBody {
         // If the body is sorted, can do a linear check instead of n^2
         if self.sorted {
             for i in 1..self.inputs().len() {
-                if self.inputs()[i] == self.inputs()[i - 1] {
+                if self.inputs().get(i).expect("Already checked") == self.inputs().get(i - 1).expect("Already checked")
+                {
                     return true;
                 }
             }
@@ -212,7 +213,7 @@ impl AggregateBody {
         }
         for i in 0..self.inputs().len() {
             for j in (i + 1)..self.inputs().len() {
-                if self.inputs()[i] == self.inputs()[j] {
+                if self.inputs().get(i).expect("Already checked") == self.inputs().get(j).expect("Already checked") {
                     return true;
                 }
             }
@@ -224,7 +225,9 @@ impl AggregateBody {
         // If the body is sorted, can do a linear check instead of n^2
         if self.sorted {
             for i in 1..self.outputs().len() {
-                if self.outputs()[i] == self.outputs()[i - 1] {
+                if self.outputs().get(i).expect("Already checked") ==
+                    self.outputs().get(i - 1).expect("Already checked")
+                {
                     return true;
                 }
             }
@@ -232,7 +235,7 @@ impl AggregateBody {
         }
         for i in 0..self.outputs().len() {
             for j in (i + 1)..self.outputs().len() {
-                if self.outputs()[i] == self.outputs()[j] {
+                if self.outputs().get(i).expect("Already checked") == self.outputs().get(j).expect("Already checked") {
                     return true;
                 }
             }

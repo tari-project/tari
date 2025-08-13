@@ -68,8 +68,18 @@ impl BasicAuthCredentials {
         // Prepare the username bytes for constant time comparison ahead of time
         let bytes = user_name.as_bytes();
         let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
-        user_name_bytes[0..bytes.len()].clone_from_slice(bytes);
-        user_name_bytes[bytes.len()..MAX_USERNAME_LEN].clone_from_slice(&random_bytes[bytes.len()..MAX_USERNAME_LEN]);
+        user_name_bytes
+            .get_mut(0..bytes.len())
+            .expect("Already checked")
+            .clone_from_slice(bytes);
+        user_name_bytes
+            .get_mut(bytes.len()..MAX_USERNAME_LEN)
+            .expect("Already checked")
+            .clone_from_slice(
+                random_bytes
+                    .get(bytes.len()..MAX_USERNAME_LEN)
+                    .expect("Already checked"),
+            );
 
         Ok(Self {
             user_name_bytes_length: user_name.len(),
@@ -118,12 +128,21 @@ impl BasicAuthCredentials {
 
         // Add the username bytes to the buffer
         let bytes_len_clipped = min(bytes.len(), MAX_USERNAME_LEN);
-        compare_bytes[0..bytes_len_clipped].clone_from_slice(&bytes[..bytes_len_clipped]);
+        compare_bytes
+            .get_mut(0..bytes_len_clipped)
+            .expect("Already checked")
+            .clone_from_slice(bytes.get(..bytes_len_clipped).expect("Already checked"));
 
         // The remaining bytes are padded afterwards (and not initialized at the start) to ensure that this function
         // always does the same amount of work irrespective of the username length.
-        compare_bytes[bytes.len()..MAX_USERNAME_LEN]
-            .clone_from_slice(&self.random_bytes[bytes.len()..MAX_USERNAME_LEN]);
+        compare_bytes
+            .get_mut(bytes.len()..MAX_USERNAME_LEN)
+            .expect("Already checked")
+            .clone_from_slice(
+                self.random_bytes
+                    .get(bytes.len()..MAX_USERNAME_LEN)
+                    .expect("Already checked"),
+            );
 
         // Perform the bitwise comparison and combine the result with the valid username result.
         // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.

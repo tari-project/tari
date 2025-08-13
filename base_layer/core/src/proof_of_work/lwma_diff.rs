@@ -93,7 +93,7 @@ impl LinearWeightedMovingAverage {
 
         let ave_difficulty = difficulty_sum / n;
 
-        let (mut previous_timestamp, _) = self.target_difficulties[0];
+        let (mut previous_timestamp, _) = self.target_difficulties.front().expect("Already checked");
         let mut this_timestamp;
         // Loop through N most recent blocks.
         for (i, (timestamp, _)) in self.target_difficulties.iter().skip(1).enumerate() {
@@ -127,12 +127,12 @@ impl LinearWeightedMovingAverage {
             self.target_time,
             self.block_window,
             n,
-            self.target_difficulties[0].0,
-            self.target_difficulties[n as usize].0,
+            self.target_difficulties.front().expect("Already checked").0,
+            self.target_difficulties.get(n as usize).expect("Already checked").0,
             weighted_times,
             k,
-            self.target_difficulties[0].1,
-            self.target_difficulties[n as usize].1,
+            self.target_difficulties.front().expect("Already checked").1,
+            self.target_difficulties.get(n as usize).expect("Already checked").1,
             ave_difficulty,
             target
         );

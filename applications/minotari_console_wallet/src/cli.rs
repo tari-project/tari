@@ -278,10 +278,16 @@ impl FromStr for CliRecipientInfo {
         }
 
         // Parse output indexes
-        if !parts[0].starts_with('[') && !parts[0].ends_with(']') {
+        if !parts.first().expect("Already checked").starts_with('[') &&
+            !parts.first().expect("Already checked").ends_with(']')
+        {
             return Err("Invalid 'recipient-info' part 1; array bounds must be indicated with '[' and ']'".to_string());
         }
-        let binding = parts[0].replace("[", "").replace("]", "");
+        let binding = parts
+            .first()
+            .expect("Already checked")
+            .replace("[", "")
+            .replace("]", "");
         let parts_0 = binding.split(',').collect::<Vec<&str>>();
         let output_indexes = parts_0
             .iter()
@@ -292,7 +298,7 @@ impl FromStr for CliRecipientInfo {
             .collect::<Result<Vec<usize>, String>>()?;
 
         // Parse recipient address
-        let recipient_address = TariAddress::from_base58(parts[1])
+        let recipient_address = TariAddress::from_base58(parts.get(1).expect("Already checked"))
             .map_err(|e| format!("'recipient_info' - invalid recipient address: {}", e))?;
 
         Ok(CliRecipientInfo {

@@ -243,7 +243,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             return Err(SocksError::InvalidResponseVersion);
         }
         if *self.buf.get(1).ok_or(SocksError::InvalidAmountOfBytesRead)? != 0x00 {
-            return Err(SocksError::PasswordAuthFailure(*self.buf.get(1).expect("Already checked")));
+            return Err(SocksError::PasswordAuthFailure(
+                *self.buf.get(1).expect("Already checked"),
+            ));
         }
 
         Ok(())
@@ -300,7 +302,10 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let mut ip = [0; 4];
                 ip[..].copy_from_slice(self.buf.get(4..8).ok_or(SocksError::InvalidAmountOfBytesRead)?);
                 let ip = Ipv4Addr::from(ip);
-                let port = u16::from_be_bytes([*self.buf.get(8).ok_or(SocksError::InvalidAmountOfBytesRead)?, *self.buf.get(9).ok_or(SocksError::InvalidAmountOfBytesRead)?]);
+                let port = u16::from_be_bytes([
+                    *self.buf.get(8).ok_or(SocksError::InvalidAmountOfBytesRead)?,
+                    *self.buf.get(9).ok_or(SocksError::InvalidAmountOfBytesRead)?,
+                ]);
                 let mut addr: Multiaddr = Protocol::Ip4(ip).into();
                 addr.push(Protocol::Tcp(port));
                 addr
@@ -310,18 +315,28 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let mut ip = [0; 16];
                 ip[..].copy_from_slice(self.buf.get(4..20).ok_or(SocksError::InvalidAmountOfBytesRead)?);
                 let ip = Ipv6Addr::from(ip);
-                let port = u16::from_be_bytes([*self.buf.get(20).ok_or(SocksError::InvalidAmountOfBytesRead)?, *self.buf.get(21).ok_or(SocksError::InvalidAmountOfBytesRead)?]);
+                let port = u16::from_be_bytes([
+                    *self.buf.get(20).ok_or(SocksError::InvalidAmountOfBytesRead)?,
+                    *self.buf.get(21).ok_or(SocksError::InvalidAmountOfBytesRead)?,
+                ]);
                 let mut addr: Multiaddr = Protocol::Ip6(ip).into();
                 addr.push(Protocol::Tcp(port));
                 addr
             },
             // Domain
             0x03 => {
-                let domain_bytes = (self.buf.get(5..(self.len - 2)).ok_or(SocksError::InvalidAmountOfBytesRead)?).to_vec();
+                let domain_bytes = (self
+                    .buf
+                    .get(5..(self.len - 2))
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?)
+                .to_vec();
                 let domain = String::from_utf8(domain_bytes)
                     .map_err(|_| SocksError::InvalidTargetAddress("domain bytes are not a valid UTF-8 string"))?;
                 let mut addr: Multiaddr = Protocol::Dns4(Cow::Owned(domain)).into();
-                let port = u16::from_be_bytes([*self.buf.get(self.len - 2).ok_or(SocksError::InvalidAmountOfBytesRead)?, *self.buf.get(self.len - 1).ok_or(SocksError::InvalidAmountOfBytesRead)?]);
+                let port = u16::from_be_bytes([
+                    *self.buf.get(self.len - 2).ok_or(SocksError::InvalidAmountOfBytesRead)?,
+                    *self.buf.get(self.len - 1).ok_or(SocksError::InvalidAmountOfBytesRead)?,
+                ]);
                 addr.push(Protocol::Tcp(port));
                 addr
             },
@@ -331,16 +346,22 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         Ok(address)
     }
 
-    fn prepare_send_auth_method_selection(&mut self) -> Result<()>{
+    fn prepare_send_auth_method_selection(&mut self) -> Result<()> {
         self.ptr = 0;
         *self.buf.get_mut(0).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0x05;
         match self.authentication {
             Authentication::None => {
-                self.buf.get_mut(1..3).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&[1, 0x00]);
+                self.buf
+                    .get_mut(1..3)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&[1, 0x00]);
                 self.len = 3;
             },
             Authentication::Password { .. } => {
-                self.buf.get_mut(1..4).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&[2, 0x00, 0x02]);
+                self.buf
+                    .get_mut(1..4)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&[2, 0x00, 0x02]);
                 self.len = 4;
             },
         }
@@ -360,12 +381,21 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let username_bytes = username.as_bytes();
                 let username_len = username_bytes.len();
                 *self.buf.get_mut(1).ok_or(SocksError::InvalidAmountOfBytesRead)? = u8::try_from(username_len).unwrap();
-                self.buf.get_mut(2..(2 + username_len)).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(username_bytes);
+                self.buf
+                    .get_mut(2..(2 + username_len))
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(username_bytes);
                 let password_bytes = password.as_bytes();
                 let password_len = password_bytes.len();
                 self.len = 3 + username_len + password_len;
-                *self.buf.get_mut(2 + username_len).ok_or(SocksError::InvalidAmountOfBytesRead)? = u8::try_from(password_len).unwrap();
-                self.buf.get_mut((3 + username_len)..self.len).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(password_bytes);
+                *self
+                    .buf
+                    .get_mut(2 + username_len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)? = u8::try_from(password_len).unwrap();
+                self.buf
+                    .get_mut((3 + username_len)..self.len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(password_bytes);
             },
             Authentication::None => unreachable!(),
         };
@@ -379,7 +409,10 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     fn prepare_send_request(&mut self, command: Command, address: &Multiaddr) -> Result<()> {
         self.ptr = 0;
-        self.buf.get_mut(..3).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&[0x05, command as u8, 0x00]);
+        self.buf
+            .get_mut(..3)
+            .ok_or(SocksError::InvalidAmountOfBytesRead)?
+            .copy_from_slice(&[0x05, command as u8, 0x00]);
         let mut addr_iter = address.iter();
         let part1 = addr_iter
             .next()
@@ -390,14 +423,26 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         match (part1, part2) {
             (Protocol::Ip4(ip), Some(Protocol::Tcp(port))) => {
                 *self.buf.get_mut(3).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0x01;
-                self.buf.get_mut(4..8).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&ip.octets());
-                self.buf.get_mut(8..10).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&port.to_be_bytes());
+                self.buf
+                    .get_mut(4..8)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&ip.octets());
+                self.buf
+                    .get_mut(8..10)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&port.to_be_bytes());
                 self.len = 10;
             },
             (Protocol::Ip6(ip), Some(Protocol::Tcp(port))) => {
                 *self.buf.get_mut(3).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0x04;
-                self.buf.get_mut(4..20).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&ip.octets());
-                self.buf.get_mut(20..22).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&port.to_be_bytes());
+                self.buf
+                    .get_mut(4..20)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&ip.octets());
+                self.buf
+                    .get_mut(20..22)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&port.to_be_bytes());
                 self.len = 22;
             },
             (Protocol::Dns4(domain), Some(Protocol::Tcp(port))) => {
@@ -405,8 +450,14 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let domain = domain.as_bytes();
                 let len = domain.len();
                 *self.buf.get_mut(4).ok_or(SocksError::InvalidAmountOfBytesRead)? = u8::try_from(len).unwrap();
-                self.buf.get_mut(5..5 + len).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(domain);
-                self.buf.get_mut((5 + len)..(7 + len)).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&port.to_be_bytes());
+                self.buf
+                    .get_mut(5..5 + len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(domain);
+                self.buf
+                    .get_mut((5 + len)..(7 + len))
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&port.to_be_bytes());
                 self.len = 7 + len;
             },
             // Special case for Tor resolve
@@ -415,7 +466,10 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let domain = domain.as_bytes();
                 let len = domain.len();
                 *self.buf.get_mut(4).ok_or(SocksError::InvalidAmountOfBytesRead)? = u8::try_from(len).unwrap();
-                self.buf.get_mut(5..5 + len).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(domain);
+                self.buf
+                    .get_mut(5..5 + len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(domain);
                 // Zero port
                 *self.buf.get_mut(5 + len).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0;
                 *self.buf.get_mut(6 + len).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0;
@@ -426,8 +480,14 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let (domain, port) = Self::extract_onion_address(&p)?;
                 let len = domain.len();
                 *self.buf.get_mut(4).ok_or(SocksError::InvalidAmountOfBytesRead)? = u8::try_from(len).unwrap();
-                self.buf.get_mut(5..5 + len).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(domain.as_bytes());
-                self.buf.get_mut((5 + len)..(7 + len)).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&port.to_be_bytes());
+                self.buf
+                    .get_mut(5..5 + len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(domain.as_bytes());
+                self.buf
+                    .get_mut((5 + len)..(7 + len))
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&port.to_be_bytes());
                 self.len = 7 + len;
             },
             (Protocol::Onion3(addr), None) => {
@@ -436,8 +496,14 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let domain = format!("{}.onion", BASE32.encode(addr.hash()));
                 let len = domain.len();
                 *self.buf.get_mut(4).ok_or(SocksError::InvalidAmountOfBytesRead)? = u8::try_from(len).unwrap();
-                self.buf.get_mut(5..5 + len).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(domain.as_bytes());
-                self.buf.get_mut((5 + len)..(7 + len)).ok_or(SocksError::InvalidAmountOfBytesRead)?.copy_from_slice(&port.to_be_bytes());
+                self.buf
+                    .get_mut(5..5 + len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(domain.as_bytes());
+                self.buf
+                    .get_mut((5 + len)..(7 + len))
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?
+                    .copy_from_slice(&port.to_be_bytes());
                 self.len = 7 + len;
             },
             _ => return Err(SocksError::AddressTypeNotSupported),
@@ -464,13 +530,23 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     async fn write(&mut self) -> Result<()> {
         self.socket
-            .write_all(self.buf.get(self.ptr..self.len).ok_or(SocksError::InvalidAmountOfBytesRead)?)
+            .write_all(
+                self.buf
+                    .get(self.ptr..self.len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?,
+            )
             .await
             .map_err(Into::into)
     }
 
     async fn read(&mut self) -> Result<usize> {
-        self.socket.read_exact(self.buf.get_mut(self.ptr..self.len).ok_or(SocksError::InvalidAmountOfBytesRead)?).await?;
+        self.socket
+            .read_exact(
+                self.buf
+                    .get_mut(self.ptr..self.len)
+                    .ok_or(SocksError::InvalidAmountOfBytesRead)?,
+            )
+            .await?;
         Ok(self.len - self.ptr)
     }
 }

@@ -273,8 +273,7 @@ pub fn construct_monero_data(
     let hashes = create_ordered_transaction_hashes_from_block(&block);
     let root = tree_hash(&hashes)?;
     let hash = hashes.first().ok_or(MergeMineError::ValidationError(
-        "No hashes for merkle proof"
-            .to_string(),
+        "No hashes for merkle proof".to_string(),
     ))?;
     let coinbase_merkle_proof = create_merkle_proof(&hashes, hash).ok_or_else(|| {
         MergeMineError::ValidationError(
@@ -417,6 +416,7 @@ pub fn create_block_hashing_blob(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::convert::{TryFrom, TryInto};
 
     use borsh::{BorshDeserialize, BorshSerialize};

@@ -25,6 +25,7 @@
 //! This module provides utilities for generating JSON schemas from gRPC method definitions
 //! and validating parameters at runtime for MCP tool execution.
 
+#![allow(clippy::indexing_slicing)]
 use std::collections::HashMap;
 
 use serde_json::{Map, Value};

@@ -147,7 +147,7 @@ impl OutputSql {
         // filtering by OutputStatus
         query = match q.status.len() {
             0 => query,
-            1 => query.filter(outputs::status.eq(q.status[0] as i32)),
+            1 => query.filter(outputs::status.eq(*q.status.first().expect("Already checked") as i32)),
             _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
         };
 
@@ -155,7 +155,7 @@ impl OutputSql {
         if !q.commitments.is_empty() {
             query = match q.commitments.len() {
                 0 => query,
-                1 => query.filter(outputs::commitment.eq(q.commitments[0].to_vec())),
+                1 => query.filter(outputs::commitment.eq(q.commitments.first().expect("Already checked").to_vec())),
                 _ => query.filter(
                     outputs::commitment.eq_any::<Vec<Vec<u8>>>(q.commitments.into_iter().map(|c| c.to_vec()).collect()),
                 ),
@@ -237,7 +237,7 @@ impl OutputSql {
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
                 query = match commitments.len() {
                     0 => query,
-                    1 => query.filter(outputs::commitment.eq(commitments[0].to_vec())),
+                    1 => query.filter(outputs::commitment.eq(commitments.first().expect("Already checked").to_vec())),
                     _ => query.filter(
                         outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
                     ),
@@ -530,7 +530,7 @@ impl OutputSql {
         let query_result = query.load::<CountQueryResult>(conn)?;
         let commitments_len = i64::try_from(commitments.len())
             .map_err(|e| OutputManagerStorageError::ConversionError { reason: e.to_string() })?;
-        Ok(query_result[0].count == commitments_len)
+        Ok(query_result.first().expect("Already checked").count == commitments_len)
     }
 
     /// Return the available, time locked, pending incoming and pending outgoing balance

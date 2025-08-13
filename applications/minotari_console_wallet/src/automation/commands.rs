@@ -813,7 +813,7 @@ pub async fn command_runner(
                 for (index, item) in pre_mine_items.iter().enumerate() {
                     let unspent = unspent_outputs
                         .iter()
-                        .any(|u| u.commitment() == &pre_mine_outputs[index].commitment);
+                        .any(|u| u.commitment() == &pre_mine_outputs.get(index).expect("Already checked").commitment);
                     if let Err(e) = file_stream.write_all(
                         format!(
                             "{},{},{},{},{},{},{}\n",
@@ -924,7 +924,7 @@ pub async fn command_runner(
                 }
 
                 let embedded_output = match get_embedded_pre_mine_outputs(vec![args.output_index], None) {
-                    Ok(outputs) => outputs[0].clone(),
+                    Ok(outputs) => outputs.first().expect("Already checked").clone(),
                     Err(e) => {
                         eprintln!("\nError: {}\n", e);
                         break;
@@ -1022,7 +1022,7 @@ pub async fn command_runner(
                     let output_index = recipient_info.output_to_be_spend;
                     let embedded_output =
                         match get_embedded_pre_mine_outputs(vec![output_index], pre_mine_from_file.clone()) {
-                            Ok(outputs) => outputs[0].clone(),
+                            Ok(outputs) => outputs.first().expect("Already checked").clone(),
                             Err(e) => {
                                 eprintln!("\nError: {}\n", e);
                                 error = true;
@@ -1202,11 +1202,12 @@ pub async fn command_runner(
                     .iter()
                     .map(|v1| v1.outputs_for_leader.clone())
                     .collect::<Vec<_>>();
-                let mut party_info_per_index = Vec::with_capacity(party_info_flattened[0].len());
-                for i in 0..party_info_flattened[0].len() {
+                let mut party_info_per_index =
+                    Vec::with_capacity(party_info_flattened.first().expect("Already checked").len());
+                for i in 0..party_info_flattened.first().expect("Already checked").len() {
                     let mut outputs_per_index = Vec::with_capacity(party_info_flattened.len());
                     for outputs in &party_info_flattened {
-                        outputs_per_index.push(outputs[i].clone());
+                        outputs_per_index.push(outputs.get(i).expect("Already checked").clone());
                     }
                     party_info_per_index.push(outputs_per_index);
                 }
@@ -1238,8 +1239,9 @@ pub async fn command_runner(
                     let mut sender_offset_public_key_shares = Vec::with_capacity(indexed_info.len());
                     let mut metadata_ephemeral_public_key_shares = Vec::with_capacity(indexed_info.len());
                     let mut dh_shared_secret_shares = Vec::with_capacity(indexed_info.len());
-                    let current_index = indexed_info[0].output_index;
-                    let current_recipient_address = indexed_info[0].recipient_address.clone();
+                    let current_index = indexed_info.first().expect("Already checked").output_index;
+                    let current_recipient_address =
+                        indexed_info.first().expect("Already checked").recipient_address.clone();
                     for item in indexed_info {
                         if current_index != item.output_index {
                             eprintln!(
@@ -1270,10 +1272,13 @@ pub async fn command_runner(
                         break;
                     }
 
-                    let original_maturity = pre_mine_items[current_index].original_maturity;
+                    let original_maturity = pre_mine_items
+                        .get(current_index)
+                        .expect("Already checked")
+                        .original_maturity;
                     let embedded_output =
                         match get_embedded_pre_mine_outputs(vec![current_index], pre_mine_from_file.clone()) {
-                            Ok(outputs) => outputs[0].clone(),
+                            Ok(outputs) => outputs.first().expect("Already checked").clone(),
                             Err(e) => {
                                 eprintln!("\nError: {}\n", e);
                                 error = true;
@@ -1318,23 +1323,68 @@ pub async fn command_runner(
                         )) => {
                             outputs_for_parties.push(Step3OutputsForParties {
                                 output_index: current_index,
-                                input_stack: transaction.body.inputs()[0].clone().input_data,
-                                input_script: transaction.body.inputs()[0].script().unwrap().clone(),
+                                input_stack: transaction
+                                    .body
+                                    .inputs()
+                                    .first()
+                                    .expect("Already checked")
+                                    .clone()
+                                    .input_data,
+                                input_script: transaction
+                                    .body
+                                    .inputs()
+                                    .first()
+                                    .expect("Already checked")
+                                    .script()
+                                    .unwrap()
+                                    .clone(),
                                 total_script_key: script_pubkey,
-                                script_signature_ephemeral_commitment: transaction.body.inputs()[0]
+                                script_signature_ephemeral_commitment: transaction
+                                    .body
+                                    .inputs()
+                                    .first()
+                                    .expect("Already checked")
                                     .script_signature
                                     .ephemeral_commitment()
                                     .clone(),
                                 script_signature_ephemeral_pubkey: total_script_nonce,
-                                output_commitment: transaction.body.outputs()[0].commitment().clone(),
-                                sender_offset_pubkey: transaction.body.outputs()[0].clone().sender_offset_public_key,
-                                metadata_signature_ephemeral_commitment: transaction.body.outputs()[0]
+                                output_commitment: transaction
+                                    .body
+                                    .outputs()
+                                    .first()
+                                    .expect("Already checked")
+                                    .commitment()
+                                    .clone(),
+                                sender_offset_pubkey: transaction
+                                    .body
+                                    .outputs()
+                                    .first()
+                                    .expect("Already checked")
+                                    .clone()
+                                    .sender_offset_public_key,
+                                metadata_signature_ephemeral_commitment: transaction
+                                    .body
+                                    .outputs()
+                                    .first()
+                                    .expect("Already checked")
                                     .metadata_signature
                                     .ephemeral_commitment()
                                     .clone(),
                                 metadata_signature_ephemeral_pubkey: total_metadata_ephemeral_public_key,
-                                encrypted_data: transaction.body.outputs()[0].clone().encrypted_data,
-                                output_features: transaction.body.outputs()[0].clone().features,
+                                encrypted_data: transaction
+                                    .body
+                                    .outputs()
+                                    .first()
+                                    .expect("Already checked")
+                                    .clone()
+                                    .encrypted_data,
+                                output_features: transaction
+                                    .body
+                                    .outputs()
+                                    .first()
+                                    .expect("Already checked")
+                                    .clone()
+                                    .features,
                                 shared_secret,
                             });
                             outputs_for_self.push(Step3OutputsForSelf {
@@ -1492,7 +1542,7 @@ pub async fn command_runner(
                         vec![party_info.output_index],
                         pre_mine_from_file.clone(),
                     ) {
-                        Ok(outputs) => outputs[0].clone(),
+                        Ok(outputs) => outputs.first().expect("Already checked").clone(),
                         Err(e) => {
                             eprintln!("\nError: {}\n", e);
                             error = true;
@@ -1751,12 +1801,13 @@ pub async fn command_runner(
                     .iter()
                     .map(|v1| v1.outputs_for_leader.clone())
                     .collect::<Vec<_>>();
-                let mut party_info_per_index = Vec::with_capacity(party_info_flattened[0].len());
+                let mut party_info_per_index =
+                    Vec::with_capacity(party_info_flattened.first().expect("Already checked").len());
                 let number_of_parties = party_info_flattened.len();
-                for i in 0..party_info_flattened[0].len() {
+                for i in 0..party_info_flattened.first().expect("Already checked").len() {
                     let mut outputs_per_index = Vec::with_capacity(number_of_parties);
                     for outputs in &party_info_flattened {
-                        outputs_per_index.push(outputs[i].clone());
+                        outputs_per_index.push(outputs.get(i).expect("Already checked").clone());
                     }
                     party_info_per_index.push(outputs_per_index);
                 }
@@ -2042,46 +2093,50 @@ pub async fn command_runner(
                     Err(e) => eprintln!("InitShaAtomicSwap error! {}", e),
                 }
             },
-            FinaliseShaAtomicSwap(args) => match args.output_hash[0].clone().try_into() {
-                Ok(hash) => {
-                    match finalise_sha_atomic_swap(
-                        output_service.clone(),
-                        transaction_service.clone(),
-                        hash,
-                        args.pre_image.into(),
-                        config.fee_per_gram.into(),
-                        MemoField::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
-                    )
-                    .await
-                    {
-                        Ok(tx_id) => {
-                            debug!(target: LOG_TARGET, "claiming minotari HTLC tx_id {}", tx_id);
-                            tx_ids.push(tx_id);
-                        },
-                        Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
-                    }
-                },
-                Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
+            FinaliseShaAtomicSwap(args) => {
+                match args.output_hash.first().expect("Already checked").clone().try_into() {
+                    Ok(hash) => {
+                        match finalise_sha_atomic_swap(
+                            output_service.clone(),
+                            transaction_service.clone(),
+                            hash,
+                            args.pre_image.into(),
+                            config.fee_per_gram.into(),
+                            MemoField::open_from_string(&args.payment_id, TxType::ClaimAtomicSwap),
+                        )
+                        .await
+                        {
+                            Ok(tx_id) => {
+                                debug!(target: LOG_TARGET, "claiming minotari HTLC tx_id {}", tx_id);
+                                tx_ids.push(tx_id);
+                            },
+                            Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
+                        }
+                    },
+                    Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
+                }
             },
-            ClaimShaAtomicSwapRefund(args) => match args.output_hash[0].clone().try_into() {
-                Ok(hash) => {
-                    match claim_htlc_refund(
-                        output_service.clone(),
-                        transaction_service.clone(),
-                        hash,
-                        config.fee_per_gram.into(),
-                        MemoField::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
-                    )
-                    .await
-                    {
-                        Ok(tx_id) => {
-                            debug!(target: LOG_TARGET, "claiming minotari HTLC tx_id {}", tx_id);
-                            tx_ids.push(tx_id);
-                        },
-                        Err(e) => eprintln!("ClaimShaAtomicSwapRefund error! {}", e),
-                    }
-                },
-                Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
+            ClaimShaAtomicSwapRefund(args) => {
+                match args.output_hash.first().expect("Already checked").clone().try_into() {
+                    Ok(hash) => {
+                        match claim_htlc_refund(
+                            output_service.clone(),
+                            transaction_service.clone(),
+                            hash,
+                            config.fee_per_gram.into(),
+                            MemoField::open_from_string(&args.payment_id, TxType::HtlcAtomicSwapRefund),
+                        )
+                        .await
+                        {
+                            Ok(tx_id) => {
+                                debug!(target: LOG_TARGET, "claiming minotari HTLC tx_id {}", tx_id);
+                                tx_ids.push(tx_id);
+                            },
+                            Err(e) => eprintln!("ClaimShaAtomicSwapRefund error! {}", e),
+                        }
+                    },
+                    Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
+                }
             },
             RegisterValidatorNode(args) => {
                 let tx_id = register_validator_node(
@@ -2090,14 +2145,14 @@ pub async fn command_runner(
                     args.validator_node_public_key.into(),
                     Signature::new(
                         args.validator_node_public_nonce.into(),
-                        RistrettoSecretKey::from_vec(&args.validator_node_signature[0])?,
+                        RistrettoSecretKey::from_vec(args.validator_node_signature.first().expect("Already checked"))?,
                     ),
                     args.validator_node_claim_public_key.into(),
                     if args.sidechain_deployment_key.is_empty() {
                         None
                     } else {
                         Some(RistrettoSecretKey::from_canonical_bytes(
-                            &args.sidechain_deployment_key[0],
+                            args.sidechain_deployment_key.first().expect("Already checked"),
                         )?)
                     },
                     args.epoch,
@@ -2747,7 +2802,7 @@ fn get_embedded_pre_mine_outputs(
                 utxos.len()
             )));
         }
-        fetched_outputs.push(utxos[index].clone());
+        fetched_outputs.push(utxos.get(index).expect("Already checked").clone());
     }
     Ok(fetched_outputs)
 }

@@ -442,6 +442,7 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageErro
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::SafePassword;

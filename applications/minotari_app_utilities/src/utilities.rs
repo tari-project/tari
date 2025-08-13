@@ -148,8 +148,8 @@ impl FromStr for UniSignature {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let data = s.split(',').collect::<Vec<_>>();
-        let signature = PrivateKey::from_hex(data[0])?;
-        let public_nonce = CompressedPublicKey::from_hex(data[1])?;
+        let signature = PrivateKey::from_hex(data.first().ok_or(HexError::LengthError {})?)?;
+        let public_nonce = CompressedPublicKey::from_hex(data.get(1).ok_or(HexError::LengthError {})?)?;
 
         let signature = Signature::new(public_nonce, signature);
         Ok(Self(signature))

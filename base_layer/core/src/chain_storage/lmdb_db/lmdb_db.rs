@@ -2047,9 +2047,9 @@ impl LMDBDatabase {
                 lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, input.output_hash().as_slice())?
             {
                 let mut buffer = [0u8; 32];
-                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(
-                    ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
-                )?);
+                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))?);
                 let key = OutputKey::new(&FixedHash::from(buffer), &input.output_hash())?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
@@ -2098,9 +2098,9 @@ impl LMDBDatabase {
                 )?;
 
                 let mut buffer = [0u8; 32];
-                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(
-                    ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
-                )?);
+                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))?);
                 let key = OutputKey::new(&FixedHash::from(buffer), output_hash)?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
@@ -4061,7 +4061,9 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
             };
 
-            if known_good_difficulties.is_empty() || current_height < known_good_difficulties.first().expect("is checked").0 {
+            if known_good_difficulties.is_empty() ||
+                current_height < known_good_difficulties.first().expect("is checked").0
+            {
                 // This will happen only happen if the db is below the fork height of the RxT fork
                 info!(
                     target: LOG_TARGET,

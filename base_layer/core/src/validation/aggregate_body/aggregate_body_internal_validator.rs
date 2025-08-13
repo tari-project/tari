@@ -502,6 +502,7 @@ fn validate_versions(body: &AggregateBody, consensus_constants: &ConsensusConsta
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::iter;
 
     use futures::StreamExt;
@@ -561,16 +562,16 @@ mod test {
             );
 
             assert!(matches!(
-                check_maturity(1, &[input.clone()]),
+                check_maturity(1, std::slice::from_ref(&input)),
                 Err(TransactionError::InputMaturity)
             ));
 
             assert!(matches!(
-                check_maturity(4, &[input.clone()]),
+                check_maturity(4, std::slice::from_ref(&input)),
                 Err(TransactionError::InputMaturity)
             ));
 
-            check_maturity(5, &[input.clone()]).unwrap();
+            check_maturity(5, std::slice::from_ref(&input)).unwrap();
             check_maturity(6, &[input]).unwrap();
         }
     }

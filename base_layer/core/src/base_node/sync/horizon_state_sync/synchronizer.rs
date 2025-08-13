@@ -241,7 +241,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let peer_index = self
             .get_sync_peer_index(node_id)
             .ok_or(HorizonSyncError::PeerNotFound)?;
-        let sync_peer = &self.sync_peers[peer_index];
+        let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
         self.hooks.call_on_starting_hook(sync_peer);
 
         let mut conn = self.dial_sync_peer(node_id).await?;
@@ -261,7 +261,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let latency = client
             .get_last_request_latency()
             .expect("unreachable panic: last request latency must be set after connect");
-        self.sync_peers[peer_index].set_latency(latency);
+        self.sync_peers
+            .get_mut(peer_index)
+            .expect("Already checked")
+            .set_latency(latency);
         if latency > self.max_latency {
             return Err(HorizonSyncError::MaxLatencyExceeded {
                 peer: conn.peer_node_id().clone(),
@@ -271,7 +274,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
         debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
 
-        Ok((client, self.sync_peers[peer_index].clone()))
+        Ok((
+            client,
+            self.sync_peers.get(peer_index).expect("Already checked").clone(),
+        ))
     }
 
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, HorizonSyncError> {

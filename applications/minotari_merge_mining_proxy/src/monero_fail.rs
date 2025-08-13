@@ -343,6 +343,7 @@ fn get_expected_table_structure<'a>() -> Vec<&'a str> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
     use crate::{

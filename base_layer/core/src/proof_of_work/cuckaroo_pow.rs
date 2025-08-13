@@ -93,13 +93,13 @@ pub fn cuckaroo_result(
         .map_err(|_| CuckarooVerificationError::UnsupportedCycleLength)?;
 
     let packed_size = required_cycle_length.get() * edge_bits as usize;
-    let packed_bytes = (packed_size + 7) / 8;
+    let packed_bytes = (packed_size + 7).div_ceil(8);
 
     if pow.is_empty() || pow.len() < 1 + packed_bytes {
         return Err(CuckarooVerificationError::PowDataTooShort);
     }
     // First byte must be 3 for Cuckaroo
-    if pow[0] != 3 {
+    if *pow.first().expect("Already checked") != 3 {
         return Err(CuckarooVerificationError::BlockHeaderInvalidPowAlgorithm);
     }
     let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
@@ -110,9 +110,9 @@ pub fn cuckaroo_result(
         .finalize_variable(&mut blob)
         .expect("Infallible because we've set the output size");
 
-    let pow_data = &pow[1..];
+    let pow_data = pow.get(1..).expect("Already checked");
     // Data after <required_cycle_length * edge_bits> is padding, it must be zero
-    for &byte in &pow_data[packed_bytes..] {
+    for &byte in pow_data.get(packed_bytes..).expect("Already checked") {
         if byte != 0 {
             return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
@@ -124,7 +124,7 @@ pub fn cuckaroo_result(
     // This should not happen because unpack_nonces should return the correct
     // length, but here for completeness
     if nonces.len() > required_cycle_length.get() {
-        for n in &nonces[required_cycle_length.get()..] {
+        for n in nonces.get(required_cycle_length.get()..).expect("Already checked") {
             if *n != 0 {
                 return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
             }
@@ -132,10 +132,30 @@ pub fn cuckaroo_result(
     }
 
     let siphash_keys = [
-        u64::from_le_bytes(blob[0..8].try_into().unwrap()),
-        u64::from_le_bytes(blob[8..16].try_into().unwrap()),
-        u64::from_le_bytes(blob[16..24].try_into().unwrap()),
-        u64::from_le_bytes(blob[24..32].try_into().unwrap()),
+        u64::from_le_bytes(
+            blob.get(0..8)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
+        u64::from_le_bytes(
+            blob.get(8..16)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
+        u64::from_le_bytes(
+            blob.get(16..24)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
+        u64::from_le_bytes(
+            blob.get(24..32)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
     ];
     // // Generate the hasher.
     verify(&siphash_keys, &nonces, required_cycle_length, edge_bits)?;
@@ -155,8 +175,9 @@ pub fn cuckaroo_result(
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing)]
 fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
-    let mut target = vec![0u8; (uncompressed.len() * bit_width as usize + 7) / 8];
+    let mut target = vec![0u8; (uncompressed.len() * bit_width as usize + 7).div_ceil(8)];
     let mut compressed = target.as_mut_slice();
     let mut mini_buffer = 0u64;
     let mut remaining = 64;
@@ -201,7 +222,7 @@ fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Ve
         }
     }
 
-    for n in &nonces[expected_length..] {
+    for n in nonces.get(expected_length..).expect("Already checked") {
         if *n != 0 {
             return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
@@ -218,14 +239,14 @@ fn verify(
     let node_mask = (1u64 << edge_bits) - 1;
     let mut uvs = Vec::with_capacity(cycle_length.get());
     for i in 0..cycle_length.get() {
-        if nonces[i] > node_mask {
+        if *nonces.get(i).expect("Already checked") > node_mask {
             return Err(CuckarooVerificationError::NonceTooLarge);
         }
-        if i > 0 && nonces[i] <= nonces[i - 1] {
+        if i > 0 && *nonces.get(i).expect("Already checked") <= *nonces.get(i - 1).expect("Already checked") {
             return Err(CuckarooVerificationError::NoncesNotAscending);
         }
 
-        let edge = siphash_block(siphash_keys, nonces[i], 21, true);
+        let edge = siphash_block(siphash_keys, *nonces.get(i).expect("Already checked"), 21, true);
         let u = edge & node_mask;
         let v = (edge >> 32) & node_mask;
 
@@ -278,13 +299,13 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: NonZeroUsize) -> Result<(
             return Err(CuckarooVerificationError::CycleDidNotUseAllEdges);
         }
         visited_nodes.insert(current);
-        let neighbors = &graph[&current];
+        let neighbors = graph.get(&current).expect("Already checked");
 
         // Choose next that is not the previous node
-        let next = if Some(neighbors[0]) == previous {
-            neighbors[1]
+        let next = if Some(*neighbors.first().expect("Already checked")) == previous {
+            *neighbors.get(1).expect("Already checked")
         } else {
-            neighbors[0]
+            *neighbors.first().expect("Already checked")
         };
 
         let edge_key = if current < next {
@@ -324,6 +345,7 @@ pub fn cuckaroo_difficulty(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
 
     use super::*;
 

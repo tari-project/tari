@@ -270,7 +270,10 @@ impl GrpcConfigParser {
             ));
         }
 
-        let (service_part, method_part) = (parts[0], parts[1]);
+        let (service_part, method_part) = (
+            *parts.first().expect("Already checked"),
+            *parts.get(1).expect("Already checked"),
+        );
 
         // Extract service name from full qualified name if present
         let service_name = if service_part.starts_with("tari.rpc.") {

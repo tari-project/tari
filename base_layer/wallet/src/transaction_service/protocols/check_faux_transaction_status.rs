@@ -144,7 +144,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         );
         // Its safe to assume that statuses should be the same as they are all in the same transaction and they cannot
         // be different.
-        let output_status = output_info_for_tx_id.statuses[0];
+        let output_status = output_info_for_tx_id.statuses.first().expect("Cannot be empty");
         if output_info_for_tx_id.mined_height.is_none() || output_info_for_tx_id.block_hash.is_none() {
             // this means the transaction is not detected as mined
             if let Err(e) = db.set_transaction_as_unmined(tx.tx_id) {

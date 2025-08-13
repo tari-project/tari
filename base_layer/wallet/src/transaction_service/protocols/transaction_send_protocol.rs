@@ -900,7 +900,7 @@ where
                         "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
                          Tags: {:?}",
                         self.id,
-                        successful_sends[0],
+                        successful_sends.first().expect("Already checked"),
                     );
                     Ok(true)
                 } else if !failed_sends.is_empty() {

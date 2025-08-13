@@ -2984,6 +2984,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{collections::HashMap, sync};
 
     use rand::seq::SliceRandom;

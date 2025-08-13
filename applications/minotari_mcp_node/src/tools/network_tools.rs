@@ -125,6 +125,7 @@ impl ListConnectedPeersTool {
     }
 }
 
+#[allow(clippy::indexing_slicing)]
 #[async_trait::async_trait]
 impl McpTool for ListConnectedPeersTool {
     fn name(&self) -> &str {
@@ -249,6 +250,7 @@ impl GetAllPeersTool {
     }
 }
 
+#[allow(clippy::indexing_slicing)]
 #[async_trait::async_trait]
 impl McpTool for GetAllPeersTool {
     fn name(&self) -> &str {

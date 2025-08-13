@@ -59,14 +59,14 @@ pub async fn wait_on_dial(
                     "Direct Send process for {} TX_ID: {} and Message {} was unsuccessful and no message was sent",
                     message,
                     tx_id,
-                    failed[0]
+                    failed.first().expect("Failed message should exist")
                 );
             }
             false
         } else {
             info!(
                 target: LOG_TARGET,
-                "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent[0]
+                "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent.first().expect("Sent message should exist")
             );
             true
         }

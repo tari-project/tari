@@ -110,7 +110,11 @@ impl ConsensusManager {
 
     /// Get a reference to consensus constants that are effective from the given height
     pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
-        let mut constants = self.inner.consensus_constants.first().expect("Should always have at least one consensus constant");
+        let mut constants = self
+            .inner
+            .consensus_constants
+            .first()
+            .expect("Should always have at least one consensus constant");
         for c in &self.inner.consensus_constants {
             if c.effective_from_height() > height {
                 break;
@@ -248,7 +252,10 @@ impl ConsensusManager {
             .iter()
             .position(|v| v == last_effective_tranche)
             .ok_or_else(|| format!("Last effective maturity tranche index for height {} not found", height))?;
-        let previous_effective_tranch = maturity_tranches.get(last_effective_index.saturating_sub(1)).expect("Index should exist").clone();
+        let previous_effective_tranch = maturity_tranches
+            .get(last_effective_index.saturating_sub(1))
+            .expect("Index should exist")
+            .clone();
 
         // We have to adjust the matured rewards at height to account for the effective from height of the last
         // effective tranche
@@ -341,7 +348,10 @@ impl ConsensusManagerBuilder {
         if self.consensus_constants.is_empty() {
             self.consensus_constants = self.network.create_consensus_constants();
         }
-        let cc = self.consensus_constants.first().expect("Consensus constants should not be empty");
+        let cc = self
+            .consensus_constants
+            .first()
+            .expect("Consensus constants should not be empty");
         let emission = EmissionSchedule::new(
             cc.emission_initial,
             cc.emission_decay,

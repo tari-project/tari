@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod add_aux_data {
+    #![allow(clippy::indexing_slicing)]
     use serde_json::json;
 
     use crate::{
@@ -54,6 +55,7 @@ mod add_aux_data {
 }
 
 mod append_aux_chain_data {
+    #![allow(clippy::indexing_slicing)]
     use serde_json::json;
 
     use crate::{

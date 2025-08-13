@@ -25,6 +25,7 @@ use std::{
     fmt::{Display, Formatter},
     ops::Deref,
 };
+
 use lmdb_zero::traits::AsLmdbBytes;
 use tari_common_types::types::FixedHash;
 
@@ -93,7 +94,11 @@ impl<const L: usize> CompositeKey<L> {
         if new_len > L {
             return false;
         }
-        self.bytes.as_mut_slice().get_mut(self.len..new_len).expect("Already checked").copy_from_slice(b);
+        self.bytes
+            .as_mut_slice()
+            .get_mut(self.len..new_len)
+            .expect("Already checked")
+            .copy_from_slice(b);
         self.len = new_len;
         true
     }
@@ -104,7 +109,11 @@ impl<const L: usize> CompositeKey<L> {
 
     pub fn to_be_u64(&self, offset: usize) -> Result<u64, ChainStorageError> {
         let mut buf = [0u8; 8];
-        buf.copy_from_slice(self.bytes.get(offset..offset + 8).ok_or(ChainStorageError::CompositeKeyLengthExceeded)?);
+        buf.copy_from_slice(
+            self.bytes
+                .get(offset..offset + 8)
+                .ok_or(ChainStorageError::CompositeKeyLengthExceeded)?,
+        );
         Ok(u64::from_be_bytes(buf))
     }
 
@@ -160,7 +169,11 @@ impl<const L: usize> TryFrom<&[u8]> for CompositeKey<L> {
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let mut key = Self::new();
-        key.bytes.as_mut_slice().get_mut(..value.len()).ok_or(ChainStorageError::CompositeKeyLengthExceeded)?.copy_from_slice(value);
+        key.bytes
+            .as_mut_slice()
+            .get_mut(..value.len())
+            .ok_or(ChainStorageError::CompositeKeyLengthExceeded)?
+            .copy_from_slice(value);
         key.len = value.len();
         Ok(key)
     }

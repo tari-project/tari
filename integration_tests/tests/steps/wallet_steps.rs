@@ -20,6 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{convert::TryFrom, panic, path::PathBuf, time::Duration};
 
 use cucumber::{given, then, when};
@@ -1512,15 +1513,14 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
         let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
         let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address);
 
-        let wallet_tx_ids = if wallet_tx_ids.is_none() {
-            cucumber_steps_log(format!("Wallet {} has no available transactions", &wallet));
-            vec![]
-        } else {
-            let wallet_tx_ids = wallet_tx_ids.unwrap();
+        let wallet_tx_ids = if let Some(wallet_tx_ids) = wallet_tx_ids {
             if wallet_tx_ids.is_empty() {
                 panic!("Wallet {} should have available transaction ids", wallet.as_str());
             }
             wallet_tx_ids.clone()
+        } else {
+            cucumber_steps_log(format!("Wallet {} has no available transactions", &wallet));
+            vec![]
         };
 
         let num_retries = 100;

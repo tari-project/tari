@@ -40,8 +40,18 @@ impl Stream {
         if let Some(true) = tls {
             let connector = TlsConnector::new()?;
             let url_port: Vec<&str> = server_url.split(':').collect();
-            let split_url: Vec<&str> = url_port[0].split('.').collect();
-            let base_host = format!("{}.{}", split_url[split_url.len() - 2], split_url[split_url.len() - 1]);
+            let split_url: Vec<&str> = url_port
+                .first()
+                .ok_or(Error::MissingData("No port".to_string()))?
+                .split('.')
+                .collect();
+            let base_host = format!(
+                "{}.{}",
+                split_url
+                    .get(split_url.len() - 2)
+                    .ok_or(Error::MissingData("No url".to_string()))?,
+                split_url.last().ok_or(Error::MissingData("No port".to_string()))?
+            );
             let mut stream = connector.connect(&base_host, conn).map_err(Box::new)?;
             stream.get_mut().set_nonblocking(true)?;
             Ok(Self::TlsStream(Box::from(BufStream::new(stream))))

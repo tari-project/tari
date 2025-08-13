@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use std::{path::Path, str::FromStr};
 
 use blake2::Blake2b;

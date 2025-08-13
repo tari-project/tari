@@ -1521,6 +1521,7 @@ impl KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
 
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};

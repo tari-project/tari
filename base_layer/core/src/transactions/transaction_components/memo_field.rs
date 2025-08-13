@@ -746,9 +746,13 @@ impl MemoField {
         let p_tag = if bytes.is_empty() {
             PTag::Empty
         } else {
-            PTag::from_u8(bytes[0])
+            PTag::from_u8(*bytes.first().expect("Already checked"))
         };
-        let bytes = if bytes.len() > 1 { &bytes[1..] } else { &[] };
+        let bytes = if bytes.len() > 1 {
+            bytes.get(1..).expect("Already checked")
+        } else {
+            &[]
+        };
         match p_tag {
             PTag::Empty => {
                 return MemoField {
@@ -807,22 +811,32 @@ impl MemoField {
 
         if p_tag == PTag::TransactionInfoV1 || p_tag == PTag::AddressAndDataV1 {
             let mut amount_bytes = [0u8; SIZE_VALUE];
-            amount_bytes.copy_from_slice(&bytes[0..SIZE_VALUE]);
+            amount_bytes.copy_from_slice(bytes.get(0..SIZE_VALUE).expect("Already checked"));
             let amount = MicroMinotari::from(u64::from_le_bytes(amount_bytes));
             let mut meta_data_bytes = [0u8; MemoField::SIZE_META_DATA];
-            meta_data_bytes.copy_from_slice(&bytes[SIZE_VALUE..MemoField::SIZE_VALUE_AND_META_DATA]);
+            meta_data_bytes.copy_from_slice(
+                bytes
+                    .get(SIZE_VALUE..MemoField::SIZE_VALUE_AND_META_DATA)
+                    .expect("Already checked"),
+            );
             let (fee, sender_one_sided, tx_meta_data) = MemoField::unpack_meta_data(meta_data_bytes);
-            let (address, size) =
-                if let Ok((address, size)) = Self::find_tari_address(&bytes[MemoField::SIZE_VALUE_AND_META_DATA..]) {
-                    (address, size)
-                } else {
-                    // if we cannot find a valid TariAddress, we return the raw bytes
-                    return Err("No valid TariAddress found in bytes".to_string());
-                };
+            let (address, size) = if let Ok((address, size)) = Self::find_tari_address(
+                bytes
+                    .get(MemoField::SIZE_VALUE_AND_META_DATA..)
+                    .expect("Already checked"),
+            ) {
+                (address, size)
+            } else {
+                // if we cannot find a valid TariAddress, we return the raw bytes
+                return Err("No valid TariAddress found in bytes".to_string());
+            };
 
             // legacy support for AddressAndDataV1
             if p_tag == PTag::AddressAndDataV1 {
-                let payment_id = bytes[MemoField::SIZE_VALUE_AND_META_DATA + size..].to_vec();
+                let payment_id = bytes
+                    .get(MemoField::SIZE_VALUE_AND_META_DATA + size..)
+                    .expect("Already checked")
+                    .to_vec();
                 return Ok(MemoField {
                     inner: InnerMemoField::AddressAndData {
                         sender_address: address,
@@ -836,7 +850,10 @@ impl MemoField {
 
             // legacy support for TransactionInfoV1
             if p_tag == PTag::TransactionInfoV1 {
-                let payment_id = bytes[MemoField::SIZE_VALUE_AND_META_DATA + size..].to_vec();
+                let payment_id = bytes
+                    .get(MemoField::SIZE_VALUE_AND_META_DATA + size..)
+                    .expect("Already checked")
+                    .to_vec();
                 return Ok(MemoField {
                     inner: InnerMemoField::TransactionInfo {
                         recipient_address: address,
@@ -943,7 +960,7 @@ impl MemoField {
         }
 
         // Check if the last bytes are zeroed out
-        for &byte in &bytes[start_index..] {
+        for &byte in bytes.get(start_index..).expect("Already checked") {
             if byte != 0 {
                 return false;
             }
@@ -959,12 +976,18 @@ impl MemoField {
         // Now we have to try and brute force a match here
         let mut offset = 0;
         while (TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset) <= bytes.len() {
-            if let Ok(address) = TariAddress::from_bytes(&bytes[..(TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset)]) {
+            if let Ok(address) = TariAddress::from_bytes(
+                bytes
+                    .get(..(TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset))
+                    .expect("Already checked"),
+            ) {
                 return Ok((address, TARI_ADDRESS_INTERNAL_DUAL_SIZE + offset));
             }
             offset += 1;
         }
-        if let Ok(address) = TariAddress::from_bytes(&bytes[..TARI_ADDRESS_INTERNAL_SINGLE_SIZE]) {
+        if let Ok(address) =
+            TariAddress::from_bytes(bytes.get(..TARI_ADDRESS_INTERNAL_SINGLE_SIZE).expect("Already checked"))
+        {
             return Ok((address, TARI_ADDRESS_INTERNAL_SINGLE_SIZE));
         }
         Err("No valid TariAddress found".to_string())

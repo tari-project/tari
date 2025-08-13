@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{
     convert::TryInto,
     sync::{
@@ -84,6 +85,7 @@ pub struct InnerService {
 
 impl InnerService {
     #[allow(clippy::cast_possible_wrap)]
+    #[allow(clippy::indexing_slicing)]
     async fn handle_get_height(&self, monerod_resp: Response<json::Value>) -> Result<Response<Body>, MmProxyError> {
         trace!(target: LOG_TARGET, "handle_get_height monerod_resp body: {}", monerod_resp.body());
         let (parts, mut json) = monerod_resp.into_parts();

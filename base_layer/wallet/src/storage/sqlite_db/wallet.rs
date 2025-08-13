@@ -1100,6 +1100,7 @@ impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
     use tari_common_types::encryption::{decrypt_bytes_integral_nonce, Encryptable};
     use tari_key_manager::cipher_seed::CipherSeed;

@@ -1087,6 +1087,7 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,

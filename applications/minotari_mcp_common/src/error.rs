@@ -22,6 +22,7 @@
 // infrastructure for Tari applications
 //! Error types for MCP operations
 
+#![allow(clippy::indexing_slicing)]
 use serde_json::{json, Value};
 use thiserror::Error;
 

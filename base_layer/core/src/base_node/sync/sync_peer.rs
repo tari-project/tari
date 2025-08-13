@@ -132,6 +132,7 @@ impl PartialOrd for SyncPeer {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
     use rand::rngs::OsRng;

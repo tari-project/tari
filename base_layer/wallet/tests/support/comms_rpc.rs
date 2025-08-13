@@ -22,7 +22,7 @@
 
 // Sync lock used in async context throughout this module
 #![allow(clippy::await_holding_lock)]
-
+#![allow(clippy::indexing_slicing)]
 use std::{
     cmp::min,
     collections::HashMap,

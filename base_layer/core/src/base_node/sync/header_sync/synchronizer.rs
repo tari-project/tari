@@ -193,7 +193,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let peer_index = self
             .get_sync_peer_index(node_id)
             .ok_or(BlockHeaderSyncError::PeerNotFound)?;
-        let sync_peer = &self.sync_peers[peer_index];
+        let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
         self.hooks.call_on_starting_hook(sync_peer);
 
         let mut conn = self.dial_sync_peer(node_id).await?;
@@ -212,7 +212,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let latency = client
             .get_last_request_latency()
             .expect("unreachable panic: last request latency must be set after connect");
-        self.sync_peers.get_mut(peer_index).ok_or(BlockHeaderSyncError::PeerNotFound)?.set_latency(latency);
+        self.sync_peers
+            .get_mut(peer_index)
+            .ok_or(BlockHeaderSyncError::PeerNotFound)?
+            .set_latency(latency);
         if latency > max_latency {
             return Err(BlockHeaderSyncError::MaxLatencyExceeded {
                 peer: conn.peer_node_id().clone(),
@@ -222,7 +225,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
-        let sync_peer = self.sync_peers.get(peer_index).ok_or(BlockHeaderSyncError::PeerNotFound)?.clone();
+        let sync_peer = self
+            .sync_peers
+            .get(peer_index)
+            .ok_or(BlockHeaderSyncError::PeerNotFound)?
+            .clone();
         let sync_result = self.attempt_sync(&sync_peer, client, max_latency).await?;
         Ok((sync_peer, sync_result))
     }
@@ -416,7 +423,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 ));
             }
             #[allow(clippy::cast_possible_truncation)]
-            if !resp.headers.is_empty() && resp.headers[0].prev_hash != block_hashes[resp.fork_hash_index as usize] {
+            if !resp.headers.is_empty() &&
+                *resp.headers.first().expect("Already checked").prev_hash !=
+                    *block_hashes
+                        .get(resp.fork_hash_index as usize)
+                        .expect("Already checked")
+            {
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` sent hash an invalid protocol response, incorrect fork hash index {}. Peer will be banned.",
@@ -428,7 +440,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 ));
             }
             #[allow(clippy::cast_possible_truncation)]
-            let chain_split_hash = block_hashes[resp.fork_hash_index as usize];
+            let chain_split_hash = *block_hashes
+                .get(resp.fork_hash_index as usize)
+                .expect("Already checked");
 
             return Ok(FindChainSplitResult {
                 reorg_steps_back: resp.fork_hash_index.saturating_add(offset as u64),
@@ -501,7 +515,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // Do a cheap check to verify that we do not have these series of headers in the db already - if the 1st one is
         // not there most probably the rest are not either - the peer could still have returned old headers later on in
         // the list
-        if self.db.fetch_header_by_block_hash(headers[0].hash()).await?.is_some() {
+        if self
+            .db
+            .fetch_header_by_block_hash(headers.first().expect("Already checked").hash())
+            .await?
+            .is_some()
+        {
             return Err(BlockHeaderSyncError::ReceivedInvalidHeader(
                 "Header already in database".to_string(),
             ));

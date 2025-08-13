@@ -162,7 +162,14 @@ impl Stream for Miner {
         let report = match sel.try_select() {
             Ok(oper) => {
                 let idx = oper.index();
-                match oper.recv(&self.channels[idx]) {
+                let channel = match self.channels.get(idx) {
+                    Some(channel) => channel,
+                    None => {
+                        error!(target: LOG_TARGET, "Channel index {} out of bounds", idx);
+                        return Poll::Ready(None);
+                    },
+                };
+                match oper.recv(channel) {
                     Ok(report) => report,
                     Err(_) => {
                         // Received error would mean thread is disconnected already

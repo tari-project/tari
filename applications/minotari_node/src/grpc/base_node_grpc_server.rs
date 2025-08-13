@@ -1169,8 +1169,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         // assume full coinbase reward in case of single coinbase with zero value
-        if coinbases.len() == 1 && coinbases[0].value == 0 {
-            coinbases[0].value = 1;
+        if coinbases.len() == 1 && coinbases.first().expect("Already checked").value == 0 {
+            coinbases.get_mut(0).expect("Already checked").value = 1;
         }
 
         let mut total_shares = 0u128;
@@ -1429,8 +1429,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             })?;
 
         // assume full coinbase reward in case of single coinbase with zero value
-        if coinbases.len() == 1 && coinbases[0].value == 0 {
-            coinbases[0].value = reward.as_u64();
+        if coinbases.len() == 1 && coinbases.first().expect("Already checked").value == 0 {
+            coinbases.get_mut(0).expect("Already checked").value = reward.as_u64();
         }
 
         let mut amount = 0u64;

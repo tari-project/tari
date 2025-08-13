@@ -165,7 +165,8 @@ impl EmissionSchedule {
             for i in 0..len {
                 let index = len - 1 - i;
                 let carry = (*num.get(index).expect("should exists") >= 5).into();
-                *num.get_mut(index).expect("Should exists") = (2 * *num.get(index).expect("should exists")) % 10 + carry_last;
+                *num.get_mut(index).expect("Should exists") =
+                    (2 * *num.get(index).expect("should exists")) % 10 + carry_last;
                 carry_last = carry;
             }
             carry_last > 0
@@ -332,6 +333,7 @@ impl Emission for EmissionSchedule {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     #[test]
     fn calc_array() {
         assert_eq!(EmissionSchedule::decay_params("1.00"), None);

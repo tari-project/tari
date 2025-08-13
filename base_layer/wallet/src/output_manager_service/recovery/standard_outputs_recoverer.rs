@@ -254,8 +254,8 @@ where
             // This is a known script so lets fill in the details
             if let Some(index) = known_script_index {
                 (
-                    known_scripts[index].input.clone(),
-                    known_scripts[index].script_key_id.clone(),
+                    known_scripts.get(index).expect("Already checked").input.clone(),
+                    known_scripts.get(index).expect("Already checked").script_key_id.clone(),
                 )
             } else {
                 // this is push public key script, so lets see if we know the public key

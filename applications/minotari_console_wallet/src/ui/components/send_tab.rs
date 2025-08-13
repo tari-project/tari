@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use tari_common_types::wallet_types::WalletType;

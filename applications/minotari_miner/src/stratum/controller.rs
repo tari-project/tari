@@ -356,7 +356,7 @@ impl Controller {
                             // Deserialize to see what type of object it is
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
                                 // Is this a response or request?
-                                if v["method"] == "job" {
+                                if v.get("method").expect("Already checked") == "job" {
                                     // this is a request
                                     match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
                                         Err(e) => error!(target: LOG_TARGET, "Error parsing request {} : {:?}", m, e),

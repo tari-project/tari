@@ -1575,9 +1575,21 @@ where
         transaction.transaction.script_offset = &transaction.transaction.script_offset + &script_offset;
 
         transaction.transaction.body.update_metadata_signature(
-            &(transaction.transaction.body.outputs()[0].commitment.clone()),
+            &(transaction
+                .transaction
+                .body
+                .outputs()
+                .first()
+                .expect("cannot be empty")
+                .commitment
+                .clone()),
             ComAndPubSignature::new_from_capk_signature(
-                &transaction.transaction.body.outputs()[0]
+                &transaction
+                    .transaction
+                    .body
+                    .outputs()
+                    .first()
+                    .expect("Cannot be empty")
                     .metadata_signature
                     .to_capk_signature()? +
                     &total_meta_data_signature.to_schnorr_signature()?,
@@ -1586,9 +1598,21 @@ where
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: updated metadata_signature");
 
         transaction.transaction.body.update_script_signature(
-            &(transaction.transaction.body.inputs()[0].commitment()?.clone()),
+            &(transaction
+                .transaction
+                .body
+                .inputs()
+                .first()
+                .expect("Cannot be empty")
+                .commitment()?
+                .clone()),
             ComAndPubSignature::new_from_capk_signature(
-                &transaction.transaction.body.inputs()[0]
+                &transaction
+                    .transaction
+                    .body
+                    .inputs()
+                    .first()
+                    .expect("Cannot be empty")
                     .script_signature
                     .to_capk_signature()? +
                     &total_script_data_signature.to_schnorr_signature()?,
@@ -1637,7 +1661,15 @@ where
         let _res = self
             .resources
             .output_manager_service
-            .update_output_metadata_signature(transaction.transaction.body.outputs()[0].clone())
+            .update_output_metadata_signature(
+                transaction
+                    .transaction
+                    .body
+                    .outputs()
+                    .first()
+                    .expect("Cannot be empty")
+                    .clone(),
+            )
             .await;
 
         self.db.update_completed_transaction(tx_id, transaction)?;

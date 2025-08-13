@@ -559,6 +559,7 @@ pub mod error_utils {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[test]

@@ -27,6 +27,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+#![allow(clippy::indexing_slicing)]
 
 mod error;
 use core::ptr;

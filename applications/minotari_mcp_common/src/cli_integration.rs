@@ -331,7 +331,10 @@ pub struct CliIntegrationUtils;
 impl CliIntegrationUtils {
     /// Extract port from gRPC address string
     pub fn extract_port_from_address(address: &str) -> Option<u16> {
-        address.split(':').last().and_then(|port_str| port_str.parse().ok())
+        address
+            .split(':')
+            .next_back()
+            .and_then(|port_str| port_str.parse().ok())
     }
 
     /// Build gRPC endpoint URL from address

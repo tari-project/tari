@@ -448,6 +448,7 @@ impl AddressConverterTool {
 }
 
 #[async_trait::async_trait]
+#[allow(clippy::indexing_slicing)]
 impl McpTool for AddressConverterTool {
     fn name(&self) -> &str {
         "convert_address_format"

@@ -388,9 +388,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             }
 
             while let Some((key, vn)) = cursor.next()? {
-                if key.get(..PK_SIZE).ok_or(
-                    ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
-                )? != sidechain_bytes {
+                if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))? != sidechain_bytes
+                {
                     // No further entries for this sidechain
                     break;
                 }
@@ -595,9 +596,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let sidechain_bytes = sid_as_slice(sidechain_pk);
         let mut nodes = BTreeSet::new();
         while let Some((key, vn)) = cursor.next()? {
-            if key.get(..PK_SIZE).ok_or(
-                ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
-            )? != sidechain_bytes {
+            if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
+                "Key bytes for output hash are too short".to_string(),
+            ))? != sidechain_bytes
+            {
                 // No further entries for this sidechain
                 break;
             }
@@ -631,9 +633,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             let mut keys = Vec::with_capacity(num_keys);
             let sidechain_bytes = sid_as_slice(sidechain_pk);
             while let Some((key, pk)) = cursor.next_dup()? {
-                if *key.get(..PK_SIZE).ok_or(
-                    ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
-                )? != *sidechain_bytes {
+                if *key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))? != *sidechain_bytes
+                {
                     // No further entries for this sidechain
                     break;
                 }
@@ -818,9 +821,13 @@ fn create_exit_queue_key(
 fn create_exit_queue_prefix_key<B: ByteArray>(sidechain_pk: Option<&B>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
     let mut buf = [0u8; PK_SIZE + U64_SIZE];
     if let Some(pk) = sidechain_pk {
-        buf.get_mut(..PK_SIZE).expect("Should exists").copy_from_slice(pk.as_bytes());
+        buf.get_mut(..PK_SIZE)
+            .expect("Should exists")
+            .copy_from_slice(pk.as_bytes());
     }
-    buf.get_mut(PK_SIZE..).expect("Should exists").copy_from_slice(&epoch.to_be_bytes());
+    buf.get_mut(PK_SIZE..)
+        .expect("Should exists")
+        .copy_from_slice(&epoch.to_be_bytes());
     buf
 }
 
@@ -832,9 +839,13 @@ fn create_activation_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEp
 fn create_vn_store_prefix_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
     let mut buf = [0u8; PK_SIZE + U64_SIZE];
     if let Some(pk) = sidechain_pk {
-        buf.get_mut(..PK_SIZE).expect("Should exists").copy_from_slice(pk.as_bytes());
+        buf.get_mut(..PK_SIZE)
+            .expect("Should exists")
+            .copy_from_slice(pk.as_bytes());
     }
-    buf.get_mut(PK_SIZE..).expect("Should exists").copy_from_slice(&epoch.to_be_bytes());
+    buf.get_mut(PK_SIZE..)
+        .expect("Should exists")
+        .copy_from_slice(&epoch.to_be_bytes());
     buf
 }
 
@@ -844,6 +855,7 @@ fn sid_as_slice(sidechain_pk: Option<&CompressedPublicKey>) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use lmdb_zero::db;
     use tari_common_types::types::CompressedCommitment;
     use tari_test_utils::unpack_enum;
