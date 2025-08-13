@@ -153,7 +153,6 @@ use crate::{
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
-        blockchain_database::rewind_to_height,
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
@@ -3024,13 +3023,34 @@ impl BlockchainBackend for LMDBDatabase {
         last_chain_header: ChainHeader,
     ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
         let write_txn = self.write_transaction()?;
-        lmdb_replace(
-            &write_txn,
-            &self.header_accumulated_data_db,
-            &height,
-            &header_accumulated_data,
-            None,
-        )?;
+        let header = self.fetch_chain_header_by_height(height)?;
+        let block_version =
+            BlockVersion::from_u16(header.header().version).ok_or_else(|| ChainStorageError::InvalidArguments {
+                message: format!("Invalid block version: {}", header.header().version),
+                func: "update_accumulated_difficulty",
+                arg: "block_version",
+            })?;
+
+        match block_version {
+            BlockVersion::V0 | BlockVersion::V1 => {
+                lmdb_replace(
+                    &write_txn,
+                    &self.header_accumulated_data_db.db,
+                    &height,
+                    &LmdbRowBlockHeaderAccumulatedDataV1::from(&header_accumulated_data),
+                    None,
+                )?;
+            },
+            BlockVersion::V2 => {
+                lmdb_replace(
+                    &write_txn,
+                    &self.header_accumulated_data_v2_db.db,
+                    &height,
+                    &LmdbRowBlockHeaderAccumulatedDataV2::from(&header_accumulated_data),
+                    None,
+                )?;
+            },
+        }
 
         // Update the status in the metadata database
         let status = AccumulatedDataRebuildStatus {
@@ -4069,8 +4089,9 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let mut last_correct_height = known_good_difficulties[0].0.saturating_sub(1);
             for (height, correct_difficulty) in known_good_difficulties {
                 let txn = db.read_transaction()?;
-                let accum_data: Option<BlockHeaderAccumulatedData> =
-                    lmdb_get(&txn, &db.header_accumulated_data_db, &height)?;
+
+                let header = db.fetch_chain_header_by_height(height)?;
+                let accum_data = db.fetch_header_accumulated_data_by_height(&txn, height, header.header().version)?;
 
                 match accum_data {
                     Some(accum_data) if accum_data.total_accumulated_difficulty == correct_difficulty => {
