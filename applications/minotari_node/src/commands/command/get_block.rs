@@ -89,7 +89,7 @@ impl CommandContext {
         match block {
             Some(block) => match format {
                 Format::Text => println!("{}", block),
-                Format::Json => panic!("JSON format not supported for blocks in this command"),
+                Format::Json => eprintln!("JSON format not supported for blocks in this command"),
             },
             None => {
                 let block = self.blockchain_db.fetch_orphan(hash).await?;
