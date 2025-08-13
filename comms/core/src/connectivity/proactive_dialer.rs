@@ -65,7 +65,7 @@ impl ProactiveDialer {
         &mut self,
         pool: &ConnectionPool,
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
-        seeds: &[NodeId],
+        excluded_peers: &[NodeId],
         task_id: u64,
     ) -> Result<usize, ConnectivityError> {
         let _start_time = std::time::Instant::now();
@@ -115,9 +115,14 @@ impl ProactiveDialer {
         );
 
         // Select healthy peers for dialing
-        let candidates = self
-            .select_healthy_dial_candidates(pool, connection_stats, seeds, dial_count, task_id)
+        let mut candidates = self
+            .select_healthy_dial_candidates(pool, connection_stats, excluded_peers, dial_count, task_id)
             .await?;
+        if candidates.is_empty() {
+            candidates = self
+                .select_healthy_dial_candidates(pool, connection_stats, &[], dial_count, task_id)
+                .await?;
+        }
 
         if candidates.is_empty() {
             warn!(
@@ -185,12 +190,12 @@ impl ProactiveDialer {
         &self,
         pool: &ConnectionPool,
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
-        seeds: &[NodeId],
+        excluded_peers: &[NodeId],
         count: usize,
         task_id: u64,
     ) -> Result<Vec<Peer>, ConnectivityError> {
         // Get currently managed node IDs (connected or connecting)
-        let mut excluded_peers: Vec<NodeId> = pool
+        let mut managed: Vec<NodeId> = pool
             .all()
             .iter()
             .filter(|state| {
@@ -201,13 +206,13 @@ impl ProactiveDialer {
             })
             .map(|state| state.node_id().clone())
             .collect();
-        // Add seed peers to the managed list so they will not be selected as candidates
-        excluded_peers.append(&mut seeds.to_vec());
+        // Add nominated excluded peers to the managed list so they will not be selected as candidates
+        managed.append(&mut excluded_peers.to_vec());
 
         // Get available dial candidates using SQL-based filtering
         let candidates = self
             .peer_manager
-            .get_available_dial_candidates(&excluded_peers, Some(count * 3)) // Get 3x more for health scoring
+            .get_available_dial_candidates(&managed, Some(count * 3)) // Get 3x more for health scoring
             .await?;
 
         // Apply health-based filtering and ranking

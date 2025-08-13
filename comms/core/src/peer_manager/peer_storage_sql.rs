@@ -804,18 +804,6 @@ mod test {
         assert_eq!(peer_storage.all(None).unwrap().len(), 5);
         assert_eq!(
             peer_storage
-                .discovery_syncing(
-                    100,
-                    &[good_seed.node_id.clone()],
-                    Some(PeerFeatures::COMMUNICATION_NODE),
-                    false
-                )
-                .unwrap()
-                .len(),
-            1
-        );
-        assert_eq!(
-            peer_storage
                 .discovery_syncing(100, &[good_seed.node_id], Some(PeerFeatures::COMMUNICATION_NODE), false)
                 .unwrap()
                 .len(),
