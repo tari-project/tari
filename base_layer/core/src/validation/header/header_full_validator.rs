@@ -237,7 +237,7 @@ fn check_pow_data_inner(
         PowAlgorithm::Cuckaroo => {
             let cycle_length = cuckaroo_cycle_length as usize;
             let edge_bits = cuckaroo_edge_bits as usize;
-            let total_packed_size = cycle_length * edge_bits as usize;
+            let total_packed_size = cycle_length * edge_bits;
             let remainder = total_packed_size % 8;
             let total_bytes = if remainder != 0 {
                 total_packed_size / 8 + 1
@@ -340,7 +340,6 @@ mod test {
         };
         // Check with multiple of 8
         let res = check_pow_data_inner(&pow, 0, 10, 8);
-        dbg!(&res);
         assert!(res.is_ok());
 
         // Check with non-multiple of 8

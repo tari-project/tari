@@ -186,8 +186,8 @@ fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Ve
     let node_mask = (1u64 << edge_bits) - 1;
     let mut mini_buffer = 0u64;
     let mut remaining = 64;
-    let mut bytes = pow.iter().copied();
-    while let Some(byte) = bytes.next() {
+    let bytes = pow.iter().copied();
+    for byte in bytes {
         mini_buffer |= u64::from(byte) << (64 - remaining);
         remaining -= 8;
         while remaining <= 64 - edge_bits {
@@ -201,7 +201,7 @@ fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Ve
         }
     }
 
-    for n in nonces[expected_length..].iter() {
+    for n in &nonces[expected_length..] {
         if *n != 0 {
             return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
@@ -225,7 +225,7 @@ fn verify(
             return Err(CuckarooVerificationError::NoncesNotAscending);
         }
 
-        let edge = siphash_block(&siphash_keys, nonces[i], 21, true);
+        let edge = siphash_block(siphash_keys, nonces[i], 21, true);
         let u = edge & node_mask;
         let v = (edge >> 32) & node_mask;
 
@@ -249,8 +249,7 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: NonZeroUsize) -> Result<(
     let mut graph: HashMap<u64, Vec<u64>> = HashMap::new();
     let mut xor_sum = 0;
 
-    for i in 0..cycle_length.get() {
-        let (u, v) = uvs[i];
+    for (u, v) in uvs.iter().take(cycle_length.get()).copied() {
         graph.entry(u).or_default().push(v);
         graph.entry(v).or_default().push(u);
 
@@ -261,7 +260,7 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: NonZeroUsize) -> Result<(
         return Err(CuckarooVerificationError::EndpointsDontMatch);
     }
 
-    for (_node, neighbors) in &graph {
+    for neighbors in graph.values() {
         if neighbors.len() != 2 {
             return Err(CuckarooVerificationError::NodeHasMoreThanTwoEdges);
         }
@@ -282,10 +281,10 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: NonZeroUsize) -> Result<(
         let neighbors = &graph[&current];
 
         // Choose next that is not the previous node
-        let next = if Some(neighbors[0]) != previous {
-            neighbors[0]
-        } else {
+        let next = if Some(neighbors[0]) == previous {
             neighbors[1]
+        } else {
+            neighbors[0]
         };
 
         let edge_key = if current < next {
