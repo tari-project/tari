@@ -35,6 +35,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connectivity::proactive_dialer";
+const MAX_CONCURRENT_DIALS: usize = 20;
 
 /// Proactive peer dialing logic for maintaining target connection counts
 pub struct ProactiveDialer {
@@ -64,6 +65,7 @@ impl ProactiveDialer {
         &mut self,
         pool: &ConnectionPool,
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
+        excluded_peers: &[NodeId],
         task_id: u64,
     ) -> Result<usize, ConnectivityError> {
         let _start_time = std::time::Instant::now();
@@ -103,8 +105,6 @@ impl ProactiveDialer {
         let success_rate = self.calculate_recent_success_rate(connection_stats);
         let dial_count = self.calculate_dial_count(needed, success_rate);
 
-        let _actual_multiplier = dial_count as f32 / needed as f32;
-
         debug!(
             target: LOG_TARGET,
             "({}) Success rate: {:.2}, will dial {} peers for {} needed connections",
@@ -115,9 +115,14 @@ impl ProactiveDialer {
         );
 
         // Select healthy peers for dialing
-        let candidates = self
-            .select_healthy_dial_candidates(pool, connection_stats, dial_count, task_id)
+        let mut candidates = self
+            .select_healthy_dial_candidates(pool, connection_stats, excluded_peers, dial_count, task_id)
             .await?;
+        if candidates.is_empty() {
+            candidates = self
+                .select_healthy_dial_candidates(pool, connection_stats, &[], dial_count, task_id)
+                .await?;
+        }
 
         if candidates.is_empty() {
             warn!(
@@ -177,7 +182,6 @@ impl ProactiveDialer {
         let final_count = adjusted_count.ceil() as usize;
 
         // Cap the dial count to prevent overwhelming the network
-        const MAX_CONCURRENT_DIALS: usize = 20;
         final_count.max(needed).min(MAX_CONCURRENT_DIALS)
     }
 
@@ -186,11 +190,12 @@ impl ProactiveDialer {
         &self,
         pool: &ConnectionPool,
         connection_stats: &std::collections::HashMap<NodeId, super::connection_stats::PeerConnectionStats>,
+        excluded_peers: &[NodeId],
         count: usize,
         task_id: u64,
     ) -> Result<Vec<Peer>, ConnectivityError> {
         // Get currently managed node IDs (connected or connecting)
-        let currently_managed: Vec<NodeId> = pool
+        let mut managed: Vec<NodeId> = pool
             .all()
             .iter()
             .filter(|state| {
@@ -201,13 +206,14 @@ impl ProactiveDialer {
             })
             .map(|state| state.node_id().clone())
             .collect();
+        // Add nominated excluded peers to the managed list so they will not be selected as candidates
+        managed.append(&mut excluded_peers.to_vec());
 
         // Get available dial candidates using SQL-based filtering
         let candidates = self
             .peer_manager
-            .get_available_dial_candidates(&currently_managed, Some(count * 3)) // Get 3x more for health scoring
-            .await
-            .map_err(ConnectivityError::PeerManagerError)?;
+            .get_available_dial_candidates(&managed, Some(count * 3)) // Get 3x more for health scoring
+            .await?;
 
         // Apply health-based filtering and ranking
         let mut final_candidates = Vec::new();
@@ -307,6 +313,8 @@ impl ProactiveDialer {
 #[cfg(test)]
 mod tests {
 
+    use crate::connectivity::proactive_dialer::MAX_CONCURRENT_DIALS;
+
     #[test]
     fn test_calculate_dial_count() {
         // Helper function to test dial count calculation without full struct
@@ -315,7 +323,6 @@ mod tests {
             let adjusted_count = base_count / success_rate.max(0.1);
             #[allow(clippy::cast_possible_truncation)]
             let final_count = adjusted_count.ceil() as usize;
-            const MAX_CONCURRENT_DIALS: usize = 20;
             final_count.max(needed).min(MAX_CONCURRENT_DIALS)
         }
 

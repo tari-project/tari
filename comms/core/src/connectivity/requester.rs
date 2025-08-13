@@ -298,6 +298,7 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
+    /// Retrieve the list of seeds.
     pub async fn get_seeds(&mut self) -> Result<Vec<Peer>, ConnectivityError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
