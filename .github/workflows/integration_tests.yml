@@ -1,7 +1,7 @@
 ---
-name: 'Integration Tests'
+name: "Integration Tests"
 
-'on':
+"on":
   pull_request:
     types:
       - opened
@@ -9,21 +9,21 @@ name: 'Integration Tests'
       - synchronize
   merge_group:
   schedule:
-    - cron: '0 2 * * *'   # daily @ 02h00 (non-critical)
-    - cron: '0 12 * * 6'  # weekly - Saturday @ noon (long-running)
+    - cron: "0 2 * * *" # daily @ 02h00 (non-critical)
+    - cron: "0 12 * * 6" # weekly - Saturday @ noon (long-running)
   workflow_dispatch:
     inputs:
       ci_bins:
         type: boolean
         default: true
-        description: 'run ci on binaries'
+        description: "run ci on binaries"
       ci_ffi:
         type: boolean
         default: true
-        description: 'run ci on ffi'
+        description: "run ci on ffi"
       ci_profile:
         default: ci
-        description: 'ci profile to run'
+        description: "ci profile to run"
         type: string
 
 permissions: {}
@@ -42,7 +42,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Envs setup
         id: envs_setup
@@ -99,8 +99,11 @@ jobs:
 
       - name: Run ${{ env.CI_PROFILE }} integration tests for binaries
         if: ${{ env.CI_BINS == 'true' }}
-        timeout-minutes: 90
+        timeout-minutes: 120
         run: |
+          set -e
+          set -o pipefail
+          echo "Running integration tests with profile: ${{ env.CI_PROFILE }}"
           cargo +${{ env.nightly_toolchain }} test \
             --test cucumber \
             -v \
@@ -110,9 +113,15 @@ jobs:
             -- -t "${{ env.CI_PROFILE }} and (not @wallet-ffi) and (not @chat-ffi) and (not @broken)" \
             -c 5 \
             --retry 2
+          exit_code=$?
+          echo "Integration tests exit code: $exit_code"
+          if [ $exit_code -ne 0 ]; then
+            echo "Integration tests failed with exit code $exit_code"
+            exit $exit_code
+          fi
 
       - name: upload artifact
-        uses: actions/upload-artifact@v4  # upload test results as artifact
+        uses: actions/upload-artifact@v4 # upload test results as artifact
         if: always()
         with:
           name: junit-cucumber
@@ -123,7 +132,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Envs setup
         id: envs_setup
@@ -183,6 +192,9 @@ jobs:
         if: ${{ env.CI_FFI == 'true' }}
         timeout-minutes: 90
         run: |
+          set -e
+          set -o pipefail
+          echo "Running FFI integration tests with profile: ${{ env.CI_PROFILE }}"
           cargo +${{ env.nightly_toolchain }} test \
             --test cucumber \
             -v \
@@ -192,9 +204,15 @@ jobs:
             -- -t "(@wallet-ffi or @chat-ffi) and ${{ env.CI_PROFILE }} and (not @broken)" \
             -c 1 \
             --retry 2
+          exit_code=$?
+          echo "FFI integration tests exit code: $exit_code"
+          if [ $exit_code -ne 0 ]; then
+            echo "FFI integration tests failed with exit code $exit_code"
+            exit $exit_code
+          fi
 
       - name: upload artifact
-        uses: actions/upload-artifact@v4  # upload test results as artifact
+        uses: actions/upload-artifact@v4 # upload test results as artifact
         if: always()
         with:
           name: junit-ffi-cucumber
