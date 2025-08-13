@@ -70,6 +70,7 @@ pub use lmdb_db::{
     create_recovery_lmdb_database,
     get_all_database_names,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
+    AccumulatedDataRebuildStatus,
     DatabaseStats,
     LMDBDatabase,
     PayrefRebuildStatus,
