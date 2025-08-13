@@ -222,7 +222,7 @@ impl Listening {
                         .set_peer_metadata(peer_metadata.node_id(), 1, peer_data.to_bytes())
                         .await;
 
-                    let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
+                    let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers.clone();
                     if !configured_sync_peers.is_empty() {
                         // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
                         // we're out of sync
@@ -290,7 +290,12 @@ impl Listening {
                     }
 
                     if !shared.config.blockchain_sync_config.include_seed_peers_in_sync {
-                        sync_mode = match filter_out_seed_peers_from_sync_status(&sync_mode, &seed_peers) {
+                        let exclude_peers = seed_peers
+                            .iter()
+                            .filter(|s| !configured_sync_peers.contains(s))
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        sync_mode = match filter_out_seed_peers_from_sync_status(&sync_mode, &exclude_peers) {
                             None => {
                                 warn!(target: LOG_TARGET, "All potential sync peers were seed peers. Waiting for better options.");
                                 continue;
