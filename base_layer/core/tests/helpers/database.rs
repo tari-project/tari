@@ -51,7 +51,7 @@ pub async fn create_orphan_block(
         .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee().unwrap());
     let (coinbase_utxo, coinbase_kernel, _coinbase_output) =
         create_coinbase(coinbase_value, block_height + lock_height, None, key_manager).await;
-    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
+    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version().into());
     header.prev_hash = Vec::from([1u8; 32]).try_into().unwrap(); // Random
     header.height = block_height;
 

@@ -120,7 +120,7 @@ pub enum OutputManagerRequest {
     GetSpentOutputs,
     GetUnspentOutputs,
     GetInvalidOutputs,
-    ValidateUtxos,
+    ValidateTxos,
     RevalidateTxos,
     CreateCoinSplit((Vec<CompressedCommitment>, MicroMinotari, usize, MicroMinotari)),
     CreateCoinSplitEven((Vec<CompressedCommitment>, usize, MicroMinotari)),
@@ -156,6 +156,7 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputInfoByTxId(TxId),
+    ClearShortTermEncumberances,
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -231,7 +232,7 @@ impl fmt::Display for OutputManagerRequest {
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
-            ValidateUtxos => write!(f, "ValidateUtxos"),
+            ValidateTxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
             PreviewCoinJoin((commitments, fee_per_gram)) => write!(
                 f,
@@ -285,6 +286,7 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
         }
     }
 }
@@ -338,6 +340,7 @@ pub enum OutputManagerResponse {
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
+    ClearShortTermEncumberances,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -661,7 +664,7 @@ impl OutputManagerHandle {
     }
 
     pub async fn validate_txos(&mut self) -> Result<u64, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::ValidateUtxos).await?? {
+        match self.handle.call(OutputManagerRequest::ValidateTxos).await?? {
             OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
@@ -1001,6 +1004,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputInfoByTxId(output_info_by_tx_id) => Ok(output_info_by_tx_id),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn clear_short_term_encumberances(&mut self) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ClearShortTermEncumberances)
+            .await??
+        {
+            OutputManagerResponse::ClearShortTermEncumberances => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

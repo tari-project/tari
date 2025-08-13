@@ -27,7 +27,12 @@ use std::{
     str::{self},
 };
 
-use cucumber::{event::ScenarioFinished, writer, writer::Verbosity, World as _};
+use cucumber::{
+    event::ScenarioFinished,
+    writer::{self, Verbosity},
+    World as _,
+    WriterExt,
+};
 use log::*;
 use tari_common::initialize_logging;
 use tari_integration_tests::TariWorld;
@@ -85,10 +90,17 @@ fn main() {
         let file = fs::File::create("cucumber-output-junit.xml").unwrap();
         world
             .fail_on_skipped()
-            // .fail_fast() - Not yet supported in 0.18
-            .with_writer(writer::Tee::new(writer::JUnit::new(file, Verbosity::ShowWorldAndDocString),
-                                          writer::Summarize::new(writer::Basic::new(io::stdout(), writer::Coloring::Auto, Verbosity::ShowWorldAndDocString))))
-            .run("tests/features/")
+            .fail_fast()
+            .with_writer(
+                writer::Summarize::new(writer::Basic::new(
+                    io::stdout(),
+                    writer::Coloring::Auto,
+                    Verbosity::ShowWorldAndDocString,
+                ))
+                .tee::<TariWorld, _>(writer::JUnit::for_tee(file, 0))
+                .normalized(),
+            )
+            .run_and_exit("tests/features/")
             .await;
     });
 }

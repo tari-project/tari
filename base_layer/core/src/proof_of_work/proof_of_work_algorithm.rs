@@ -36,6 +36,7 @@ pub enum PowAlgorithm {
     RandomXM = 0,
     Sha3x = 1,
     RandomXT = 2,
+    Cuckaroo = 3,
 }
 
 impl PowAlgorithm {
@@ -95,6 +96,7 @@ impl Display for PowAlgorithm {
             PowAlgorithm::RandomXM => "RandomXMonero",
             PowAlgorithm::Sha3x => "Sha3",
             PowAlgorithm::RandomXT => "RandomXTari",
+            PowAlgorithm::Cuckaroo => "Cuckaroo",
         };
         fmt.write_str(algo)
     }

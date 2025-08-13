@@ -224,6 +224,8 @@ pub enum TransactionServiceError {
     InvalidPaymentId(String),
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+    #[error("Failed to cancel one sided transaction: {0}")]
+    FailedToCancelTransaction(String),
 }
 
 impl From<RangeProofError> for TransactionServiceError {

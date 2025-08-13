@@ -117,9 +117,11 @@ async fn initialize() {
             4,
             &[],
             Some(PeerFeatures::COMMUNICATION_NODE),
+            None,
             Some(STALE_PEER_THRESHOLD_DURATION),
             true,
             None,
+            false,
         )
         .await
         .unwrap()

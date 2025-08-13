@@ -24,6 +24,7 @@ use minotari_node_wallet_client::BaseNodeWalletClient;
 use tokio::sync::watch;
 
 use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
+
 /// Connection status of the Base Node
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OnlineStatus {

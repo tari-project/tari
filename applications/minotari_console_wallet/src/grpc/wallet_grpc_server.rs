@@ -116,7 +116,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateResponse,
 };
 use minotari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
@@ -134,7 +134,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{types::CommsPublicKey, CommsNode};
+use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
@@ -204,6 +204,7 @@ impl WalletGrpcServer {
             wallet.output_manager_service.clone(),
             wallet.transaction_service.clone(),
             wallet.utxo_scanner_service.clone(),
+            wallet.clone(),
             wallet.comms.shutdown_signal(),
             scanned_height,
         );
@@ -253,9 +254,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
-        let connectivity = self.wallet.wallet_connectivity.clone();
-        let status = connectivity.get_connectivity_status().await;
-        Ok(Response::new(CheckConnectivityResponse { status: status as i32 }))
+        let debouncer = self.debouncer.lock().await;
+        let connection_status = debouncer.get_connection_status().await;
+        Ok(Response::new(CheckConnectivityResponse {
+            status: connection_status as i32,
+        }))
     }
 
     async fn check_for_updates(
@@ -307,23 +310,32 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<GetPaymentIdAddressRequest>,
     ) -> Result<Response<GetCompleteAddressResponse>, Status> {
         let message = request.into_inner();
+        trace!(
+            target: LOG_TARGET,
+            "get_payment_id_address: payment_id: '{:?}' / '{}'",
+            message.payment_id, String::from_utf8_lossy(&message.payment_id),
+        );
 
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        trace!(target: LOG_TARGET, "get_payment_id_address: interactive:      '{}'", interactive_address.to_base58());
         let interactive_address = interactive_address
             .with_memo_field_payment_id(message.payment_id.clone())
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        trace!(target: LOG_TARGET, "get_payment_id_address: interactive + id: '{}'", interactive_address.to_base58());
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        trace!(target: LOG_TARGET, "get_payment_id_address: one_sided:        '{}'", one_sided_address.to_base58());
         let one_sided_address = one_sided_address
             .with_memo_field_payment_id(message.payment_id)
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
+        trace!(target: LOG_TARGET, "get_payment_id_address: one_sided + id:   '{}'", one_sided_address.to_base58());
         Ok(Response::new(GetCompleteAddressResponse {
             interactive_address: interactive_address.to_vec(),
             one_sided_address: one_sided_address.to_vec(),
@@ -409,9 +421,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
             };
             let scanned_height = debouncer.get_scanned_height().await;
-            let is_initial_validation_done = debouncer.is_initial_validation_done().await;
+            let is_initial_validation_done = debouncer.is_initial_validation_done();
             (Some(balance), scanned_height, is_initial_validation_done)
         };
+
+        let online_status = self.wallet.wallet_connectivity.get_connectivity_status().await;
 
         let status = self
             .comms()
@@ -419,6 +433,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .get_connectivity_status()
             .await
             .map_err(|err| Status::internal(err.to_string()))?;
+
+        let status = if online_status == OnlineStatus::Offline {
+            ConnectivityStatus::Offline
+        } else {
+            status
+        };
+
         let mut base_node_service = self.wallet.base_node_service.clone();
 
         let network = Some(tari_rpc::NetworkStatusResponse {

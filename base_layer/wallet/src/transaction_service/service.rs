@@ -3176,6 +3176,25 @@ where
 
     /// Cancel a pending transaction
     async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        let transaction = self.db.get_any_transaction(tx_id)?;
+
+        if let Some(transaction) = transaction {
+            if transaction.is_mined() {
+                return Err(TransactionServiceError::FailedToCancelTransaction(format!(
+                    "Invalid transaction status: {}",
+                    transaction.status()
+                )));
+            }
+
+            if transaction.is_pending() {
+                self.resources
+                    .output_manager_service
+                    .clear_short_term_encumberances()
+                    .await
+                    .map_err(TransactionServiceError::from)?
+            };
+        };
+
         self.db.cancel_pending_transaction(tx_id).map_err(|e| {
             warn!(
                 target: LOG_TARGET,

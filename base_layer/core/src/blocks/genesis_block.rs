@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::hex::*;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, PowData, ProofOfWork},
+    proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -102,16 +102,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -162,16 +153,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     block.header.output_mr =
         FixedHash::from_hex("5350415253455f4d45524b4c455f504c414345484f4c4445525f484153485f5f").unwrap();
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -221,16 +203,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
         block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -287,16 +260,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         block.header.validator_node_mr = VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH;
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -348,16 +312,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
             FixedHash::from_hex("ab2dcfdfd29197c41838a3fd4fab24135578f741cc21614cdb575554c7513424").unwrap();
     }
 
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
@@ -389,16 +344,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 pub fn get_localnet_genesis_block() -> ChainBlock {
     // lets get the block
     let block = crate::blocks::genesis_block::get_localnet_genesis_block_raw();
-    let accumulated_data = BlockHeaderAccumulatedData {
-        hash: block.hash(),
-        total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1.into(),
-        accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
-        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
-        target_difficulty: Difficulty::min(),
-    };
+    let accumulated_data = BlockHeaderAccumulatedData::genesis(block.hash(), block.header.total_kernel_offset.clone());
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 

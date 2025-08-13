@@ -1849,6 +1849,11 @@ mod test {
             .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
             .await
             .unwrap();
-        assert_eq!(key, change_params.commitment_mask_key_id);
+        let recovered_mask = key_manager_alice.get_public_key_at_key_id(&key).await.unwrap();
+        let original_mask = key_manager_alice
+            .get_public_key_at_key_id(&change_params.commitment_mask_key_id)
+            .await
+            .unwrap();
+        assert_eq!(recovered_mask, original_mask);
     }
 }

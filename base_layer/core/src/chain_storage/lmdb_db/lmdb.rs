@@ -45,11 +45,25 @@ use crate::chain_storage::{
     lmdb_db::{
         cursors::KeyPrefixCursor,
         helpers::{deserialize, serialize},
+        lmdb_db::TypedDatabaseRef,
     },
     OrNotFound,
 };
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
+
+pub fn lmdb_insert_typed<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &TypedDatabaseRef<K, V>,
+    key: &K,
+    val: &V,
+) -> Result<(), ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized + Debug,
+    V: Serialize + Debug + ?Sized + DeserializeOwned,
+{
+    lmdb_insert(txn, &db.db, key, val, db.name)
+}
 
 /// Makes an insertion into the lmdb table, will error if the key already exists
 pub fn lmdb_insert<K, V>(
@@ -160,6 +174,18 @@ where
     res
 }
 
+pub fn lmdb_delete_typed<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &TypedDatabaseRef<K, V>,
+    key: &K,
+) -> Result<(), ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+    V: Serialize + DeserializeOwned,
+{
+    lmdb_delete(txn, &db.db, key, db.name)
+}
+
 /// Deletes the given key. An error is returned if the key does not exist
 pub fn lmdb_delete<K>(
     txn: &WriteTransaction<'_>,
@@ -222,6 +248,35 @@ where
         };
     }
     Ok(result)
+}
+
+pub fn lmdb_get_typed<K, V>(
+    txn: &ConstTransaction<'_>,
+    db: &TypedDatabaseRef<K, V>,
+    key: &K,
+) -> Result<Option<V>, ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+    V: Serialize + DeserializeOwned,
+{
+    let access = txn.access();
+    match access.get(db.db.as_ref(), key).to_opt() {
+        Ok(None) => Ok(None),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not get value from lmdb: {:?}", e);
+            Err(ChainStorageError::AccessError(e.to_string()))
+        },
+        Ok(Some(v)) => match deserialize(v) {
+            Ok(val) => Ok(Some(val)),
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not could not deserialize value from lmdb: {:?}", e
+                );
+                Err(ChainStorageError::AccessError(e.to_string()))
+            },
+        },
+    }
 }
 
 /// retrieves the given key value pair
@@ -299,6 +354,18 @@ where V: DeserializeOwned {
             ChainStorageError::AccessError(e.to_string())
         }),
     }
+}
+
+pub fn lmdb_exists_typed<K, V>(
+    txn: &ConstTransaction<'_>,
+    db: &TypedDatabaseRef<K, V>,
+    key: &K,
+) -> Result<bool, ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+    V: Serialize + DeserializeOwned,
+{
+    lmdb_exists(txn, &db.db, key)
 }
 
 /// Checks if the key exists in the database

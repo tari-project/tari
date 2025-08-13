@@ -197,6 +197,13 @@ where
         })
     }
 
+    pub fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerError> {
+        self.resources
+            .db
+            .clear_short_term_encumberances()
+            .map_err(OutputManagerError::from)
+    }
+
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
         let request_stream = self
             .request_stream
@@ -414,7 +421,7 @@ where
                 let outputs = self.fetch_unspent_outputs()?;
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
-            OutputManagerRequest::ValidateUtxos => {
+            OutputManagerRequest::ValidateTxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
             OutputManagerRequest::RevalidateTxos => self
@@ -531,6 +538,9 @@ where
                 let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
                 Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
+            OutputManagerRequest::ClearShortTermEncumberances => self
+                .clear_short_term_encumberances()
+                .map(|_| OutputManagerResponse::ClearShortTermEncumberances),
         }
     }
 
@@ -3381,19 +3391,15 @@ where
                             if script_spending_key != **scanned_pk {
                                 continue;
                             }
-                            let commitment_mask = self
-                                .resources
-                                .key_manager
-                                .import_key(commitment_mask_private_key)
-                                .await?;
+
                             let script_key = TariKeyId::Derived {
-                                key: SerializedKeyString::from(commitment_mask.to_string()),
+                                key: SerializedKeyString::from(commitment_mask_key_id.to_string()),
                             };
 
                             let rewound_output = WalletOutput::new_with_rangeproof(
                                 output.version,
                                 committed_value,
-                                commitment_mask,
+                                commitment_mask_key_id.clone(),
                                 output.features,
                                 output.script,
                                 ExecutionStack::new(vec![]),

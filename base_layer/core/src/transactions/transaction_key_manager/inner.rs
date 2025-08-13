@@ -24,7 +24,6 @@ use std::{collections::HashMap, ops::Shl, str::FromStr, sync::Arc};
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use digest::consts::{U32, U64};
-use log::*;
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_dh_shared_secret,
@@ -40,15 +39,7 @@ use rand::{rngs::OsRng, RngCore};
 use strum::IntoEnumIterator;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
-    key_branches::{
-        TransactionKeyManagerBranch,
-        KERNEL_NONCE,
-        METADATA_EPHEMERAL_NONCE,
-        NONCE,
-        ONE_SIDED_SENDER_OFFSET,
-        RANDOM_KEY,
-        SENDER_OFFSET,
-    },
+    key_branches::{TransactionKeyManagerBranch, PRE_MINE},
     tari_address::TariAddress,
     types::{
         ComAndPubSignature,
@@ -91,8 +82,6 @@ use crate::transactions::transaction_key_manager::{
     storage::database::KeyManagerState,
 };
 
-const LOG_TARGET: &str = "c::bn::key_manager::key_manager_service";
-const TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 const HASHER_LABEL_STEALTH_KEY: &str = "script key";
 
 pub const LEDGER_NOT_SUPPORTED: &str = "Ledger is not supported in this build, please enable the \"ledger\" feature.";
@@ -194,13 +183,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn get_next_key(&self, branch: &str) -> Result<TariKeyAndId, KeyManagerServiceError> {
         let index = {
             match branch {
-                METADATA_EPHEMERAL_NONCE |
-                NONCE |
-                KERNEL_NONCE |
-                SENDER_OFFSET |
-                ONE_SIDED_SENDER_OFFSET |
-                RANDOM_KEY => OsRng.next_u64(),
-                _ => {
+                PRE_MINE => {
                     let mut km = self
                         .key_managers
                         .get(branch)
@@ -210,6 +193,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                     self.db.increment_key_index(branch)?;
                     km.increment_key_index(1)
                 },
+                _ => OsRng.next_u64(),
             }
         };
         let key_id = TariKeyId::Managed {
@@ -639,90 +623,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
         Ok(Some(script_key_id))
     }
 
-    /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: &str, key: &CompressedPublicKey) -> Result<u64, KeyManagerServiceError> {
-        let km = self
-            .key_managers
-            .get(branch)
-            .ok_or_else(|| self.unknown_key_branch_error("find_key_index", branch))?
-            .read()
-            .await;
-
-        let current_index = km.key_index();
-
-        for i in 0u64..TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH {
-            let index = current_index + i;
-            let public_key = CompressedPublicKey::from_secret_key(&km.derive_key(index)?.key);
-            if public_key == *key {
-                trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
-                return Ok(index);
-            }
-            if i <= current_index && i != 0u64 {
-                let index = current_index - i;
-                let public_key = CompressedPublicKey::from_secret_key(&km.derive_key(index)?.key);
-                if public_key == *key {
-                    trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, index);
-                    return Ok(index);
-                }
-            }
-        }
-
-        Err(KeyManagerServiceError::KeyNotFoundInKeyChain)
-    }
-
-    /// Search the specified branch key manager key chain to find the index of the specified private key.
-    async fn find_private_key_index(&self, branch: &str, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
-        let km = self
-            .key_managers
-            .get(branch)
-            .ok_or_else(|| self.unknown_key_branch_error("find_private_key_index", branch))?
-            .read()
-            .await;
-
-        let current_index = km.key_index();
-
-        // its most likely that the key is close to the current index, so we start searching from the current index
-        for i in 0u64..TRANSACTION_KEY_MANAGER_MAX_SEARCH_DEPTH {
-            let index = current_index + i;
-            let private_key = &km.derive_key(index)?.key;
-            if private_key == key {
-                trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, index);
-                return Ok(index);
-            }
-            if i <= current_index && i != 0u64 {
-                let index = current_index - i;
-                let private_key = &km.derive_key(index)?.key;
-                if private_key == key {
-                    trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, index);
-                    return Ok(index);
-                }
-            }
-        }
-
-        Err(KeyManagerServiceError::KeyNotFoundInKeyChain)
-    }
-
-    /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
-    pub async fn update_current_key_index_if_higher(
-        &self,
-        branch: &str,
-        index: u64,
-    ) -> Result<(), KeyManagerServiceError> {
-        let mut km = self
-            .key_managers
-            .get(branch)
-            .ok_or_else(|| self.unknown_key_branch_error("update_current_key_index_if_higher", branch))?
-            .write()
-            .await;
-        let current_index = km.key_index();
-        if index > current_index {
-            km.update_key_index(index);
-            self.db.set_key_index(branch, index)?;
-            trace!(target: LOG_TARGET, "Updated UTXO Key Index to {}", index);
-        }
-        Ok(())
-    }
-
     // -----------------------------------------------------------------------------------------------------------------
     // General crypto section
     // -----------------------------------------------------------------------------------------------------------------
@@ -1002,23 +902,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // -----------------------------------------------------------------------------------------------------------------
     // Transaction output section (transactions > transaction_components > transaction_output)
     // -----------------------------------------------------------------------------------------------------------------
-
-    pub async fn get_spending_key_id(
-        &self,
-        public_spending_key: &CompressedPublicKey,
-    ) -> Result<TariKeyId, TransactionError> {
-        let index = self
-            .find_key_index(
-                &TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                public_spending_key,
-            )
-            .await?;
-        let spending_key_id = TariKeyId::Managed {
-            branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-            index,
-        };
-        Ok(spending_key_id)
-    }
 
     pub async fn construct_range_proof(
         &self,
@@ -1672,19 +1555,29 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.crypto_factories
             .range_proof
             .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
-        let branch = TransactionKeyManagerBranch::CommitmentMask.get_branch_key();
-        let key = match self.find_private_key_index(&branch, &private_key).await {
-            Ok(index) => {
-                self.update_current_key_index_if_higher(&branch, index).await?;
-                TariKeyId::Managed { branch, index }
-            },
-            Err(_) => {
-                let public_key = CompressedPublicKey::from_secret_key(&private_key);
-                self.import_key(private_key).await?;
-                TariKeyId::Imported { key: public_key }
-            },
-        };
+        let public_key = CompressedPublicKey::from_secret_key(&private_key);
+        self.import_key(private_key).await?;
+        let key = TariKeyId::Imported { key: public_key };
+
         Ok((key, value, payment_id))
+    }
+
+    pub async fn is_this_output_ours(
+        &self,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<bool, TransactionError> {
+        let recovery_key = if let Some(key_id) = custom_recovery_key_id {
+            self.get_private_key(key_id).await?
+        } else {
+            self.get_private_view_key().await?
+        };
+        let (value, private_key, _payment_id) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
+        self.crypto_factories
+            .range_proof
+            .verify_mask(&commitment.to_commitment()?, &private_key, value.into())?;
+        Ok(true)
     }
 
     pub async fn stealth_address_script_spending_key(

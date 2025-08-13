@@ -97,9 +97,13 @@ mod peer_id;
 pub use peer_id::{generate_peer_id_as_i64, PeerId};
 
 mod manager;
-#[cfg(test)]
-pub use manager::create_test_peer;
 pub use manager::PeerManager;
+#[cfg(test)]
+pub use manager::{
+    create_test_peer,
+    create_test_peer_add_internal_addresses,
+    create_test_peer_internal_addresses_only,
+};
 
 mod peer_storage_sql;
 pub use peer_storage_sql::{PeerStorageSql as PeerStorage, STALE_PEER_THRESHOLD_DURATION};

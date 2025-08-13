@@ -610,7 +610,7 @@ impl DhtActor {
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
                 peer_manager
-                    .random_peers(n, &excluded)
+                    .random_peers(n, &excluded, None)
                     .await?
                     .into_iter()
                     .map(|p| p.node_id)
@@ -792,9 +792,11 @@ impl DhtActor {
                 n,
                 excluded_peers,
                 Some(features),
+                None,
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,
+                true,
             )
             .await?;
         debug!(

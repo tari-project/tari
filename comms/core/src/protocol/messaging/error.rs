@@ -29,18 +29,8 @@ use crate::{
     connection_manager::PeerConnectionError,
     connectivity::ConnectivityError,
     message::OutboundMessage,
-    peer_manager::PeerManagerError,
     protocol::ProtocolError,
 };
-
-/// Error type for inbound messages.
-#[derive(Debug, Error)]
-pub enum InboundMessagingError {
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("Failed to decode message: {0}")]
-    MessageDecodeError(#[from] prost::DecodeError),
-}
 
 /// Error type for the messaging protocol.
 #[derive(Debug, Error)]

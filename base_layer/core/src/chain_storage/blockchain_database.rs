@@ -470,7 +470,7 @@ where B: BlockchainBackend
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
     // so that metadata and db are read in the correct order so that deadlocks don't occur
-    pub fn db_read_access(&self) -> Result<RwLockReadGuard<B>, ChainStorageError> {
+    pub fn db_read_access(&self) -> Result<RwLockReadGuard<'_, B>, ChainStorageError> {
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -481,7 +481,7 @@ where B: BlockchainBackend
     }
 
     #[cfg(test)]
-    pub fn test_db_write_access(&self) -> Result<RwLockWriteGuard<B>, ChainStorageError> {
+    pub fn test_db_write_access(&self) -> Result<RwLockWriteGuard<'_, B>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -491,7 +491,7 @@ where B: BlockchainBackend
         })
     }
 
-    fn db_write_access(&self) -> Result<RwLockWriteGuard<B>, ChainStorageError> {
+    fn db_write_access(&self) -> Result<RwLockWriteGuard<'_, B>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -2512,7 +2512,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     txn.insert_orphan(chain_block.to_arc_block());
 
-    txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
+    txn.set_accumulated_data_for_orphan(chain_block.header().version, chain_block.accumulated_data().clone());
     db.write(txn)?;
     let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
     let mut txn = DbTransaction::new();
@@ -2599,7 +2599,10 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 
                 // Set/overwrite accumulated data for this orphan block
                 let mut txn = DbTransaction::new();
-                txn.set_accumulated_data_for_orphan(chain_header.accumulated_data().clone());
+                txn.set_accumulated_data_for_orphan(
+                    chain_header.header().version,
+                    chain_header.accumulated_data().clone(),
+                );
                 db.write(txn)?;
                 let children =
                     find_orphan_descendant_tips_of(db, chain_header, prev_timestamps_for_children, validator)?;

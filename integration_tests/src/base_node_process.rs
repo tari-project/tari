@@ -54,6 +54,7 @@ pub struct BaseNodeProcess {
     pub name: String,
     pub port: u64,
     pub grpc_port: u64,
+    pub http_port: u64,
     pub identity: NodeIdentity,
     pub temp_dir_path: PathBuf,
     pub is_seed_node: bool,
@@ -101,12 +102,14 @@ pub async fn spawn_base_node_with_config(
 
     let port: u64;
     let grpc_port: u64;
+    let http_port: u64;
     let temp_dir_path: PathBuf;
     let base_node_identity: NodeIdentity;
 
     if let Some(node_ps) = world.base_nodes.get(&bn_name) {
         port = node_ps.port;
         grpc_port = node_ps.grpc_port;
+        http_port = node_ps.http_port;
         temp_dir_path = node_ps.temp_dir_path.clone();
         base_node_config = node_ps.config.clone();
 
@@ -115,6 +118,7 @@ pub async fn spawn_base_node_with_config(
         // each spawned base node will use different ports
         port = get_port(world, 18000..18499).unwrap();
         grpc_port = get_port(world, 18500..18999).unwrap();
+        http_port = get_port(world, 19000..19499).unwrap();
         // create a new temporary directory
         temp_dir_path = world
             .current_base_dir
@@ -142,6 +146,7 @@ pub async fn spawn_base_node_with_config(
         seed_nodes: peers.clone(),
         config: base_node_config.clone(),
         kill_signal: shutdown.clone(),
+        http_port,
     };
 
     let name_cloned = bn_name.clone();
@@ -169,6 +174,9 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(3);
+        base_node_config.base_node.http_wallet_query_service.port = http_port.try_into().unwrap();
+        base_node_config.base_node.http_wallet_query_service.external_address =
+            Some(format!("http://127.0.0.1:{}", http_port).parse().unwrap());
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");
@@ -231,8 +239,8 @@ pub async fn spawn_base_node_with_config(
             .num_initial_sync_rounds_seed_bootstrap = 1;
 
         println!(
-            "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}",
-            name_cloned, port, grpc_port, is_seed_node
+            "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}, http_port={}",
+            name_cloned, port, grpc_port, is_seed_node, http_port
         );
 
         let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;
@@ -247,6 +255,7 @@ pub async fn spawn_base_node_with_config(
         world.seed_nodes.push(bn_name);
     }
 
+    wait_for_service(http_port).await;
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 }

@@ -102,7 +102,7 @@ pub async fn run_base_node(
         grpc_enabled: false,
         mining_enabled: false,
         second_layer_grpc_enabled: false,
-        disable_splash_screen: false,
+        disable_splash_screen: true,
         libtor_data_dir: None,
     };
 

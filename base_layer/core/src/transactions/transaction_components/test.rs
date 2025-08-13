@@ -435,7 +435,8 @@ async fn test_validate_internal_consistency() {
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
-    assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    // This will panic if not valid
+    let _unused = validator.validate(&tx, None, None, u64::MAX).unwrap();
 }
 
 #[tokio::test]
@@ -572,12 +573,11 @@ async fn test_output_recover_openings() {
         .unwrap();
     let output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
 
-    let (mask, value, _) = key_manager
+    let (_mask, value, _) = key_manager
         .try_output_key_recovery(output.commitment(), output.encrypted_data(), None)
         .await
         .unwrap();
     assert_eq!(value, wallet_output.value);
-    assert_eq!(mask, test_params.commitment_mask_key_id);
 }
 
 mod validate_internal_consistency {

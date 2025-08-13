@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2025, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,36 +20,4 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::protocol::rpc::{
-    mock::{RpcMock, RpcMockMethodState},
-    Request,
-    RpcStatus,
-    Streaming,
-};
-
-use crate::{
-    proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
-    rpc::DhtRpcService,
-};
-
-#[derive(Debug, Clone, Default)]
-pub struct DhtRpcServiceMock {
-    pub get_closer_peers: RpcMockMethodState<GetCloserPeersRequest, Vec<GetPeersResponse>>,
-    pub get_peers: RpcMockMethodState<GetPeersRequest, Vec<GetPeersResponse>>,
-}
-
-#[tari_comms::async_trait]
-impl DhtRpcService for DhtRpcServiceMock {
-    async fn get_closer_peers(
-        &self,
-        request: Request<GetCloserPeersRequest>,
-    ) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
-        self.server_streaming(request, &self.get_closer_peers).await
-    }
-
-    async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
-        self.server_streaming(request, &self.get_peers).await
-    }
-}
-
-impl RpcMock for DhtRpcServiceMock {}
+pub mod block_header_accumulated_data;

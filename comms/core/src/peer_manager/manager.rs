@@ -35,6 +35,7 @@ use crate::{
         NodeDistance,
         NodeId,
         PeerFeatures,
+        PeerFlags,
         PeerManagerError,
         ThisPeerIdentity,
     },
@@ -167,8 +168,10 @@ impl PeerManager {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        external_addresses_only: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql.discovery_syncing(n, excluded_peers, features)
+        self.peer_storage_sql
+            .discovery_syncing(n, excluded_peers, features, external_addresses_only)
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
@@ -219,18 +222,22 @@ impl PeerManager {
         n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
+        external_addresses_only: bool,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.closest_n_active_peers(
             region_node_id,
             n,
             excluded_peers,
             features,
+            peer_flags,
             stale_peer_threshold,
             exclude_if_all_address_failed,
             exclusion_distance,
+            external_addresses_only,
         )
     }
 
@@ -243,9 +250,14 @@ impl PeerManager {
         self.peer_storage_sql.get_closest_n_good_standing_peers(n, features)
     }
 
-    /// Fetch n random peers that are Communication Nodes
-    pub async fn random_peers(&self, n: usize, excluded: &[NodeId]) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql.random_peers(n, excluded)
+    /// Fetch n random peers that are Communication Nodes and have at least one external address
+    pub async fn random_peers(
+        &self,
+        n: usize,
+        excluded: &[NodeId],
+        flags: Option<PeerFlags>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage_sql.random_peers(n, excluded, flags)
     }
 
     /// Calculate the region threshold for a given number of peers and features
@@ -367,7 +379,11 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     // Create 1 to 4 random addresses
     for _i in 1..=rand::thread_rng().gen_range(1..4) {
         let n = [
-            rand::thread_rng().gen_range(1..255),
+            match rand::thread_rng().gen_range(0..3) {
+                0 => rand::thread_rng().gen_range(1..10),   // Range excluding 10
+                1 => rand::thread_rng().gen_range(11..127), // Range excluding 127
+                _ => rand::thread_rng().gen_range(128..255),
+            },
             rand::thread_rng().gen_range(1..255),
             rand::thread_rng().gen_range(1..255),
             rand::thread_rng().gen_range(1..255),
@@ -397,6 +413,109 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     good_addresses.mark_last_seen_now(&good_address);
 
     peer
+}
+
+#[cfg(test)]
+pub fn create_test_peer_add_internal_addresses(ban_flag: bool, features: PeerFeatures) -> Peer {
+    let mut peer = create_test_peer(ban_flag, features);
+    add_internal_addresses(&mut peer);
+
+    peer
+}
+
+#[cfg(test)]
+pub fn create_test_peer_internal_addresses_only(ban_flag: bool, features: PeerFeatures) -> Peer {
+    use rand::rngs::OsRng;
+
+    use crate::peer_manager::PeerFlags;
+    let (_sk, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let node_id = NodeId::from_key(&pk);
+
+    let mut peer = Peer::new(
+        pk,
+        node_id,
+        MultiaddressesWithStats::default(),
+        PeerFlags::default(),
+        features,
+        Default::default(),
+        Default::default(),
+    );
+    if ban_flag {
+        peer.ban_for(Duration::from_secs(1000), "".to_string());
+    }
+    add_internal_addresses(&mut peer);
+
+    peer
+}
+
+#[cfg(test)]
+fn add_internal_addresses(peer: &mut Peer) {
+    use rand::{prelude::SliceRandom, Rng};
+
+    let mut net_addresses = Vec::new();
+    // IPv4 Loopback
+    let net_address = format!(
+        "/ip4/127.{}.{}.{}/tcp/{}",
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(9000..9100)
+    )
+    .parse::<Multiaddr>()
+    .unwrap();
+    net_addresses.push(net_address);
+    // IPv4 Unspecified
+    let net_address = format!("/ip4/0.0.0.0/tcp/{}", rand::thread_rng().gen_range(9100..9200))
+        .parse::<Multiaddr>()
+        .unwrap();
+    net_addresses.push(net_address);
+    // IPv4 Private
+    let net_address = format!(
+        "/ip4/10.{}.{}.{}/tcp/{}",
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(9200..9300)
+    )
+    .parse::<Multiaddr>()
+    .unwrap();
+    net_addresses.push(net_address);
+    // IPv4 Private
+    let net_address = format!(
+        "/ip4/172.{}.{}.{}/tcp/{}",
+        rand::thread_rng().gen_range(16..=31),
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(9300..9400)
+    )
+    .parse::<Multiaddr>()
+    .unwrap();
+    net_addresses.push(net_address);
+    // IPv4 Private
+    let net_address = format!(
+        "/ip4/192.168.{}.{}/tcp/{}",
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(0..255),
+        rand::thread_rng().gen_range(9400..9500)
+    )
+    .parse::<Multiaddr>()
+    .unwrap();
+    net_addresses.push(net_address);
+    // IPv6 Loopback
+    let net_address = format!("/ip6/::1/tcp/{}", rand::thread_rng().gen_range(9500..9600))
+        .parse::<Multiaddr>()
+        .unwrap();
+    net_addresses.push(net_address);
+    // IPv6 Unspecified
+    let net_address = format!("/ip6/::/tcp/{}", rand::thread_rng().gen_range(9600..9700))
+        .parse::<Multiaddr>()
+        .unwrap();
+    net_addresses.push(net_address);
+    net_addresses.shuffle(&mut rand::thread_rng());
+
+    for net_address in net_addresses.iter().take(2) {
+        peer.addresses.add_address(net_address, &PeerAddressSource::Config);
+    }
 }
 
 #[cfg(test)]
@@ -478,9 +597,11 @@ mod test {
                 3,
                 &[],
                 None,
+                None,
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,
+                false,
             )
             .await
             .unwrap();
@@ -512,9 +633,11 @@ mod test {
                 3,
                 &excluded_peers,
                 None,
+                None,
                 Some(STALE_PEER_THRESHOLD_DURATION),
                 true,
                 None,
+                false,
             )
             .await
             .unwrap();
@@ -541,8 +664,8 @@ mod test {
         }
 
         // Test Random
-        let identities1 = peer_manager.random_peers(10, &[]).await.unwrap();
-        let identities2 = peer_manager.random_peers(10, &[]).await.unwrap();
+        let identities1 = peer_manager.random_peers(10, &[], None).await.unwrap();
+        let identities2 = peer_manager.random_peers(10, &[], None).await.unwrap();
         assert_ne!(identities1, identities2);
     }
 
@@ -725,8 +848,10 @@ mod test {
                             &[],
                             Some(PeerFeatures::COMMUNICATION_NODE),
                             None,
+                            None,
                             false,
                             None,
+                            false,
                         )
                         .await
                         .unwrap();
@@ -759,8 +884,10 @@ mod test {
                 &[],
                 Some(PeerFeatures::COMMUNICATION_NODE),
                 None,
+                None,
                 false,
                 None,
+                false,
             )
             .await
             .unwrap();

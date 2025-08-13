@@ -138,30 +138,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await
     }
 
-    async fn find_key_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        key: &CompressedPublicKey,
-    ) -> Result<u64, KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .find_key_index(&branch.into(), key)
-            .await
-    }
-
-    async fn update_current_key_index_if_higher<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<(), KeyManagerServiceError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .update_current_key_index_if_higher(&branch.into(), index)
-            .await
-    }
-
     async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         self.transaction_key_manager_inner
             .read()
@@ -258,17 +234,6 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .read()
             .await
             .get_diffie_hellman_stealth_domain_hasher(secret_key_id, public_key)
-            .await
-    }
-
-    async fn get_spending_key_id(
-        &self,
-        public_spending_key: &CompressedPublicKey,
-    ) -> Result<TariKeyId, TransactionError> {
-        self.transaction_key_manager_inner
-            .read()
-            .await
-            .get_spending_key_id(public_spending_key)
             .await
     }
 
@@ -417,6 +382,19 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .read()
             .await
             .try_output_key_recovery(commitment, encrypted_data, custom_recovery_key_id)
+            .await
+    }
+
+    async fn is_this_output_ours(
+        &self,
+        commitment: &CompressedCommitment,
+        encrypted_data: &EncryptedData,
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<bool, TransactionError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .is_this_output_ours(commitment, encrypted_data, custom_recovery_key_id)
             .await
     }
 
