@@ -32,16 +32,10 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
-            memo_field::MemoField,
-            OutputFeatures,
-            Transaction,
-            TransactionOutput,
-            WalletOutput,
-            WalletOutputBuilder,
+            memo_field::MemoField, OutputFeatures, Transaction, TransactionOutput, WalletOutput, WalletOutputBuilder,
         },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        ReceiverTransactionProtocol, SenderTransactionProtocol,
     },
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
