@@ -1035,6 +1035,10 @@ where B: BlockchainBackend + 'static
                     metrics::target_difficulty_tari_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
+                PowAlgorithm::Cuckaroo => {
+                    metrics::target_difficulty_cuckaroo()
+                        .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+                },
             }
         }
 
