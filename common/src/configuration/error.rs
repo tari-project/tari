@@ -33,7 +33,7 @@ impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.cause)?;
         if let Some(ref source) = self.source {
-            write!(f, ": {}", source)?
+            write!(f, ": {source}")?
         }
 
         Ok(())

@@ -127,10 +127,8 @@ impl TariScript {
 
     /// Retrieve the opcode at the index, returns None if the index does not exist
     pub fn opcode(&self, i: usize) -> Option<&Opcode> {
-        if i >= self.script.len() {
-            return None;
-        }
-        Some(&self.script[i])
+        let opcode = self.script.get(i)?;
+        Some(opcode)
     }
 
     /// Executes the script using a default context. If successful, returns the final stack item.
@@ -207,7 +205,7 @@ impl TariScript {
             return Err(ScriptError::InvalidDigest);
         }
         let h = D::digest(self.to_bytes());
-        Ok(slice_to_hash(&h.as_slice()[..32]))
+        Ok(slice_to_hash(h.as_slice().get(..32).ok_or(ScriptError::InvalidDigest)?))
     }
 
     /// Try to deserialise a byte slice into a valid Tari script
@@ -753,6 +751,7 @@ impl Default for ExecutionState {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
     use digest::{consts::U32, Digest};

@@ -278,7 +278,7 @@ impl Index<usize> for MultiaddressesWithStats {
 
     /// Returns the NetAddressWithStats at the given index
     fn index(&self, index: usize) -> &Self::Output {
-        &self.addresses[index]
+        self.addresses.get(index).expect("Index out of bounds")
     }
 }
 
@@ -315,6 +315,7 @@ impl Display for MultiaddressesWithStats {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[test]

@@ -144,7 +144,7 @@ async fn read_until<E: fmt::Debug, S: Stream<Item = Result<String, E>> + Unpin>(
                 items.push(item);
             },
             Some(Err(err)) => {
-                error!(target: LOG_TARGET, "read_until: {:?}", err);
+                error!(target: LOG_TARGET, "read_until: {err:?}");
             },
             None => {
                 break items;
@@ -156,6 +156,6 @@ async fn read_until<E: fmt::Debug, S: Stream<Item = Result<String, E>> + Unpin>(
 fn log_server_response_error<E: fmt::Debug>(err: E) {
     error!(
         target: LOG_TARGET,
-        "Error processing response from tor control server: '{:?}'", err
+        "Error processing response from tor control server: '{err:?}'"
     );
 }

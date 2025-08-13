@@ -90,13 +90,15 @@ pub fn validate_checksum(data: &[u8]) -> Result<&[u8], ChecksumError> {
 
     // It's sufficient to check the entire slice against a zero checksum
     match compute_checksum(data) {
-        0u8 => Ok(&data[..data.len() - 1]),
+        0u8 => Ok(data.get(..data.len() - 1).expect("Length is checked")),
         _ => Err(ChecksumError::InvalidChecksum),
     }
 }
 
 #[cfg(test)]
 mod test {
+
+    #![allow(clippy::indexing_slicing)]
     use rand::Rng;
 
     use crate::dammsum::*;

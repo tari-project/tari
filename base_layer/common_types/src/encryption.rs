@@ -105,6 +105,7 @@ pub fn encrypt_bytes_integral_nonce(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use chacha20poly1305::{Key, KeyInit, Tag};
 
     use super::*;

@@ -388,6 +388,7 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use serde_json::Value;
     use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
 

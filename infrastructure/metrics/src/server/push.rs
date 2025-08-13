@@ -38,7 +38,7 @@ pub async fn start(endpoint: Url, push_interval: Duration, registry: Registry) {
         interval.tick().await;
 
         if let Err(err) = push_metrics(&registry, endpoint.clone()).await {
-            error!(target: LOG_TARGET, "{}", err);
+            error!(target: LOG_TARGET, "{err}");
         }
     }
 }

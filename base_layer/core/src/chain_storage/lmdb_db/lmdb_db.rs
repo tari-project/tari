@@ -2047,7 +2047,9 @@ impl LMDBDatabase {
                 lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, input.output_hash().as_slice())?
             {
                 let mut buffer = [0u8; 32];
-                buffer.copy_from_slice(&key_bytes[0..32]);
+                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(
+                    ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
+                )?);
                 let key = OutputKey::new(&FixedHash::from(buffer), &input.output_hash())?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
@@ -2096,7 +2098,9 @@ impl LMDBDatabase {
                 )?;
 
                 let mut buffer = [0u8; 32];
-                buffer.copy_from_slice(&key_bytes[0..32]);
+                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(
+                    ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
+                )?);
                 let key = OutputKey::new(&FixedHash::from(buffer), output_hash)?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;

@@ -178,22 +178,19 @@ where PK: ByteArray
             None => Err("Out of bounds".to_string()),
             Some(val) => match *val {
                 MANAGED_KEY_BRANCH => {
-                    if parts.len() != 3 {
-                        return Err("Wrong managed format".to_string());
-                    }
-                    let index = parts[2]
+                    let index = parts
+                        .get(2)
+                        .ok_or("Out of bounds".to_string())?
                         .parse()
                         .map_err(|_| "Index for default, invalid u64".to_string())?;
                     Ok(KeyId::Managed {
-                        branch: parts[1].into(),
+                        branch: (*parts.get(1).ok_or("Out of bounds".to_string())?).into(),
                         index,
                     })
                 },
                 IMPORTED_KEY_BRANCH => {
-                    if parts.len() != 2 {
-                        return Err("Wrong imported format".to_string());
-                    }
-                    let key = PK::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
+                    let key = PK::from_hex(parts.get(1).ok_or("Out of bounds".to_string())?)
+                        .map_err(|_| "Invalid public key".to_string())?;
                     Ok(KeyId::Imported { key })
                 },
                 ZERO_KEY_BRANCH => Ok(KeyId::Zero),
@@ -203,7 +200,7 @@ where PK: ByteArray
                         _ => return Err("Wrong derived format".to_string()),
                     }
 
-                    let key = parts[1..].join(".");
+                    let key = parts.get(1..).expect("index already checked").join(".");
                     Ok(KeyId::Derived {
                         key: SerializedKeyString::from(key),
                     })

@@ -307,7 +307,7 @@ mod test {
         assert_eq!(conns.len(), 10);
 
         let first_node = conns.first().unwrap().peer_node_id().clone();
-        let conns = select_random_nodes(&pool, 10, &[first_node.clone()]);
+        let conns = select_random_nodes(&pool, 10, std::slice::from_ref(&first_node));
         assert_eq!(conns.len(), 9);
         assert!(conns.iter().all(|c| c.peer_node_id() != &first_node));
     }

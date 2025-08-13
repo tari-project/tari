@@ -154,7 +154,7 @@ impl TorCommand for AddOnion<'_> {
                         "RSA1024" => Some(PrivateKey::Rsa1024(value.into_owned())),
                         k => {
                             return Err(
-                                ParseError(format!("Server returned unrecognised private key type '{}'", k)).into(),
+                                ParseError(format!("Server returned unrecognised private key type '{k}'")).into(),
                             )
                         },
                     };
@@ -182,9 +182,7 @@ impl fmt::Display for AddOnion<'_> {
             "ADD_ONION (KeyType={} KeyBlob={} Flags={} PortMapping={})",
             self.key_type.as_tor_repr(),
             self.key_blob,
-            self.flags
-                .iter()
-                .fold(String::new(), |acc, f| format!("{}, {}", acc, f)),
+            self.flags.iter().fold(String::new(), |acc, f| format!("{acc}, {f}")),
             self.port_mapping
         )
     }

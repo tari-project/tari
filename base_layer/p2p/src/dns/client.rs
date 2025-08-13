@@ -108,10 +108,7 @@ impl DnsClient {
             })
             .filter_map(|txt| {
                 txt.map(|txt| {
-                    if txt.is_empty() {
-                        return None;
-                    }
-                    let len = txt[0] as usize;
+                    let len = *txt.first()? as usize;
                     if len == 0 {
                         return None;
                     }
@@ -125,7 +122,7 @@ impl DnsClient {
                         return None;
                     }
                     // Exclude the first length byte from the string result
-                    Some(String::from_utf8_lossy(&txt[1..=len]).to_string())
+                    Some(String::from_utf8_lossy(txt.get(1..=len)?).to_string())
                 })
                 .inspect_err(|e| {
                     warn!(

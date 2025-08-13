@@ -238,7 +238,7 @@ where
     };
     trace!(target: LOG_TARGET, "Key: {}", to_hex(row.0));
     let mut result = vec![];
-    while row.0[..key.len()] == *key {
+    while row.0.get(..key.len()).expect("Cannot expect") == key {
         let val = deserialize::<V>(row.1)?;
         result.push((row.0.to_vec(), val));
         cursor.del(&mut access, del::NODUPDATA)?;

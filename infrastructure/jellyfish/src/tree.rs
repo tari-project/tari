@@ -337,14 +337,20 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         hash_cache: Option<&HashMap<NibblePath, TreeHash>>,
         batch: &mut TreeUpdateBatch<P>,
     ) -> Result<(Nibble, Option<Node<P>>), JmtStorageError> {
-        let child_index = kvs[left].0.get_nibble(depth);
+        let child_index = kvs
+            .get(left)
+            .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+            .0
+            .get_nibble(depth)
+            .ok_or(JmtStorageError::IndexNotFound)?;
         let child = internal_node.child(child_index);
 
         let new_child_node_option = match child {
             Some(child) => self.batch_insert_at(
                 &node_key.gen_child_node_key(child.version, child_index),
                 version,
-                &kvs[left..=right],
+                kvs.get(left..=right)
+                    .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
                 depth + 1,
                 hash_cache,
                 batch,
@@ -352,7 +358,8 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
             None => Self::batch_update_subtree(
                 &node_key.gen_child_node_key(version, child_index),
                 version,
-                &kvs[left..=right],
+                kvs.get(left..=right)
+                    .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
                 depth + 1,
                 hash_cache,
                 batch,
@@ -373,19 +380,34 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
     ) -> Result<Option<Node<P>>, JmtStorageError> {
         let existing_leaf_key = existing_leaf_node.leaf_key();
 
-        if kvs.len() == 1 && kvs[0].0 == existing_leaf_key {
-            if let (key, Some((value_hash, payload))) = kvs[0] {
+        if kvs.len() == 1 &&
+            kvs.first()
+                .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+                .0 ==
+                existing_leaf_key
+        {
+            if let (key, Some((value_hash, payload))) = *kvs
+                .first()
+                .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+            {
                 let new_leaf_node = Node::new_leaf(*key, *value_hash, payload.clone(), version);
                 Ok(Some(new_leaf_node))
             } else {
                 Ok(None)
             }
         } else {
-            let existing_leaf_bucket = existing_leaf_key.get_nibble(depth);
+            let existing_leaf_bucket = existing_leaf_key
+                .get_nibble(depth)
+                .ok_or(JmtStorageError::IndexNotFound)?;
             let mut isolated_existing_leaf = true;
             let mut children = vec![];
             for (left, right) in NibbleRangeIterator::new(kvs, depth) {
-                let child_index = kvs[left].0.get_nibble(depth);
+                let child_index = kvs
+                    .get(left)
+                    .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+                    .0
+                    .get_nibble(depth)
+                    .ok_or(JmtStorageError::IndexNotFound)?;
                 let child_node_key = node_key.gen_child_node_key(version, child_index);
                 if let Some(new_child_node) = if existing_leaf_bucket == child_index {
                     isolated_existing_leaf = false;
@@ -393,7 +415,8 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                         &child_node_key,
                         version,
                         existing_leaf_node.clone(),
-                        &kvs[left..=right],
+                        kvs.get(left..=right)
+                            .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
                         depth + 1,
                         hash_cache,
                         batch,
@@ -402,7 +425,8 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     Self::batch_update_subtree(
                         &child_node_key,
                         version,
-                        &kvs[left..=right],
+                        kvs.get(left..=right)
+                            .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
                         depth + 1,
                         hash_cache,
                         batch,
@@ -417,7 +441,13 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
 
             if children.is_empty() {
                 Ok(None)
-            } else if children.len() == 1 && children[0].1.is_leaf() {
+            } else if children.len() == 1 &&
+                children
+                    .first()
+                    .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+                    .1
+                    .is_leaf()
+            {
                 let (_, child) = children.pop().expect("Must exist");
                 Ok(Some(child))
             } else {
@@ -453,8 +483,11 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         batch: &mut TreeUpdateBatch<P>,
     ) -> Result<Option<Node<P>>, JmtStorageError> {
         if kvs.len() == 1 {
-            if let (key, Some((value_hash, payload))) = kvs[0] {
-                let new_leaf_node = Node::new_leaf(*key, *value_hash, payload.clone(), version);
+            if let (&key, Some((value_hash, payload))) = *kvs
+                .first()
+                .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+            {
+                let new_leaf_node = Node::new_leaf(key, *value_hash, payload.clone(), version);
                 Ok(Some(new_leaf_node))
             } else {
                 Ok(None)
@@ -462,12 +495,18 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         } else {
             let mut children = vec![];
             for (left, right) in NibbleRangeIterator::new(kvs, depth) {
-                let child_index = kvs[left].0.get_nibble(depth);
+                let child_index = kvs
+                    .get(left)
+                    .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+                    .0
+                    .get_nibble(depth)
+                    .ok_or(JmtStorageError::IndexNotFound)?;
                 let child_node_key = node_key.gen_child_node_key(version, child_index);
                 if let Some(new_child_node) = Self::batch_update_subtree(
                     &child_node_key,
                     version,
-                    &kvs[left..=right],
+                    kvs.get(left..=right)
+                        .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
                     depth + 1,
                     hash_cache,
                     batch,
@@ -477,7 +516,13 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
             }
             if children.is_empty() {
                 Ok(None)
-            } else if children.len() == 1 && children[0].1.is_leaf() {
+            } else if children.len() == 1 &&
+                children
+                    .first()
+                    .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?
+                    .1
+                    .is_leaf()
+            {
                 let (_, child) = children.pop().expect("Must exist");
                 Ok(Some(child))
             } else {
@@ -656,12 +701,12 @@ impl<P> Iterator for NibbleRangeIterator<'_, P> {
     fn next(&mut self) -> Option<Self::Item> {
         let left = self.pos;
         if self.pos < self.sorted_kvs.len() {
-            let cur_nibble = self.sorted_kvs[left].0.get_nibble(self.nibble_idx);
+            let cur_nibble = self.sorted_kvs.get(left)?.0.get_nibble(self.nibble_idx);
             let (mut i, mut j) = (left, self.sorted_kvs.len() - 1);
             // Find the last index of the cur_nibble.
             while i < j {
                 let mid = j - (j - i) / 2;
-                if self.sorted_kvs[mid].0.get_nibble(self.nibble_idx) > cur_nibble {
+                if self.sorted_kvs.get(mid)?.0.get_nibble(self.nibble_idx) > cur_nibble {
                     j = mid - 1;
                 } else {
                     i = mid;

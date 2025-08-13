@@ -211,9 +211,9 @@ impl MerkleProof {
         let depth = self.branch.len();
         for d in 0..depth {
             if (self.path_bitmap >> (depth - d - 1)) & 1 > 0 {
-                root = cn_fast_hash2(&self.branch[d], &root);
+                root = cn_fast_hash2(self.branch.get(d).expect("Should exist"), &root);
             } else {
-                root = cn_fast_hash2(&root, &self.branch[d]);
+                root = cn_fast_hash2(&root, self.branch.get(d).expect("Should exist"));
             }
         }
 

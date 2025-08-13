@@ -409,7 +409,7 @@ pub fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
     }
 
     let good_addresses = peer.addresses.borrow_mut();
-    let good_address = good_addresses.addresses()[0].address().clone();
+    let good_address = good_addresses.addresses().first().unwrap().address().clone();
     good_addresses.mark_last_seen_now(&good_address);
 
     peer
@@ -520,6 +520,7 @@ fn add_internal_addresses(peer: &mut Peer) {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_sqlite::connection::DbConnection;
 
     use super::*;

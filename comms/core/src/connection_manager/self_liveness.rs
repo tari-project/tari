@@ -121,7 +121,11 @@ where
         loop {
             let timer = Instant::now();
             let _ = self.tx_watch.send(SelfLivenessStatus::Checking);
-            let address = self.addresses[current_address_idx].clone();
+            let address = self
+                .addresses
+                .get(current_address_idx)
+                .expect("index should exist")
+                .clone();
             match self.transport.dial(&address).await {
                 Ok(mut socket) => {
                     debug!(

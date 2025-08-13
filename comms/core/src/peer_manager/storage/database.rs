@@ -107,15 +107,17 @@ impl PeerDatabaseSql {
                 )));
             }
             if !node_identity_indexes.is_empty() {
-                if self.this_peer_identity.public_key.to_hex() == node_identity_indexes[0].public_key &&
-                    self.this_peer_identity.node_id.to_hex() == node_identity_indexes[0].node_id
+                if self.this_peer_identity.public_key.to_hex() ==
+                    node_identity_indexes.first().expect("already checked").public_key &&
+                    self.this_peer_identity.node_id.to_hex() ==
+                        node_identity_indexes.first().expect("already checked").node_id
                 {
                     return Ok(());
                 } else {
                     return Err(StorageError::UnexpectedResult(format!(
                         "This peer node identity does not match, expected '{}', found '{}'",
                         self.this_peer_identity.node_id.to_hex(),
-                        node_identity_indexes[0].node_id
+                        node_identity_indexes.first().expect("already checked").node_id
                     )));
                 }
             }
@@ -1043,17 +1045,17 @@ impl PeerDatabaseSql {
         if start_bytes.len() > NodeId::byte_size() {
             results = peers::table
                 .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-                .filter(peers::public_key.like(format!("{}%", partial_key)))
+                .filter(peers::public_key.like(format!("{partial_key}%")))
                 .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
         } else {
             results = peers::table
                 .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-                .filter(peers::node_id.like(format!("{}%", partial_key)))
+                .filter(peers::node_id.like(format!("{partial_key}%")))
                 .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
 
             let mut public_key_match = peers::table
                 .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-                .filter(peers::public_key.like(format!("{}%", partial_key)))
+                .filter(peers::public_key.like(format!("{partial_key}%")))
                 .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
 
             results.append(&mut public_key_match);
@@ -1259,7 +1261,7 @@ impl PeerDatabaseSql {
         }
 
         // Group addresses for the peer
-        let peer_query = results[0].0.clone();
+        let peer_query = results.first().expect("already checked").0.clone();
         let addresses_query = results.iter().map(|(_, address)| address.clone()).collect::<Vec<_>>();
 
         Ok(Some(Peer::try_from((peer_query, addresses_query))?))
@@ -1769,7 +1771,7 @@ fn duration_to_i64_ms_infallible(duration: Option<Duration>) -> Option<i64> {
         Some(ms_u128) => match ms_u128.try_into() {
             Ok(ms_i64) => Some(ms_i64),
             Err(e) => {
-                warn!(target: LOG_TARGET, "duration_to_i64_ms_infallible {:?} conversion error: {}", duration, e);
+                warn!(target: LOG_TARGET, "duration_to_i64_ms_infallible {duration:?} conversion error: {e}");
                 Some(i64::MAX)
             },
         },
@@ -1890,6 +1892,7 @@ impl From<(UpdateMultiaddrWithStatsSql, i64)> for NewMultiaddrWithStatsSql {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
     use chrono::TimeDelta;

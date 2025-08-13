@@ -388,7 +388,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             }
 
             while let Some((key, vn)) = cursor.next()? {
-                if key[..PK_SIZE] != *sidechain_bytes {
+                if key.get(..PK_SIZE).ok_or(
+                    ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
+                )? != sidechain_bytes {
                     // No further entries for this sidechain
                     break;
                 }
@@ -593,7 +595,9 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let sidechain_bytes = sid_as_slice(sidechain_pk);
         let mut nodes = BTreeSet::new();
         while let Some((key, vn)) = cursor.next()? {
-            if key[..PK_SIZE] != *sidechain_bytes {
+            if key.get(..PK_SIZE).ok_or(
+                ChainStorageError::InvalidOperation("Key bytes for output hash are too short".to_string())
+            )? != sidechain_bytes {
                 // No further entries for this sidechain
                 break;
             }

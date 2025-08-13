@@ -229,7 +229,8 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let public_alpha = CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?;
+            let public_alpha =
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(public_alpha)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {}", e))),
@@ -263,7 +264,8 @@ pub fn ledger_get_public_key(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let public_key = RistrettoPublicKey::from_canonical_bytes(&result.data()[1..33])?;
+            let public_key =
+                RistrettoPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(public_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {}", e))),
@@ -326,11 +328,11 @@ pub fn ledger_get_script_signature(
             }
             let data = result.data();
             let signature = ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(&data[1..33])?,
-                CompressedPublicKey::from_canonical_bytes(&data[33..65])?,
-                PrivateKey::from_canonical_bytes(&data[65..97])?,
-                PrivateKey::from_canonical_bytes(&data[97..129])?,
-                PrivateKey::from_canonical_bytes(&data[129..161])?,
+                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))?,
             );
             Ok(signature)
         },
@@ -411,7 +413,8 @@ pub fn ledger_get_script_offset(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let script_offset = PrivateKey::from_canonical_bytes(&result.data()[1..33])?;
+            let script_offset =
+                PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(script_offset)
         },
         None => Err(LedgerDeviceError::Processing("GetScriptOffset: No result".to_string())),
@@ -432,7 +435,7 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let view_key = PrivateKey::from_canonical_bytes(&result.data()[1..33])?;
+            let view_key = PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(view_key)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetViewKey: {}", e))),
@@ -467,8 +470,9 @@ pub fn ledger_get_dh_shared_secret(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let shared_secret =
-                DiffieHellmanSharedSecret::<RistrettoPublicKey>::from_canonical_bytes(&result.data()[1..33])?;
+            let shared_secret = DiffieHellmanSharedSecret::<RistrettoPublicKey>::from_canonical_bytes(
+                result.data().get(1..33).expect("Index should exist"),
+            )?;
             Ok(shared_secret)
         },
         Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {}", e))),
@@ -510,8 +514,8 @@ pub fn ledger_get_raw_schnorr_signature(
             }
 
             let signature = Signature::new(
-                CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?,
-                PrivateKey::from_canonical_bytes(&result.data()[33..65])?,
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
             );
             Ok(signature)
         },
@@ -552,8 +556,8 @@ pub fn ledger_get_script_schnorr_signature(
             }
 
             let signature = CompressedCheckSigSchnorrSignature::new(
-                CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?,
-                PrivateKey::from_canonical_bytes(&result.data()[33..65])?,
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
             );
             Ok(signature)
         },
@@ -634,15 +638,15 @@ pub fn ledger_get_one_sided_metadata_signature(
             }
             let data = result.data();
             Ok(ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(&data[1..33])
+                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                CompressedPublicKey::from_canonical_bytes(&data[33..65])
+                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(&data[65..97])
+                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(&data[97..129])
+                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(&data[129..161])
+                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
             ))
         },

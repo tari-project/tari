@@ -96,7 +96,9 @@ impl TryFrom<&[u8]> for XorDistance {
         // Big endian has the MSB at index 0, if size of `bytes` is less than byte_size it must be offset to have
         // leading 0 bytes
         let offset = Self::byte_size() - bytes.len();
-        buf[offset..].copy_from_slice(bytes);
+        buf.get_mut(offset..)
+            .ok_or(NodeIdError::IncorrectByteCount)?
+            .copy_from_slice(bytes);
         Ok(XorDistance(u128::from_be_bytes(buf)))
     }
 }

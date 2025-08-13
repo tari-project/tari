@@ -105,12 +105,12 @@ impl NodeId {
         let mut nearest_node_indices: Vec<usize> = Vec::with_capacity(k);
         for i in 0..k {
             for j in i + 1..node_ids.len() {
-                if dists[i] > dists[j] {
+                if dists.get(i).expect("Index should exist") > dists.get(j).expect("Index should exist") {
                     dists.swap(i, j);
                     indices.swap(i, j);
                 }
             }
-            nearest_node_indices.push(indices[i]);
+            nearest_node_indices.push(*indices.get(i).expect("Index should exist"));
         }
         nearest_node_indices
     }
@@ -120,7 +120,7 @@ impl NodeId {
         let nearest_node_indices = self.closest_indices(node_ids, k);
         let mut nearest_node_ids: Vec<NodeId> = Vec::with_capacity(nearest_node_indices.len());
         for nearest in nearest_node_indices {
-            nearest_node_ids.push(node_ids[nearest].clone());
+            nearest_node_ids.push(node_ids.get(nearest).expect("Index should exist").clone());
         }
         nearest_node_ids
     }
@@ -130,7 +130,7 @@ impl NodeId {
     }
 
     pub fn short_str(&self) -> String {
-        to_hex(&self.0[..8])
+        to_hex(self.0.get(..8).expect("Index should exist"))
     }
 }
 
@@ -190,7 +190,8 @@ impl BitXor for &NodeId {
         let mut xor = [0u8; NodeId::byte_size()];
         #[allow(clippy::needless_range_loop)]
         for i in 0..NodeId::byte_size() {
-            xor[i] = self.0[i] ^ rhs.0[i];
+            *xor.get_mut(i).expect("Index should exist") =
+                self.0.get(i).expect("Index should exist") ^ rhs.0.get(i).expect("Index should exist");
         }
         xor
     }
@@ -265,6 +266,7 @@ where D: Deserializer<'de> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_crypto::keys::SecretKey;
 
     use super::*;

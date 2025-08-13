@@ -502,7 +502,7 @@ where T: ContactsBackend + 'static
                 .iter()
                 .position(|peer_status| *peer_status.node_id() == event.node_id)
             {
-                latency = self.liveness_data[pos].latency();
+                latency = self.liveness_data.get(pos).expect("Already checked").latency();
                 self.liveness_data.remove(pos);
             }
 

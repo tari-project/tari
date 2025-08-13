@@ -271,6 +271,7 @@ impl fmt::Display for Authentication {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::net::SocketAddr;
 
     use futures::future;

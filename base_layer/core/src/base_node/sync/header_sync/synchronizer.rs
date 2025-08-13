@@ -212,7 +212,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let latency = client
             .get_last_request_latency()
             .expect("unreachable panic: last request latency must be set after connect");
-        self.sync_peers[peer_index].set_latency(latency);
+        self.sync_peers.get_mut(peer_index).ok_or(BlockHeaderSyncError::PeerNotFound)?.set_latency(latency);
         if latency > max_latency {
             return Err(BlockHeaderSyncError::MaxLatencyExceeded {
                 peer: conn.peer_node_id().clone(),
@@ -222,7 +222,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
-        let sync_peer = self.sync_peers[peer_index].clone();
+        let sync_peer = self.sync_peers.get(peer_index).ok_or(BlockHeaderSyncError::PeerNotFound)?.clone();
         let sync_result = self.attempt_sync(&sync_peer, client, max_latency).await?;
         Ok((sync_peer, sync_result))
     }

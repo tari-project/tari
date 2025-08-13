@@ -50,7 +50,7 @@ impl Display for DnsNameServer {
         match self {
             DnsNameServer::System => write!(f, "system"),
             DnsNameServer::Custom { addr, dns_name } => {
-                write!(f, "{}/{}", addr, dns_name)
+                write!(f, "{addr}/{dns_name}")
             },
         }
     }

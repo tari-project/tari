@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{
     iter::repeat_with,
     sync::Arc,
@@ -132,9 +133,9 @@ impl StressProtocol {
         if bytes.len() != 9 {
             return None;
         }
-        let n = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
-        let s = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
-        let kind = match bytes[0] {
+        let n = u32::from_be_bytes([*bytes.get(1)?, *bytes.get(2)?, *bytes.get(3)?, *bytes.get(4)?]);
+        let s = u32::from_be_bytes([*bytes.get(5)?, *bytes.get(6)?, *bytes.get(7)?, *bytes.get(8)?]);
+        let kind = match bytes.first()? {
             0x01 => StressProtocolKind::ContinuousSend,
             0x02 => StressProtocolKind::AlternatingSend,
             0x03 => StressProtocolKind::MessagingFlood,

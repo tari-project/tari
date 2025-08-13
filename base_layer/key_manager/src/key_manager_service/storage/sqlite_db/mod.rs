@@ -157,7 +157,7 @@ where
             .decrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
         let mut bytes: [u8; 8] = [0u8; 8];
-        bytes.copy_from_slice(&km.primary_key_index[..8]);
+        bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Index should exist"));
         let index = u64::from_le_bytes(bytes) + 1;
         km.primary_key_index = index.to_le_bytes().to_vec();
         let km = km
@@ -256,6 +256,7 @@ where
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use tempfile::tempdir;
 

@@ -144,7 +144,10 @@ impl DualAddress {
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.to_vec();
-        bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| EMOJI.get(*b as usize).expect("Index should exist"))
+            .collect::<String>()
     }
 
     /// Return the public view key of a Tari Address
@@ -169,13 +172,18 @@ impl DualAddress {
         if validate_checksum(bytes).is_err() {
             return Err(TariAddressError::InvalidChecksum);
         }
-        let network = Network::try_from(bytes[0]).map_err(|_| TariAddressError::InvalidNetwork)?;
-        let features = TariAddressFeatures::from_bits(bytes[1]).ok_or(TariAddressError::InvalidFeatures)?;
-        let public_view_key = CompressedPublicKey::from_canonical_bytes(&bytes[2..34])
-            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let public_spend_key = CompressedPublicKey::from_canonical_bytes(&bytes[34..66])
-            .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
-        let memo_field_payment_id = MaxSizeBytes::from_bytes_truncate(&bytes[66..length - 1]);
+        let network = Network::try_from(*bytes.first().ok_or(TariAddressError::InvalidSize)?)
+            .map_err(|_| TariAddressError::InvalidNetwork)?;
+        let features = TariAddressFeatures::from_bits(*bytes.get(1).ok_or(TariAddressError::InvalidSize)?)
+            .ok_or(TariAddressError::InvalidFeatures)?;
+        let public_view_key =
+            CompressedPublicKey::from_canonical_bytes(bytes.get(2..34).ok_or(TariAddressError::InvalidSize)?)
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let public_spend_key =
+            CompressedPublicKey::from_canonical_bytes(bytes.get(34..66).ok_or(TariAddressError::InvalidSize)?)
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let memo_field_payment_id =
+            MaxSizeBytes::from_bytes_truncate(bytes.get(66..length - 1).ok_or(TariAddressError::InvalidSize)?);
         Ok(Self {
             network,
             features,
@@ -189,13 +197,19 @@ impl DualAddress {
     pub fn to_vec(&self) -> Vec<u8> {
         let length = TARI_ADDRESS_INTERNAL_DUAL_SIZE + self.memo_field_payment_id.len();
         let mut buf = vec![0; length];
-        buf[0] = self.network.as_byte();
-        buf[1] = self.features.0;
-        buf[2..34].copy_from_slice(self.public_view_key.as_bytes());
-        buf[34..66].copy_from_slice(self.public_spend_key.as_bytes());
-        buf[66..(length - 1)].copy_from_slice(self.memo_field_payment_id.as_bytes());
-        let checksum = compute_checksum(&buf[0..(length - 1)]);
-        buf[length - 1] = checksum;
+        *buf.get_mut(0).expect("Index should exist") = self.network.as_byte();
+        *buf.get_mut(1).expect("Index should exist") = self.features.0;
+        buf.get_mut(2..34)
+            .expect("Index should exist")
+            .copy_from_slice(self.public_view_key.as_bytes());
+        buf.get_mut(34..66)
+            .expect("Index should exist")
+            .copy_from_slice(self.public_spend_key.as_bytes());
+        buf.get_mut(66..(length - 1))
+            .expect("Index should exist")
+            .copy_from_slice(self.memo_field_payment_id.as_bytes());
+        let checksum = compute_checksum(buf.get(0..(length - 1)).expect("Index should exist"));
+        *buf.get_mut(length - 1).expect("Index should exist") = checksum;
         buf
     }
 
@@ -226,9 +240,9 @@ impl DualAddress {
     pub fn to_base58(&self) -> String {
         let bytes = self.to_vec();
         let mut base58 = "".to_string();
-        base58.push_str(&bs58::encode(&bytes[0..1]).into_string());
-        base58.push_str(&bs58::encode(&bytes[1..2].to_vec()).into_string());
-        base58.push_str(&bs58::encode(&bytes[2..]).into_string());
+        base58.push_str(&bs58::encode(bytes.get(0..1).expect("Index should exists")).into_string());
+        base58.push_str(&bs58::encode(bytes.get(1..2).expect("Index should exists").to_vec()).into_string());
+        base58.push_str(&bs58::encode(bytes.get(2..).expect("Index should exists")).into_string());
         base58
     }
 
@@ -247,6 +261,7 @@ impl DualAddress {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_crypto::keys::SecretKey;
 
     use super::*;

@@ -103,7 +103,7 @@ impl fmt::Display for KeyValueCommand<'_> {
             f,
             "{} (Args = {})",
             self.command,
-            self.args.iter().fold(String::new(), |acc, a| format!("{}, {}", acc, a))
+            self.args.iter().fold(String::new(), |acc, a| format!("{acc}, {a}"))
         )
     }
 }

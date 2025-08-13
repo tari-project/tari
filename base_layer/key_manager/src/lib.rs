@@ -63,11 +63,7 @@ impl SeedWords {
     }
 
     pub fn get_word(&self, index: usize) -> Result<&String, MnemonicError> {
-        if index > self.len() - 1 {
-            return Err(MnemonicError::IndexOutOfBounds);
-        }
-
-        Ok(self.words[index].reveal())
+        Ok(self.words.get(index).ok_or(MnemonicError::IndexOutOfBounds)?.reveal())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -101,6 +97,7 @@ impl FromStr for SeedWords {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[test]

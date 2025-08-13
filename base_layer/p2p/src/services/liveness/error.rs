@@ -63,4 +63,6 @@ pub enum LivenessError {
     PeerNotFoundError(#[from] PeerManagerError),
     #[error("Tokio task join error: `{0}`")]
     JoinError(#[from] JoinError),
+    #[error("Invalid bytes")]
+    InvalidBytes,
 }

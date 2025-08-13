@@ -173,7 +173,7 @@ fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), PeerV
         .chain_update(version)
         .finalize();
 
-    if calculated_checksum[..2] != *checksum {
+    if *calculated_checksum.get(..2).expect("Index should be valid") != *checksum {
         return Err(PeerValidatorError::InvalidMultiaddr(
             "Invalid checksum in onion address".to_string(),
         ));
@@ -184,6 +184,7 @@ fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), PeerV
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use multiaddr::multiaddr;
 
     use super::*;

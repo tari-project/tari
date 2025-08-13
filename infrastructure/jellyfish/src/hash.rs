@@ -66,7 +66,7 @@ impl<T: AsRef<[u8]>> PartialEq<T> for TreeHash {
 impl Display for TreeHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for b in self.0 {
-            write!(f, "{:02x}", b)?;
+            write!(f, "{b:02x}")?;
         }
         Ok(())
     }

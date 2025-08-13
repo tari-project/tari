@@ -21,6 +21,6 @@ fn main() {
     let out_dir = out_dirs.split(';').next().unwrap_or(".");
     #[cfg(not(windows))]
     let out_dir = out_dirs.split(':').next().unwrap_or(".");
-    println!("cargo::rustc-link-search=native={}", out_dir);
+    println!("cargo::rustc-link-search=native={out_dir}");
     println!("cargo::rustc-link-lib=dylib=minotari_wallet_ffi");
 }

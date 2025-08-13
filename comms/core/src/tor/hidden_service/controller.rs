@@ -170,13 +170,13 @@ impl HiddenServiceController {
                             if let Err(err) = self.reestablish_hidden_service(event_tx, shutdown_signal).await {
                                 error!(
                                     target: LOG_TARGET,
-                                    "Failed to reestablish connection to tor control server because '{:?}'", err
+                                    "Failed to reestablish connection to tor control server because '{err:?}'"
                                 );
                                 break;
                             }
                         },
                         Either::Right((Some(Ok(evt)), _)) => {
-                            trace!(target: LOG_TARGET, "Tor control event: {:?}", evt);
+                            trace!(target: LOG_TARGET, "Tor control event: {evt:?}");
                         },
                         _ => {},
                     }

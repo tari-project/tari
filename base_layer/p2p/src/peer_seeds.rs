@@ -176,6 +176,7 @@ impl From<SeedPeer> for Peer {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     mod peer_seed {

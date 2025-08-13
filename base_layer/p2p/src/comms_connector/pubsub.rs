@@ -157,6 +157,7 @@ where
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
     use futures::stream;
