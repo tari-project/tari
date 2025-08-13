@@ -289,13 +289,15 @@ impl Listening {
                         }
                     }
 
-                    let sync_mode = match filter_out_seed_peers_from_sync_status(&sync_mode, &seed_peers) {
-                        None => {
-                            warn!(target: LOG_TARGET, "All potential sync peers were seed peers. Waiting for better options.");
-                            continue;
-                        },
-                        Some(val) => val,
-                    };
+                    if !shared.config.blockchain_sync_config.include_seed_peers_in_sync {
+                        sync_mode = match filter_out_seed_peers_from_sync_status(&sync_mode, &seed_peers) {
+                            None => {
+                                warn!(target: LOG_TARGET, "All potential sync peers were seed peers. Waiting for better options.");
+                                continue;
+                            },
+                            Some(val) => val,
+                        };
+                    }
 
                     // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
                     // immediately return fallen behind with the peer that has a higher pow than us
@@ -531,9 +533,17 @@ fn determine_sync_mode(
 
 fn filter_out_seed_peers_from_sync_status(sync_mode: &SyncStatus, seed_peers: &[NodeId]) -> Option<SyncStatus> {
     match sync_mode {
-        SyncStatus::Lagging { local, sync_peers, .. } |
-        SyncStatus::BehindButNotYetLagging { local, sync_peers, .. } => {
-            let filtered_peers: Vec<_> = sync_peers
+        SyncStatus::Lagging {
+            local,
+            sync_peers,
+            network,
+        } |
+        SyncStatus::BehindButNotYetLagging {
+            local,
+            sync_peers,
+            network,
+        } => {
+            let filtered_sync_peers: Vec<_> = sync_peers
                 .iter()
                 .filter(|p| {
                     if seed_peers.contains(p.node_id()) {
@@ -546,30 +556,42 @@ fn filter_out_seed_peers_from_sync_status(sync_mode: &SyncStatus, seed_peers: &[
                 .cloned()
                 .collect();
 
-            if filtered_peers.is_empty() {
+            if filtered_sync_peers.is_empty() {
                 debug!(target: LOG_TARGET, "No sync peers available after filtering seed peers");
                 return None;
             }
 
-            // Clone only the metadata we need here
-            let best_peer_metadata = filtered_peers
-                .iter()
-                .max_by_key(|p| p.claimed_difficulty())
-                .map(|p| p.claimed_chain_metadata().clone());
-
-            best_peer_metadata.map(|network| match sync_mode {
-                SyncStatus::Lagging { .. } => SyncStatus::Lagging {
-                    local: (*local).clone(),
-                    network,
-                    sync_peers: filtered_peers,
-                },
-                SyncStatus::BehindButNotYetLagging { .. } => SyncStatus::BehindButNotYetLagging {
-                    local: (*local).clone(),
-                    network,
-                    sync_peers: filtered_peers,
-                },
-                _ => unreachable!(),
-            })
+            if sync_peers.len() == filtered_sync_peers.len() {
+                // No filtering was done, so we can return the original sync mode
+                Some(sync_mode.clone())
+            } else {
+                // Filtering was done, so we need to create a new sync mode and select the best metadata if necessary
+                let network_metadata_unchanged = filtered_sync_peers
+                    .iter()
+                    .any(|s| s.claimed_chain_metadata() == network);
+                let network_filtered = if network_metadata_unchanged {
+                    network.clone()
+                } else {
+                    filtered_sync_peers
+                        .iter()
+                        .max_by_key(|p| p.claimed_difficulty())
+                        .map(|p| p.claimed_chain_metadata().clone())
+                        .unwrap_or(filtered_sync_peers[0].claimed_chain_metadata().clone())
+                };
+                match sync_mode {
+                    SyncStatus::Lagging { .. } => Some(SyncStatus::Lagging {
+                        local: (*local).clone(),
+                        network: network_filtered,
+                        sync_peers: filtered_sync_peers,
+                    }),
+                    SyncStatus::BehindButNotYetLagging { .. } => Some(SyncStatus::BehindButNotYetLagging {
+                        local: (*local).clone(),
+                        network: network_filtered,
+                        sync_peers: filtered_sync_peers,
+                    }),
+                    _ => unreachable!(),
+                }
+            }
         },
         _ => Some(sync_mode.clone()),
     }

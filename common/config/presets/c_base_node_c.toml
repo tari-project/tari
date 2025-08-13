@@ -108,6 +108,10 @@ blockchain_sync_config.max_latency_increase = 10
 # The RPC deadline to set on sync clients. If this deadline is reached, a new sync peer will be selected for sync.
 # [default = 240]
 blockchain_sync_config.rpc_deadline = 240
+# The number of initial rounds of seed peer based bootstrapping (Default: 5).
+#blockchain_sync_config.num_initial_sync_rounds_seed_bootstrap = 5
+# Include seed peers when selecting sync peers for header and block sync (Default: false)
+#blockchain_sync_config.include_seed_peers_in_sync = false
 
 # The maximum amount of VMs that RandomX will be use (default = 0)
 #max_randomx_vms = 0
