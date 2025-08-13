@@ -578,6 +578,30 @@ impl WalletTransaction {
             WalletTransaction::Completed(tx) => Some(tx.source_address.clone()),
         }
     }
+
+    pub fn is_pending(&self) -> bool {
+        match self {
+            WalletTransaction::PendingInbound(_) => true,
+            WalletTransaction::PendingOutbound(_) => true,
+            WalletTransaction::Completed(_) => false,
+        }
+    }
+
+    pub fn is_mined(&self) -> bool {
+        match self {
+            WalletTransaction::PendingInbound(_) => false,
+            WalletTransaction::PendingOutbound(_) => false,
+            WalletTransaction::Completed(tx) => tx.status.is_mined(),
+        }
+    }
+
+    pub fn status(&self) -> TransactionStatus {
+        match self {
+            WalletTransaction::PendingInbound(tx) => tx.status,
+            WalletTransaction::PendingOutbound(tx) => tx.status,
+            WalletTransaction::Completed(tx) => tx.status,
+        }
+    }
 }
 
 impl From<WalletTransaction> for CompletedTransaction {

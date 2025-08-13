@@ -21,9 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! DHT RPC interface defining RPC methods for peer sharing.
-
-#[cfg(test)]
-mod mock;
 #[cfg(test)]
 mod test;
 
