@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-pre.1](https://github.com/tari-project/tari/compare/v5.0.0-pre.0...v5.0.0-pre.1) (2025-08-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* add c29 pow algorithm (#7398)
+
+### Features
+
+* add c29 pow algorithm ([#7398](https://github.com/tari-project/tari/issues/7398)) ([86286c7](https://github.com/tari-project/tari/commit/86286c7503829ac92a1e5d60e2d622fadc895f29))
+* add migration to verify and fix embedded accumulated difficulty error ([#7387](https://github.com/tari-project/tari/issues/7387)) ([db09620](https://github.com/tari-project/tari/commit/db0962074349872cc4d60a0ff5c97c61a15a0f30))
+* add network discovery timeouts ([#7377](https://github.com/tari-project/tari/issues/7377)) ([5a711cc](https://github.com/tari-project/tari/commit/5a711ccf8f982df8133ec461d9b35450c1b31a54))
+* add seed peer exclusion to network discovery ([#7395](https://github.com/tari-project/tari/issues/7395)) ([2a2563a](https://github.com/tari-project/tari/commit/2a2563acc1a960fc316edd5c0f93b33c7dc25f6d))
+* add seed peer exclusion to the proactive dialer ([#7396](https://github.com/tari-project/tari/issues/7396)) ([6ed21d9](https://github.com/tari-project/tari/commit/6ed21d933df9ac0810aa9b9987a59621925674a1))
+* enhance wallet connectivity monitoring ([#7372](https://github.com/tari-project/tari/issues/7372)) ([bb0b2fa](https://github.com/tari-project/tari/commit/bb0b2fa951c7df28775455b8d088082879d44839))
+* extend cancel transaction wallet grpc call to also cancel pending one sided transactions ([#7384](https://github.com/tari-project/tari/issues/7384)) ([e955456](https://github.com/tari-project/tari/commit/e955456138ab7724f983af1ba1a1fd8e5dd25e78))
+* improve scanning performance ([#7371](https://github.com/tari-project/tari/issues/7371)) ([8809224](https://github.com/tari-project/tari/commit/8809224b689325a45fe0c645517a74ab71695e85))
+* only update state if changed ([#7362](https://github.com/tari-project/tari/issues/7362)) ([e55ec08](https://github.com/tari-project/tari/commit/e55ec08bea5bb114ab3e3838097cdb689bf6ac32))
+* prevent sync peers sending local addresses ([#7359](https://github.com/tari-project/tari/issues/7359)) ([eb87fc2](https://github.com/tari-project/tari/commit/eb87fc2171db872db2609bb5b97e975316c4804a))
+* refresh the peer_db ([#7382](https://github.com/tari-project/tari/issues/7382)) ([fb29b4d](https://github.com/tari-project/tari/commit/fb29b4d0323af861866e4da81369062a7c299217))
+* remove index tracking from commitment mask index ([#7373](https://github.com/tari-project/tari/issues/7373)) ([5c4757c](https://github.com/tari-project/tari/commit/5c4757c96d9679cfde36ba6507d129eb9dc1ae68))
+
+
+### Bug Fixes
+
+* ci integration tests workflow ([#7389](https://github.com/tari-project/tari/issues/7389)) ([b27dab3](https://github.com/tari-project/tari/commit/b27dab3a73e2c89bd90e765d23e1361244149781))
+* corruption of peer db when updating peers ([#7374](https://github.com/tari-project/tari/issues/7374)) ([d6d9287](https://github.com/tari-project/tari/commit/d6d9287a11453e1472f5b5ab6ec2a709ceddeb43))
+* memo naming from payment_id ([#7385](https://github.com/tari-project/tari/issues/7385)) ([d219520](https://github.com/tari-project/tari/commit/d219520b4835f3c926eef730881bf273a634ba81))
+* pagination for all completed transactions gRPC method ([#7366](https://github.com/tari-project/tari/issues/7366)) ([8b3bb29](https://github.com/tari-project/tari/commit/8b3bb29aaf4a9d50b430b534fbd29e9732a85652))
+* transaction cancellation ([#7402](https://github.com/tari-project/tari/issues/7402)) ([c1bb4c4](https://github.com/tari-project/tari/commit/c1bb4c421c2628f5d8f4a3f302fd2fc673427de4))
+
 ### [5.0.0-pre.0](https://github.com/tari-project/tari/compare/v4.10.0-pre.0...v5.0.0-pre.0) (2025-07-23)
 
 ### ⚠ BREAKING CHANGES
