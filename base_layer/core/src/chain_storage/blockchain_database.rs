@@ -2599,7 +2599,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     txn.insert_orphan(chain_block.to_arc_block());
 
-    txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
+    txn.set_accumulated_data_for_orphan(chain_block.header().version, chain_block.accumulated_data().clone());
     db.write(txn)?;
     let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
     let mut txn = DbTransaction::new();
@@ -2686,7 +2686,10 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 
                 // Set/overwrite accumulated data for this orphan block
                 let mut txn = DbTransaction::new();
-                txn.set_accumulated_data_for_orphan(chain_header.accumulated_data().clone());
+                txn.set_accumulated_data_for_orphan(
+                    chain_header.header().version,
+                    chain_header.accumulated_data().clone(),
+                );
                 db.write(txn)?;
                 let children =
                     find_orphan_descendant_tips_of(db, chain_header, prev_timestamps_for_children, validator)?;

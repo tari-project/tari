@@ -115,6 +115,7 @@ impl ConnectivityManager {
             uptime: Some(Instant::now()),
             allow_list: vec![],
             proactive_dialer,
+            seeds: vec![],
         }
         .spawn()
     }
@@ -173,6 +174,7 @@ struct ConnectivityManagerActor {
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
     proactive_dialer: ProactiveDialer,
+    seeds: Vec<NodeId>,
 }
 
 impl ConnectivityManagerActor {
@@ -196,6 +198,18 @@ impl ConnectivityManagerActor {
         connection_pool_timer.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         self.publish_event(ConnectivityEvent::ConnectivityStateInitialized);
+
+        self.seeds = self
+            .peer_manager
+            .get_seed_peers()
+            .await
+            .unwrap_or({
+                warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
+                vec![]
+            })
+            .iter()
+            .map(|s| s.node_id.clone())
+            .collect();
 
         loop {
             tokio::select! {
@@ -1216,7 +1230,7 @@ impl ConnectivityManagerActor {
         // Execute proactive dialing logic
         match self
             .proactive_dialer
-            .execute_proactive_dialing(&self.pool, &self.connection_stats, task_id)
+            .execute_proactive_dialing(&self.pool, &self.connection_stats, &self.seeds, task_id)
             .await
         {
             Ok(dialed_count) => {

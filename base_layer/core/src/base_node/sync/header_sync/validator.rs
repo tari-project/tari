@@ -322,14 +322,11 @@ mod test {
         let mut tip = db.fetch_tip_header().await.unwrap();
         for _ in 0..n {
             let mut header = BlockHeader::from_previous(tip.header());
-            header.version = cm.consensus_constants(header.height).blockchain_version();
+            header.version = cm.consensus_constants(header.height).blockchain_version().into();
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
             header.output_smt_size += 1;
-            let acc_data = BlockHeaderAccumulatedData {
-                hash: header.hash(),
-                ..Default::default()
-            };
+            let acc_data = BlockHeaderAccumulatedData::genesis(header.hash(), header.total_kernel_offset.clone());
 
             let chain_header = ChainHeader::try_construct(header.clone(), acc_data.clone()).unwrap();
             db.insert_valid_headers(vec![chain_header.clone()]).await.unwrap();

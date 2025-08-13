@@ -368,6 +368,8 @@ impl ConsensusManagerBuilder {
                     .by_monero_randomx_difficulty()
                     .then()
                     .by_sha3x_difficulty()
+                    .then()
+                    .by_cuckaroo_cycle_difficulty()
                     .build()
             }),
         };

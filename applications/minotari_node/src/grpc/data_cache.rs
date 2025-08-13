@@ -96,6 +96,15 @@ impl DataCache {
         }
     }
 
+    pub async fn get_cuckaroo_new_block_template(&self, current_tip: &FixedHash) -> Option<NewBlockTemplate> {
+        let res = &self.inner_data_cache.read().await.cuckaroo_new_block_template;
+        if res.tip == *current_tip {
+            Some(res.data.clone())
+        } else {
+            None
+        }
+    }
+
     pub async fn get_sha3x_new_block_template(&self, current_tip: &FixedHash) -> Option<NewBlockTemplate> {
         let res = &self.inner_data_cache.read().await.sha3x_new_block_template;
         if res.tip == *current_tip {
@@ -127,6 +136,11 @@ impl DataCache {
         self.inner_data_cache.write().await.sha3x_new_block_template =
             DataCacheData::new(new_block_template, current_tip);
     }
+
+    pub async fn set_cuckaroo_new_block_template(&self, new_block_template: NewBlockTemplate, current_tip: FixedHash) {
+        self.inner_data_cache.write().await.cuckaroo_new_block_template =
+            DataCacheData::new(new_block_template, current_tip);
+    }
 }
 
 struct InnerDataCache {
@@ -134,6 +148,7 @@ struct InnerDataCache {
     pub tari_randomx_estimated_hash_rate: DataCacheData<u64>,
     pub sha3x_estimated_hash_rate: DataCacheData<u64>,
     pub sha3x_new_block_template: DataCacheData<NewBlockTemplate>,
+    pub cuckaroo_new_block_template: DataCacheData<NewBlockTemplate>,
     pub monero_randomx_new_block_template: DataCacheData<NewBlockTemplate>,
     pub tari_randomx_new_block_template: DataCacheData<NewBlockTemplate>,
 }
@@ -145,6 +160,7 @@ impl Default for InnerDataCache {
             sha3x_estimated_hash_rate: DataCacheData::new_empty(0),
             sha3x_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
             monero_randomx_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
+            cuckaroo_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
             tari_randomx_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
         }
     }

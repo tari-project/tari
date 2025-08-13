@@ -122,7 +122,7 @@ async fn genesis_template(
     consensus_constants: &ConsensusConstants,
     key_manager: &MemoryDbKeyManager,
 ) -> (NewBlockTemplate, WalletOutput) {
-    let header = BlockHeader::new(consensus_constants.blockchain_version());
+    let header = BlockHeader::new(consensus_constants.blockchain_version().into());
     let (utxo, kernel, output) = create_coinbase(
         coinbase_value,
         consensus_constants.coinbase_min_maturity(),
@@ -206,6 +206,7 @@ pub async fn create_genesis_block_with_coinbase_value(
             accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
         .unwrap(),
@@ -248,6 +249,7 @@ pub async fn create_genesis_block_with_utxos(
             accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
             accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
             target_difficulty: Difficulty::min(),
         })
         .unwrap(),
@@ -265,7 +267,7 @@ pub async fn chain_block(
     key_manager: &MemoryDbKeyManager,
 ) -> NewBlockTemplate {
     let mut header = BlockHeader::from_previous(&prev_block.header);
-    header.version = consensus.consensus_constants(header.height).blockchain_version();
+    header.version = consensus.consensus_constants(header.height).blockchain_version().into();
     let height = header.height;
     let reward = consensus.get_block_reward_at(height);
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -298,7 +300,7 @@ pub fn chain_block_with_coinbase(
     achieved_difficulty: Option<Difficulty>,
 ) -> NewBlockTemplate {
     let mut header = BlockHeader::from_previous(prev_block.header());
-    header.version = consensus.consensus_constants(header.height).blockchain_version();
+    header.version = consensus.consensus_constants(header.height).blockchain_version().into();
     let height = header.height;
     NewBlockTemplate::from_block(
         header
@@ -337,7 +339,8 @@ pub async fn chain_block_with_new_coinbase(
     header.height = height;
     header.version = consensus_manager
         .consensus_constants(header.height)
-        .blockchain_version();
+        .blockchain_version()
+        .into();
     let reward = consensus_manager.get_block_reward_at(header.height);
     let template = NewBlockTemplate::from_block(
         header

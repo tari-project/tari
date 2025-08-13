@@ -68,6 +68,18 @@ pub fn target_difficulty_tari_randomx() -> &'static IntGauge {
     &METER
 }
 
+pub fn target_difficulty_cuckaroo() -> &'static IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "base_node::blockchain::target_difficulty_cuckaroo",
+            "The current miner target difficulty for the cuckaroo PoW algo",
+        )
+        .unwrap()
+    });
+
+    &METER
+}
+
 pub fn reorg(fork_height: u64, num_added: usize, num_removed: usize) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec("base_node::blockchain::reorgs", "Reorg stats", &[

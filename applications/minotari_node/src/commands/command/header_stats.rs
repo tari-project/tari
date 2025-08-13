@@ -89,7 +89,7 @@ impl CommandContext {
         writeln!(
             buff,
             "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
-             Window,Acc.Monero,Acc.Sha3"
+             Window,Acc.Monero,Acc.Sha3, Acc.Rxt, Acc.Cuckaroo"
         )?;
         output.write_all(&buff).await?;
 
@@ -132,14 +132,15 @@ impl CommandContext {
                 )
                 .map_err(Error::msg)?,
             );
-            let acc_sha3 = header.accumulated_data().accumulated_sha3x_difficulty;
-            let acc_monero = header.accumulated_data().accumulated_monero_randomx_difficulty;
-            let acc_tari_rx = header.accumulated_data().accumulated_tari_randomx_difficulty;
+            let acc_sha3 = header.accumulated_data().accumulated_sha3x_difficulty();
+            let acc_monero = header.accumulated_data().accumulated_monero_randomx_difficulty();
+            let acc_tari_rx = header.accumulated_data().accumulated_tari_randomx_difficulty();
+            let acc_cuckaroo = header.accumulated_data().accumulated_cuckaroo_difficulty();
 
             buff.clear();
             writeln!(
                 buff,
-                "{},{},{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{},{}, {}",
                 height,
                 achieved.as_u64(),
                 existing_target_difficulty.as_u64(),
@@ -156,6 +157,7 @@ impl CommandContext {
                 acc_monero,
                 acc_tari_rx,
                 acc_sha3,
+                acc_cuckaroo,
             )?;
             output.write_all(&buff).await?;
 
