@@ -60,7 +60,7 @@ pub fn lmdb_insert_typed<K, V>(
 ) -> Result<(), ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized + Debug,
-    V: Serialize + Debug + ?Sized + DeserializeOwned,
+    V: Serialize + Debug + DeserializeOwned,
 {
     lmdb_insert(txn, &db.db, key, val, db.name)
 }

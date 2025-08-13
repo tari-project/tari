@@ -25,13 +25,6 @@ const SIPHASH_BLOCK_BITS: u64 = 6;
 const SIPHASH_BLOCK_SIZE: u64 = 1 << SIPHASH_BLOCK_BITS;
 const SIPHASH_BLOCK_MASK: u64 = SIPHASH_BLOCK_SIZE - 1;
 
-// helper macro for left rotation
-macro_rules! rotl {
-    ($num:expr, $shift:expr) => {
-        $num = ($num << $shift) | ($num >> (64 - $shift));
-    };
-}
-
 /// Utility function to compute a single siphash 2-4 based on a seed and
 /// a nonce
 pub fn siphash24(v: &[u64; 4], nonce: u64) -> u64 {
@@ -47,13 +40,16 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8, xor_all: bool) -> u64 
     // beginning of the block of hashes
     let nonce0 = nonce & !SIPHASH_BLOCK_MASK;
     let nonce_i = nonce & SIPHASH_BLOCK_MASK;
+    #[allow(clippy::cast_possible_truncation)]
     let mut nonce_hash = vec![0u64; SIPHASH_BLOCK_SIZE as usize];
 
     // repeated hashing over the whole block
     let mut siphash = SipHash24::new(v);
     for i in 0..SIPHASH_BLOCK_SIZE {
         siphash.hash(nonce0 + i, rot_e);
-        nonce_hash[i as usize] = siphash.digest();
+        #[allow(clippy::cast_possible_truncation)]
+        let i_usize = i as usize;
+        nonce_hash[i_usize] = siphash.digest();
     }
     // xor the hash at nonce_i < SIPHASH_BLOCK_MASK with some or all later hashes to force hashing the whole block
     let mut xor: u64 = nonce_hash[nonce_i as usize];
@@ -63,7 +59,9 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8, xor_all: bool) -> u64 
         SIPHASH_BLOCK_MASK
     };
     for i in xor_from..SIPHASH_BLOCK_SIZE {
-        xor ^= nonce_hash[i as usize];
+        #[allow(clippy::cast_possible_truncation)]
+        let i_usize = i as usize;
+        xor ^= nonce_hash[i_usize];
     }
     xor
 }
@@ -108,18 +106,18 @@ impl SipHash24 {
     fn round(&mut self, rot_e: u8) {
         self.0 = self.0.wrapping_add(self.1);
         self.2 = self.2.wrapping_add(self.3);
-        rotl!(self.1, 13);
-        rotl!(self.3, 16);
+        self.1 = self.1.rotate_left(13);
+        self.3 = self.3.rotate_left(16);
         self.1 ^= self.0;
         self.3 ^= self.2;
-        rotl!(self.0, 32);
+        self.0 = self.0.rotate_left(32);
         self.2 = self.2.wrapping_add(self.1);
         self.0 = self.0.wrapping_add(self.3);
-        rotl!(self.1, 17);
-        rotl!(self.3, rot_e);
+        self.1 = self.1.rotate_left(17);
+        self.3 = self.3.rotate_left(rot_e.into());
         self.1 ^= self.2;
         self.3 ^= self.0;
-        rotl!(self.2, 32);
+        self.2 = self.2.rotate_left(32);
     }
 }
 

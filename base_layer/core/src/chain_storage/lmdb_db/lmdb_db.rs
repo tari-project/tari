@@ -228,16 +228,14 @@ use crate::{
 };
 
 type DatabaseRef = Arc<Database<'static>>;
-pub(crate) struct TypedDatabaseRef<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize + ?Sized> {
+pub(crate) struct TypedDatabaseRef<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize> {
     pub db: DatabaseRef,
     _marker_k: std::marker::PhantomData<TKeyType>,
     _marker_v: std::marker::PhantomData<TValueType>,
     pub name: &'static str,
 }
 
-impl<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize + ?Sized>
-    TypedDatabaseRef<TKeyType, TValueType>
-{
+impl<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize> TypedDatabaseRef<TKeyType, TValueType> {
     pub fn new(db: DatabaseRef, name: &'static str) -> Self {
         Self {
             db,
