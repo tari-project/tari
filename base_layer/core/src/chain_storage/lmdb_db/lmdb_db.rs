@@ -4090,34 +4090,38 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             for (height, correct_difficulty) in known_good_difficulties {
                 let txn = db.read_transaction()?;
 
-                let header = db.fetch_chain_header_by_height(height)?;
-                let accum_data = db.fetch_header_accumulated_data_by_height(&txn, height, header.header().version)?;
+                if let Ok(header) = db.fetch_chain_header_by_height(height) {
+                    let accum_data =
+                        db.fetch_header_accumulated_data_by_height(&txn, height, header.header().version)?;
 
-                match accum_data {
-                    Some(accum_data) if accum_data.total_accumulated_difficulty == correct_difficulty => {
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v{}: Block height {} has correct accumulated difficulty",
-                            migrate_from_version, height
-                        );
-                        last_correct_height = height;
-                    },
-                    Some(_) => {
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v{}: Block height {} has incorrect accumulated difficulty",
-                            migrate_from_version, height
-                        );
-                        break;
-                    },
-                    None => {
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v{}: No accumulated difficulty found for block height {}",
-                            migrate_from_version, height
-                        );
-                        break;
-                    },
+                    match accum_data {
+                        Some(accum_data) if accum_data.total_accumulated_difficulty == correct_difficulty => {
+                            info!(
+                                target: LOG_TARGET,
+                                "[MIGRATIONS] v{}: Block height {} has correct accumulated difficulty",
+                                migrate_from_version, height
+                            );
+                            last_correct_height = height;
+                        },
+                        Some(_) => {
+                            info!(
+                                target: LOG_TARGET,
+                                "[MIGRATIONS] v{}: Block height {} has incorrect accumulated difficulty",
+                                migrate_from_version, height
+                            );
+                            break;
+                        },
+                        None => {
+                            info!(
+                                target: LOG_TARGET,
+                                "[MIGRATIONS] v{}: No accumulated difficulty found for block height {}",
+                                migrate_from_version, height
+                            );
+                            break;
+                        },
+                    }
+                } else {
+                    break;
                 }
             }
 
