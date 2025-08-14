@@ -93,9 +93,7 @@ pub fn cuckaroo_result(
         .map_err(|_| CuckarooVerificationError::UnsupportedCycleLength)?;
 
     let packed_size = required_cycle_length.get() * edge_bits as usize;
-    // clippy suggests wrong code that changes behavior
-    #[allow(clippy::manual_div_ceil)]
-    let packed_bytes = (packed_size + 7) / 8;
+    let packed_bytes = packed_size.div_ceil(8);
 
     if pow.is_empty() || pow.len() < 1 + packed_bytes {
         return Err(CuckarooVerificationError::PowDataTooShort);
@@ -179,9 +177,7 @@ pub fn cuckaroo_result(
 #[cfg(test)]
 #[allow(clippy::indexing_slicing)]
 fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
-    // clippy suggests wrong code that changes behavior
-    #[allow(clippy::manual_div_ceil)]
-    let mut target = vec![0u8; (uncompressed.len() * bit_width as usize + 7) / 8];
+    let mut target = vec![0u8; (uncompressed.len() * bit_width as usize).div_ceil(8)];
     let mut compressed = target.as_mut_slice();
     let mut mini_buffer = 0u64;
     let mut remaining = 64;
