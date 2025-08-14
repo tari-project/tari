@@ -153,7 +153,6 @@ use crate::{
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
-        blockchain_database::rewind_to_height,
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
@@ -228,16 +227,14 @@ use crate::{
 };
 
 type DatabaseRef = Arc<Database<'static>>;
-pub(crate) struct TypedDatabaseRef<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize + ?Sized> {
+pub(crate) struct TypedDatabaseRef<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize> {
     pub db: DatabaseRef,
     _marker_k: std::marker::PhantomData<TKeyType>,
     _marker_v: std::marker::PhantomData<TValueType>,
     pub name: &'static str,
 }
 
-impl<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize + ?Sized>
-    TypedDatabaseRef<TKeyType, TValueType>
-{
+impl<TKeyType: AsLmdbBytes + ?Sized, TValueType: DeserializeOwned + Serialize> TypedDatabaseRef<TKeyType, TValueType> {
     pub fn new(db: DatabaseRef, name: &'static str) -> Self {
         Self {
             db,
@@ -2945,6 +2942,21 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    // Returns the accumulated data rebuild status.
+    fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+        let txn = self.read_transaction()?;
+
+        let val: Option<MetadataValue> = lmdb_get(
+            &txn,
+            &self.metadata_db,
+            &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+        )?;
+        match val {
+            Some(MetadataValue::AccumulatedDataRebuildStatus(status)) => Ok(status),
+            _ => Ok(AccumulatedDataRebuildStatus::default()),
+        }
+    }
+
     // Builds the payref indexes for a given block height, with stats.
     fn build_payref_indexes_for_height(
         &self,
@@ -2998,6 +3010,60 @@ impl BlockchainBackend for LMDBDatabase {
         if height % 50 == 0 {
             self.update_stats_progress(height);
         }
+
+        write_txn.commit()?;
+
+        Ok(status)
+    }
+
+    fn update_accumulated_difficulty(
+        &self,
+        height: u64,
+        header_accumulated_data: BlockHeaderAccumulatedData,
+        last_chain_header: ChainHeader,
+    ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+        let header = self.fetch_chain_header_by_height(height)?;
+        let block_version =
+            BlockVersion::from_u16(header.header().version).ok_or_else(|| ChainStorageError::InvalidArguments {
+                message: format!("Invalid block version: {}", header.header().version),
+                func: "update_accumulated_difficulty",
+                arg: "block_version",
+            })?;
+
+        match block_version {
+            BlockVersion::V0 | BlockVersion::V1 => {
+                lmdb_replace(
+                    &write_txn,
+                    &self.header_accumulated_data_db.db,
+                    &height,
+                    &LmdbRowBlockHeaderAccumulatedDataV1::from(&header_accumulated_data),
+                    None,
+                )?;
+            },
+            BlockVersion::V2 => {
+                lmdb_replace(
+                    &write_txn,
+                    &self.header_accumulated_data_v2_db.db,
+                    &height,
+                    &LmdbRowBlockHeaderAccumulatedDataV2::from(&header_accumulated_data),
+                    None,
+                )?;
+            },
+        }
+
+        // Update the status in the metadata database
+        let status = AccumulatedDataRebuildStatus {
+            is_rebuilt: height == last_chain_header.height(),
+            last_rebuild_height: Some(height),
+        };
+        lmdb_replace(
+            &write_txn,
+            &self.metadata_db,
+            &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+            &MetadataValue::AccumulatedDataRebuildStatus(status.clone()),
+            None,
+        )?;
 
         write_txn.commit()?;
 
@@ -3670,6 +3736,7 @@ pub enum MetadataKey {
     BestBlockTimestamp,
     MigrationVersion,
     PayrefRebuildStatus,
+    AccumulatedDataRebuildStatus,
 }
 
 impl MetadataKey {
@@ -3691,6 +3758,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::BestBlockTimestamp => write!(f, "Chain tip block timestamp"),
             MetadataKey::MigrationVersion => write!(f, "Migration version"),
             MetadataKey::PayrefRebuildStatus => write!(f, "Payref bebuild status"),
+            MetadataKey::AccumulatedDataRebuildStatus => write!(f, "Accumulated data rebuild status"),
         }
     }
 }
@@ -3707,6 +3775,16 @@ pub struct PayrefRebuildStatus {
     pub metadata_at_start: Option<ChainMetadata>,
 }
 
+/// Accumulated difficulty rebuild status - for new base nodes or once rebuilt, this will be set to true
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+pub struct AccumulatedDataRebuildStatus {
+    /// Whether accumulated data has been rebuilt fully - it only need to be rebuilt once
+    /// and up to the current chain height. This will automatically be added to new blocks.
+    pub is_rebuilt: bool,
+    /// The height of the block at which the last rebuild was done
+    pub last_rebuild_height: Option<u64>,
+}
+
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum MetadataValue {
@@ -3719,6 +3797,7 @@ pub enum MetadataValue {
     BestBlockTimestamp(u64),
     MigrationVersion(u64),
     PayrefRebuildStatus(PayrefRebuildStatus),
+    AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus),
 }
 
 impl fmt::Display for MetadataValue {
@@ -3735,13 +3814,16 @@ impl fmt::Display for MetadataValue {
             MetadataValue::PayrefRebuildStatus(status) => {
                 write!(f, "Payref indexes has been rebuilt - {}", status.is_rebuilt)
             },
+            MetadataValue::AccumulatedDataRebuildStatus(status) => {
+                write!(f, "Accumulated data has been rebuilt - {}", status.is_rebuilt)
+            },
         }
     }
 }
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 5;
+    const MIGRATION_VERSION: u64 = 6;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -3890,52 +3972,14 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             txn.commit()?;
         }
 
-        // MIGRATION: Total accumulated difficulty migration - blockchain rewind to last known good accumulated
-        // difficulty
+        // MIGRATION: Total accumulated difficulty migration - will be done in v5
         if migrate_from_version == 1 {
-            let known_good_difficulties = get_correct_accumulated_difficulty();
-            if known_good_difficulties.is_empty() {
-                info!(
-                    target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: No migration to perform for version network",
-                    migrate_from_version
-                );
-                continue;
-            }
-            let mut last_correct_height = 0;
-            for (height, correct_difficulty) in known_good_difficulties {
-                let txn = db.read_transaction()?;
-                let accum_data: Option<LmdbRowBlockHeaderAccumulatedDataV1> =
-                    lmdb_get(&txn, &db.header_accumulated_data_db.db, &height)?;
-                if let Some(accum_data) = accum_data {
-                    if accum_data.total_accumulated_difficulty == correct_difficulty {
-                        info!(
-                            target: LOG_TARGET,
-                            "[MIGRATIONS] v{}: Block height {} already has correct accumulated difficulty",
-                            migrate_from_version, height
-                        );
-                        last_correct_height = height;
-                    }
-                } else {
-                    info!(
-                        target: LOG_TARGET,
-                        "[MIGRATIONS] v{}: No accumulated difficulty found for block height {}",
-                        migrate_from_version, height
-                    );
-                    break;
-                }
-            }
-            if last_correct_height == 0 {
-                // this will happen only happen if the db is below the fork height of the RxT fork
-                info!(
-                    target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: No migration to perform for version network",
-                    migrate_from_version
-                );
-                continue;
-            }
-            // lets rewind to last known good accumulated difficulty so the db can be correctly calculated again
-            rewind_to_height(db, last_correct_height)?;
+            info!(
+                target: LOG_TARGET,
+                "[MIGRATIONS] v{}: Skipping migration; this will run in v5",
+                migrate_from_version
+            );
+            continue;
         }
 
         // MIGRATION: Add payref index, rebuild payref index to recover deleted payrefs
@@ -4003,7 +4047,105 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             info!(target: LOG_TARGET, "[MIGRATIONS] v{}: PayRef migration management completed", migrate_from_version);
         }
 
-        // Lets update the migration version
+        // MIGRATION: Total accumulated difficulty migration - re-calculate accumulated difficulties from the last known
+        // good accumulated difficulty
+        if migrate_from_version == 5 {
+            let known_good_difficulties = get_correct_accumulated_difficulty();
+            let current_height = {
+                let txn = db.read_transaction()?;
+                // New blockchains will not have a chain height, so we default to 0
+                fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
+            };
+
+            if known_good_difficulties.is_empty() || current_height < known_good_difficulties[0].0 {
+                // This will happen only happen if the db is below the fork height of the RxT fork
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{}: No migration to perform for this network version",
+                    migrate_from_version
+                );
+
+                info!(
+                    target: LOG_TARGET,
+                    "[MIGRATIONS] v{}: Setting accumulated data rebuild status as rebuilt for new blockchains",
+                    migrate_from_version
+                );
+                let write_txn = db.write_transaction()?;
+                lmdb_replace(
+                    &write_txn,
+                    &db.metadata_db,
+                    &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                    &MetadataValue::AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus {
+                        is_rebuilt: true,
+                        last_rebuild_height: None,
+                    }),
+                    None,
+                )?;
+                write_txn.commit()?;
+
+                continue;
+            }
+
+            let mut last_correct_height = known_good_difficulties[0].0.saturating_sub(1);
+            for (height, correct_difficulty) in known_good_difficulties {
+                let txn = db.read_transaction()?;
+
+                if let Ok(header) = db.fetch_chain_header_by_height(height) {
+                    let accum_data =
+                        db.fetch_header_accumulated_data_by_height(&txn, height, header.header().version)?;
+
+                    match accum_data {
+                        Some(accum_data) if accum_data.total_accumulated_difficulty == correct_difficulty => {
+                            info!(
+                                target: LOG_TARGET,
+                                "[MIGRATIONS] v{}: Block height {} has correct accumulated difficulty",
+                                migrate_from_version, height
+                            );
+                            last_correct_height = height;
+                        },
+                        Some(_) => {
+                            info!(
+                                target: LOG_TARGET,
+                                "[MIGRATIONS] v{}: Block height {} has incorrect accumulated difficulty",
+                                migrate_from_version, height
+                            );
+                            break;
+                        },
+                        None => {
+                            info!(
+                                target: LOG_TARGET,
+                                "[MIGRATIONS] v{}: No accumulated difficulty found for block height {}",
+                                migrate_from_version, height
+                            );
+                            break;
+                        },
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            let status = AccumulatedDataRebuildStatus {
+                is_rebuilt: false,
+                last_rebuild_height: Some(last_correct_height),
+            };
+            info!(
+                target: LOG_TARGET,
+                "[MIGRATIONS] v{}: Set accumulated difficulty rebuild status to enable the background task to run: {:?}",
+                migrate_from_version, status,
+            );
+            let write_txn = db.write_transaction()?;
+            lmdb_replace(
+                &write_txn,
+                &db.metadata_db,
+                &MetadataKey::AccumulatedDataRebuildStatus.as_u32(),
+                &MetadataValue::AccumulatedDataRebuildStatus(status),
+                None,
+            )?;
+            write_txn.commit()?;
+        }
+
+        // Let's update the migration version
         {
             let migrated_to_version = migrate_from_version + 1;
             let txn = db.write_transaction()?;
@@ -4064,6 +4206,7 @@ pub struct OldChainTipData {
     pub total_accumulated_difficulty: U256,
 }
 
+#[allow(clippy::too_many_lines)]
 fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
     #[cfg(tari_target_network_mainnet)]
     {
@@ -4092,6 +4235,58 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
                 20000,
                 U512::from_dec_str("678404434598953994059276298108149917133080906779800").expect("should not fail"),
             ),
+            (
+                25000,
+                U512::from_dec_str("2848714208117432014041537974181019255249272708543168").expect("should not fail"),
+            ),
+            (
+                30000,
+                U512::from_dec_str("7445352534331511537751978092464091639927366287858786").expect("should not fail"),
+            ),
+            (
+                35000,
+                U512::from_dec_str("14575494757878298872922138985541725762118585153680928").expect("should not fail"),
+            ),
+            (
+                40000,
+                U512::from_dec_str("24732016131529262416409832837626439412726761478440678").expect("should not fail"),
+            ),
+            (
+                45000,
+                U512::from_dec_str("37645722902153444907674044881609534165391192997301184").expect("should not fail"),
+            ),
+            (
+                50000,
+                U512::from_dec_str("53629989244920642656635842337207001577966619119804840").expect("should not fail"),
+            ),
+            (
+                55000,
+                U512::from_dec_str("73553231411992126692611941944278939908854881313823308").expect("should not fail"),
+            ),
+            (
+                60000,
+                U512::from_dec_str("96066111969358704467018539111557064475512637546744500").expect("should not fail"),
+            ),
+            (
+                65000,
+                U512::from_dec_str("122329204015869322552594573890763356522390865852518912").expect("should not fail"),
+            ),
+            (
+                66000,
+                U512::from_dec_str("127798908941293764804359619945328469097858898047617420").expect("should not fail"),
+            ),
+            (
+                67000,
+                U512::from_dec_str("133125643547966461551777199550825388308048635582895712").expect("should not fail"),
+            ),
+            (
+                68000,
+                U512::from_dec_str("139045167411840330538632079640917550928226767744777496").expect("should not fail"),
+            ),
+            (
+                69000,
+                U512::from_dec_str("145071463074257999779272218665263985719041319673857255").expect("should not fail"),
+            ),
         ]
     }
     #[cfg(tari_target_network_nextnet)]
@@ -4108,6 +4303,14 @@ fn get_correct_accumulated_difficulty() -> Vec<(u64, U512)> {
             (
                 3000,
                 U512::from_dec_str("2261524423095838119669981829692352").expect("should not fail"),
+            ),
+            (
+                4000,
+                U512::from_dec_str("11229058627725787145292215785505760").expect("should not fail"),
+            ),
+            (
+                4800,
+                U512::from_dec_str("49610895958773428108251250718910840").expect("should not fail"),
             ),
         ]
     }

@@ -741,6 +741,7 @@ impl ConsensusConstants {
         consensus_constants
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
@@ -847,6 +848,7 @@ impl ConsensusConstants {
         consensus_constants
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
