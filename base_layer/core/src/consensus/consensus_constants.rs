@@ -653,7 +653,7 @@ impl ConsensusConstants {
         con2.proof_of_work = algos;
 
         let mut con3 = con2.clone();
-        con3.effective_from_height = 80_000;
+        con3.effective_from_height = 82_000;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
