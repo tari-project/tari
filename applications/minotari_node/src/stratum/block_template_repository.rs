@@ -51,6 +51,7 @@ pub struct BlockTemplate {
     pub height: u64,
     pub target: u64,
     pub seed_hash: Option<Vec<u8>>,
+    pub extra_nonce: Option<u64>,
 }
 #[async_trait::async_trait]
 pub trait BlockTemplateRepository {
@@ -308,6 +309,7 @@ impl DefaultBlockTemplateRepository {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXM => new_block.header.merge_mining_hash().to_vec(),
+            PowAlgorithm::Cuckaroo => new_block.header.mining_hash().to_vec(),
         };
         let vm_key = *handler
             .get_header(tari_rx_vm_key_height(new_block.header.height))
@@ -344,9 +346,13 @@ impl BlockTemplateRepository for DefaultBlockTemplateRepository {
                 blob: mining_hash,
                 height: block.header.height,
                 target: miner_data.target_difficulty,
+                extra_nonce: match algo {
+                    PowAlgorithm::RandomXT | PowAlgorithm::Sha3x | PowAlgorithm::RandomXM => None,
+                    PowAlgorithm::Cuckaroo => Some(block.header.nonce),
+                },
                 seed_hash: match algo {
                     PowAlgorithm::RandomXT => Some(vm_key),
-                    PowAlgorithm::Sha3x | PowAlgorithm::RandomXM => None,
+                    PowAlgorithm::Sha3x | PowAlgorithm::RandomXM | PowAlgorithm::Cuckaroo => None,
                 },
             })
         } else {

@@ -97,7 +97,6 @@ pub fn tari_randomx_difficulty(
         pow_bytes.resize(33, 0)
     }
     blob.extend_from_slice(&pow_bytes[0..33]);
-    dbg!(&blob);
     get_random_x_difficulty(&blob, &vm).map(|(diff, _)| diff)
 }
 
