@@ -377,6 +377,7 @@ impl DhtNetworkDiscovery {
             (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
             (State::Ready(_), StateEvent::Idle) => State::Waiting(config.idle_period.into()),
             (State::OnConnect(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
+            (State::Waiting(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())), // <-- ADDED
             (_, StateEvent::Shutdown) => State::Shutdown,
             (_state, StateEvent::Errored(err)) => {
                 error!(
