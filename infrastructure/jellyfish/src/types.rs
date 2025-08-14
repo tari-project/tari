@@ -624,9 +624,6 @@ impl NibblePath {
 
     /// Get the i-th nibble.
     pub fn get_nibble(&self, i: usize) -> Option<Nibble> {
-        if i < self.num_nibbles {
-            return None;
-        }
         Some(Nibble::from(
             (self.bytes.get(i / 2)? >> (if i % 2 == 1 { 0 } else { 4 })) & 0xF,
         ))
