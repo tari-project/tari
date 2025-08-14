@@ -178,6 +178,9 @@ where PK: ByteArray
             None => Err("Out of bounds".to_string()),
             Some(val) => match *val {
                 MANAGED_KEY_BRANCH => {
+                    if parts.len() != 3 {
+                        return Err("Wrong managed format".to_string());
+                    }
                     let index = parts
                         .get(2)
                         .ok_or("Out of bounds".to_string())?
@@ -189,6 +192,9 @@ where PK: ByteArray
                     })
                 },
                 IMPORTED_KEY_BRANCH => {
+                    if parts.len() != 2 {
+                        return Err("Wrong imported format".to_string());
+                    }
                     let key = PK::from_hex(parts.get(1).ok_or("Out of bounds".to_string())?)
                         .map_err(|_| "Invalid public key".to_string())?;
                     Ok(KeyId::Imported { key })

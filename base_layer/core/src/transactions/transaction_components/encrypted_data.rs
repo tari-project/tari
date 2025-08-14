@@ -93,15 +93,15 @@ impl EncryptedData {
         bytes
             .get_mut(..SIZE_VALUE)
             .expect("Already checked")
-            .clone_from_slice(value.as_u64().to_le_bytes().as_ref());
+            .copy_from_slice(value.as_u64().to_le_bytes().as_ref());
         bytes
             .get_mut(SIZE_VALUE..SIZE_VALUE + SIZE_MASK)
             .expect("Already checked")
-            .clone_from_slice(mask.as_bytes());
+            .copy_from_slice(mask.as_bytes());
         bytes
             .get_mut(SIZE_VALUE + SIZE_MASK..)
             .expect("Already checked")
-            .clone_from_slice(&memo.to_bytes());
+            .copy_from_slice(&memo.to_bytes());
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -115,15 +115,13 @@ impl EncryptedData {
 
         // Put everything together: nonce, ciphertext, tag
         let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + memo.get_size()];
-        data.get_mut(..SIZE_TAG)
-            .expect("Already checked")
-            .clone_from_slice(&tag);
+        data.get_mut(..SIZE_TAG).expect("Already checked").copy_from_slice(&tag);
         data.get_mut(SIZE_TAG..SIZE_TAG + SIZE_NONCE)
             .expect("Already checked")
-            .clone_from_slice(&nonce);
+            .copy_from_slice(&nonce);
         data.get_mut(SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + memo.get_size())
             .expect("Already checked")
-            .clone_from_slice(bytes.as_slice());
+            .copy_from_slice(bytes.as_slice());
         Ok(Self {
             data: MaxSizeBytes::try_from(data)
                 .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))?,
@@ -159,7 +157,7 @@ impl EncryptedData {
                 .saturating_sub(SIZE_TAG)
                 .saturating_sub(SIZE_NONCE)
         ]);
-        bytes.clone_from_slice(
+        bytes.copy_from_slice(
             encrypted_data
                 .as_bytes()
                 .get(SIZE_TAG + SIZE_NONCE..)
@@ -175,7 +173,7 @@ impl EncryptedData {
 
         // Decode the value and mask
         let mut value_bytes = [0u8; SIZE_VALUE];
-        value_bytes.clone_from_slice(
+        value_bytes.copy_from_slice(
             bytes
                 .get(0..SIZE_VALUE)
                 .ok_or(EncryptedDataError::IncorrectLength("Value too short".to_string()))?,
@@ -328,9 +326,9 @@ mod test {
         let amount = MicroMinotari::from(value);
         let encrypted_data = {
             let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + SIZE_VALUE]);
-            bytes[..SIZE_VALUE].clone_from_slice(value.to_le_bytes().as_ref());
-            bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
-            bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&id.to_le_bytes().to_vec());
+            bytes[..SIZE_VALUE].copy_from_slice(value.to_le_bytes().as_ref());
+            bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].copy_from_slice(mask.as_bytes());
+            bytes[SIZE_VALUE + SIZE_MASK..].copy_from_slice(&id.to_le_bytes().to_vec());
 
             // Produce a secure random nonce
             let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -346,10 +344,10 @@ mod test {
 
             // Put everything together: nonce, ciphertext, tag
             let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + SIZE_VALUE];
-            data[..SIZE_TAG].clone_from_slice(&tag);
-            data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
+            data[..SIZE_TAG].copy_from_slice(&tag);
+            data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].copy_from_slice(&nonce);
             data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_VALUE]
-                .clone_from_slice(bytes.as_slice());
+                .copy_from_slice(bytes.as_slice());
             EncryptedData {
                 data: MaxSizeBytes::try_from(data)
                     .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))
