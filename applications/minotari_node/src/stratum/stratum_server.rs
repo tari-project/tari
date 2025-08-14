@@ -133,173 +133,231 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
         loop {
             select! {
-                            _ = shutdown_signal.wait() => {
-                                info!( "Shutting down Stratum server");
-                                break;
-                            },
-                            // Handle incoming connections and jobs here
-                            res = listener.accept() => {
-                                match res {
-                                    Ok((stream, _)) => {
-                                        // Handle the connection with the job handler
-                                        info!(target: LOG_TARGET, "Accepted connection from {}", stream.peer_addr()?);
-                                        let handler = self.hander.clone();
-                                        // self.hander.handle_connection(stream).await?;
-                                        tokio::spawn(async move {
-                                            let (reader, mut writer) = stream.into_split();
-                                            let mut reader = BufReader::new(reader).lines();
-                                            let mut subscription_ids = vec![];
+                                        _ = shutdown_signal.wait() => {
+                                            info!( "Shutting down Stratum server");
+                                            break;
+                                        },
+                                        // Handle incoming connections and jobs here
+                                        res = listener.accept() => {
+                                            match res {
+                                                Ok((stream, _)) => {
+                                                    // Handle the connection with the job handler
+                                                    info!(target: LOG_TARGET, "Accepted connection from {}", stream.peer_addr()?);
+                                                    let handler = self.hander.clone();
+                                                    // self.hander.handle_connection(stream).await?;
+                                                    tokio::spawn(async move {
+                                                        let (reader, mut writer) = stream.into_split();
+                                                        let mut reader = BufReader::new(reader).lines();
+                                                        let mut subscription_ids = vec![];
+                                                        let mut current_subscription_id: Option<String> =None;
 
 
-                                            while let Ok(Some(line)) = reader.next_line().await {
-                                                // if let Ok(msg): Result<Value, _> = serde_json::from_str(&line) {
-                                                    // handle 'login', 'submit', etc.
-                                                    debug!(target: LOG_TARGET, "Received line: {}", line);
-                                                    match TAdapter::try_convert(line) {
-                                                        Ok(request) => {
-                                                            let id = request.id().to_string();
+                                                        while let Ok(Some(line)) = reader.next_line().await {
+                                                            // if let Ok(msg): Result<Value, _> = serde_json::from_str(&line) {
+                                                                // handle 'login', 'submit', etc.
+                                                                debug!(target: LOG_TARGET, "Received line: {}", line);
+                                                                match TAdapter::try_convert(line) {
+                                                                    Ok(request) => {
+                                                                        let id = request.id().to_string();
 
-                                                            info!(target:LOG_TARGET, "Parsed request with id: {}", id);
+                                                                        info!(target:LOG_TARGET, "Parsed request with id: {}", id);
 
-                                                            // Handle the request based on its type
-                                                            match request {
-                                                                StratumRequest::Login { id, login, pass, agent, algo } => {
+                                                                        // Handle the request based on its type
+                                                                        match request {
+                                                                            StratumRequest::Login { id, login, pass, agent, algo } => {
 
-                                                                    // let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
-                                                                    let login_parts = login.split("=").collect::<Vec<_>>();
-                                                                    let login_address = login_parts[0].to_string();
-                                                                    let login_difficulty = match login_parts.len() {
-                                                                        2 => {
-                                                                            if login_parts[1].ends_with("M") {
-                                                                                let difficulty = login_parts[1].replace("M", "");
-                                                                                let difficulty = difficulty.parse::<f64>().unwrap_or(self.min_difficulty as f64);
-                                                                                (difficulty * 1_000_000.0).floor() as u64
-                                                                            } else if login_parts[1].ends_with("G") {
-                                                                                let difficulty = login_parts[1].replace("G", "");
-                                                                                let difficulty = difficulty.parse::<f64>().unwrap_or(self.min_difficulty as f64);
-                                                                                (difficulty * 1_000_000_000.0).floor() as u64
-                                                                            } else {
-                                                                                login_parts[1].parse::<u64>().unwrap_or(self.min_difficulty)
-                                                                            }
+                                                                                // let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
+                                                                                let login_parts = login.split("=").collect::<Vec<_>>();
+                                                                                let login_address = login_parts[0].to_string();
+                                                                                let login_difficulty = match login_parts.len() {
+                                                                                    2 => {
+                                                                                        if login_parts[1].ends_with("M") {
+                                                                                            let difficulty = login_parts[1].replace("M", "");
+                                                                                            let difficulty = difficulty.parse::<f64>().unwrap_or(self.min_difficulty as f64);
+                                                                                            (difficulty * 1_000_000.0).floor() as u64
+                                                                                        } else if login_parts[1].ends_with("G") {
+                                                                                            let difficulty = login_parts[1].replace("G", "");
+                                                                                            let difficulty = difficulty.parse::<f64>().unwrap_or(self.min_difficulty as f64);
+                                                                                            (difficulty * 1_000_000_000.0).floor() as u64
+                                                                                        } else {
+                                                                                            login_parts[1].parse::<u64>().unwrap_or(self.min_difficulty)
+                                                                                        }
+                                                                                    }
+                                                                                    _ => self.min_difficulty,
+                                                                                };
+                                                                                debug!(target: LOG_TARGET, "Login address: {}, difficulty: {}", login_address, login_difficulty);
+
+                                                                                if login_difficulty < self.min_difficulty {
+                                                                                    info!(target: LOG_TARGET, "Login difficulty {} is less than minimum difficulty {}", login_difficulty, self.min_difficulty);
+                                                                                    let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Login difficulty {} is less than minimum difficulty {}\", \"result\": null}}\n", id, login_difficulty, self.min_difficulty).as_bytes()).await;
+                                                                                    continue;
+                                                                                }
+
+                                                                                let response = handler.login(id.clone(), login_address, true, &algo, pass, agent, login_difficulty).await;
+                                                                                match response {
+                                                                                    Ok(resp) => {
+                                                                                        info!(target: LOG_TARGET, "Handled login request with id: {}", id);
+                                                                                        let json_response = serde_json::to_string(&resp).unwrap();
+                                                                                        let res_packet = format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {}}}\n", id, json_response);
+                                                                                        debug!(target: LOG_TARGET, "Login response: {}", res_packet);
+                                                                                        let _res = writer.write_all(res_packet.as_bytes()).await;
+                                                                                    },
+                                                                                    Err(e) => {
+                                                                                        warn!(target: LOG_TARGET, "Failed to handle login request: {}", e);
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle login request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            StratumRequest::Submit { job_id, nonce, result, id } => {
+                                                                                let nonce = match u64::from_str_radix(&nonce, 16) {
+                                                                                    Ok(n) => n,
+                                                                                    Err(e) => {
+                                                                                        warn!(target: LOG_TARGET, "Failed to parse nonce: {}", e);
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, "Nonce is not valid").as_bytes()).await;
+                                                                                        continue;
+                                                                                    }
+                                                                                };
+                                                                                let response = handler.submit(job_id, nonce, result, id.clone()).await;
+                                                                                match response {
+                                                                                    Ok(resp) => {
+                                                                                        info!(target: LOG_TARGET, "Handled submit request with id: {}", id);
+                                                                                        let json_response = serde_json::to_string(&resp).unwrap();
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.inspect_err(|e| {
+                                                                                            warn!(target: LOG_TARGET, "Failed to write response: {}", e);
+                                                                                        }       );
+                                                                                    },
+                                                                                    Err(e) => {
+                                                                                        warn!(target: LOG_TARGET, "Failed to handle submit request: {}", e);
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            StratumRequest::Subscribe { id, agent } => {
+                                                                                info!(target: LOG_TARGET, "Subscribe request with id: {}, agent: {}", id, agent);
+                                                                                 println!("here");
+                                                                                 let response = handler.subscribe(id.clone(), agent).await;
+                                                                                 println!("here"    );
+                                                                                match response {
+                                                                                    Ok(r) =>  {
+                                                                                        info!(target: LOG_TARGET, "Handled subscribe request with id: {}", id);
+
+                                                                                        subscription_ids.push((r.subscription_id.clone(), r.extra_nonce.clone()));
+                                                                                        current_subscription_id = Some(r.subscription_id.clone());
+                        // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
+
+                                                                                        // let json_response = serde_json::to_string(&r).unwrap();
+                                                                                        // let difficulty = r.difficulty;
+                                                                                        // let difficulty = "1".to_string();
+                                                                                        // let block_template = r.block_template;
+                                                                                        // let nonce = r.nonce;
+                                                                                        // let height = r.height;
+
+                                                                                        // {"id":null,"method":"mining.notify","params":["1eb6e5","a9d69d884bd093be85f38e8a4ffcf10c8e8e327636bcf9c3d4f017a96ef00ee7",1153674,"1f02dc3c",false]
+                                                                                        let res = format!(
+                                                                                            "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
+                                                                                            id, r.subscription_id, r.subscription_id, r.extra_nonce, r.extra_nonce.len()/2 // length in hex
+                                                                                        );
+                                                                                        info!(target: LOG_TARGET, "Subscribe response: {}", res);
+                                                                                        let _res = writer.write_all(
+                                                                                            res.as_bytes(),
+                                                                                        ).await;
+                                                                                        // let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await;
+                                                                                    },
+                                                                                    Err(e) => {
+                                                                                        warn!(target: LOG_TARGET, "Failed to handle subscribe request: {}", e);
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle subscribe request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
+                                                                                    }
+                                                                                }
+                                                                            },
+                                                                            StratumRequest::Authorize { id, login, worker_name, pass, is_solo } => {
+                                                                                 let sub;
+                                                                                 println!("here");
+                                                                                    if let Some(subscription_id) = current_subscription_id.clone() {
+                                                                                        info!(target: LOG_TARGET, "Using subscription id: {}", subscription_id);
+            sub = subscription_id.clone();
+                                                                                        // let nonce = subscription_ids.iter().find(|(sub_id, _)| sub_id == &subscription_id).map(|(_, nonce)| nonce.clone()).unwrap_or_else(|| "00000000".to_string());
+                                                                                        // let response = handler.authorize(id.clone(), login, worker_name, pass).await;
+                                                                                   } else {
+                                                                                        warn!(target: LOG_TARGET, "No current subscription id found. Not authorizing.");
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Not subscribed\", \"result\": null}}\n", id).as_bytes()).await;
+                                                                                        continue;
+                                                                                    }
+
+                                                                                                                                                             let nonce = subscription_ids.iter()
+                                                                                            .find(|(sub_id, _)| sub_id == &sub)
+                                                                                            .map(|(_, nonce)| nonce.clone());
+                                                                                        if nonce.is_none() {
+                                                                                            warn!(target: LOG_TARGET, "No nonce found for subscription id: {}", sub);
+                                                                                            let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"No nonce found for subscription id: {}\", \"result\": null}}\n", id, sub).as_bytes()).await;
+                                                                                            continue;
+                                                                                        }
+
+                                                                                 let response = handler.authorize(id.clone(),  "Cuckaroo".to_string(),  is_solo, login , worker_name, pass, nonce).await;
+                                                                                 println!("here");
+                                                                                match response {
+                                                                                    Ok(r) =>  {
+                                                                                        info!(target: LOG_TARGET, "Handled subscribe request with id: {}", id);
+
+                        // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
+
+                                                                                        // let json_response = serde_json::to_string(&r).unwrap();
+                                                                                        // let difficulty = r.difficulty;
+                                                                                        // let difficulty = "1".to_string();
+                                                                                        // let block_template = r.block_template;
+                                                                                        // let nonce = r.nonce;
+                                                                                        // let height = r.height;
+
+                                                                                        // {"id":null,"method":"mining.notify","params":["1eb6e5","a9d69d884bd093be85f38e8a4ffcf10c8e8e327636bcf9c3d4f017a96ef00ee7",1153674,"1f02dc3c",false]
+                                                                                        // let res = format!(
+                                                                                        //     "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
+                                                                                        //     id, r.subscription_id, r.subscription_id, r.extra_nonce, r.extra_nonce.len()/2 // length in hex
+                                                                                        // );
+                                                                                        let res = format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": true}}\n",
+                                                                                            id
+                                                                                        );
+                                                                                        info!(target: LOG_TARGET, "Auth response: {}", res);
+                                                                                        let _res = writer.write_all(
+                                                                                            res.as_bytes(),
+                                                                                        ).await;
+                                                                                        // let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await;
+                                                                                    },
+                                                                                    Err(e) => {
+                                                                                        warn!(target: LOG_TARGET, "Failed to handle authorize request: {}", e);
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle subscribe request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
+                                                                                    }
+                                                                                }
+                                                                                let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Not supported\"}}\n", id).as_bytes()).await;
+                                                                            },
+
                                                                         }
-                                                                        _ => self.min_difficulty,
-                                                                    };
-                                                                    debug!(target: LOG_TARGET, "Login address: {}, difficulty: {}", login_address, login_difficulty);
-
-                                                                    if login_difficulty < self.min_difficulty {
-                                                                        info!(target: LOG_TARGET, "Login difficulty {} is less than minimum difficulty {}", login_difficulty, self.min_difficulty);
-                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Login difficulty {} is less than minimum difficulty {}\", \"result\": null}}\n", id, login_difficulty, self.min_difficulty).as_bytes()).await;
-                                                                        continue;
+                                                                        // match handler.handle_request(request) {
+                                                                        //     Ok(resp) => {
+                                                                        //         info!( "Handled request with id: {}", id);
+                                                                        //         let json_response = serde_json::to_string(&resp).unwrap();
+                                                                        //         writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.unwrap();
+                                                                        //     },
+                                                                        //     Err(e) => {
+                                                                        //         info!("Failed to handle request: {}", e);
+                                                                        //         writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
+                                                                        //     }
+                                                                        // }
+                                                                    },
+                                                                    Err(e) => {
+                                                                        info!( target: LOG_TARGET, "Failed to parse request: {}", e);
                                                                     }
-
-                                                                    let response = handler.login(id.clone(), login_address, true, &algo, pass, agent, login_difficulty).await;
-                                                                    match response {
-                                                                        Ok(resp) => {
-                                                                            info!(target: LOG_TARGET, "Handled login request with id: {}", id);
-                                                                            let json_response = serde_json::to_string(&resp).unwrap();
-                                                                            let res_packet = format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {}}}\n", id, json_response);
-                                                                            debug!(target: LOG_TARGET, "Login response: {}", res_packet);
-                                                                            let _res = writer.write_all(res_packet.as_bytes()).await;
-                                                                        },
-                                                                        Err(e) => {
-                                                                            warn!(target: LOG_TARGET, "Failed to handle login request: {}", e);
-                                                                            let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle login request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
-                                                                        }
-                                                                    }
-                                                                },
-                                                                StratumRequest::Submit { job_id, nonce, result, id } => {
-                                                                    let nonce = match u64::from_str_radix(&nonce, 16) {
-                                                                        Ok(n) => n,
-                                                                        Err(e) => {
-                                                                            warn!(target: LOG_TARGET, "Failed to parse nonce: {}", e);
-                                                                            let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, "Nonce is not valid").as_bytes()).await;
-                                                                            continue;
-                                                                        }
-                                                                    };
-                                                                    let response = handler.submit(job_id, nonce, result, id.clone()).await;
-                                                                    match response {
-                                                                        Ok(resp) => {
-                                                                            info!(target: LOG_TARGET, "Handled submit request with id: {}", id);
-                                                                            let json_response = serde_json::to_string(&resp).unwrap();
-                                                                            let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.inspect_err(|e| {
-                                                                                warn!(target: LOG_TARGET, "Failed to write response: {}", e);
-                                                                            }       );
-                                                                        },
-                                                                        Err(e) => {
-                                                                            warn!(target: LOG_TARGET, "Failed to handle submit request: {}", e);
-                                                                            let _res = writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle submit request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
-                                                                        }
-                                                                    }
-                                                                },
-                                                                StratumRequest::Subscribe { id, agent } => {
-                                                                    info!(target: LOG_TARGET, "Subscribe request with id: {}, agent: {}", id, agent);
-                                                                     println!("here");
-                                                                     let response = handler.subscribe(id.clone(), agent).await;
-                                                                     println!("here"    );
-                                                                    match response {
-                                                                        Ok(r) =>  {
-                                                                            info!(target: LOG_TARGET, "Handled subscribe request with id: {}", id);
-
-                                                                            subscription_ids.push((r.subscription_id.clone(), r.extra_nonce.clone()));
-            // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
-
-                                                                            // let json_response = serde_json::to_string(&r).unwrap();
-                                                                            // let difficulty = r.difficulty;
-                                                                            // let difficulty = "1".to_string();
-                                                                            // let block_template = r.block_template;
-                                                                            // let nonce = r.nonce;
-                                                                            // let height = r.height;
-
-                                                                            // {"id":null,"method":"mining.notify","params":["1eb6e5","a9d69d884bd093be85f38e8a4ffcf10c8e8e327636bcf9c3d4f017a96ef00ee7",1153674,"1f02dc3c",false]
-                                                                            let res = format!(
-                                                                                "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
-                                                                                id, r.subscription_id, r.subscription_id, r.extra_nonce, r.extra_nonce.len()/2 // length in hex
-                                                                            );
-                                                                            info!(target: LOG_TARGET, "Subscribe response: {}", res);
-                                                                            let _res = writer.write_all(
-                                                                                res.as_bytes(),
-                                                                            ).await;
-                                                                            // let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await;
-                                                                        },
-                                                                        Err(e) => {
-                                                                            warn!(target: LOG_TARGET, "Failed to handle subscribe request: {}", e);
-                                                                            let _res = writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle subscribe request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await;
-                                                                        }
-                                                                    }
-                                                                },
-                                                                StratumRequest::Authorize { id, login, pass } => {
-                                                                    let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Not supported\"}}\n", id).as_bytes()).await;
-                                                                },
-
-                                                            }
-                                                            // match handler.handle_request(request) {
-                                                            //     Ok(resp) => {
-                                                            //         info!( "Handled request with id: {}", id);
-                                                            //         let json_response = serde_json::to_string(&resp).unwrap();
-                                                            //         writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.unwrap();
-                                                            //     },
-                                                            //     Err(e) => {
-                                                            //         info!("Failed to handle request: {}", e);
-                                                            //         writer.write_all(format!("{{\"id\": \"{}\", \"error\": \"Failed to handle request:{}\", \"result\": null}}\n", id, e.to_string()).as_bytes()).await.unwrap();
-                                                            //     }
+                                                                }
                                                             // }
-                                                        },
-                                                        Err(e) => {
-                                                            info!( target: LOG_TARGET, "Failed to parse request: {}", e);
                                                         }
-                                                    }
-                                                // }
+
+                                                    });
+                                                },
+
+                                                Err(e) => {
+                                                    info!( target: LOG_TARGET, "Failed to accept connection: {}", e);
+                                                }
                                             }
-
-                                        });
-                                    },
-
-                                    Err(e) => {
-                                        info!( target: LOG_TARGET, "Failed to accept connection: {}", e);
+                                        }
                                     }
-                                }
-                            }
-                        }
         }
         Ok(())
     }
@@ -330,6 +388,17 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         agent: String,
         // worker: Option<String>,
     ) -> anyhow::Result<SubscribeResponse>;
+
+    async fn authorize(
+        &self,
+        id: String,
+        main_algo: String,
+        is_solo: bool,
+        login: String,
+        worker_name: Option<String>,
+        pass: String,
+        nonce: Option<String>,
+    ) -> anyhow::Result<AuthorizeResponse>;
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -357,6 +426,13 @@ pub(crate) struct SubscribeResponse {
     // pub height: u64,
     pub subscription_id: String,
     pub extra_nonce: String,
+}
+
+pub(crate) struct AuthorizeResponse {
+    pub difficulty: String,
+    pub block_template: String,
+    pub nonce: String,
+    pub height: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -463,6 +539,7 @@ pub enum StratumRequest {
     Authorize {
         id: String,
         login: String,
+        is_solo: bool,
         worker_name: Option<String>,
         pass: String,
     },
@@ -528,11 +605,17 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
                     .and_then(|v| v.as_str())
                     .ok_or(anyhow::anyhow!("Invalid JSON. login missing"))?
                     .to_string();
-                let (worker_name, login) = if login.contains(".") {
+                let (worker_name, mut login) = if login.contains(".") {
                     let parts: Vec<&str> = login.split('.').collect();
                     (Some(parts[1].to_string()), parts[0].to_string())
                 } else {
                     (None, login)
+                };
+                let is_solo = if login.starts_with("solo:") {
+                    login = login.replace("solo:", "");
+                    true
+                } else {
+                    false
                 };
                 let pass = params
                     .get(1)
@@ -542,6 +625,7 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
                 Ok(StratumRequest::Authorize {
                     id,
                     login,
+                    is_solo,
                     pass,
                     worker_name,
                 })
