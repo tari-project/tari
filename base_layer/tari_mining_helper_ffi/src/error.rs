@@ -59,51 +59,23 @@ pub struct MiningHelperError {
 
 impl From<InterfaceError> for MiningHelperError {
     fn from(v: InterfaceError) -> Self {
-        match v {
-            InterfaceError::NullError(_) => Self {
-                code: 1,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::Conversion(_) => Self {
-                code: 2,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::InvalidHash(_) => Self {
-                code: 3,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::LowDifficulty(_) => Self {
-                code: 4,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::AllocationError => Self {
-                code: 5,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::PositionInvalidError => Self {
-                code: 6,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::TokioError(_) => Self {
-                code: 7,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::CoinbaseBuildError(_) => Self {
-                code: 8,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::InvalidAddress(_) => Self {
-                code: 9,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::InvalidNetwork(_) => Self {
-                code: 10,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::KeyManager(_) => Self {
-                code: 11,
-                message: format!("{:?}", v),
-            },
+        let code = match &v {
+            InterfaceError::NullError(_) => 1,
+            InterfaceError::Conversion(_) => 2,
+            InterfaceError::InvalidHash(_) => 3,
+            InterfaceError::LowDifficulty(_) => 4,
+            InterfaceError::AllocationError => 5,
+            InterfaceError::PositionInvalidError => 6,
+            InterfaceError::TokioError(_) => 7,
+            InterfaceError::CoinbaseBuildError(_) => 8,
+            InterfaceError::InvalidAddress(_) => 9,
+            InterfaceError::InvalidNetwork(_) => 10,
+            InterfaceError::KeyManager(_) => 11,
+        };
+
+        Self {
+            code,
+            message: format!("{v:?}"),
         }
     }
 }
