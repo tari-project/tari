@@ -60,17 +60,17 @@ pub struct MiningHelperError {
 impl From<InterfaceError> for MiningHelperError {
     fn from(v: InterfaceError) -> Self {
         let code = match &v {
-            InterfaceError::NullError(_)         => 1,
-            InterfaceError::Conversion(_)        => 2,
-            InterfaceError::InvalidHash(_)       => 3,
-            InterfaceError::LowDifficulty(_)     => 4,
-            InterfaceError::AllocationError      => 5,
+            InterfaceError::NullError(_) => 1,
+            InterfaceError::Conversion(_) => 2,
+            InterfaceError::InvalidHash(_) => 3,
+            InterfaceError::LowDifficulty(_) => 4,
+            InterfaceError::AllocationError => 5,
             InterfaceError::PositionInvalidError => 6,
-            InterfaceError::TokioError(_)        => 7,
+            InterfaceError::TokioError(_) => 7,
             InterfaceError::CoinbaseBuildError(_) => 8,
-            InterfaceError::InvalidAddress(_)    => 9,
-            InterfaceError::InvalidNetwork(_)    => 10,
-            InterfaceError::KeyManager(_)        => 11,
+            InterfaceError::InvalidAddress(_) => 9,
+            InterfaceError::InvalidNetwork(_) => 10,
+            InterfaceError::KeyManager(_) => 11,
         };
 
         Self {
