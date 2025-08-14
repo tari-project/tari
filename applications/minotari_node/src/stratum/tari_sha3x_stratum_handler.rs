@@ -246,85 +246,78 @@ impl<
         // Handle submit request
     }
 
-    async fn subscribe(
-        &self,
-        id: String,
-        main_algo: String,
-        address: String,
-        is_solo: bool,
-        agent: String,
-        worker: Option<String>,
-    ) -> anyhow::Result<SubscribeResponse> {
+    async fn subscribe(&self, id: String, agent: String) -> anyhow::Result<SubscribeResponse> {
         dbg!("here");
         // let algo = main_algo.parse()?;
-        let algo = main_algo.parse()?;
-        let solo_address = if is_solo {
-            Some(TariAddress::from_str(&address)?)
-        } else {
-            None
-        };
-        dbg!("here");
-        let BlockTemplate {
-            blob,
-            height,
-            target,
-            seed_hash,
-            extra_nonce,
-        } = self
-            .block_template_repository
-            .get_block_template(algo, solo_address)
-            .await?;
-        dbg!("here");
+        // let algo = main_algo.parse()?;
+        // let solo_address = if is_solo {
+        //     Some(TariAddress::from_str(&address)?)
+        // } else {
+        //     None
+        // };
+        // dbg!("here");
+        // let BlockTemplate {
+        //     blob,
+        //     height,
+        //     target,
+        //     seed_hash,
+        //     extra_nonce,
+        // } = self
+        //     .block_template_repository
+        //     .get_block_template(algo, solo_address)
+        //     .await?;
+        // dbg!("here");
         let mut r = OsRng;
-        let job_id = hex::encode(r.next_u64().to_le_bytes());
+        let subscription_id = hex::encode(r.next_u64().to_le_bytes());
+        // let job_id = hex::encode(r.next_u64().to_le_bytes());
 
-        let id = hex::encode(r.next_u64().to_le_bytes());
+        // let id = hex::encode(r.next_u64().to_le_bytes());
         let random_bytes = rand::random::<u16>();
         let xn = hex::encode(&random_bytes.to_le_bytes());
         // let algo = "sha3x".to_string();
-        let job_target = hex::encode((u64::MAX / target).to_le_bytes());
-        let chain_target = hex::encode(target.to_le_bytes());
+        // let job_target = hex::encode((u64::MAX / target).to_le_bytes());
+        // let chain_target = hex::encode(target.to_le_bytes());
 
-        if blob.is_empty() {
-            return Err(anyhow::anyhow!("No blob available for the latest block"));
-        }
-        let original_mining_hash = blob.clone();
-        let blob = if main_algo == "RandomXT" {
-            // The format is:
-            // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
-            // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
-            //
-            // Major version: 0
-            // Minor version: 0
-            // Timestamp: 0
-            let mut final_blob = vec![0u8; 76];
-            final_blob[0] = 0; // Major version
-            final_blob[1] = 0; // Minor version
-            final_blob[2] = 0; // Timestamp
-            final_blob[3..35].copy_from_slice(&blob); // Mining hash
-                                                      //   final_blob[35..43] nonce (0)
-            final_blob[43] = 2; // Pow algorithm (2 for RandomXT)
-            final_blob
-        } else {
-            blob
-        };
-        dbg!("here");
-        let job_record = Job {
-            id: id.clone(),
-            algo: main_algo.clone(),
-            pow_algo: algo,
-            blob: blob.clone(),
-            height,
-            target: job_target.clone(),
-            job_id: job_id.clone(),
-            created_at: chrono::Utc::now().naive_utc(),
-            miner_address: address.clone(),
-            chain_target: chain_target.clone(),
-            xn: random_bytes,
-            original_mining_hash,
-        };
-        dbg!("here");
-        self.job_repository.insert_job(job_record).await?;
+        // if blob.is_empty() {
+        // return Err(anyhow::anyhow!("No blob available for the latest block"));
+        // }
+        // let original_mining_hash = blob.clone();
+        // let blob = if main_algo == "RandomXT" {
+        // The format is:
+        // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
+        // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
+        //
+        // Major version: 0
+        // Minor version: 0
+        // Timestamp: 0
+        //     let mut final_blob = vec![0u8; 76];
+        //     final_blob[0] = 0; // Major version
+        //     final_blob[1] = 0; // Minor version
+        //     final_blob[2] = 0; // Timestamp
+        //     final_blob[3..35].copy_from_slice(&blob); // Mining hash
+        //                                               //   final_blob[35..43] nonce (0)
+        //     final_blob[43] = 2; // Pow algorithm (2 for RandomXT)
+        //     final_blob
+        // } else {
+        //     blob
+        // };
+        // dbg!("here");
+        // let job_record = Job {
+        //     id: id.clone(),
+        //     algo: main_algo.clone(),
+        //     pow_algo: algo,
+        //     blob: blob.clone(),
+        //     height,
+        //     target: job_target.clone(),
+        //     job_id: job_id.clone(),
+        //     created_at: chrono::Utc::now().naive_utc(),
+        //     miner_address: address.clone(),
+        //     chain_target: chain_target.clone(),
+        //     xn: random_bytes,
+        //     original_mining_hash,
+        // };
+        // dbg!("here");
+        // self.job_repository.insert_job(job_record).await?;
 
         // Ok(LoginResponse {
         //     id: id.to_string(),
@@ -346,10 +339,12 @@ impl<
         dbg!("here");
 
         Ok(SubscribeResponse {
-            difficulty: job_target,
-            block_template: hex::encode(blob),
-            nonce: xn,
-            height,
+            // difficulty: job_target,
+            // block_template: hex::encode(blob),
+            // nonce: xn,
+            // height,
+            subscription_id: subscription_id.clone(),
+            extra_nonce: xn.clone(),
         })
     }
 }

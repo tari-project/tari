@@ -148,6 +148,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                         tokio::spawn(async move {
                                             let (reader, mut writer) = stream.into_split();
                                             let mut reader = BufReader::new(reader).lines();
+                                            let mut subscription_ids = vec![];
 
 
                                             while let Ok(Some(line)) = reader.next_line().await {
@@ -230,28 +231,29 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                         }
                                                                     }
                                                                 },
-                                                                StratumRequest::Subscribe { id, agent, address, worker } => {
-                                                                    info!(target: LOG_TARGET, "Subscribe request with id: {}, agent: {}, address: {}, worker: {:?}", id, agent, address, worker);
+                                                                StratumRequest::Subscribe { id, agent } => {
+                                                                    info!(target: LOG_TARGET, "Subscribe request with id: {}, agent: {}", id, agent);
                                                                      println!("here");
-                                                                     let response = handler.subscribe(id.clone(), address,  "cuckaroo".to_string(), true, agent, worker).await;
+                                                                     let response = handler.subscribe(id.clone(), agent).await;
                                                                      println!("here"    );
                                                                     match response {
                                                                         Ok(r) =>  {
                                                                             info!(target: LOG_TARGET, "Handled subscribe request with id: {}", id);
 
+                                                                            subscription_ids.push((r.subscription_id.clone(), r.extra_nonce.clone()));
             // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
 
                                                                             // let json_response = serde_json::to_string(&r).unwrap();
-                                                                            let difficulty = r.difficulty;
-                                                                            let difficulty = "1".to_string();
-                                                                            let block_template = r.block_template;
-                                                                            let nonce = r.nonce;
-                                                                            let height = r.height;
+                                                                            // let difficulty = r.difficulty;
+                                                                            // let difficulty = "1".to_string();
+                                                                            // let block_template = r.block_template;
+                                                                            // let nonce = r.nonce;
+                                                                            // let height = r.height;
 
                                                                             // {"id":null,"method":"mining.notify","params":["1eb6e5","a9d69d884bd093be85f38e8a4ffcf10c8e8e327636bcf9c3d4f017a96ef00ee7",1153674,"1f02dc3c",false]
                                                                             let res = format!(
-                                                                                "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}], \"error\": null}}\n",
-                                                                                id, difficulty, block_template, nonce, height
+                                                                                "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
+                                                                                id, r.subscription_id, r.subscription_id, r.extra_nonce, r.extra_nonce.len()/2 // length in hex
                                                                             );
                                                                             info!(target: LOG_TARGET, "Subscribe response: {}", res);
                                                                             let _res = writer.write_all(
@@ -283,7 +285,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                             // }
                                                         },
                                                         Err(e) => {
-                                                            info!( "Failed to parse request: {}", e);
+                                                            info!( target: LOG_TARGET, "Failed to parse request: {}", e);
                                                         }
                                                     }
                                                 // }
@@ -293,7 +295,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                     },
 
                                     Err(e) => {
-                                        info!("Failed to accept connection: {}", e);
+                                        info!( target: LOG_TARGET, "Failed to accept connection: {}", e);
                                     }
                                 }
                             }
@@ -322,11 +324,11 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
     async fn subscribe(
         &self,
         id: String,
-        main_algo: String,
-        address: String,
-        is_solo: bool,
+        // main_algo: String,
+        // address: String,
+        // is_solo: bool,
         agent: String,
-        worker: Option<String>,
+        // worker: Option<String>,
     ) -> anyhow::Result<SubscribeResponse>;
 }
 
@@ -349,10 +351,12 @@ pub(crate) struct StratumJob {
 }
 
 pub(crate) struct SubscribeResponse {
-    pub difficulty: String,
-    pub block_template: String,
-    pub nonce: String,
-    pub height: u64,
+    // pub difficulty: String,
+    // pub block_template: String,
+    // pub nonce: String,
+    // pub height: u64,
+    pub subscription_id: String,
+    pub extra_nonce: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -453,12 +457,13 @@ pub enum StratumRequest {
     Subscribe {
         id: String,
         agent: String,
-        address: String,
-        worker: Option<String>,
+        // address: String,
+        // worker: Option<String>,
     },
     Authorize {
         id: String,
         login: String,
+        worker_name: Option<String>,
         pass: String,
     },
 }
@@ -488,29 +493,30 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
             .to_string();
         match method {
             "mining.subscribe" => {
+                dbg!("here");
                 let params = json["params"]
                     .as_array()
                     .ok_or(anyhow::anyhow!("Invalid JSON.params missing"))?;
                 let agent = params.get(0);
                 let agent = agent.and_then(|v| v.as_str()).map(|s| s.to_string());
 
-                let address_and_worker = params
-                    .get(1)
-                    .and_then(|v| v.as_str())
-                    .ok_or(anyhow::anyhow!("Invalid JSON. address missing"))?
-                    .to_string();
-                let address_parts = address_and_worker.split('.').collect::<Vec<_>>();
-                let address = address_parts[0].to_string();
-                let worker = if address_parts.len() > 1 {
-                    Some(address_parts[1].to_string())
-                } else {
-                    None
-                };
+                // let address_and_worker = params
+                //     .get(1)
+                //     .and_then(|v| v.as_str())
+                //     .ok_or(anyhow::anyhow!("Invalid JSON. address missing"))?
+                //     .to_string();
+                // let address_parts = address_and_worker.split('.').collect::<Vec<_>>();
+                // let address = address_parts[0].to_string();
+                // let worker = if address_parts.len() > 1 {
+                //     Some(address_parts[1].to_string())
+                // } else {
+                //     None
+                // };
                 Ok(StratumRequest::Subscribe {
                     id,
                     agent: agent.unwrap_or_default(),
-                    address,
-                    worker,
+                    // address,
+                    // worker,
                 })
             },
             "mining.authorize" => {
@@ -522,12 +528,23 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
                     .and_then(|v| v.as_str())
                     .ok_or(anyhow::anyhow!("Invalid JSON. login missing"))?
                     .to_string();
+                let (worker_name, login) = if login.contains(".") {
+                    let parts: Vec<&str> = login.split('.').collect();
+                    (Some(parts[1].to_string()), parts[0].to_string())
+                } else {
+                    (None, login)
+                };
                 let pass = params
                     .get(1)
                     .and_then(|v| v.as_str())
                     .ok_or(anyhow::anyhow!("Invalid JSON. pass missing"))?
                     .to_string();
-                Ok(StratumRequest::Authorize { id, login, pass })
+                Ok(StratumRequest::Authorize {
+                    id,
+                    login,
+                    pass,
+                    worker_name,
+                })
             },
 
             _ => Err(anyhow::anyhow!("Unknown method")),
@@ -535,10 +552,7 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
     }
 }
 
-struct MultiVersionStratumStreamAdapter {
-    nice_hash_adapter: NiceHashStyleStatumStreamAdapter,
-    stratum_v1_adapter: StratumV1StreamAdapter,
-}
+struct MultiVersionStratumStreamAdapter {}
 
 impl StratumStreamAdapter for MultiVersionStratumStreamAdapter {
     fn try_convert(line: String) -> anyhow::Result<StratumRequest> {
