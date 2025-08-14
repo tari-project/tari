@@ -14,6 +14,7 @@ use crate::stratum::{
     stratum_server::{
         AuthorizeResponse,
         LoginResponse,
+        NotifyResponse,
         StratumJob,
         StratumJobHandler,
         SubmitResponse,
@@ -446,5 +447,19 @@ impl<
             // subscription_id: subscription_id.clone(),
             // extra_nonce: xn.clone(),
         })
+    }
+
+    async fn check_notify_needed(&self, subscription_id: &str, last_notify_height: u64) -> Option<NotifyResponse> {
+        // let latest_block = self.block_template_repository.get_latest_block().await.ok()?;
+        // if latest_block.height > last_notify_height {
+        // Some(NotifyResponse {
+        // subscription_id: subscription_id.to_string(),
+        // extra_nonce: "0".to_string(),
+        // height: latest_block.height,
+        // })
+        // } else {
+        // None
+        // }
+        todo!()
     }
 }

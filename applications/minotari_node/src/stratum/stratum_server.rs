@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, path::MAIN_SEPARATOR};
+use std::{marker::PhantomData, path::MAIN_SEPARATOR, time::Duration};
 
 use anyhow::Error;
 use log::{debug, info, warn};
@@ -12,6 +12,7 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpListener,
     select,
+    time::timeout,
 };
 use tonic::async_trait;
 
@@ -131,6 +132,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
     pub async fn start(self, mut shutdown_signal: ShutdownSignal) -> anyhow::Result<()> {
         info!(target: LOG_TARGET, "Starting Stratum server on port {}", self.port);
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
+
         loop {
             select! {
                                         _ = shutdown_signal.wait() => {
@@ -148,11 +150,43 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                     tokio::spawn(async move {
                                                         let (reader, mut writer) = stream.into_split();
                                                         let mut reader = BufReader::new(reader).lines();
-                                                        let mut subscription_ids = vec![];
+                                                        let mut subscription_ids :Vec<(String, String, u64)> = vec![];
                                                         let mut current_subscription_id: Option<String> =None;
 
+                                                        loop {
+                                                        // match let Ok(Some(line)) = reader.next_line().await;
+                                                        let line: String;
+                                                        match timeout(Duration::from_secs(1), reader.next_line()).await {
+                                                            Ok(Ok(Some(l))) => {
+                                                                if l.is_empty() {
+                                                                    continue;
+                                                                }
+                                                                line = l;
+                                                                debug!(target: LOG_TARGET, "Received line: {}", line);
+                                                            },
+                                                            Ok(_) => {
+                                                                info!(target: LOG_TARGET, "Connection closed by client");
+                                                                break;
+                                                            },
+                                                            Err(e) => {
+                                                                // timeout, let's check if there is a new block and notify the client.
 
-                                                        while let Ok(Some(line)) = reader.next_line().await {
+                                                                debug!(target: LOG_TARGET, "Timeout while reading line: {}", e);
+                                                                // Check for new blocks and notify the client
+                                                                for (sub_id, extra_nonce, mut last_notify_height) in &mut subscription_ids {
+                                                                    if let Some(res) = handler.check_notify_needed(sub_id, last_notify_height).await {
+                                                                            info!(target: LOG_TARGET, "Sending notify for subscription {} with extra nonce {}", sub_id, extra_nonce);
+                                                                            // let _unused = writer.write_all(res.as_bytes()).await ;
+                                                                            last_notify_height  = res.height;
+                                                                }
+                                                            }
+                                                            continue;
+                                                        }
+                                                                // break;
+                                                        };
+
+
+
                                                             // if let Ok(msg): Result<Value, _> = serde_json::from_str(&line) {
                                                                 // handle 'login', 'submit', etc.
                                                                 debug!(target: LOG_TARGET, "Received line: {}", line);
@@ -241,7 +275,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     Ok(r) =>  {
                                                                                         info!(target: LOG_TARGET, "Handled subscribe request with id: {}", id);
 
-                                                                                        subscription_ids.push((r.subscription_id.clone(), r.extra_nonce.clone()));
+                                                                                        subscription_ids.push((r.subscription_id.clone(), r.extra_nonce.clone(), 0));
                                                                                         current_subscription_id = Some(r.subscription_id.clone());
                         // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
 
@@ -284,8 +318,8 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     }
 
                                                                                                                                                              let nonce = subscription_ids.iter()
-                                                                                            .find(|(sub_id, _)| sub_id == &sub)
-                                                                                            .map(|(_, nonce)| nonce.clone());
+                                                                                            .find(|(sub_id, _, _)| sub_id == &sub)
+                                                                                            .map(|(_, nonce, _)| nonce.clone());
                                                                                         if nonce.is_none() {
                                                                                             warn!(target: LOG_TARGET, "No nonce found for subscription id: {}", sub);
                                                                                             let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"No nonce found for subscription id: {}\", \"result\": null}}\n", id, sub).as_bytes()).await;
@@ -399,6 +433,8 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         pass: String,
         nonce: Option<String>,
     ) -> anyhow::Result<AuthorizeResponse>;
+
+    async fn check_notify_needed(&self, subscription_id: &str, last_notify_height: u64) -> Option<NotifyResponse>;
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -432,6 +468,12 @@ pub(crate) struct AuthorizeResponse {
     pub difficulty: String,
     pub block_template: String,
     pub nonce: String,
+    pub height: u64,
+}
+
+pub(crate) struct NotifyResponse {
+    // pub subscription_id: String,
+    // pub extra_nonce: String,
     pub height: u64,
 }
 
