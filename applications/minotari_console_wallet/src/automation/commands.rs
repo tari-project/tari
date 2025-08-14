@@ -1321,29 +1321,14 @@ pub async fn command_runner(
                             total_script_nonce,
                             shared_secret,
                         )) => {
+                            let input_0 = transaction.body.inputs().first().expect("Already checked");
+                            let output_0 = transaction.body.outputs().first().expect("Already checked");
                             outputs_for_parties.push(Step3OutputsForParties {
                                 output_index: current_index,
-                                input_stack: transaction
-                                    .body
-                                    .inputs()
-                                    .first()
-                                    .expect("Already checked")
-                                    .clone()
-                                    .input_data,
-                                input_script: transaction
-                                    .body
-                                    .inputs()
-                                    .first()
-                                    .expect("Already checked")
-                                    .script()
-                                    .unwrap()
-                                    .clone(),
+                                input_stack: input_0.input_data.clone(),
+                                input_script: input_0.script().unwrap().clone(),
                                 total_script_key: script_pubkey,
-                                script_signature_ephemeral_commitment: transaction
-                                    .body
-                                    .inputs()
-                                    .first()
-                                    .expect("Already checked")
+                                script_signature_ephemeral_commitment: input_0
                                     .script_signature
                                     .ephemeral_commitment()
                                     .clone(),
@@ -1362,29 +1347,13 @@ pub async fn command_runner(
                                     .expect("Already checked")
                                     .clone()
                                     .sender_offset_public_key,
-                                metadata_signature_ephemeral_commitment: transaction
-                                    .body
-                                    .outputs()
-                                    .first()
-                                    .expect("Already checked")
+                                metadata_signature_ephemeral_commitment: output_0
                                     .metadata_signature
                                     .ephemeral_commitment()
                                     .clone(),
                                 metadata_signature_ephemeral_pubkey: total_metadata_ephemeral_public_key,
-                                encrypted_data: transaction
-                                    .body
-                                    .outputs()
-                                    .first()
-                                    .expect("Already checked")
-                                    .clone()
-                                    .encrypted_data,
-                                output_features: transaction
-                                    .body
-                                    .outputs()
-                                    .first()
-                                    .expect("Already checked")
-                                    .clone()
-                                    .features,
+                                encrypted_data: output_0.encrypted_data.clone(),
+                                output_features: output_0.features.clone(),
                                 shared_secret,
                             });
                             outputs_for_self.push(Step3OutputsForSelf {

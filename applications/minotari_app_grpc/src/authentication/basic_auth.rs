@@ -59,27 +59,24 @@ impl BasicAuthCredentials {
         // Validate the password is a well formed byte representation of a PHC string
         let bytes = phc_password_hash.reveal().to_vec();
         let _parse_result = PasswordHash::parse(&String::from_utf8(bytes)?, Encoding::B64)?;
+
+        // Prepare the username bytes for constant time comparison ahead of time
+        let bytes = user_name.as_bytes();
         // Random bytes are used for constant time username comparison to ensure that the compiler does not do any
         // funny optimizations and to ensure that comparison for the same username for every new credentials instance
         // forces a different bitwise comparison.
         let mut random_bytes = [0u8; MAX_USERNAME_LEN];
         let mut rng = rand::thread_rng();
         rng.fill_bytes(&mut random_bytes);
-        // Prepare the username bytes for constant time comparison ahead of time
-        let bytes = user_name.as_bytes();
         let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
-        user_name_bytes
-            .get_mut(0..bytes.len())
-            .expect("Already checked")
-            .clone_from_slice(bytes);
-        user_name_bytes
-            .get_mut(bytes.len()..MAX_USERNAME_LEN)
-            .expect("Already checked")
-            .clone_from_slice(
-                random_bytes
-                    .get(bytes.len()..MAX_USERNAME_LEN)
-                    .expect("Already checked"),
-            );
+
+        let (prefix, suffix) = user_name_bytes.split_at_mut(bytes.len());
+        prefix.copy_from_slice(bytes);
+        suffix.copy_from_slice(
+            random_bytes
+                .get(bytes.len()..MAX_USERNAME_LEN)
+                .expect("Already checked"),
+        );
 
         Ok(Self {
             user_name_bytes_length: user_name.len(),
@@ -128,21 +125,13 @@ impl BasicAuthCredentials {
 
         // Add the username bytes to the buffer
         let bytes_len_clipped = min(bytes.len(), MAX_USERNAME_LEN);
-        compare_bytes
-            .get_mut(0..bytes_len_clipped)
-            .expect("Already checked")
-            .clone_from_slice(bytes.get(..bytes_len_clipped).expect("Already checked"));
-
-        // The remaining bytes are padded afterwards (and not initialized at the start) to ensure that this function
-        // always does the same amount of work irrespective of the username length.
-        compare_bytes
-            .get_mut(bytes.len()..MAX_USERNAME_LEN)
-            .expect("Already checked")
-            .clone_from_slice(
-                self.random_bytes
-                    .get(bytes.len()..MAX_USERNAME_LEN)
-                    .expect("Already checked"),
-            );
+        let (prefix, suffix) = compare_bytes.split_at_mut(bytes_len_clipped);
+        prefix.copy_from_slice(bytes);
+        suffix.copy_from_slice(
+            self.random_bytes
+                .get(bytes.len()..MAX_USERNAME_LEN)
+                .expect("Already checked"),
+        );
 
         // Perform the bitwise comparison and combine the result with the valid username result.
         // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.
