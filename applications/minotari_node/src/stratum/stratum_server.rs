@@ -269,7 +269,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     }
                                                                                 }
                                                                             },
-                                                                            StratumRequest::Authorize { id, login, worker_name, pass, is_solo } => {
+                                                                            StratumRequest::Authorize { id, login, worker_name, pass, is_solo : _ } => {
                                                                                  let sub;
                                                                                  println!("here");
                                                                                     if let Some(subscription_id) = current_subscription_id.clone() {
@@ -292,7 +292,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                             continue;
                                                                                         }
 
-                                                                                 let response = handler.authorize(id.clone(),  "Cuckaroo".to_string(),  is_solo, login , worker_name, pass, nonce).await;
+                                                                                 let response = handler.authorize(id.clone(),  "Cuckaroo".to_string(),  true, login , worker_name, pass, nonce).await;
                                                                                  println!("here");
                                                                                 match response {
                                                                                     Ok(r) =>  {
