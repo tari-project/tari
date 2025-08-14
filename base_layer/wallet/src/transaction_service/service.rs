@@ -1557,6 +1557,7 @@ where
     }
 
     /// Creates an encumbered uninitialized transaction
+    #[allow(clippy::too_many_lines)]
     pub async fn finalized_aggregate_encumbed_tx(
         &mut self,
         tx_id: TxId,
