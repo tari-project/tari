@@ -52,6 +52,7 @@ pub struct BlockTemplate {
     pub target: u64,
     pub seed_hash: Option<Vec<u8>>,
     pub extra_nonce: Option<u64>,
+    pub prev_block_hash: Vec<u8>,
 }
 #[async_trait::async_trait]
 pub trait BlockTemplateRepository {
@@ -60,6 +61,7 @@ pub trait BlockTemplateRepository {
         algo: PowAlgorithm,
         solo_address: Option<TariAddress>,
     ) -> Result<BlockTemplate, anyhow::Error>;
+    async fn get_tip(&self) -> Result<(u64, Vec<u8>), anyhow::Error>;
 }
 
 #[derive(Clone)]
@@ -148,8 +150,6 @@ impl DefaultBlockTemplateRepository {
                         //   hash.to_hex(),
                         //   "0000000060e258b8e4104f8d407822e68b6c69b75d2d954f59e75035f00def53".to_string()
                     //   );
-                    dbg!("Mining hash:", hash);
-                    dbg!(&job.result);
 
 
 
@@ -354,10 +354,19 @@ impl BlockTemplateRepository for DefaultBlockTemplateRepository {
                     PowAlgorithm::RandomXT => Some(vm_key),
                     PowAlgorithm::Sha3x | PowAlgorithm::RandomXM | PowAlgorithm::Cuckaroo => None,
                 },
+                prev_block_hash: block.header.prev_hash.to_vec(),
             })
         } else {
             warn!(target: LOG_TARGET, "Cannot create block template for non-solo mining");
             Err(anyhow!("Block template creation for non-solo mining is not supported"))
         }
+    }
+
+    async fn get_tip(&self) -> Result<(u64, Vec<u8>), anyhow::Error> {
+        let mut handler = self.node_service.clone();
+        let meta = handler.get_metadata().await?;
+        let best_block_height = meta.best_block_height();
+        let best_block_hash = meta.best_block_hash().to_vec();
+        Ok((best_block_height, best_block_hash))
     }
 }

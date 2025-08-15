@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tari_common_types::tari_address::TariAddress;
 use tari_core::proof_of_work::PowAlgorithm;
 use uuid::Uuid;
 
@@ -14,8 +15,9 @@ pub struct Job {
     pub blob: Vec<u8>,
     pub height: u64,
     pub chain_target: String,
-    pub miner_address: String,
+    pub miner_address: TariAddress,
     pub original_mining_hash: Vec<u8>,
+    pub prev_block_hash: Vec<u8>,
     pub xn: u16,
 }
 

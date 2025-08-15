@@ -8,8 +8,8 @@ use tari_core::proof_of_work::PowAlgorithm;
 use tokio::sync::watch;
 
 use crate::stratum::{
-    block_template_repository::{BlockTemplate, BlockTemplateRepository},
-    job::{Job, SubmittedJob},
+    block_template_repository::{self, BlockTemplate, BlockTemplateRepository},
+    job::{self, Job, SubmittedJob},
     job_repository::JobRepository,
     stratum_server::{
         AuthorizeResponse,
@@ -62,19 +62,15 @@ impl<
         &self,
         id: String,
         login: String,
-        is_solo: bool,
         algo: &[String],
         pass: String,
         agent: String,
         endpoint_difficulty: u64,
     ) -> anyhow::Result<LoginResponse> {
         // Handle login request
-        let solo_address = if is_solo {
-            Some(TariAddress::from_str(&login)?)
-        } else {
-            None
-        };
+        let address = TariAddress::from_str(&login)?;
 
+        let is_solo = true;
         let main_algo;
         if algo.is_empty() {
             main_algo = "sha3x".to_string();
@@ -93,9 +89,10 @@ impl<
             target,
             seed_hash,
             extra_nonce,
+            prev_block_hash,
         } = self
             .block_template_repository
-            .get_block_template(algo, solo_address)
+            .get_block_template(algo, Some(address.clone()))
             .await?;
         let mut r = OsRng;
         let job_id = hex::encode(r.next_u64().to_le_bytes());
@@ -139,10 +136,11 @@ impl<
             target: job_target.clone(),
             job_id: job_id.clone(),
             created_at: chrono::Utc::now().naive_utc(),
-            miner_address: login.clone(),
+            miner_address: address.clone(),
             chain_target: chain_target.clone(),
             xn: random_bytes,
             original_mining_hash,
+            prev_block_hash: prev_block_hash.clone(),
         };
         self.job_repository.insert_job(job_record).await?;
 
@@ -232,7 +230,7 @@ impl<
                     chain_target: chain_target_u64,
                     blob: job.blob.clone(),
                     original_mining_hash: job.original_mining_hash.clone(),
-                    miner_address: job.miner_address.clone(),
+                    miner_address: job.miner_address.to_string(),
                     result,
                 },
                 tx,
@@ -256,94 +254,15 @@ impl<
 
     async fn subscribe(&self, id: String, agent: String) -> anyhow::Result<SubscribeResponse> {
         dbg!("here");
-        // let algo = main_algo.parse()?;
-        // let algo = main_algo.parse()?;
-        // let solo_address = if is_solo {
-        //     Some(TariAddress::from_str(&address)?)
-        // } else {
-        //     None
-        // };
-        // dbg!("here");
-        // let BlockTemplate {
-        //     blob,
-        //     height,
-        //     target,
-        //     seed_hash,
-        //     extra_nonce,
-        // } = self
-        //     .block_template_repository
-        //     .get_block_template(algo, solo_address)
-        //     .await?;
-        // dbg!("here");
+
         let mut r = OsRng;
         let subscription_id = hex::encode(r.next_u64().to_le_bytes());
         // let job_id = hex::encode(r.next_u64().to_le_bytes());
 
         // let id = hex::encode(r.next_u64().to_le_bytes());
-        let random_bytes = rand::random::<u16>();
-        let xn = hex::encode(&random_bytes.to_le_bytes());
-        // let algo = "sha3x".to_string();
-        // let job_target = hex::encode((u64::MAX / target).to_le_bytes());
-        // let chain_target = hex::encode(target.to_le_bytes());
+        let nonce = rand::random::<u16>();
 
-        // if blob.is_empty() {
-        // return Err(anyhow::anyhow!("No blob available for the latest block"));
-        // }
-        // let original_mining_hash = blob.clone();
-        // let blob = if main_algo == "RandomXT" {
-        // The format is:
-        // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
-        // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
-        //
-        // Major version: 0
-        // Minor version: 0
-        // Timestamp: 0
-        //     let mut final_blob = vec![0u8; 76];
-        //     final_blob[0] = 0; // Major version
-        //     final_blob[1] = 0; // Minor version
-        //     final_blob[2] = 0; // Timestamp
-        //     final_blob[3..35].copy_from_slice(&blob); // Mining hash
-        //                                               //   final_blob[35..43] nonce (0)
-        //     final_blob[43] = 2; // Pow algorithm (2 for RandomXT)
-        //     final_blob
-        // } else {
-        //     blob
-        // };
-        // dbg!("here");
-        // let job_record = Job {
-        //     id: id.clone(),
-        //     algo: main_algo.clone(),
-        //     pow_algo: algo,
-        //     blob: blob.clone(),
-        //     height,
-        //     target: job_target.clone(),
-        //     job_id: job_id.clone(),
-        //     created_at: chrono::Utc::now().naive_utc(),
-        //     miner_address: address.clone(),
-        //     chain_target: chain_target.clone(),
-        //     xn: random_bytes,
-        //     original_mining_hash,
-        // };
-        // dbg!("here");
-        // self.job_repository.insert_job(job_record).await?;
-
-        // Ok(LoginResponse {
-        //     id: id.to_string(),
-        //     job: StratumJob {
-        //         job_id: job_id.to_string(),
-        //         algo: if main_algo == "RandomXT" {
-        //             "rx/0".to_string()
-        //         } else {
-        //             main_algo
-        //         },
-        //         blob: hex::encode(blob),
-        //         height,
-        //         target: job_target,
-        //         seed_hash: seed_hash.map(hex::encode),
-        //         // xn,
-        //     },
-        //     status: "OK".to_string(),
-        // })
+        let xn = hex::encode(&nonce.to_le_bytes());
         dbg!("here");
 
         Ok(SubscribeResponse {
@@ -352,7 +271,8 @@ impl<
             // nonce: xn,
             // height,
             subscription_id: subscription_id.clone(),
-            extra_nonce: xn.clone(),
+            nonce_hex: xn.clone(),
+            nonce,
         })
     }
 
@@ -360,106 +280,135 @@ impl<
         &self,
         id: String,
         main_algo: String,
-        is_solo: bool,
         login: String,
         worker_name: Option<String>,
         pass: String,
-        nonce: Option<String>,
+        nonce: Option<u16>,
     ) -> anyhow::Result<AuthorizeResponse> {
         dbg!("here");
         let algo = main_algo.parse()?;
-        let solo_address = if is_solo {
-            Some(TariAddress::from_str(&login)?)
-        } else {
-            None
-        };
+        let address = TariAddress::from_str(&login)?;
         // dbg!("here");
-        let BlockTemplate {
-            blob,
-            height,
-            target,
-            seed_hash,
-            extra_nonce,
-        } = self
-            .block_template_repository
-            .get_block_template(algo, solo_address)
-            .await?;
-        dbg!("here");
-        let mut r = OsRng;
-        // let subscription_id = hex::encode(r.next_u64().to_le_bytes());
-        let job_id = hex::encode(r.next_u64().to_le_bytes());
 
-        let id = hex::encode(r.next_u64().to_le_bytes());
-        let random_bytes = rand::random::<u16>();
-        let xn = nonce
-            .clone()
-            .unwrap_or_else(|| hex::encode(&random_bytes.to_le_bytes()));
-        // let algo = "sha3x".to_string();
-        let job_target = hex::encode((u64::MAX / target).to_le_bytes());
-        let chain_target = hex::encode(target.to_le_bytes());
-
-        if blob.is_empty() {
-            return Err(anyhow::anyhow!("No blob available for the latest block"));
-        }
-        let original_mining_hash = blob.clone();
-        let blob = if main_algo == "RandomXT" {
-            // The format is:
-            // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
-            // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
-            //
-            // Major version: 0
-            // Minor version: 0
-            // Timestamp: 0
-            let mut final_blob = vec![0u8; 76];
-            final_blob[0] = 0; // Major version
-            final_blob[1] = 0; // Minor version
-            final_blob[2] = 0; // Timestamp
-            final_blob[3..35].copy_from_slice(&blob); // Mining hash
-                                                      //   final_blob[35..43] nonce (0)
-            final_blob[43] = 2; // Pow algorithm (2 for RandomXT)
-            final_blob
-        } else {
-            blob
-        };
+        let job_record = create_job_from_blob(&self.block_template_repository, algo, address, nonce).await?;
         dbg!("here");
-        let job_record = Job {
-            id: id.clone(),
-            algo: main_algo.clone(),
-            pow_algo: algo,
-            blob: blob.clone(),
-            height,
-            target: job_target.clone(),
-            job_id: job_id.clone(),
-            created_at: chrono::Utc::now().naive_utc(),
-            miner_address: login.clone(),
-            chain_target: chain_target.clone(),
-            xn: random_bytes,
-            original_mining_hash,
-        };
-        dbg!("here");
-        self.job_repository.insert_job(job_record).await?;
+        self.job_repository.insert_job(job_record.clone()).await?;
 
         Ok(AuthorizeResponse {
-            difficulty: job_target,
-            block_template: hex::encode(blob),
-            nonce: xn,
-            height,
+            difficulty: job_record.target,
+            blob: hex::encode(job_record.blob.clone()),
+            extra_nonce_hex: job_record.xn.to_string(),
+            height: job_record.height,
+            job_id: job_record.job_id.clone(),
             // subscription_id: subscription_id.clone(),
             // extra_nonce: xn.clone(),
         })
     }
 
-    async fn check_notify_needed(&self, subscription_id: &str, last_notify_height: u64) -> Option<NotifyResponse> {
-        // let latest_block = self.block_template_repository.get_latest_block().await.ok()?;
-        // if latest_block.height > last_notify_height {
-        // Some(NotifyResponse {
-        // subscription_id: subscription_id.to_string(),
-        // extra_nonce: "0".to_string(),
-        // height: latest_block.height,
-        // })
-        // } else {
-        // None
-        // }
-        todo!()
+    async fn check_notify_needed(&self, last_job_id: String) -> Result<Option<NotifyResponse>, anyhow::Error> {
+        let last_job = self.job_repository.get_job(last_job_id.clone()).await?;
+
+        if last_job.is_none() {
+            return Err(anyhow::anyhow!("Job with id {} not found", last_job_id));
+        }
+
+        let last_job = last_job.unwrap();
+
+        let (best_height, best_block_header) = self.block_template_repository.get_tip().await?;
+
+        if last_job.height == best_height.saturating_add(1) && last_job.prev_block_hash == best_block_header {
+            // No need to notify, the job is still valid
+            return Ok(None);
+        }
+
+        // Else, let's make a new job.
+        let job_record = create_job_from_blob(
+            &self.block_template_repository,
+            last_job.pow_algo,
+            last_job.miner_address.clone(),
+            Some(last_job.xn.clone()),
+        )
+        .await?;
+        dbg!("here");
+        self.job_repository.insert_job(job_record.clone()).await?;
+        Ok(Some(NotifyResponse {
+            job_id: job_record.job_id,
+            height: job_record.height,
+            blob: hex::encode(job_record.blob),
+            extra_nonce_hex: hex::encode(job_record.xn.to_le_bytes()),
+        }))
     }
+}
+
+async fn create_job_from_blob<TBlockRepo: BlockTemplateRepository>(
+    block_template_repository: &TBlockRepo,
+    algo: PowAlgorithm,
+    address: TariAddress,
+    nonce: Option<u16>,
+) -> anyhow::Result<Job> {
+    let BlockTemplate {
+        blob,
+        height,
+        target,
+        seed_hash,
+        extra_nonce,
+        prev_block_hash,
+    } = block_template_repository
+        .get_block_template(algo, Some(address.clone()))
+        .await?;
+    dbg!("here");
+    let mut r = OsRng;
+    // let subscription_id = hex::encode(r.next_u64().to_le_bytes());
+    let job_id = hex::encode(r.next_u64().to_le_bytes());
+
+    let id = hex::encode(r.next_u64().to_le_bytes());
+    let random_bytes = rand::random::<u16>();
+    let xn = nonce
+        .map(|n| hex::encode(n.to_le_bytes()))
+        .clone()
+        .unwrap_or_else(|| hex::encode(&random_bytes.to_le_bytes()));
+    // let algo = "sha3x".to_string();
+    let job_target = hex::encode((u64::MAX / target).to_le_bytes());
+    let chain_target = hex::encode(target.to_le_bytes());
+
+    if blob.is_empty() {
+        return Err(anyhow::anyhow!("No blob available for the latest block"));
+    }
+    let original_mining_hash = blob.clone();
+    let blob = if algo == PowAlgorithm::RandomXT {
+        // The format is:
+        // | 1 byte | 1 byte | 1 bytes | 32 bytes | 8 bytes | 1 byte | 32 bytes|
+        // | major version | minor version | timestamp | mining_hash | nonce (big endian) | pow_algo | pow_data, excluding algo, padded to 32 bytes |
+        //
+        // Major version: 0
+        // Minor version: 0
+        // Timestamp: 0
+        let mut final_blob = vec![0u8; 76];
+        final_blob[0] = 0; // Major version
+        final_blob[1] = 0; // Minor version
+        final_blob[2] = 0; // Timestamp
+        final_blob[3..35].copy_from_slice(&blob); // Mining hash
+                                                  //   final_blob[35..43] nonce (0)
+        final_blob[43] = 2; // Pow algorithm (2 for RandomXT)
+        final_blob
+    } else {
+        blob
+    };
+    dbg!("here");
+    let job_record = Job {
+        id: id.clone(),
+        algo: algo.to_string(),
+        pow_algo: algo,
+        blob: blob.clone(),
+        height,
+        target: job_target.clone(),
+        job_id: job_id.clone(),
+        created_at: chrono::Utc::now().naive_utc(),
+        miner_address: address.clone(),
+        chain_target: chain_target.clone(),
+        xn: random_bytes,
+        original_mining_hash,
+        prev_block_hash: prev_block_hash.clone(),
+    };
+    Ok(job_record)
 }

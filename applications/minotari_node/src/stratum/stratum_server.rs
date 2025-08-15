@@ -150,7 +150,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                     tokio::spawn(async move {
                                                         let (reader, mut writer) = stream.into_split();
                                                         let mut reader = BufReader::new(reader).lines();
-                                                        let mut subscription_ids :Vec<(String, String, u64)> = vec![];
+                                                        let mut subscription_ids :Vec<(String, u16, Option<String>)> = vec![];
                                                         let mut current_subscription_id: Option<String> =None;
 
                                                         loop {
@@ -171,13 +171,34 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                             Err(e) => {
                                                                 // timeout, let's check if there is a new block and notify the client.
 
-                                                                debug!(target: LOG_TARGET, "Timeout while reading line: {}", e);
                                                                 // Check for new blocks and notify the client
-                                                                for (sub_id, extra_nonce, mut last_notify_height) in &mut subscription_ids {
-                                                                    if let Some(res) = handler.check_notify_needed(sub_id, last_notify_height).await {
+                                                                for (sub_id, extra_nonce, ref mut last_job) in subscription_ids.iter_mut() {
+
+                                                                    if last_job.is_none() {
+                                                                        // last_job = &mut current_subscription_id;
+                                                                        continue;
+                                                                    }
+                                                                    let job = last_job.clone().unwrap();
+                                                                    match  handler.check_notify_needed(job).await {
+
+                                                                        Ok(Some(res) ) => {
+
                                                                             info!(target: LOG_TARGET, "Sending notify for subscription {} with extra nonce {}", sub_id, extra_nonce);
-                                                                            // let _unused = writer.write_all(res.as_bytes()).await ;
-                                                                            last_notify_height  = res.height;
+                                                                            let difficulty = "1f02dc3c".to_string(); // Example difficulty, replace with actual logic
+                                                                            let message = format!(
+                                                                                "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"method\": \"mining.notify\", \"params\": [\"{}\", \"{}\", {}, \"{}\", false]}}\n",
+                                                                                sub_id, res.extra_nonce_hex, res.blob, res.height, difficulty
+                                                                            );
+                                                                            info!(target: LOG_TARGET, "Notify message: {}", message);
+                                                                            let _unused = writer.write_all(message.as_bytes()).await;
+                                                                            *last_job  = Some(res.job_id.clone());
+                                                                        },
+                                                                        Ok(None) => {
+                                                                            debug!(target: LOG_TARGET, "No notify needed for subscription {}", sub_id);
+                                                                        },
+                                                                        Err(e) => {
+                                                                            warn!(target: LOG_TARGET, "Failed to check notify needed: {}", e);
+                                                                        }
                                                                 }
                                                             }
                                                             continue;
@@ -227,7 +248,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     continue;
                                                                                 }
 
-                                                                                let response = handler.login(id.clone(), login_address, true, &algo, pass, agent, login_difficulty).await;
+                                                                                let response = handler.login(id.clone(), login_address,  &algo, pass, agent, login_difficulty).await;
                                                                                 match response {
                                                                                     Ok(resp) => {
                                                                                         info!(target: LOG_TARGET, "Handled login request with id: {}", id);
@@ -275,7 +296,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     Ok(r) =>  {
                                                                                         info!(target: LOG_TARGET, "Handled subscribe request with id: {}", id);
 
-                                                                                        subscription_ids.push((r.subscription_id.clone(), r.extra_nonce.clone(), 0));
+                                                                                        subscription_ids.push((r.subscription_id.clone(), r.nonce.clone(), None));
                                                                                         current_subscription_id = Some(r.subscription_id.clone());
                         // [2025-07-24T11:20:11.431049200+00:00] {"id":1,"result":[[["mining.set_difficulty","68656c6c6f2c6d696e65722d002779c8"],["mining.notify","68656c6c6f2c6d696e65722d002779c8"]],"002779c8",4],"error":null}
 
@@ -289,7 +310,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                         // {"id":null,"method":"mining.notify","params":["1eb6e5","a9d69d884bd093be85f38e8a4ffcf10c8e8e327636bcf9c3d4f017a96ef00ee7",1153674,"1f02dc3c",false]
                                                                                         let res = format!(
                                                                                             "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
-                                                                                            id, r.subscription_id, r.subscription_id, r.extra_nonce, r.extra_nonce.len()/2 // length in hex
+                                                                                            id, r.subscription_id, r.subscription_id, r.nonce_hex, r.nonce_hex.len()/2 // length in hex
                                                                                         );
                                                                                         info!(target: LOG_TARGET, "Subscribe response: {}", res);
                                                                                         let _res = writer.write_all(
@@ -303,6 +324,11 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     }
                                                                                 }
                                                                             },
+                                                                            StratumRequest::ExtraNonceSubscribe { id } => {
+                                                                                info!(target: LOG_TARGET, "Extra nonce subscribe request with id: {}", id);
+                                                                                // This is a no-op in this implementation, but you can handle it if needed
+                                                                                let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": true, \"error\": null}}\n", id).as_bytes()).await;
+                                                                            },
                                                                             StratumRequest::Authorize { id, login, worker_name, pass, is_solo : _ } => {
                                                                                  let sub;
                                                                                  println!("here");
@@ -313,7 +339,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                         // let response = handler.authorize(id.clone(), login, worker_name, pass).await;
                                                                                    } else {
                                                                                         warn!(target: LOG_TARGET, "No current subscription id found. Not authorizing.");
-                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"error\": \"Not subscribed\", \"result\": null}}\n", id).as_bytes()).await;
+                                                                                        let _res = writer.write_all(format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"error\": \"Not subscribed\", \"result\": null}}\n", id).as_bytes()).await;
                                                                                         continue;
                                                                                     }
 
@@ -326,7 +352,8 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                             continue;
                                                                                         }
 
-                                                                                 let response = handler.authorize(id.clone(),  "Cuckaroo".to_string(),  true, login , worker_name, pass, nonce).await;
+
+                                                                                 let response = handler.authorize(id.clone(),  "Cuckaroo".to_string(),  login , worker_name, pass, nonce).await;
                                                                                  println!("here");
                                                                                 match response {
                                                                                     Ok(r) =>  {
@@ -346,13 +373,22 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                         //     "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": [[[\"mining.set_difficulty\", \"{}\"],[\"mining.notify\", \"{}\"]], \"{}\", {}]}}\n",
                                                                                         //     id, r.subscription_id, r.subscription_id, r.extra_nonce, r.extra_nonce.len()/2 // length in hex
                                                                                         // );
-                                                                                        let res = format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": true}}\n",
+                                                                                        let res = format!("{{\"id\": {}, \"jsonrpc\": \"2.0\", \"result\": true, \"error\": null}}\n",
                                                                                             id
                                                                                         );
                                                                                         info!(target: LOG_TARGET, "Auth response: {}", res);
                                                                                         let _res = writer.write_all(
                                                                                             res.as_bytes(),
                                                                                         ).await;
+
+                                                                                        // Send mining notify
+                                                                                         let difficulty = "1f02dc3c".to_string(); // Example difficulty, replace with actual logic
+                                                                            let message = format!(
+                                                                                "{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"method\": \"mining.notify\", \"params\": [\"{}\", \"{}\", {}, \"{}\", false]}}\n",
+                                                                                sub, r.extra_nonce_hex, r.blob, r.height, difficulty
+                                                                            );
+                                                                                        info!(target: LOG_TARGET, "Notify message: {}", message);
+                                                                                        let _res = writer.write_all(message.as_bytes()).await;
                                                                                         // let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await;
                                                                                     },
                                                                                     Err(e) => {
@@ -364,6 +400,12 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                             },
 
                                                                         }
+
+                                                                        //
+                                                                        // [applications\minotari_node\src\stratum\stratum_server.rs:729:9] &line = "{\"id\":4,\"method\":\"mining.submit\",\"params\":[\"12BS6NPHQWS7Xg66dDj5o7gC1t3dSvwZAqgxXsuEwwgZWUVY5LYDeWCRpbm1bTjdbvpyKJr3S1tDry6NXMfkLDZacJR\",\"59890\",\"000001c3\",[\"142cf04a\",\"0f41a5a2\",\"116d7b9f\",\"0710dcdf\",\"03500464\",\"06c8d06e\",\"138b8d6f\",\"1b33704a\",\"18ec789a\",\"1f8cf1f5\",\"00b091fc\",\"081b39ca\",\"16237ad0\",\"018cfa11\",\"042af3ad\",\"176689fe\",\"1bae17bb\",\"1f55f90a\",\"19a98291\",\"0e3e48da\",\"0d5e6c48\",\"06c6de56\",\"0624ddc6\",\"0a04a5e0\",\"039f9998\",\"053316ad\",\"126df8e6\",\"1848c32f\",\"0f0e94df\",\"0d565b02\",\"111619d9\",\"0a901346\",\"1bacf7f2\",\"17af46dc\",\"1c5efce6\",\"03c6b589\",\"1c14205d\",\"0a6efdd9\",\"190b0fe8\",\"1801bf1e\",\"1cd9e943\",\"1de05eb2\"]]}"
+
+
+
                                                                         // match handler.handle_request(request) {
                                                                         //     Ok(resp) => {
                                                                         //         info!( "Handled request with id: {}", id);
@@ -404,7 +446,6 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         &self,
         id: String,
         login: String,
-        is_solo: bool,
         algo: &[String],
         pass: String,
         agent: String,
@@ -427,14 +468,13 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         &self,
         id: String,
         main_algo: String,
-        is_solo: bool,
         login: String,
         worker_name: Option<String>,
         pass: String,
-        nonce: Option<String>,
+        nonce: Option<u16>,
     ) -> anyhow::Result<AuthorizeResponse>;
 
-    async fn check_notify_needed(&self, subscription_id: &str, last_notify_height: u64) -> Option<NotifyResponse>;
+    async fn check_notify_needed(&self, last_job: String) -> anyhow::Result<Option<NotifyResponse>>;
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -461,20 +501,25 @@ pub(crate) struct SubscribeResponse {
     // pub nonce: String,
     // pub height: u64,
     pub subscription_id: String,
-    pub extra_nonce: String,
+    pub nonce_hex: String,
+    pub nonce: u16,
 }
 
 pub(crate) struct AuthorizeResponse {
     pub difficulty: String,
-    pub block_template: String,
-    pub nonce: String,
+    pub blob: String,
+    pub extra_nonce_hex: String,
     pub height: u64,
+    pub job_id: String,
 }
 
 pub(crate) struct NotifyResponse {
     // pub subscription_id: String,
     // pub extra_nonce: String,
+    pub job_id: String,
     pub height: u64,
+    pub blob: String,
+    pub extra_nonce_hex: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -585,6 +630,9 @@ pub enum StratumRequest {
         worker_name: Option<String>,
         pass: String,
     },
+    ExtraNonceSubscribe {
+        id: String,
+    },
 }
 
 impl StratumRequest {
@@ -594,6 +642,7 @@ impl StratumRequest {
             StratumRequest::Submit { id, .. } => id.as_str(),
             StratumRequest::Subscribe { id, .. } => id.as_str(),
             StratumRequest::Authorize { id, .. } => id.as_str(),
+            StratumRequest::ExtraNonceSubscribe { id } => id.as_str(),
         }
     }
 }
@@ -672,6 +721,7 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
                     worker_name,
                 })
             },
+            "mining.extranonce.subscribe" => Ok(StratumRequest::ExtraNonceSubscribe { id }),
 
             _ => Err(anyhow::anyhow!("Unknown method")),
         }

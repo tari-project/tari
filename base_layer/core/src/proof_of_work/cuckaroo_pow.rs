@@ -490,4 +490,39 @@ mod test {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), CuckarooVerificationError::NodeHasMoreThanTwoEdges);
     }
+
+    #[test]
+    fn test_solution() {
+        let blob = hex::decode("935ea63832b08fe75ce3ee7801e800139957e709f38b0ba513d4231e00ca4d6c").unwrap();
+        let siphash_keys = [
+            u64::from_le_bytes(blob[0..8].try_into().unwrap()),
+            u64::from_le_bytes(blob[8..16].try_into().unwrap()),
+            u64::from_le_bytes(blob[16..24].try_into().unwrap()),
+            u64::from_le_bytes(blob[24..32].try_into().unwrap()),
+        ];
+
+        let nonces = [
+            "142cf04a", "0f41a5a2", "116d7b9f", "0710dcdf", "03500464", "06c8d06e", "138b8d6f", "1b33704a", "18ec789a",
+            "1f8cf1f5", "00b091fc", "081b39ca", "16237ad0", "018cfa11", "042af3ad", "176689fe", "1bae17bb", "1f55f90a",
+            "19a98291", "0e3e48da", "0d5e6c48", "06c6de56", "0624ddc6", "0a04a5e0", "039f9998", "053316ad", "126df8e6",
+            "1848c32f", "0f0e94df", "0d565b02", "111619d9", "0a901346", "1bacf7f2", "17af46dc", "1c5efce6", "03c6b589",
+            "1c14205d", "0a6efdd9", "190b0fe8", "1801bf1e", "1cd9e943", "1de05eb2",
+        ];
+        let nonces = nonces
+            .iter()
+            .map(|s| u64::from_str_radix(s, 16).unwrap())
+            .collect::<Vec<_>>();
+        let edge_bits = 29;
+        let node_mask = (1u64 << edge_bits) - 1;
+        let mut uvs = vec![];
+        for (i, nonce) in nonces.iter().enumerate() {
+            let edge = siphash_block(&siphash_keys, *nonce, 21, true);
+            let u = edge & node_mask;
+            let v = (edge >> 32) & node_mask;
+            uvs.push((u, v));
+        }
+
+        dbg!("uvs: {:?}", uvs);
+        todo!();
+    }
 }
