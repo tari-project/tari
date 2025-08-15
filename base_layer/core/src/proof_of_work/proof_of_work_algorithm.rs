@@ -69,6 +69,7 @@ impl TryFrom<u64> for PowAlgorithm {
             0 => Ok(PowAlgorithm::RandomXM),
             1 => Ok(PowAlgorithm::Sha3x),
             2 => Ok(PowAlgorithm::RandomXT),
+            3 => Ok(PowAlgorithm::Cuckaroo),
             _ => Err("Invalid PoWAlgorithm".into()),
         }
     }
@@ -85,6 +86,7 @@ impl FromStr for PowAlgorithm {
             },
             "SHA" | "SHA3" | "SHA3X" => Ok(Self::Sha3x),
             "RANDOMXT" | "RANDOM_XT" | "TARI_RANDOM_X" | "RANDOMXTARI" => Ok(Self::RandomXT),
+            "CUCKAROO" | "CUCKAROO29" | "C29" => Ok(Self::Cuckaroo),
             _ => Err(anyhow::Error::msg(format!("Unknown pow algorithm type: {s}"))),
         }
     }

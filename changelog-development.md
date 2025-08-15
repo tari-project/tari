@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-pre.3](https://github.com/tari-project/tari/compare/v5.0.0-pre.2...v5.0.0-pre.3) (2025-08-14)
+
+
+### Bug Fixes
+
+* add missing c29 parsers ([#7414](https://github.com/tari-project/tari/issues/7414)) ([96cf673](https://github.com/tari-project/tari/commit/96cf67352f68090d90bdd6eedfcb01b731722fe8))
+* fix esme valid versions ([#7415](https://github.com/tari-project/tari/issues/7415)) ([bfca423](https://github.com/tari-project/tari/commit/bfca423583f8a819d4b1d270d88bdfffac03bf12))
+
 ## [5.0.0-pre.2](https://github.com/tari-project/tari/compare/v5.0.0-pre.1...v5.0.0-pre.2) (2025-08-13)
 
 
