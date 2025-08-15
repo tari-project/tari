@@ -183,7 +183,7 @@ impl Display for EmojiId {
         let emoji = bytes
             .iter()
             .chain(iter::once(&compute_checksum(bytes)))
-            .map(|b| EMOJI[*b as usize])
+            .map(|b| EMOJI.get(*b as usize).expect("Should exits"))
             .collect::<String>();
 
         fmt.write_str(&emoji)
@@ -192,6 +192,7 @@ impl Display for EmojiId {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{iter, str::FromStr};
 
     use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};

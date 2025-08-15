@@ -135,7 +135,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
 
             let sender_offset_public_key =
                 CompressedPublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
-                    .map_err(|err| format!("{:?}", err))?;
+                    .map_err(|err| format!("{err:?}"))?;
 
             let metadata_signature = input
                 .metadata_signature
@@ -154,8 +154,8 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 )?,
                 features,
                 commitment,
-                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{err:?}"))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{err:?}"))?,
                 script_signature,
                 sender_offset_public_key,
                 BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
@@ -171,7 +171,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             let hash = input.output_hash.try_into().map_err(|_| "Invalid transaction hash")?;
             Ok(TransactionInput::new_with_output_hash(
                 hash,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{err:?}"))?,
                 script_signature,
             ))
         }
@@ -272,7 +272,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let sender_offset_public_key =
             CompressedPublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
-                .map_err(|err| format!("{:?}", err))?;
+                .map_err(|err| format!("{err:?}"))?;
 
         let range_proof = if let Some(proof) = output.range_proof {
             Some(BulletRangeProof::from_canonical_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)

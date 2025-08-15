@@ -12,7 +12,7 @@ pub fn u16_to_string(number: u16) -> String {
     let mut pos = 0;
 
     if number == 0 {
-        buffer[pos] = b'0';
+        *buffer.get_mut(pos).expect("There should be an index at 0") = b'0';
         pos += 1;
     } else {
         let mut num = number;
@@ -21,19 +21,20 @@ pub fn u16_to_string(number: u16) -> String {
         let mut num_digits = 0;
 
         while num > 0 {
-            digits[num_digits] = b'0' + (num % 10) as u8;
+            *digits.get_mut(num_digits).expect("There should be an index") = b'0' + (num % 10) as u8;
             num /= 10;
             num_digits += 1;
         }
 
         while num_digits > 0 {
             num_digits -= 1;
-            buffer[pos] = digits[num_digits];
+            *buffer.get_mut(pos).expect("There should be an index") =
+                *digits.get(num_digits).expect("There should be an index");
             pos += 1;
         }
     }
 
-    String::from_utf8_lossy(&buffer[..pos]).to_string()
+    String::from_utf8_lossy(buffer.get(..pos).expect("should exist")).to_string()
 }
 
 /// The Tari dual address minimum size (standard dual address)
@@ -48,9 +49,9 @@ pub fn tari_dual_address_display(address_bytes: &[u8]) -> Result<String, String>
     }
     validate_checksum(address_bytes)?;
     let mut base58 = "".to_string();
-    base58.push_str(&bs58::encode(&address_bytes[0..1]).into_string());
-    base58.push_str(&bs58::encode(&address_bytes[1..2].to_vec()).into_string());
-    base58.push_str(&bs58::encode(&address_bytes[2..]).into_string());
+    base58.push_str(&bs58::encode(&address_bytes.get(0..1).expect("Length is checked")).into_string());
+    base58.push_str(&bs58::encode(&address_bytes.get(1..2).expect("Length is checked").to_vec()).into_string());
+    base58.push_str(&bs58::encode(&address_bytes.get(2..).expect("Length is checked")).into_string());
     Ok(base58)
 }
 
@@ -61,7 +62,7 @@ pub fn get_public_spend_key_bytes_from_tari_dual_address(address_bytes: &[u8]) -
     }
     validate_checksum(address_bytes)?;
     let mut public_spend_key_bytes = [0u8; 32];
-    public_spend_key_bytes.copy_from_slice(&address_bytes[34..66]);
+    public_spend_key_bytes.copy_from_slice(address_bytes.get(34..66).expect("Length is checked"));
     Ok(public_spend_key_bytes)
 }
 
@@ -75,7 +76,10 @@ pub fn get_payment_id_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Resu
     // Payment ID data is between spend key and checksum
     let payment_id_start = 66;
     let payment_id_end = address_bytes.len() - 1; // Exclude checksum
-    Ok(address_bytes[payment_id_start..payment_id_end].to_vec())
+    Ok(address_bytes
+        .get(payment_id_start..payment_id_end)
+        .expect("Length is checked")
+        .to_vec())
 }
 
 /// Check if address has payment ID
@@ -94,7 +98,7 @@ fn validate_checksum(data: &[u8]) -> Result<&[u8], String> {
 
     // It's sufficient to check the entire slice against a zero checksum
     match compute_checksum(data) {
-        0u8 => Ok(&data[..data.len() - 1]),
+        0u8 => Ok(data.get(..data.len() - 1).expect("Length is checked")),
         _ => Err("ChecksumError::InvalidChecksum".to_string()),
     }
 }
@@ -135,6 +139,7 @@ fn mask() -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use alloc::vec;
 
     use super::*;

@@ -110,9 +110,8 @@ impl OutboundServiceMockState {
             None => {
                 let num_calls = self.call_count().await;
                 Err(format!(
-                    "wait_call_count timed out before before receiving the expected number of calls. (Expected = {}, \
-                     Got = {})",
-                    expected_calls, num_calls
+                    "wait_call_count timed out before before receiving the expected number of calls. (Expected = \
+                     {expected_calls}, Got = {num_calls})"
                 ))
             },
         }
@@ -220,7 +219,7 @@ impl OutboundServiceMock {
                                 },
                                 resp => {
                                     let _ignore = reply_tx.send(SendMessageResponse::Failed(SendFailure::General(
-                                        format!("Unexpected mock response {:?}", resp),
+                                        format!("Unexpected mock response {resp:?}"),
                                     )));
                                 },
                             };

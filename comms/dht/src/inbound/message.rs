@@ -246,7 +246,7 @@ impl Display for DecryptedDhtMessage {
                 .unwrap_or_else(|| "None".to_string()),
             self.decryption_result
                 .as_ref()
-                .map(|envelope| format!("Success({})", envelope))
+                .map(|envelope| format!("Success({envelope})"))
                 .unwrap_or_else(|_| "Failed".to_string()),
             self.dht_header,
             self.is_saf_message,

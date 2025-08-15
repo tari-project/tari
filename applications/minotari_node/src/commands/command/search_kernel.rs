@@ -60,7 +60,7 @@ impl CommandContext {
             .await?
             .pop()
             .ok_or_else(|| anyhow!("No kernel with signature {} found", hex_sig))?;
-        println!("{}", v);
+        println!("{v}");
         Ok(())
     }
 }

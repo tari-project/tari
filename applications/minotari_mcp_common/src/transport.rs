@@ -155,30 +155,30 @@ impl Transport for JsonRpcTransport {
     async fn listen(&self, addr: SocketAddr) -> McpResult<()> {
         let listener = TcpListener::bind(addr)
             .await
-            .map_err(|e| McpError::transport_error(format!("Failed to bind to {}: {}", addr, e)))?;
+            .map_err(|e| McpError::transport_error(format!("Failed to bind to {addr}: {e}")))?;
 
         log::info!("MCP server listening on {}", addr);
 
         loop {
             match listener.accept().await {
                 Ok((stream, peer_addr)) => {
-                    log::debug!("New connection from {}", peer_addr);
+                    log::debug!("New connection from {peer_addr}");
 
                     // Verify connection is from localhost
                     if !peer_addr.ip().is_loopback() {
-                        log::warn!("Rejected non-localhost connection from {}", peer_addr);
+                        log::warn!("Rejected non-localhost connection from {peer_addr}");
                         continue;
                     }
 
                     let handler_clone = Arc::clone(&self.message_handler);
                     tokio::spawn(async move {
                         if let Err(e) = Self::handle_connection_static(handler_clone.as_ref(), stream).await {
-                            log::error!("Connection error: {}", e);
+                            log::error!("Connection error: {e}");
                         }
                     });
                 },
                 Err(e) => {
-                    log::error!("Failed to accept connection: {}", e);
+                    log::error!("Failed to accept connection: {e}");
                 },
             }
         }
@@ -209,7 +209,7 @@ impl JsonRpcTransport {
                         continue;
                     }
 
-                    log::debug!("Received message: {}", line);
+                    log::debug!("Received message: {line}");
 
                     // Parse JSON-RPC message
                     let response = match serde_json::from_str::<McpMessage>(line) {
@@ -218,8 +218,8 @@ impl JsonRpcTransport {
                             handler.handle_message(message).await
                         },
                         Err(e) => {
-                            log::warn!("Failed to parse message: {}", e);
-                            Err(McpError::invalid_request(format!("Invalid JSON-RPC: {}", e)))
+                            log::warn!("Failed to parse message: {e}");
+                            Err(McpError::invalid_request(format!("Invalid JSON-RPC: {e}")))
                         },
                     };
 
@@ -248,21 +248,21 @@ impl JsonRpcTransport {
                     writer
                         .write_all(response_json.as_bytes())
                         .await
-                        .map_err(|e| McpError::transport_error(format!("Write failed: {}", e)))?;
+                        .map_err(|e| McpError::transport_error(format!("Write failed: {e}")))?;
                     writer
                         .write_all(b"\n")
                         .await
-                        .map_err(|e| McpError::transport_error(format!("Write failed: {}", e)))?;
+                        .map_err(|e| McpError::transport_error(format!("Write failed: {e}")))?;
                     writer
                         .flush()
                         .await
-                        .map_err(|e| McpError::transport_error(format!("Flush failed: {}", e)))?;
+                        .map_err(|e| McpError::transport_error(format!("Flush failed: {e}")))?;
 
-                    log::debug!("Sent response: {}", response_json);
+                    log::debug!("Sent response: {response_json}");
                 },
                 Err(e) => {
-                    log::error!("Read error: {}", e);
-                    return Err(McpError::transport_error(format!("Read failed: {}", e)));
+                    log::error!("Read error: {e}");
+                    return Err(McpError::transport_error(format!("Read failed: {e}")));
                 },
             }
         }

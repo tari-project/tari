@@ -67,15 +67,15 @@ impl DnsResolver for TorDnsResolver {
         Box::pin(async move {
             let addr = if common::is_dns4_addr(&addr) {
                 let mut client = resolver.connect().await?;
-                debug!(target: LOG_TARGET, "Resolving address `{}` using tor", addr);
+                debug!(target: LOG_TARGET, "Resolving address `{addr}` using tor" );
                 let resolved_address = match client.tor_resolve(&addr).await {
                     Ok(address) => address,
                     Err(err) => {
-                        error!(target: LOG_TARGET, "Error resolving address: {}", err);
+                        error!(target: LOG_TARGET, "Error resolving address: {err}");
                         return Err(err.into());
                     },
                 };
-                debug!(target: LOG_TARGET, "Resolved address `{}` using tor", resolved_address);
+                debug!(target: LOG_TARGET, "Resolved address `{resolved_address}` using tor");
                 resolved_address
             } else {
                 addr

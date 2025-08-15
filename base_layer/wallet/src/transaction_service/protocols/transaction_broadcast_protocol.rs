@@ -182,7 +182,7 @@ where
             Err(e) => {
                 info!(
                     target: LOG_TARGET,
-                    "Submit Transaction RPC Call to Base Node failed: {}", e
+                    "Submit Transaction RPC Call to Base Node failed: {e}"
                 );
                 return Ok(false);
             },
@@ -231,13 +231,11 @@ where
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id, reason)))
-                .map_err(|e| {
+                .inspect_err(|e| {
                     trace!(
                         target: LOG_TARGET,
-                        "Error sending event because there are no subscribers: {:?}",
-                        e
+                        "Error sending event because there are no subscribers: {e:?}",
                     );
-                    e
                 });
 
             return Err(TransactionServiceProtocolError::new(self.tx_id, reason_error));
@@ -262,13 +260,11 @@ where
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionBroadcast(self.tx_id)))
-                .map_err(|e| {
+                .inspect_err(|e| {
                     trace!(
                         target: LOG_TARGET,
-                        "Error sending event, usually because there are no subscribers: {:?}",
-                        e
+                        "Error sending event, usually because there are no subscribers: {e:?}",
                     );
-                    e
                 });
         }
 
@@ -295,7 +291,7 @@ where
             .map_err(|e| {
                 info!(
                     target: LOG_TARGET,
-                    "Transaction Query RPC Call to Base Node failed: {}", e
+                    "Transaction Query RPC Call to Base Node failed: {e}"
                 );
                 TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Other(e.to_string()))
             })?;
@@ -335,13 +331,11 @@ where
                         self.tx_id,
                         TxCancellationReason::InvalidTransaction,
                     )))
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         trace!(
                             target: LOG_TARGET,
-                            "Error sending event because there are no subscribers: {:?}",
-                            e
+                            "Error sending event because there are no subscribers: {e:?}",
                         );
-                        e
                     });
                 Err(TransactionServiceProtocolError::new(
                     self.tx_id,

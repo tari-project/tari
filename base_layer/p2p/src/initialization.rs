@@ -256,7 +256,7 @@ pub async fn spawn_comms_using_transport<F: Fn(TorIdentity) + Send + Sync + Unpi
         },
         TransportType::Tor => {
             let tor_config = transport_config.tor;
-            debug!(target: LOG_TARGET, "Building TOR comms stack ({:?})", tor_config);
+            debug!(target: LOG_TARGET, "Building TOR comms stack ({tor_config:?})");
             let listener_address_override = tor_config.listener_address_override.clone();
             let hidden_service_ctl = initialize_hidden_service(tor_config)?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
@@ -404,13 +404,13 @@ pub async fn add_seed_peers(
         if &peer.public_key == node_identity.public_key() {
             debug!(
                 target: LOG_TARGET,
-                "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer
+                "Attempting to add yourself [{peer}] as a seed peer to comms layer, ignoring request"
             );
             continue;
         }
         peer.add_flags(PeerFlags::SEED);
 
-        debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
+        debug!(target: LOG_TARGET, "Adding seed peer [{peer}]");
         peer_manager
             .add_or_update_peer(peer)
             .await
@@ -485,7 +485,7 @@ impl P2pInitializer {
                 let seeds_res = match timeout(Duration::from_secs(5), resolver.resolve(addr)).await {
                     Ok(res) => res,
                     Err(_) => {
-                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{}`", addr);
+                        warn!(target: LOG_TARGET, "Timeout resolving DNS seed `{addr}`");
                         Err(DnsClientError::Timeout)
                     },
                 };
@@ -512,7 +512,7 @@ impl P2pInitializer {
                     Some(peers)
                 },
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "DNS seed `{}` failed to resolve: {}", addr, err);
+                    warn!(target: LOG_TARGET, "DNS seed `{addr}` failed to resolve: {err}");
                     None
                 },
             })
@@ -534,7 +534,7 @@ impl P2pInitializer {
         }
         let mut dns_errors = Vec::new();
         for dns in dns_seed_name_servers {
-            info!(target: LOG_TARGET, "Connecting to DNS name server: {}", dns);
+            info!(target: LOG_TARGET, "Connecting to DNS name server: {dns}");
             let res = match (dns_seeds_use_dnssec, dns == &DnsNameServer::System) {
                 (true, false) => DnsSeedResolver::connect_secure(dns.clone()),
                 (_, _) => DnsSeedResolver::connect(dns.clone()),
@@ -542,14 +542,13 @@ impl P2pInitializer {
             match res {
                 Ok(resolver) => return Ok(resolver),
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {}", err);
+                    warn!(target: LOG_TARGET, "Failed to connect to DNS name server: {err}");
                     dns_errors.push(err.to_string())
                 },
             }
         }
         Err(ServiceInitializationError::from(DnsClientError::Connection(format!(
-            "{:?}",
-            dns_errors
+            "{dns_errors:?}"
         ))))
     }
 }
@@ -593,7 +592,7 @@ impl ServiceInitializer for P2pInitializer {
         let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
             Ok(peers) => peers,
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {}", err);
+                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {err}");
                 Vec::new()
             },
         };

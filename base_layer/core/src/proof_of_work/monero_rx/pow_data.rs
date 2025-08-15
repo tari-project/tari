@@ -118,7 +118,7 @@ impl MoneroPowData {
     ) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_bytes();
         let pow_data: MoneroPowData =
-            BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
+            BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{e:?}")))?;
         if pow_data.coinbase_tx_extra.0.len() > consensus.consensus_constants(tari_header.height).max_extra_field_size()
         {
             return Err(MergeMineError::DeserializeError(format!(
@@ -141,7 +141,7 @@ impl MoneroPowData {
         // inputs that is allowed. Remember that the data in powdata is used for the hash, so having
         // multiple pow_data that generate the same randomx difficulty could be a problem.
         BorshSerialize::serialize(&pow_data, &mut test_serialized_data)
-            .map_err(|e| MergeMineError::SerializeError(format!("{:?}", e)))?;
+            .map_err(|e| MergeMineError::SerializeError(format!("{e:?}")))?;
         if test_serialized_data != tari_header.pow.pow_data.to_vec() {
             return Err(MergeMineError::SerializedPowDataDoesNotMatch(
                 "Serialized pow data does not match original pow data".to_string(),

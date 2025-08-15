@@ -62,7 +62,7 @@ pub struct WalletFFI {
 impl WalletFFI {
     fn spawn(world: &mut TariWorld, name: String, seed_words_ptr: *const c_void, base_dir: PathBuf) -> Self {
         let id = get_port(world, 18000..18499).unwrap().to_string();
-        let base_dir_path = base_dir.join("ffi_wallets").join(format!("{}_id_{}", name, id));
+        let base_dir_path = base_dir.join("ffi_wallets").join(format!("{name}_id_{id}"));
         let base_dir: String = base_dir_path.as_os_str().to_str().unwrap().into();
         let comms_config = ffi::CommsConfig::create(base_dir);
         let log_path: String = base_dir_path
@@ -203,7 +203,7 @@ pub fn get_mnemonic_word_list_for_language(language: String) -> ffi::SeedWords {
         "JAPANESE" => "Japanese",
         "KOREAN" => "Korean",
         "SPANISH" => "Spanish",
-        _ => panic!("Unknown language {}", language),
+        _ => panic!("Unknown language {language}"),
     };
     ffi::SeedWords::get_mnemonic_word_list_for_language(language.to_string())
 }

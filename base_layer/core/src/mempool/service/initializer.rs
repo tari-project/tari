@@ -86,8 +86,7 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
-                "Could not decode inbound transaction message. {}",
-                e
+                "Could not decode inbound transaction message. {e}"
             );
             None
         },

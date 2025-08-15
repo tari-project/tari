@@ -47,7 +47,7 @@ where T: Serialize + ?Sized {
     };
     let check_time = start.elapsed();
     bincode::serialize_into(&mut buf, data).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not serialize lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
     if buf.len() >= BYTES_PER_MB {
@@ -74,7 +74,7 @@ pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
 where T: DeserializeOwned {
     bincode::deserialize(buf_bytes)
         .map_err(|e| {
-            error!(target: LOG_TARGET, "Could not deserialize lmdb: {:?}", e);
+            error!(target: LOG_TARGET, "Could not deserialize lmdb: {e:?}");
             e
         })
         .map_err(|e| error::Error::ValRejected(e.to_string()))

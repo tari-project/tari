@@ -409,7 +409,7 @@ pub struct LeafKeyBitIterator<'a> {
 
 impl DoubleEndedIterator for LeafKeyBitIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.pos.next_back().map(|x| self.get_bit(x))
+        self.pos.next_back().and_then(|x| self.get_bit(x))
     }
 }
 
@@ -425,10 +425,10 @@ impl<'a> LeafKeyBitIterator<'a> {
     }
 
     /// Returns the `index`-th bit in the bytes.
-    fn get_bit(&self, index: usize) -> bool {
+    fn get_bit(&self, index: usize) -> Option<bool> {
         let pos = index / 8;
         let bit = 7 - index % 8;
-        (self.leaf_key_bytes[pos] >> bit) & 1 != 0
+        Some((self.leaf_key_bytes.get(pos)? >> bit) & 1 != 0)
     }
 }
 
@@ -436,7 +436,7 @@ impl Iterator for LeafKeyBitIterator<'_> {
     type Item = bool;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.pos.next().map(|x| self.get_bit(x))
+        self.pos.next().and_then(|x| self.get_bit(x))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -448,7 +448,7 @@ impl Iterator for LeafKeyBitIterator<'_> {
 pub trait IteratedLeafKey {
     fn iter_bits(&self) -> LeafKeyBitIterator<'_>;
 
-    fn get_nibble(&self, index: usize) -> Nibble;
+    fn get_nibble(&self, index: usize) -> Option<Nibble>;
 }
 
 impl IteratedLeafKey for LeafKey {
@@ -456,12 +456,12 @@ impl IteratedLeafKey for LeafKey {
         LeafKeyBitIterator::new(self.as_ref())
     }
 
-    fn get_nibble(&self, index: usize) -> Nibble {
-        Nibble::from(if index % 2 == 0 {
-            self.bytes[index / 2] >> 4
+    fn get_nibble(&self, index: usize) -> Option<Nibble> {
+        Some(Nibble::from(if index % 2 == 0 {
+            self.bytes.get(index / 2)? >> 4
         } else {
-            self.bytes[index / 2] & 0x0F
-        })
+            self.bytes.get(index / 2)? & 0x0F
+        }))
     }
 }
 
@@ -470,12 +470,12 @@ impl IteratedLeafKey for LeafKeyRef<'_> {
         LeafKeyBitIterator::new(*self)
     }
 
-    fn get_nibble(&self, index: usize) -> Nibble {
-        Nibble::from(if index % 2 == 0 {
-            self.bytes[index / 2] >> 4
+    fn get_nibble(&self, index: usize) -> Option<Nibble> {
+        Some(Nibble::from(if index % 2 == 0 {
+            self.bytes.get(index / 2)? >> 4
         } else {
-            self.bytes[index / 2] & 0x0F
-        })
+            self.bytes.get(index / 2)? & 0x0F
+        }))
     }
 }
 
@@ -489,7 +489,7 @@ pub struct Nibble(u8);
 
 impl From<u8> for Nibble {
     fn from(nibble: u8) -> Self {
-        assert!(nibble < 16, "Nibble out of range: {}", nibble);
+        assert!(nibble < 16, "Nibble out of range: {nibble}");
         Self(nibble)
     }
 }
@@ -524,7 +524,7 @@ pub struct NibblePath {
 /// nibbles will be printed as "12a".
 impl fmt::Debug for NibblePath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.nibbles().try_for_each(|x| write!(f, "{:x}", x))
+        self.nibbles().try_for_each(|x| write!(f, "{x:x}"))
     }
 }
 
@@ -539,7 +539,7 @@ impl fmt::Display for NibblePath {
             .take(self.num_nibbles);
 
         for ch in hex_chars {
-            write!(f, "{}", ch)?;
+            write!(f, "{ch}")?;
         }
         Ok(())
     }
@@ -579,7 +579,7 @@ impl NibblePath {
         if self.num_nibbles % 2 == 0 {
             self.bytes.push(u8::from(nibble) << 4);
         } else {
-            self.bytes[self.num_nibbles / 2] |= u8::from(nibble);
+            *self.bytes.get_mut(self.num_nibbles / 2).expect("Should exist") |= u8::from(nibble);
         }
         self.num_nibbles += 1;
     }
@@ -613,17 +613,20 @@ impl NibblePath {
     }
 
     /// Get the i-th bit.
-    fn get_bit(&self, i: usize) -> bool {
-        assert!(i < self.num_nibbles * 4);
+    fn get_bit(&self, i: usize) -> Option<bool> {
+        if i < self.num_nibbles * 4 {
+            return None;
+        }
         let pos = i / 8;
         let bit = 7 - i % 8;
-        ((self.bytes[pos] >> bit) & 1) != 0
+        Some(((self.bytes.get(pos)? >> bit) & 1) != 0)
     }
 
     /// Get the i-th nibble.
-    pub fn get_nibble(&self, i: usize) -> Nibble {
-        assert!(i < self.num_nibbles);
-        Nibble::from((self.bytes[i / 2] >> (if i % 2 == 1 { 0 } else { 4 })) & 0xF)
+    pub fn get_nibble(&self, i: usize) -> Option<Nibble> {
+        Some(Nibble::from(
+            (self.bytes.get(i / 2)? >> (if i % 2 == 1 { 0 } else { 4 })) & 0xF,
+        ))
     }
 
     /// Get a bit iterator iterates over the whole nibble path.
@@ -683,7 +686,7 @@ impl Peekable for NibbleBitIterator<'_> {
     /// Returns the `next()` value without advancing the iterator.
     fn peek(&self) -> Option<Self::Item> {
         if self.pos.start < self.pos.end {
-            Some(self.nibble_path.get_bit(self.pos.start))
+            Some(self.nibble_path.get_bit(self.pos.start)?)
         } else {
             None
         }
@@ -695,14 +698,14 @@ impl Iterator for NibbleBitIterator<'_> {
     type Item = bool;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.pos.next().map(|i| self.nibble_path.get_bit(i))
+        self.pos.next().and_then(|i| self.nibble_path.get_bit(i))
     }
 }
 
 /// Support iterating bits in reversed order.
 impl DoubleEndedIterator for NibbleBitIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.pos.next_back().map(|i| self.nibble_path.get_bit(i))
+        self.pos.next_back().and_then(|i| self.nibble_path.get_bit(i))
     }
 }
 
@@ -729,7 +732,7 @@ impl Iterator for NibbleIterator<'_> {
     type Item = Nibble;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.pos.next().map(|i| self.nibble_path.get_nibble(i))
+        self.pos.next().and_then(|i| self.nibble_path.get_nibble(i))
     }
 }
 
@@ -737,7 +740,7 @@ impl Peekable for NibbleIterator<'_> {
     /// Returns the `next()` value without advancing the iterator.
     fn peek(&self) -> Option<Self::Item> {
         if self.pos.start < self.pos.end {
-            Some(self.nibble_path.get_nibble(self.pos.start))
+            Some(self.nibble_path.get_nibble(self.pos.start)?)
         } else {
             None
         }
@@ -1371,4 +1374,7 @@ pub enum JmtStorageError {
 
     #[error("Attempted to insert node {0} that already exists")]
     Conflict(NodeKey),
+
+    #[error("Attempted to find an index that does not exist in the tree")]
+    IndexNotFound,
 }

@@ -22,6 +22,7 @@
 
 //! Methods for converting responses to json.
 
+#![allow(clippy::indexing_slicing)]
 use json::json;
 use serde_json as json;
 

@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{convert::TryFrom, sync::Arc};
 
 use borsh::BorshSerialize;
@@ -126,6 +127,7 @@ async fn test_monero_blocks() {
             target_time: 200,
         })
         .with_blockchain_version(tari_core::consensus::consensus_constants::BlockVersion::V0)
+        .with_valid_blockchain_version_range(0..=0)
         .build();
     let cm = ConsensusManager::builder(network)
         .add_consensus_constants(cc)
@@ -162,10 +164,10 @@ async fn test_monero_blocks() {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash),
         }) => (),
         Err(e) => {
-            panic!("Failed due to other error:{:?}", e);
+            panic!("Failed due to other error:{e:?}");
         },
         Ok(res) => {
-            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+            panic!("Block add unexpectedly succeeded with result: {res:?}");
         },
     };
 
@@ -177,10 +179,10 @@ async fn test_monero_blocks() {
             source: ValidationError::MergeMineError(_),
         }) => (),
         Err(e) => {
-            panic!("Failed due to other error:{:?}", e);
+            panic!("Failed due to other error:{e:?}");
         },
         Ok(res) => {
-            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+            panic!("Block add unexpectedly succeeded with result: {res:?}");
         },
     };
     // now lets fix the seed, and try again
@@ -196,10 +198,10 @@ async fn test_monero_blocks() {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
         }) => (),
         Err(e) => {
-            panic!("Failed due to other error:{:?}", e);
+            panic!("Failed due to other error:{e:?}");
         },
         Ok(res) => {
-            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+            panic!("Block add unexpectedly succeeded with result: {res:?}");
         },
     };
     // lets fix block3

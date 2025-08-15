@@ -49,10 +49,10 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8, xor_all: bool) -> u64 
         siphash.hash(nonce0 + i, rot_e);
         #[allow(clippy::cast_possible_truncation)]
         let i_usize = i as usize;
-        nonce_hash[i_usize] = siphash.digest();
+        *nonce_hash.get_mut(i_usize).expect("Already checked") = siphash.digest();
     }
     // xor the hash at nonce_i < SIPHASH_BLOCK_MASK with some or all later hashes to force hashing the whole block
-    let mut xor: u64 = nonce_hash[nonce_i as usize];
+    let mut xor: u64 = *nonce_hash.get(nonce_i as usize).expect("Already checked");
     let xor_from = if xor_all || nonce_i == SIPHASH_BLOCK_MASK {
         nonce_i + 1
     } else {
@@ -61,7 +61,7 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8, xor_all: bool) -> u64 
     for i in xor_from..SIPHASH_BLOCK_SIZE {
         #[allow(clippy::cast_possible_truncation)]
         let i_usize = i as usize;
-        xor ^= nonce_hash[i_usize];
+        xor ^= *nonce_hash.get(i_usize).expect("Already checked");
     }
     xor
 }

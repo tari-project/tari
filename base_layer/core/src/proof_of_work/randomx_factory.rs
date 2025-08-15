@@ -51,7 +51,7 @@ impl RandomXVMInstance {
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Error initializing RandomX cache with flags {:?}. {:?}. Fallback to default flags", flags, err
+                        "Error initializing RandomX cache with flags {flags:?}. {err:?}. Fallback to default flags"
                     );
                     // This is informed by how RandomX falls back on any cache allocation failure
                     // https://github.com/xmrig/xmrig/blob/02b2b87bb685ab83b132267aa3c2de0766f16b8b/src/crypto/rx/RxCache.cpp#L88
@@ -161,7 +161,7 @@ impl RandomXFactoryInner {
         let flags = RandomXFlag::get_recommended_flags();
         debug!(
             target: LOG_TARGET,
-            "RandomX factory started with {} max VMs and recommended flags = {:?}", max_vms, flags
+            "RandomX factory started with {max_vms} max VMs and recommended flags = {flags:?}"
         );
         Self {
             flags,
@@ -173,7 +173,7 @@ impl RandomXFactoryInner {
     pub(crate) fn new_with_flags(max_vms: usize, flags: RandomXFlag) -> Self {
         debug!(
             target: LOG_TARGET,
-            "RandomX factory started with {} max VMs and recommended flags = {:?}", max_vms, flags
+            "RandomX factory started with {max_vms} max VMs and recommended flags = {flags:?}"
         );
         Self {
             flags,

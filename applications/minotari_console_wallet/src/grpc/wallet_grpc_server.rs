@@ -179,9 +179,9 @@ async fn send_transaction_event(
         transaction: Some(transaction_event),
     };
     if let Err(err) = sender.send(Ok(response)).await {
-        warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {}", err);
+        warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {err}");
         if let Err(send_err) = sender.send(Err(Status::unknown("Error sending data"))).await {
-            warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+            warn!(target: LOG_TARGET, "Error sending error to GRPC client: {send_err}")
         }
     }
 }
@@ -293,12 +293,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .wallet
             .get_wallet_interactive_address()
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         Ok(Response::new(GetAddressResponse {
             interactive_address: interactive_address.to_vec(),
             one_sided_address: one_sided_address.to_vec(),
@@ -320,21 +320,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .wallet
             .get_wallet_interactive_address()
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: interactive:      '{}'", interactive_address.to_base58());
         let interactive_address = interactive_address
             .with_memo_field_payment_id(message.payment_id.clone())
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: interactive + id: '{}'", interactive_address.to_base58());
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: one_sided:        '{}'", one_sided_address.to_base58());
         let one_sided_address = one_sided_address
             .with_memo_field_payment_id(message.payment_id)
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         trace!(target: LOG_TARGET, "get_payment_id_address: one_sided + id:   '{}'", one_sided_address.to_base58());
         Ok(Response::new(GetCompleteAddressResponse {
             interactive_address: interactive_address.to_vec(),
@@ -354,12 +354,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .wallet
             .get_wallet_interactive_address()
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         let one_sided_address = self
             .wallet
             .get_wallet_one_sided_address()
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         Ok(Response::new(GetCompleteAddressResponse {
             interactive_address: interactive_address.to_vec(),
@@ -393,7 +393,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let balance = oms
                 .get_balance_for_payment_id(bytes)
                 .await
-                .map_err(|e| Status::not_found(format!("WalletDebouncer error! {}", e)))?;
+                .map_err(|e| Status::not_found(format!("WalletDebouncer error! {e}")))?;
             return Ok(Response::new(GetBalanceResponse {
                 available_balance: balance.available_balance.into(),
                 pending_incoming_balance: balance.pending_incoming_balance.into(),
@@ -405,7 +405,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let mut get_balance = self.debouncer.lock().await;
             match get_balance.get_balance().await {
                 Ok(b) => b,
-                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
+                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {e}"))),
             }
         };
         trace!(target: LOG_TARGET, "'get_balance' completed in {:.2?}", start.elapsed());
@@ -418,7 +418,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let mut debouncer = self.debouncer.lock().await;
             let balance = match debouncer.get_balance().await {
                 Ok(b) => b,
-                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {}", e))),
+                Err(e) => return Err(Status::not_found(format!("WalletDebouncer error! {e}"))),
             };
             let scanned_height = debouncer.get_scanned_height().await;
             let is_initial_validation_done = debouncer.is_initial_validation_done();
@@ -471,7 +471,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut output_service = self.get_output_manager_service();
         let unspent_amounts = match output_service.get_unspent_outputs().await {
             Ok(uo) => uo,
-            Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
+            Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {e}"))),
         };
         trace!(target: LOG_TARGET, "'get_unspent_amounts' completed in {:.2?}", start.elapsed());
         Ok(Response::new(GetUnspentAmountsResponse {
@@ -558,7 +558,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Failed to send Sha - XTR atomic swap for address `{}`: {}", address, e
+                    "Failed to send Sha - XTR atomic swap for address `{address}`: {e}"
                 );
                 SendShaAtomicSwapResponse {
                     transaction_id: Default::default(),
@@ -607,12 +607,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .wallet
                             .get_wallet_one_sided_address()
                             .await
-                            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                            .map_err(|e| Status::internal(format!("{e:?}")))?;
                         let wallet_tx = self
                             .get_transaction_service()
                             .get_any_transaction(tx_id)
                             .await
-                            .map_err(|e| Status::internal(format!("{:?}", e)))?
+                            .map_err(|e| Status::internal(format!("{e:?}")))?
                             .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
                         let final_tx = convert_wallet_transaction_into_transaction_info(
                             wallet_tx,
@@ -638,7 +638,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to claim SHA - XTR atomic swap: {}", e);
+                warn!(target: LOG_TARGET, "Failed to claim SHA - XTR atomic swap: {e}");
                 TransferResult {
                     address: Default::default(),
                     transaction_id: Default::default(),
@@ -684,12 +684,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .wallet
                             .get_wallet_one_sided_address()
                             .await
-                            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                            .map_err(|e| Status::internal(format!("{e:?}")))?;
                         let wallet_tx = self
                             .get_transaction_service()
                             .get_any_transaction(tx_id)
                             .await
-                            .map_err(|e| Status::internal(format!("{:?}", e)))?
+                            .map_err(|e| Status::internal(format!("{e:?}")))?
                             .ok_or_else(|| Status::not_found("Transaction not found".to_string()))?;
                         let final_tx = convert_wallet_transaction_into_transaction_info(
                             wallet_tx,
@@ -715,7 +715,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to claim HTLC refund transaction: {}", e);
+                warn!(target: LOG_TARGET, "Failed to claim HTLC refund transaction: {e}");
                 TransferResult {
                     address: Default::default(),
                     transaction_id: Default::default(),
@@ -786,7 +786,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Failed to lock transaction for address `{}`: {}", address, err
+                    "Failed to lock transaction for address `{address}`: {err}"
                 );
                 PrepareOneSidedTransactionForSigningResponse {
                     is_success: false,
@@ -820,7 +820,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Failed to broadcast a signed transaction: {}", err
+                    "Failed to broadcast a signed transaction: {err}"
                 );
                 BroadcastSignedOneSidedTransactionResponse {
                     is_success: false,
@@ -842,7 +842,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .enumerate()
             .map(|(idx, dest)| -> Result<_, String> {
                 let address = TariAddress::from_str(&dest.address)
-                    .map_err(|_| format!("Destination address at index {} is malformed", idx))?;
+                    .map_err(|_| format!("Destination address at index {idx} is malformed"))?;
                 Ok((
                     dest.address,
                     address,
@@ -930,14 +930,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .wallet
                         .get_wallet_one_sided_address()
                         .await
-                        .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                        .map_err(|e| Status::internal(format!("{e:?}")))?;
                     let wallet_tx = timeout(Duration::from_millis(100), async {
                         loop {
                             let tx = self
                                 .get_transaction_service()
                                 .get_any_transaction(tx_id)
                                 .await
-                                .map_err(|e| Status::internal(format!("{:?}", e)));
+                                .map_err(|e| Status::internal(format!("{e:?}")));
 
                             if let Ok(Some(tx)) = tx {
                                 break tx;
@@ -947,8 +947,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .await
                     .map_err(|_| {
-                        error!(target: LOG_TARGET, "Transaction {} not found within timeout", tx_id);
-                        Status::not_found(format!("Transaction {} not found within timeout", tx_id))
+                        error!(target: LOG_TARGET, "Transaction {tx_id} not found within timeout");
+                        Status::not_found(format!("Transaction {tx_id} not found within timeout"))
                     })?;
                     let final_tx = convert_wallet_transaction_into_transaction_info(
                         wallet_tx,
@@ -967,7 +967,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to send transaction for address `{}`: {}", address, err
+                        "Failed to send transaction for address `{address}`: {err}"
                     );
                     results.push(TransferResult {
                         address,
@@ -1017,7 +1017,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
         {
             Ok((tx_id, proof)) => {
-                debug!(target: LOG_TARGET, "Transaction broadcast: {}", tx_id,);
+                debug!(target: LOG_TARGET, "Transaction broadcast: {tx_id}",);
                 CreateBurnTransactionResponse {
                     transaction_id: tx_id.as_u64(),
                     is_success: true,
@@ -1029,7 +1029,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 }
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to burn Tarid: {}", e);
+                warn!(target: LOG_TARGET, "Failed to burn Tarid: {e}");
                 CreateBurnTransactionResponse {
                     is_success: false,
                     failure_message: e.to_string(),
@@ -1066,7 +1066,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .wallet
             .get_wallet_interactive_address()
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
         let mut transactions = Vec::new();
         for (tx_id, tx) in all_transactions {
             transactions.push(match tx {
@@ -1117,8 +1117,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                                 };
                                                 send_transaction_event(transaction_event, &mut sender).await;
                                             },
-                                            Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
-                                            _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
+                                            Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
+                                            _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {tx_id}"),
                                         }
                                     },
                                     TransactionCompletedImmediately(tx_id) => handle_pending_outbound(tx_id, SENT, &mut transaction_service, &mut sender).await,
@@ -1138,7 +1138,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                 }
                             },
                             Err(broadcast::error::RecvError::Lagged(n)) => {
-                                warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
+                                warn!(target: LOG_TARGET, "Missed {n} from Transaction events");
                             }
                             Err(broadcast::error::RecvError::Closed) => {}
                         }
@@ -1200,7 +1200,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transaction_service
             .get_completed_transactions(payment_id, block_hash, block_height, 0)
             .await
-            .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
+            .map_err(|err| Status::not_found(format!("No completed transactions found: {err:?}")))?;
         debug!(
             target: LOG_TARGET,
             "GetCompletedTransactions: Found {} completed transactions",
@@ -1225,7 +1225,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map(|i| match i.commitment() {
                         Ok(c) => c.as_bytes().to_vec(),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {e}");
                             vec![]
                         },
                     })
@@ -1281,11 +1281,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         );
                     },
                     Err(err) => {
-                        warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {}", err);
+                        warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {err}");
                         match sender.send(Err(Status::unknown("Error sending data"))).await {
                             Ok(_) => (),
                             Err(send_err) => {
-                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {send_err}")
                             },
                         }
                         return;
@@ -1338,8 +1338,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .await
                 .map_err(|err| {
                     Status::not_found(format!(
-                        "GetAllCompletedTransactions: Error found for get_completed_transactions_paginated: {:?}",
-                        err
+                        "GetAllCompletedTransactions: Error found for get_completed_transactions_paginated: {err:?}"
                     ))
                 })?;
 
@@ -1365,7 +1364,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map(|i| match i.commitment() {
                         Ok(c) => c.as_bytes().to_vec(),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {e}");
                             vec![]
                         },
                     })
@@ -1468,9 +1467,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
             debug!(
                 target: LOG_TARGET,
-                "GetAllCompletedTransactionsStreaming: Starting to stream {} transactions in chunks of {}",
-                total_requested,
-                chunk_size
+                "GetAllCompletedTransactionsStreaming: Starting to stream {total_requested} transactions in chunks of {chunk_size}"
             );
 
             while remaining > 0 {
@@ -1478,9 +1475,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
                 trace!(
                     target: LOG_TARGET,
-                    "GetAllCompletedTransactionsStreaming: Fetching chunk at offset={}, limit={}",
-                    current_offset,
-                    current_limit
+                    "GetAllCompletedTransactionsStreaming: Fetching chunk at offset={current_offset}, limit={current_limit}"
                 );
 
                 // Fetch chunk from database
@@ -1492,13 +1487,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     Err(err) => {
                         warn!(
                             target: LOG_TARGET,
-                            "GetAllCompletedTransactionsStreaming: Database error: {:?}",
-                            err
+                            "GetAllCompletedTransactionsStreaming: Database error: {err:?}"
                         );
                         let _ = sender
                             .send(Err(Status::internal(format!(
-                                "Database error while fetching transactions: {:?}",
-                                err
+                                "Database error while fetching transactions: {err:?}"
                             ))))
                             .await;
                         return;
@@ -1532,7 +1525,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .map(|i| match i.commitment() {
                             Ok(c) => c.as_bytes().to_vec(),
                             Err(e) => {
-                                warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                                warn!(target: LOG_TARGET, "Failed to get input commitment: {e}");
                                 vec![]
                             },
                         })
@@ -1608,8 +1601,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
                 trace!(
                     target: LOG_TARGET,
-                    "GetAllCompletedTransactionsStreaming: Completed chunk, remaining={}",
-                    remaining
+                    "GetAllCompletedTransactionsStreaming: Completed chunk, remaining={remaining}"
                 );
             }
 
@@ -1648,8 +1640,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|err| {
                 Status::not_found(format!(
-                    "GetBlockHeightTransactions: Error found at block height {}: {:?}",
-                    block_height, err
+                    "GetBlockHeightTransactions: Error found at block height {block_height}: {err:?}"
                 ))
             })?;
         debug!(
@@ -1676,7 +1667,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .map(|i| match i.commitment() {
                     Ok(c) => c.as_bytes().to_vec(),
                     Err(e) => {
-                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {e}");
                         vec![]
                     },
                 })
@@ -1743,7 +1734,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 MemoField::open_from_string("Creating coin-split transaction", TxType::CoinSplit),
             )
             .await
-            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         Ok(Response::new(CoinSplitResponse { tx_id: tx_id.into() }))
     }
@@ -1773,7 +1764,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         MemoField::from_bytes(&message.payment_id),
                     )
                     .await
-                    .map_err(|e| Status::internal(format!("{:?}", e)))?
+                    .map_err(|e| Status::internal(format!("{e:?}")))?
                     .into(),
             );
         }
@@ -1832,8 +1823,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let mut error_response = Vec::new();
             node_ids.iter().for_each(|node_id| {
                 if !peers.iter().any(|p| p.node_id == *node_id) {
-                    warn!(target: LOG_TARGET, "Peer '{}' not found", node_id);
-                    error_response.push(format!("'{}'", node_id));
+                    warn!(target: LOG_TARGET, "Peer '{node_id}' not found");
+                    error_response.push(format!("'{node_id}'"));
                 }
             });
             if !error_response.is_empty() {
@@ -1963,7 +1954,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         };
 
         let constants = self.get_consensus_constants().map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
             Status::internal("failed to fetch consensus constants")
         })?;
 
@@ -1987,7 +1978,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 failure_message: Default::default(),
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                error!(target: LOG_TARGET, "Transaction service error: {e}");
                 RegisterValidatorNodeResponse {
                     transaction_id: Default::default(),
                     is_success: false,
@@ -2022,7 +2013,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         };
 
         let constants = self.get_consensus_constants().map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
             Status::internal("failed to fetch consensus constants")
         })?;
 
@@ -2045,7 +2036,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 failure_message: Default::default(),
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                error!(target: LOG_TARGET, "Transaction service error: {e}");
                 SubmitValidatorNodeExitResponse {
                     transaction_id: Default::default(),
                     is_success: false,
@@ -2074,12 +2065,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(TryInto::try_into)
             .ok_or_else(|| Status::invalid_argument("Proof is missing"))?
             .map_err(|e| {
-                error!(target: LOG_TARGET, "Failed to convert proof: {}", e);
+                error!(target: LOG_TARGET, "Failed to convert proof: {e}");
                 Status::invalid_argument(format!("Invalid proof: {e}"))
             })?;
 
         let constants = self.get_consensus_constants().map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
+            error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
             Status::internal("failed to fetch consensus constants")
         })?;
 
@@ -2095,7 +2086,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         {
             Ok(tx) => SubmitValidatorEvictionProofResponse { tx_id: tx.as_u64() },
             Err(e) => {
-                error!(target: LOG_TARGET, "Transaction service error: {}", e);
+                error!(target: LOG_TARGET, "Transaction service error: {e}");
                 return Err(Status::unknown(e.to_string()));
             },
         };
@@ -2118,7 +2109,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Ok(id) => {
                     tx_ids.push(id.into());
                 },
-                Err(e) => eprintln!("Could not import tx {}", e),
+                Err(e) => eprintln!("Could not import tx {e}"),
             };
         }
         Ok(Response::new(ImportTransactionsResponse { tx_ids }))
@@ -2164,7 +2155,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map(|i| match i.commitment() {
                         Ok(c) => c.as_bytes().to_vec(),
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                            warn!(target: LOG_TARGET, "Failed to get input commitment: {e}");
                             vec![]
                         },
                     })
@@ -2217,7 +2208,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     payment_ref.to_hex(),
                     e
                 );
-                Err(Status::internal(format!("Error looking up payment reference: {}", e)))
+                Err(Status::internal(format!("Error looking up payment reference: {e}")))
             },
         }
     }
@@ -2366,7 +2357,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(|(index, transfer_with_id)| -> Result<_, String> {
                 let dest = transfer_with_id.destination;
                 let address = TariAddress::from_str(&dest)
-                    .map_err(|_| format!("Destination address at index {} is malformed", index))?;
+                    .map_err(|_| format!("Destination address at index {index} is malformed"))?;
                 Ok((address, transfer_with_id.fee, transfer_with_id.tx_id))
             })
             .collect::<Result<Vec<_>, _>>()
@@ -2395,14 +2386,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .wallet
                         .get_wallet_one_sided_address()
                         .await
-                        .map_err(|e| Status::internal(format!("{:?}", e)))?;
+                        .map_err(|e| Status::internal(format!("{e:?}")))?;
                     let wallet_tx = timeout(Duration::from_millis(100), async {
                         loop {
                             let tx = self
                                 .get_transaction_service()
                                 .get_any_transaction(tx_id)
                                 .await
-                                .map_err(|e| Status::internal(format!("{:?}", e)));
+                                .map_err(|e| Status::internal(format!("{e:?}")));
 
                             if let Ok(Some(tx)) = tx {
                                 break tx;
@@ -2412,8 +2403,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     })
                     .await
                     .map_err(|_| {
-                        error!(target: LOG_TARGET, "Transaction {} not found within timeout", tx_id);
-                        Status::not_found(format!("Transaction {} not found within timeout", tx_id))
+                        error!(target: LOG_TARGET, "Transaction {tx_id} not found within timeout");
+                        Status::not_found(format!("Transaction {tx_id} not found within timeout"))
                     })?;
                     let final_tx = convert_wallet_transaction_into_transaction_info(
                         wallet_tx,
@@ -2432,7 +2423,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Err(err) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to send transaction for address `{}`: {}", address, err
+                        "Failed to send transaction for address `{address}`: {err}"
                     );
                     results.push(TransferResult {
                         address: address.to_string(),
@@ -2456,7 +2447,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let tx_id = transaction_service
             .replace_by_fee(request.transaction_id.into(), MicroMinotari::from(request.fee_increase))
             .await
-            .map_err(|e| Status::internal(format!("Failed to replace by fee: {}", e)))?;
+            .map_err(|e| Status::internal(format!("Failed to replace by fee: {e}")))?;
         Ok(Response::new(ReplaceByFeeResponse {
             transaction_id: tx_id.into(),
         }))
@@ -2479,7 +2470,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let signature =
             SignatureWithDomain::<WalletMessageSigningDomain>::sign(&secret, message_str.as_bytes(), &mut OsRng)
-                .map_err(|e| Status::internal(format!("Failed to sign message: {}", e)))?;
+                .map_err(|e| Status::internal(format!("Failed to sign message: {e}")))?;
 
         let hex_sig = signature.get_signature().to_hex();
         let hex_nonce = signature.get_public_nonce().to_hex();
@@ -2503,7 +2494,7 @@ async fn handle_completed_tx(
                 convert_to_transaction_event(event.to_string(), TransactionWrapper::Completed(Box::new(completed)));
             send_transaction_event(transaction_event, sender).await;
         },
-        Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+        Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
     }
 }
 
@@ -2522,10 +2513,10 @@ async fn handle_pending_outbound(
                 send_transaction_event(transaction_event, sender).await;
             },
             _ => {
-                error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {}", tx_id);
+                error!(target: LOG_TARGET, "Not found in pending outbound set tx_id: {tx_id}");
             },
         },
-        Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+        Err(e) => error!(target: LOG_TARGET, "Transaction service error: {e}"),
     }
 }
 
@@ -2581,14 +2572,14 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
             let output_commitments = match tx.sender_protocol.get_output_commitments(key_manager).await {
                 Ok(v) => v.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
                 Err(e) => {
-                    warn!(target: LOG_TARGET, "Failed to get output commitments: {}", e);
+                    warn!(target: LOG_TARGET, "Failed to get output commitments: {e}");
                     vec![]
                 },
             };
             let input_commitments = match tx.sender_protocol.get_input_commitments(key_manager).await {
                 Ok(v) => v.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
                 Err(e) => {
-                    warn!(target: LOG_TARGET, "Failed to get output commitments: {}", e);
+                    warn!(target: LOG_TARGET, "Failed to get output commitments: {e}");
                     vec![]
                 },
             };
@@ -2629,7 +2620,7 @@ async fn convert_wallet_transaction_into_transaction_info<KM: TransactionKeyMana
                 .map(|i| match i.commitment() {
                     Ok(c) => c.as_bytes().to_vec(),
                     Err(e) => {
-                        warn!(target: LOG_TARGET, "Failed to get input commitment: {}", e);
+                        warn!(target: LOG_TARGET, "Failed to get input commitment: {e}");
                         vec![]
                     },
                 })

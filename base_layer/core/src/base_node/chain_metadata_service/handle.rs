@@ -72,7 +72,7 @@ impl Display for PeerChainMetadata {
             self.node_id,
             self.chain_metadata,
             self.latency
-                .map(|d| format!("{:.2?}", d))
+                .map(|d| format!("{d:.2?}"))
                 .unwrap_or_else(|| "--".to_string())
         )
     }

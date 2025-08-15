@@ -47,7 +47,7 @@ impl PendingOutboundTransaction {
         unsafe {
             tx_id = ffi_import::pending_outbound_transaction_get_transaction_id(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transaction_get_transaction_id error {}", error);
+                println!("pending_outbound_transaction_get_transaction_id error {error}");
                 panic!("pending_outbound_transaction_get_transaction_id error");
             }
         }
@@ -61,10 +61,7 @@ impl PendingOutboundTransaction {
         unsafe {
             ptr = ffi_import::pending_outbound_transaction_get_destination_tari_address(self.ptr, &mut error);
             if error > 0 {
-                println!(
-                    "pending_outbound_transaction_get_destination_tari_address error {}",
-                    error
-                );
+                println!("pending_outbound_transaction_get_destination_tari_address error {error}");
                 panic!("pending_outbound_transaction_get_destination_tari_address error");
             }
         }
@@ -78,7 +75,7 @@ impl PendingOutboundTransaction {
         unsafe {
             amount = ffi_import::pending_outbound_transaction_get_amount(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transaction_get_amount error {}", error);
+                println!("pending_outbound_transaction_get_amount error {error}");
                 panic!("pending_outbound_transaction_get_amount error");
             }
         }
@@ -92,7 +89,7 @@ impl PendingOutboundTransaction {
         unsafe {
             fee = ffi_import::pending_outbound_transaction_get_fee(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transaction_get_fee error {}", error);
+                println!("pending_outbound_transaction_get_fee error {error}");
                 panic!("pending_outbound_transaction_get_fee error");
             }
         }
@@ -106,7 +103,7 @@ impl PendingOutboundTransaction {
         unsafe {
             timestamp = ffi_import::pending_outbound_transaction_get_timestamp(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transaction_get_timestamp error {}", error);
+                println!("pending_outbound_transaction_get_timestamp error {error}");
                 panic!("pending_outbound_transaction_get_timestamp error");
             }
         }
@@ -120,7 +117,7 @@ impl PendingOutboundTransaction {
         unsafe {
             ptr = ffi_import::pending_outbound_transaction_get_payment_id(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transaction_get_payment_id error {}", error);
+                println!("pending_outbound_transaction_get_payment_id error {error}");
                 panic!("pending_outbound_transaction_get_payment_id error");
             }
         }
@@ -134,7 +131,7 @@ impl PendingOutboundTransaction {
         unsafe {
             status = ffi_import::pending_outbound_transaction_get_status(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transaction_get_status error {}", error);
+                println!("pending_outbound_transaction_get_status error {error}");
                 panic!("pending_outbound_transaction_get_status error");
             }
         }

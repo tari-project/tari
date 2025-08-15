@@ -79,7 +79,7 @@ where
             } = message;
 
             if body.is_empty() {
-                return Err(anyhow::anyhow!("Received empty message from peer '{}'", source_peer));
+                return Err(anyhow::anyhow!("Received empty message from peer '{source_peer}'"));
             }
 
             match DhtEnvelope::decode(&mut body) {
@@ -107,9 +107,7 @@ where
                     } else {
                         warn!(
                             target: LOG_TARGET,
-                            "Received message from unknown peer '{}'. Message tag: {}",
-                            source_peer,
-                            tag
+                            "Received message from unknown peer '{source_peer}'. Message tag: {tag}"
                         );
                         peer_manager
                             .ban_peer_by_node_id(
@@ -123,7 +121,7 @@ where
                     res
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
+                    error!(target: LOG_TARGET, "DHT deserialization failed: {err}");
                     Err(err.into())
                 },
             }

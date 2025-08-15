@@ -83,7 +83,7 @@ impl Default for AccumulatedDifficulty {
 impl fmt::Display for AccumulatedDifficulty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let formatted = self.0;
-        write!(f, "{}", formatted)
+        write!(f, "{formatted}")
     }
 }
 

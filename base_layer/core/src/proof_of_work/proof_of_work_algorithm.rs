@@ -87,7 +87,7 @@ impl FromStr for PowAlgorithm {
             "SHA" | "SHA3" | "SHA3X" => Ok(Self::Sha3x),
             "RANDOMXT" | "RANDOM_XT" | "TARI_RANDOM_X" | "RANDOMXTARI" => Ok(Self::RandomXT),
             "CUCKAROO" | "CUCKAROO29" | "C29" => Ok(Self::Cuckaroo),
-            _ => Err(anyhow::Error::msg(format!("Unknown pow algorithm type: {}", s))),
+            _ => Err(anyhow::Error::msg(format!("Unknown pow algorithm type: {s}"))),
         }
     }
 }

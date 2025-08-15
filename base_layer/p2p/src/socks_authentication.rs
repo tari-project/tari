@@ -74,7 +74,7 @@ impl FromStr for SocksAuthentication {
                     password: password.to_string(),
                 })
             },
-            s => Err(format!("invalid SOCKS auth type: {}", s)),
+            s => Err(format!("invalid SOCKS auth type: {s}")),
         }
     }
 }
@@ -85,8 +85,7 @@ impl Debug for SocksAuthentication {
             SocksAuthentication::None => write!(f, "SocksAuthentication::None"),
             SocksAuthentication::UsernamePassword { username, .. } => write!(
                 f,
-                r#"SocksAuthentication::UsernamePassword {{ username: {}, password: "..."}}"#,
-                username
+                r#"SocksAuthentication::UsernamePassword {{ username: {username}, password: "..."}}"#
             ),
         }
     }

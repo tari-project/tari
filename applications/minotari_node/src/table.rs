@@ -75,10 +75,14 @@ impl<'t> Table<'t, '_> {
     }
 
     fn col_width(&self, idx: usize) -> usize {
-        let title_width = self.titles.as_ref().map(|titles| titles[idx].len()).unwrap_or(0);
+        let title_width = self
+            .titles
+            .as_ref()
+            .map(|titles| titles.get(idx).map(|s| s.len()).unwrap_or_default())
+            .unwrap_or_default();
         let rows_width = self.rows.iter().fold(0, |max, r| {
             if idx < r.len() {
-                cmp::max(max, r[idx].len())
+                cmp::max(max, r.get(idx).expect("Already checked").len())
             } else {
                 max
             }

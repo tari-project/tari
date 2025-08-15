@@ -122,7 +122,7 @@ impl McpTool for TransferTool {
         let response = client
             .transfer(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to transfer: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to transfer: {e}")))?;
 
         let response = response.into_inner();
 

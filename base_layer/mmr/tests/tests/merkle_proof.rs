@@ -116,7 +116,7 @@ fn deserialization() {
     let root = hex::from_hex("95644732dfe67fb86beedead8b9f8676b1cd5399429fc4b09daa1138708abc92").unwrap();
     // Verify JSON-derived proof
     let proof: MerkleProof = serde_json::from_str(JSON_PROOF).unwrap();
-    println!("{}", proof);
+    println!("{proof}");
     assert!(proof
         .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
         .is_ok());
@@ -124,7 +124,7 @@ fn deserialization() {
     // Verify bincode-derived proof
     let bin_proof = hex::from_hex(BINCODE_PROOF).unwrap();
     let proof: MerkleProof = bincode::deserialize(&bin_proof).unwrap();
-    println!("{}", proof);
+    println!("{proof}");
     assert!(proof
         .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(3), LeafIndex(3))
         .is_ok());

@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use tari_common::configuration::Network;
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_comms::test_utils::mocks::create_connectivity_mock;

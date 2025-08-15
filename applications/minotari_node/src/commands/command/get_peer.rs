@@ -82,7 +82,7 @@ impl CommandContext {
 
         for peer in peers {
             let eid = EmojiId::from(&peer.public_key).to_string();
-            println!("Emoji ID: {}", eid);
+            println!("Emoji ID: {eid}");
             println!("Public Key: {}", peer.public_key);
             println!("NodeId: {}", peer.node_id);
             println!("Addresses:");
@@ -111,7 +111,7 @@ impl CommandContext {
                 println!("Banned until {}, reason: {}", dt, peer.banned_reason);
             }
             if let Some(dt) = peer.last_seen() {
-                println!("Last seen: {}", dt);
+                println!("Last seen: {dt}");
             }
         }
         Ok(())

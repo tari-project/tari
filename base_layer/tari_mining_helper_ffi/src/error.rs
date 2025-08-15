@@ -75,7 +75,7 @@ impl From<InterfaceError> for MiningHelperError {
 
         Self {
             code,
-            message: format!("{:?}", v),
+            message: format!("{v:?}"),
         }
     }
 }
@@ -87,15 +87,15 @@ impl From<HexError> for MiningHelperError {
         match h {
             HexError::HexConversionError {} => Self {
                 code: 404,
-                message: format!("{:?}", h),
+                message: format!("{h:?}"),
             },
             HexError::LengthError {} => Self {
                 code: 501,
-                message: format!("{:?}", h),
+                message: format!("{h:?}"),
             },
             HexError::InvalidCharacter {} => Self {
                 code: 503,
-                message: format!("{:?}", h),
+                message: format!("{h:?}"),
             },
         }
     }

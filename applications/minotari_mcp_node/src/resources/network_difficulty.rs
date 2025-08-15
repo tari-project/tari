@@ -66,7 +66,7 @@ impl McpResource for NetworkDifficultyResource {
         let metadata_response = client
             .get_tip_info(Empty {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get metadata: {}", e)))?;
+            .map_err(|e| McpError::resource_access_failed(format!("Failed to get metadata: {e}")))?;
 
         let tip_info = metadata_response.into_inner();
 

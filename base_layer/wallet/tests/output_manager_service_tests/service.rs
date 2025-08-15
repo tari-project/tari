@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -2261,9 +2262,7 @@ async fn scan_for_recovery_test() {
             .get_public_key_at_key_id(&o.spending_key_id)
             .await
             .unwrap();
-        assert!(recovered_outputs_keys
-            .iter()
-            .any(|ro| *ro == commitment_branch_public_key));
+        assert!(recovered_outputs_keys.contains(&commitment_branch_public_key));
     }
 }
 

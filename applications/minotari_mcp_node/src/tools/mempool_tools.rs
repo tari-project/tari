@@ -73,7 +73,7 @@ impl McpTool for GetMempoolStatsTool {
             .clone()
             .get_mempool_stats(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -136,7 +136,7 @@ impl McpTool for GetMempoolTransactionsTool {
             .clone()
             .get_mempool_transactions(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
             .into_inner();
 
         let mut transactions = Vec::new();
@@ -145,7 +145,7 @@ impl McpTool for GetMempoolTransactionsTool {
         while let Some(tx_response) = response_stream
             .message()
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read mempool transaction stream: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read mempool transaction stream: {e}")))?
         {
             if count >= limit {
                 break;
@@ -187,7 +187,7 @@ impl McpTool for GetMempoolTransactionsTool {
             "count": transactions.len(),
             "limit": limit,
             "note": if count >= limit {
-                format!("Results limited to {} transactions. Use limit parameter to adjust.", limit)
+                format!("Results limited to {limit} transactions. Use limit parameter to adjust.")
             } else {
                 "All mempool transactions returned".to_string()
             }
@@ -240,7 +240,7 @@ impl McpTool for GetTransactionStateTool {
         // Parse excess signature - this would need to be properly structured
         // For now, we'll assume it's provided in the correct format
         let excess_sig_bytes = hex::decode(&excess_sig_hex)
-            .map_err(|e| McpError::invalid_request(format!("Invalid hex excess signature: {}", e)))?;
+            .map_err(|e| McpError::invalid_request(format!("Invalid hex excess signature: {e}")))?;
 
         // Create signature object - this is a simplified version
         // In reality, we'd need to properly parse the signature components
@@ -258,7 +258,7 @@ impl McpTool for GetTransactionStateTool {
             .clone()
             .transaction_state(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction state: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction state: {e}")))?
             .into_inner();
 
         let location = match response.result {
@@ -326,7 +326,7 @@ impl McpTool for AnalyzeMempoolTool {
             .clone()
             .get_mempool_stats(stats_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool stats: {e}")))?
             .into_inner();
 
         // Then get transaction details
@@ -336,7 +336,7 @@ impl McpTool for AnalyzeMempoolTool {
             .clone()
             .get_mempool_transactions(tx_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get mempool transactions: {e}")))?
             .into_inner();
 
         let mut fee_distribution = Vec::new();
@@ -348,7 +348,7 @@ impl McpTool for AnalyzeMempoolTool {
         while let Some(tx_response) = tx_stream
             .message()
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {e}")))?
         {
             if let Some(transaction) = tx_response.transaction {
                 if let Some(body) = transaction.body {

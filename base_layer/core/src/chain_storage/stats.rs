@@ -64,7 +64,7 @@ impl Display for DbBasicStats {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Root: psize = {}, {}", self.root.psize, self.root)?;
         for stat in &self.db_stats {
-            writeln!(f, "{}", stat)?;
+            writeln!(f, "{stat}")?;
         }
         Ok(())
     }

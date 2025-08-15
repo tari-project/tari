@@ -80,7 +80,7 @@ impl CommandContext {
             start_height,
             end_height,
             filename,
-            pow_algo.map(|a| format!(" PoW algo = {}", a)).unwrap_or_default()
+            pow_algo.map(|a| format!(" PoW algo = {a}")).unwrap_or_default()
         );
 
         let start_height = cmp::max(start_height, 1);
@@ -173,12 +173,12 @@ impl CommandContext {
 
             if existing_target_difficulty != calculated_target_difficulty {
                 eprintln!(
-                    "Difference at {}! existing = {} and calculated = {}",
-                    height, existing_target_difficulty, calculated_target_difficulty
+                    "Difference at {height}! existing = {existing_target_difficulty} and calculated = \
+                     {calculated_target_difficulty}"
                 );
             }
 
-            print!("{}", height);
+            print!("{height}");
             io::stdout().flush().await?;
             print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
             prev_header = header;

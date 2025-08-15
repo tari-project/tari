@@ -71,7 +71,7 @@ where TWalletConnectivity: WalletConnectivityInterface
             },
 
             Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
-                warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
+                warn!(target: LOG_TARGET, "Connectivity failure to base node: {e}");
                 self.update_state(BaseNodeState {
                     chain_metadata: None,
                     is_synced: None,
@@ -82,7 +82,7 @@ where TWalletConnectivity: WalletConnectivityInterface
             },
             Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
             Err(e @ BaseNodeMonitorError::WalletStorageError(_)) => {
-                error!(target: LOG_TARGET, "{}", e);
+                error!(target: LOG_TARGET, "{e}");
             },
         }
     }

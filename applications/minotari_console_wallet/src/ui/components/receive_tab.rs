@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},

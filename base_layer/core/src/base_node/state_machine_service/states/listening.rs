@@ -225,7 +225,7 @@ impl Listening {
                     let local_metadata = match shared.db.get_chain_metadata().await {
                         Ok(m) => m,
                         Err(e) => {
-                            return FatalError(format!("Could not get local blockchain metadata. {}", e));
+                            return FatalError(format!("Could not get local blockchain metadata. {e}"));
                         },
                     };
 
@@ -275,7 +275,7 @@ impl Listening {
                             self.set_synced_response(shared);
                             info!(target: LOG_TARGET, "Initial sync achieved");
                         } else {
-                            info!(target: LOG_TARGET, "We are ahead of at least {} peers, waiting for more info", ahead_of_peers_counter);
+                            info!(target: LOG_TARGET, "We are ahead of at least {ahead_of_peers_counter} peers, waiting for more info");
                             self.set_synced_response(shared);
                         }
                     }
@@ -327,7 +327,7 @@ impl Listening {
                     }
                 },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
+                    debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {n} item(s)");
                 },
                 Err(broadcast::error::RecvError::Closed) => {
                     debug!(target: LOG_TARGET, "Metadata event subscriber closed");
@@ -394,13 +394,9 @@ fn determine_sync_mode(
         let network_tip_height = network.claimed_chain_metadata().best_block_height();
         info!(
             target: LOG_TARGET,
-            "Our local blockchain accumulated difficulty is a little behind that of the network. We're at block #{} \
-             with an accumulated difficulty of {}, and the network chain tip is at #{} with an accumulated difficulty \
-             of {}",
-            local_tip_height,
-            local_tip_accum_difficulty,
-            network_tip_height,
-            network_tip_accum_difficulty,
+            "Our local blockchain accumulated difficulty is a little behind that of the network. We're at block #{local_tip_height} \
+             with an accumulated difficulty of {local_tip_accum_difficulty}, and the network chain tip is at #{network_tip_height} with an accumulated difficulty \
+             of {network_tip_accum_difficulty}"
         );
 
         // If both the local and remote are pruned mode, we need to ensure that the remote pruning horizon is
@@ -449,9 +445,8 @@ fn determine_sync_mode(
             {
                 info!(
                     target: LOG_TARGET,
-                    "While we are behind, we are still within {} blocks of them, so we are staying as listening and \
-                     waiting for the propagated blocks",
-                    blocks_behind_before_considered_lagging
+                    "While we are behind, we are still within {blocks_behind_before_considered_lagging} blocks of them, so we are staying as listening and \
+                     waiting for the propagated blocks"
                 );
                 return SyncStatus::BehindButNotYetLagging {
                     local: local.clone(),
@@ -469,7 +464,7 @@ fn determine_sync_mode(
             network.node_id(),
             network
                 .latency()
-                .map(|l| format!("{:.2?}", l))
+                .map(|l| format!("{l:.2?}"))
                 .unwrap_or_else(|| "unknown".to_string())
         );
         SyncStatus::Lagging {

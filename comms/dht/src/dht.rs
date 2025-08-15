@@ -364,7 +364,7 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
     } else {
         debug!(
             target: LOG_TARGET,
-            "[filter_messages_to_rebroadcast] Discarding duplicate message {}", msg
+            "[filter_messages_to_rebroadcast] Discarding duplicate message {msg}"
         );
         false
     }
@@ -376,7 +376,7 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
         if expires < EpochTime::now() {
             debug!(
                 target: LOG_TARGET,
-                "[discard_expired_messages] Discarding expired message {}", msg
+                "[discard_expired_messages] Discarding expired message {msg}"
             );
             return false;
         }

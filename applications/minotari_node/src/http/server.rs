@@ -103,7 +103,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 .with_graceful_shutdown(shutdown_signal)
                 .await
             {
-                error!(target: LOG_TARGET, "Wallet query HTTP server error: {}", error);
+                error!(target: LOG_TARGET, "Wallet query HTTP server error: {error}");
             }
         });
 

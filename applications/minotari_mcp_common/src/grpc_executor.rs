@@ -554,6 +554,7 @@ impl ExecutorStatus {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use std::sync::Arc;
 
     use serde_json::json;

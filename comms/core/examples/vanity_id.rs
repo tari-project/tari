@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for prefix in target_hex_prefixes {
         let now = Instant::now();
         let (tx, mut rx) = mpsc::channel(1);
-        println!("Finding {}...", prefix);
+        println!("Finding {prefix}...");
         spawn_identity_miners(16, tx, prefix);
         let found = rx.recv().await.unwrap();
         rx.close();
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         while rx.try_recv().is_ok() {}
         println!("Found '{}' in {:.2?}", found.node_id(), now.elapsed());
         println!("==================================================");
-        println!("{}", found);
+        println!("{found}");
         write_identity(found);
     }
     println!("Done");
@@ -92,13 +92,13 @@ fn start_miner(id: usize, prefix: String, tx: mpsc::Sender<NodeIdentity>) -> Res
         let node_id = NodeId::from_public_key(&pk);
         node_id_hex.clear();
         for byte in node_id.as_bytes() {
-            write!(&mut node_id_hex, "{:02x}", byte).expect("Unable to write");
+            write!(&mut node_id_hex, "{byte:02x}").expect("Unable to write");
         }
         if i % 50_000 == 0 {
             if i == 0 {
-                println!("Worker #{} - started", id);
+                println!("Worker #{id} - started");
             } else {
-                println!("Worker #{} - {} iterations", id, i);
+                println!("Worker #{id} - {i} iterations");
             }
             stdout().flush()?;
         }

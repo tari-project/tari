@@ -35,7 +35,7 @@ impl TryFrom<u8> for TransactionKernelVersion {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(TransactionKernelVersion::V0),
-            v => Err(format!("Unknown kernel version {}!", v)),
+            v => Err(format!("Unknown kernel version {v}!")),
         }
     }
 }

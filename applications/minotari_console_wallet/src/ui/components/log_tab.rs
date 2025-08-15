@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use std::fs;
 
 use regex::Regex;
@@ -68,7 +69,7 @@ impl LogTab {
         // Read the log file
         let content = match fs::read_to_string("log/wallet/stdout.log") {
             Ok(content) => content,
-            Err(err) => format!("Error reading log: {}", err),
+            Err(err) => format!("Error reading log: {err}"),
         };
         // Convert the content into Spans
         let mut text: Vec<Spans> = content.lines().map(|line| self.format_line(line.to_string())).collect();

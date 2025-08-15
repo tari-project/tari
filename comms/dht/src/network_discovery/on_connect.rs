@@ -84,7 +84,7 @@ impl OnConnect {
                     match self.sync_peers(*conn.clone()).await {
                         Ok(_) => continue,
                         Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
-                            warn!(target: LOG_TARGET, "{}. Banning peer.", err);
+                            warn!(target: LOG_TARGET, "{err}. Banning peer.");
                             if let Err(err) = self
                                 .context
                                 .connectivity
@@ -110,7 +110,7 @@ impl OnConnect {
                 },
                 Ok(_) => { /* Nothing to do */ },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    warn!(target: LOG_TARGET, "Lagged behind on {} connectivity event(s)", n)
+                    warn!(target: LOG_TARGET, "Lagged behind on {n} connectivity event(s)")
                 },
                 Err(broadcast::error::RecvError::Closed) => {
                     break;
@@ -156,28 +156,28 @@ impl OnConnect {
                         match self.validate_and_add_peer(peer).await {
                             Ok(new_peer) => {
                                 if new_peer {
-                                    debug!(target: LOG_TARGET, "Added new peer `{}` from `{}`", &pub_key, sync_peer);
+                                    debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
                                     num_added += 1;
                                 }
                             },
                             Err(e) => {
-                                debug!(target: LOG_TARGET, "Failed to validate peer `{}` from `{}`: {}", pub_key, sync_peer, e);
+                                debug!(target: LOG_TARGET, "Failed to validate peer `{pub_key}` from `{sync_peer}`: {e}");
                             },
                         }
                     },
                     None => {
-                        debug!(target: LOG_TARGET, "Invalid response from peer `{}`", sync_peer);
+                        debug!(target: LOG_TARGET, "Invalid response from peer `{sync_peer}`");
                     },
                 },
                 Err(err) => {
-                    debug!(target: LOG_TARGET, "Error response from peer `{}`: {}", sync_peer, err);
+                    debug!(target: LOG_TARGET, "Error response from peer `{sync_peer}`: {err}");
                 },
             }
         }
 
         debug!(
             target: LOG_TARGET,
-            "Added {} peer(s) from peer `{}`", num_added, sync_peer
+            "Added {num_added} peer(s) from peer `{sync_peer}`"
         );
         if num_added > 0 {
             self.context

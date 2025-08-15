@@ -71,13 +71,13 @@ impl fmt::Display for ConnectivityEvent {
         #[allow(clippy::enum_glob_use)]
         use ConnectivityEvent::*;
         match self {
-            PeerDisconnected(node_id, minimized) => write!(f, "PeerDisconnected({}, {:?})", node_id, minimized),
-            PeerConnected(node_id) => write!(f, "PeerConnected({})", node_id),
-            PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({})", node_id),
-            PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
+            PeerDisconnected(node_id, minimized) => write!(f, "PeerDisconnected({node_id}, {minimized:?})"),
+            PeerConnected(node_id) => write!(f, "PeerConnected({node_id})"),
+            PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({node_id})"),
+            PeerBanned(node_id) => write!(f, "PeerBanned({node_id})"),
             ConnectivityStateInitialized => write!(f, "ConnectivityStateInitialized"),
-            ConnectivityStateOnline(n) => write!(f, "ConnectivityStateOnline({})", n),
-            ConnectivityStateDegraded(n) => write!(f, "ConnectivityStateDegraded({})", n),
+            ConnectivityStateOnline(n) => write!(f, "ConnectivityStateOnline({n})"),
+            ConnectivityStateDegraded(n) => write!(f, "ConnectivityStateDegraded({n})"),
             ConnectivityStateOffline => write!(f, "ConnectivityStateOffline"),
         }
     }
@@ -366,7 +366,7 @@ impl ConnectivityRequester {
                         break Ok(());
                     },
                     ConnectivityEvent::ConnectivityStateDegraded(n) => {
-                        warn!(target: LOG_TARGET, "Connectivity is DEGRADED ({} peer(s))", n);
+                        warn!(target: LOG_TARGET, "Connectivity is DEGRADED ({n} peer(s))");
                         last_known_peer_count = n;
                     },
                     ConnectivityEvent::ConnectivityStateOffline => {
@@ -379,7 +379,7 @@ impl ConnectivityRequester {
                     event => {
                         debug!(
                             target: LOG_TARGET,
-                            "Received event while waiting for connectivity: {:?}", event
+                            "Received event while waiting for connectivity: {event:?}"
                         );
                     },
                 },
@@ -391,7 +391,7 @@ impl ConnectivityRequester {
                     break Err(ConnectivityError::ConnectivityEventStreamClosed);
                 },
                 Err(RecvError::Lagged(n)) => {
-                    warn!(target: LOG_TARGET, "Lagging behind on {} connectivity event(s)", n);
+                    warn!(target: LOG_TARGET, "Lagging behind on {n} connectivity event(s)");
                     // We lagged, so could have missed the state change. Check it explicitly.
                     let status = self.get_connectivity_status().await?;
                     if status.is_online() {

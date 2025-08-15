@@ -145,7 +145,7 @@ impl ConnectivityManagerMockState {
 
     pub async fn expect_dial_peer(&self, peer: &NodeId) {
         let is_found = self.with_state(|state| state.dialed_peers.contains(peer)).await;
-        assert!(is_found, "expected call to dial peer {} but no dial was found", peer);
+        assert!(is_found, "expected call to dial peer {peer} but no dial was found");
     }
 
     pub async fn is_peer_dialed(&self, peer: &NodeId) -> bool {
@@ -233,7 +233,7 @@ impl ConnectivityManagerMock {
     async fn handle_request(&self, req: ConnectivityRequest) {
         #[allow(clippy::enum_glob_use)]
         use ConnectivityRequest::*;
-        self.state.add_call(format!("{:?}", req)).await;
+        self.state.add_call(format!("{req:?}")).await;
         match req {
             DialPeer { node_id, reply_tx } => {
                 self.state.add_dialed_peer(node_id.clone()).await;
