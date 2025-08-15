@@ -62,7 +62,7 @@ impl fmt::Debug for Authentication {
         use Authentication::{None, Password};
         match self {
             None => write!(f, "None"),
-            Password { username, .. } => write!(f, "Password({}, ...)", username),
+            Password { username, .. } => write!(f, "Password({username}, ...)"),
         }
     }
 }

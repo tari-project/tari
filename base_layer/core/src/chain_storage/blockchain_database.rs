@@ -254,7 +254,7 @@ where B: BlockchainBackend
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
     ) -> Result<Self, ChainStorageError> {
-        trace!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
+        trace!(target: LOG_TARGET, "BlockchainDatabase config: {config:?}");
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
@@ -350,7 +350,7 @@ where B: BlockchainBackend
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(
                     target: LOG_TARGET,
-                    "Orphan database could not be cleaned out at startup: ({:?}).", e
+                    "Orphan database could not be cleaned out at startup: ({e:?})."
                 ),
             }
         }
@@ -381,7 +381,7 @@ where B: BlockchainBackend
             let db = self.db_read_access()?;
             db.fetch_accumulated_data_rebuild_status()?
         };
-        debug!(target: LOG_TARGET, "[AccData] Rebuilding accumulated data status: {:?}", initial_status);
+        debug!(target: LOG_TARGET, "[AccData] Rebuilding accumulated data status: {initial_status:?}");
         if initial_status.is_rebuilt {
             debug!(target: LOG_TARGET, "[AccData] Accumulated data has already been rebuilt.");
             return Ok(());
@@ -397,8 +397,8 @@ where B: BlockchainBackend
             let mut last_status = initial_status.clone();
             debug!(
                 target: LOG_TARGET,
-                "[AccData] Start rebuilding accumulated data from height {}",
-                start_height
+                "[AccData] Start rebuilding accumulated data from height {start_height}"
+
             );
 
             let mut height = start_height;
@@ -418,18 +418,16 @@ where B: BlockchainBackend
                     Ok(Err(e)) => {
                         error!(
                             target: LOG_TARGET,
-                            "[AccData] Rebuilding accumulated data failed. Initial status: {:?}. \
-                            Last updated status: {:?} ({})",
-                            initial_status, last_status, e
+                            "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})"
                         );
                         break;
                     },
                     Err(e) => {
                         error!(
                             target: LOG_TARGET,
-                            "[AccData] Rebuilding accumulated data failed. Initial status: {:?}. \
-                            Last updated status: {:?} ({})",
-                            initial_status, last_status, e
+                            "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})",
                         );
                         break;
                     },
@@ -438,8 +436,7 @@ where B: BlockchainBackend
                 if last_status.is_rebuilt {
                     debug!(
                         target: LOG_TARGET,
-                        "[AccData] Rebuilding accumulated data from height {} completed, Final status: {:?}",
-                        start_height, last_status
+                        "[AccData] Rebuilding accumulated data from height {start_height} completed, Final status: {last_status:?}"
                     );
                     break;
                 }
@@ -499,16 +496,14 @@ where B: BlockchainBackend
                     Ok(Err(e)) => {
                         error!(
                             target: LOG_TARGET,
-                            "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
-                            initial_status, last_status, e
+                            "[PayRef] Index rebuilding failed. Initial status: {initial_status:?}. Last updated status: {last_status:?} ({e})"
                         );
                         break;
                     },
                     Err(e) => {
                         error!(
                             target: LOG_TARGET,
-                            "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
-                            initial_status, last_status, e
+                            "[PayRef] Index rebuilding failed. Initial status: {initial_status:?}. Last updated status: {last_status:?} ({e})"
                         );
                         break;
                     },
@@ -519,8 +514,7 @@ where B: BlockchainBackend
                 if finalize || last_status.is_rebuilt {
                     debug!(
                         target: LOG_TARGET,
-                        "[PayRef] Starting index rebuilding completed, Final status: {:?}",
-                        last_status
+                        "[PayRef] Starting index rebuilding completed, Final status: {last_status:?}",
                     );
                     break;
                 }
@@ -552,7 +546,7 @@ where B: BlockchainBackend
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a read lock on the blockchain backend failed. {:?}", e
+                "An attempt to get a read lock on the blockchain backend failed. {e:?}"
             );
             ChainStorageError::AccessError("Read lock on blockchain backend failed".into())
         })
@@ -563,7 +557,7 @@ where B: BlockchainBackend
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a write lock on the blockchain backend failed. {:?}", e
+                "An attempt to get a write lock on the blockchain backend failed. {e:?}"
             );
             ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
         })
@@ -573,7 +567,7 @@ where B: BlockchainBackend
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a write lock on the blockchain backend failed. {:?}", e
+                "An attempt to get a write lock on the blockchain backend failed. {e:?}"
             );
             ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
         })
@@ -687,9 +681,7 @@ where B: BlockchainBackend
                     .is_none();
                 trace!(
                     target: LOG_TARGET,
-                    "fetch_outputs_with_spend_status_at_tip: smt_key: {:?}, spent: {}",
-                    smt_key,
-                    spent
+                    "fetch_outputs_with_spend_status_at_tip: smt_key: {smt_key:?}, spent: {spent}"
                 );
                 result.push(Some((mined_info.output, spent)));
             } else {
@@ -930,9 +922,8 @@ where B: BlockchainBackend
                 ChainStorageError::DataInconsistencyDetected {
                     function: "fetch_chain_header_by_block_hash",
                     details: format!(
-                        "Mismatch between header and accumulated data for header {} ({}). This indicates an \
-                         inconsistency in the blockchain database",
-                        hash, height
+                        "Mismatch between header and accumulated data for header {hash} ({height}). This indicates an \
+                         inconsistency in the blockchain database"
                     ),
                 }
             })?;
@@ -1303,7 +1294,7 @@ where B: BlockchainBackend
 
         // Clean up orphan pool
         if let Err(e) = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity) {
-            warn!(target: LOG_TARGET, "Failed to clean up orphans: {}", e);
+            warn!(target: LOG_TARGET, "Failed to clean up orphans: {e}");
         }
 
         debug!(
@@ -1399,7 +1390,7 @@ where B: BlockchainBackend
             });
         }
 
-        trace!(target: LOG_TARGET, "Fetching blocks {}-{}", start, end);
+        trace!(target: LOG_TARGET, "Fetching blocks {start}-{end}");
         let blocks = fetch_blocks(&*db, start, end, compact)?;
         trace!(target: LOG_TARGET, "Fetched {} block(s)", blocks.len());
 
@@ -1574,11 +1565,8 @@ where B: BlockchainBackend
 }
 
 fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {
-    let msg = format!(
-        "Unexpected result for database query {}. Response: {}",
-        request, response
-    );
-    error!(target: LOG_TARGET, "{}", msg);
+    let msg = format!("Unexpected result for database query {request}. Response: {response}");
+    error!(target: LOG_TARGET, "{msg}");
     Err(ChainStorageError::UnexpectedResult(msg))
 }
 
@@ -2061,8 +2049,7 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
     let tip_height = metadata.best_block_height();
     if height > tip_height {
         return Err(ChainStorageError::InvalidQuery(format!(
-            "Cannot get block at height {}. Chain tip is at {}",
-            height, tip_height
+            "Cannot get block at height {height}. Chain tip is at {tip_height}"
         )));
     }
     let pruned_height = metadata.pruned_height();
@@ -2122,9 +2109,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     let mut removed_blocks = Vec::with_capacity(usize::try_from(steps_back).unwrap_or(usize::MAX));
     info!(
         target: LOG_TARGET,
-        "Rewinding blocks from height {} to {}",
-        last_block_height,
-        target_height
+        "Rewinding blocks from height {last_block_height} to {target_height}"
     );
 
     let effective_pruning_horizon = metadata.best_block_height().saturating_sub(metadata.pruned_height());
@@ -2132,8 +2117,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     if prune_past_horizon {
         warn!(
             target: LOG_TARGET,
-            "WARNING, reorg past pruning horizon (more than {} blocks back), rewinding back to 0",
-            effective_pruning_horizon
+            "WARNING, reorg past pruning horizon (more than {effective_pruning_horizon} blocks back), rewinding back to 0"
         );
         steps_back = effective_pruning_horizon;
     }
@@ -2176,7 +2160,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         );
         if h == 0 {
             // insert the new orphan chain tip
-            debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {}", block_hash,);
+            debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {block_hash}");
             txn.insert_orphan_chain_tip(block_hash, chain_header.accumulated_data().total_accumulated_difficulty);
         }
         // Update metadata
@@ -2311,7 +2295,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         if let Err(e) = backend.write(txn) {
             warn!(
                 target: LOG_TARGET,
-                "Failed to commit reorg chain: {:?}. Restoring last chain.", e
+                "Failed to commit reorg chain: {e:?}. Restoring last chain."
             );
 
             restore_reorged_chain(backend, fork_hash, removed_blocks)?;
@@ -2394,7 +2378,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
             let mut txn = DbTransaction::new();
             txn.insert_reorg(Reorg::from_reorged_blocks(&reorg_chain, &removed_blocks));
             if let Err(e) = db.write(txn) {
-                error!(target: LOG_TARGET, "Failed to track reorg: {}", e);
+                error!(target: LOG_TARGET, "Failed to track reorg: {e}");
             }
         }
 
@@ -2423,9 +2407,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     } else {
         trace!(
             target: LOG_TARGET,
-            "No reorg required. Number of blocks to remove: {}, to add: {}.",
-            num_removed_blocks,
-            num_added_blocks,
+            "No reorg required. Number of blocks to remove: {num_removed_blocks}, to add: {num_added_blocks}."
         );
         // NOTE: panic is not possible because get_orphan_link_main_chain cannot return an empty Vec (reorg_chain)
         Ok(BlockAddResult::Ok(reorg_chain.front().unwrap().clone()))
@@ -2507,8 +2489,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             txn.remove_orphan_chain_tip(candidate_block.header.prev_hash);
             info!(
                 target: LOG_TARGET,
-                "New orphan ({}) extends a chain in the current candidate tip set",
-                hash
+                "New orphan ({hash}) extends a chain in the current candidate tip set"
             );
             curr_parent
         },
@@ -2679,8 +2660,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 
                 let chain_header = ChainHeader::try_construct(child.header, accum_data).ok_or_else(|| {
                     ChainStorageError::InvalidOperation(format!(
-                        "Attempt to create mismatched ChainHeader with hash {}",
-                        child_hash,
+                        "Attempt to create mismatched ChainHeader with hash {child_hash}"
                     ))
                 })?;
 
@@ -2747,8 +2727,7 @@ fn get_orphan_link_main_chain<T: BlockchainBackend>(
     loop {
         let curr_block = db.fetch_orphan_chain_block(curr_hash)?.ok_or_else(|| {
             ChainStorageError::InvalidOperation(format!(
-                "get_orphan_link_main_chain: Failed to fetch orphan chain block by hash {}",
-                curr_hash,
+                "get_orphan_link_main_chain: Failed to fetch orphan chain block by hash {curr_hash}"
             ))
         })?;
         curr_hash = curr_block.header().prev_hash;
@@ -2827,8 +2806,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
             func: "prune_to_height",
             arg: "target_horizon_height",
             message: format!(
-                "Target pruning horizon {} is less than current pruning horizon {}",
-                target_horizon_height, last_pruned
+                "Target pruning horizon {target_horizon_height} is less than current pruning horizon {last_pruned}"
             ),
         });
     }
@@ -2836,7 +2814,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
     if target_horizon_height == last_pruned {
         info!(
             target: LOG_TARGET,
-            "Blockchain already pruned to height {}", target_horizon_height
+            "Blockchain already pruned to height {target_horizon_height}"
         );
         return Ok(());
     }
@@ -2855,7 +2833,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 
     info!(
         target: LOG_TARGET,
-        "Pruning blockchain database at height {} (was={})", target_horizon_height, last_pruned,
+        "Pruning blockchain database at height {target_horizon_height} (was={last_pruned})"
     );
 
     let mut txn = DbTransaction::new();
@@ -2882,9 +2860,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageError> {
     error!(
         target: LOG_TARGET,
-        "Database access error on request: {}: {}",
-        req,
-        err
+        "Database access error on request: {req}: {err}"
     );
     Err(err)
 }
@@ -2929,7 +2905,7 @@ fn process_payref_for_height<B: BlockchainBackend>(
     initialize_stats: Option<u64>,
     finalize: bool,
 ) -> Result<PayrefRebuildStatus, ChainStorageError> {
-    debug!(target: LOG_TARGET, "[PayRef] Processing index rebuilding for height {}", height);
+    debug!(target: LOG_TARGET, "[PayRef] Processing index rebuilding for height {height}");
 
     let write_lock = db
         .write()
@@ -2955,7 +2931,7 @@ fn process_accumulated_data_for_height<B: BlockchainBackend>(
     difficulty_calculator: DifficultyCalculator,
     height: u64,
 ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
-    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {}", height);
+    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {height}");
 
     let write_lock = db
         .write()

@@ -183,12 +183,12 @@ impl StressTestService {
         loop {
             tokio::select! {
                 Ok(event) = events.recv() => {
-                    println!("{}", event);
+                    println!("{event}" );
                 },
 
                 Some(request) = self.request_rx.recv() => {
                     if let Err(err) = self.handle_request(request).await {
-                        println!("Error: {}", err);
+                        println!("Error: {err}",);
                     }
                 },
 
@@ -267,7 +267,7 @@ async fn start_initiator_protocol(
     inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
     outbound_tx: mpsc::UnboundedSender<OutboundMessage>,
 ) -> Result<(), Error> {
-    println!("Negotiating {:?} protocol...", protocol);
+    println!("Negotiating {protocol:?} protocol...");
     let start = Instant::now();
     let substream = conn.open_substream(&STRESS_PROTOCOL_NAME).await?;
     println!("Negotiation completed in {:.0?}", start.elapsed());
@@ -456,7 +456,7 @@ async fn messaging_flood(
         let iter = repeat_with(|| {
             counter += 1;
 
-            println!("Send MSG {}", counter);
+            println!("Send MSG {counter}");
             OutboundMessage::new(peer.clone(), generate_message(counter, protocol.message_size as usize))
         })
         .take(protocol.num_messages as usize);

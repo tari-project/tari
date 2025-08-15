@@ -92,7 +92,7 @@ impl ReorgPool {
                 .unwrap_or_else(|| "no kernel!".to_string());
             debug!(
                 target: LOG_TARGET,
-                "Transaction {} already found in reorg pool", excess_hex
+                "Transaction {excess_hex} already found in reorg pool"
             );
             self.cleanup_expired(height);
             return;
@@ -106,9 +106,7 @@ impl ReorgPool {
 
         trace!(
             target: LOG_TARGET,
-            "Inserted transaction {} into reorg pool at height {}",
-            new_key,
-            height
+            "Inserted transaction {new_key} into reorg pool at height {height}"
         );
         self.tx_by_key.insert(new_key, tx);
         self.txs_by_height.entry(height).or_default().push(new_key);
@@ -202,7 +200,7 @@ impl ReorgPool {
                     for tx_id in removed_tx_ids {
                         if let Some(tx) = self.tx_by_key.remove(&tx_id) {
                             self.remove_from_height_index(tx_id);
-                            trace!(target: LOG_TARGET, "Removed tx from reorg pool: {:?}", tx_id);
+                            trace!(target: LOG_TARGET, "Removed tx from reorg pool: {tx_id:?}");
                             removed_txs.push(tx);
                         }
                     }
@@ -244,7 +242,7 @@ impl ReorgPool {
 
         for id in to_remove {
             self.remove(id);
-            trace!(target: LOG_TARGET, "Removed double spend tx {} from reorg pool", id);
+            trace!(target: LOG_TARGET, "Removed double spend tx {id} from reorg pool");
         }
     }
 

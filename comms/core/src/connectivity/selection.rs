@@ -266,10 +266,10 @@ impl Display for SelectionMode {
         use SelectionMode::{AllNodes, ClosestTo, HealthyClosestTo, HealthyNodes, RandomNodes};
         match self {
             AllNodes => write!(f, "AllNodes"),
-            RandomNodes(n) => write!(f, "RandomNodes({})", n),
-            ClosestTo(node_id, n) => write!(f, "ClosestTo({}, {})", node_id, n),
-            HealthyNodes(n) => write!(f, "HealthyNodes({})", n),
-            HealthyClosestTo(node_id, n) => write!(f, "HealthyClosestTo({}, {})", node_id, n),
+            RandomNodes(n) => write!(f, "RandomNodes({n})"),
+            ClosestTo(node_id, n) => write!(f, "ClosestTo({node_id}, {n})"),
+            HealthyNodes(n) => write!(f, "HealthyNodes({n})"),
+            HealthyClosestTo(node_id, n) => write!(f, "HealthyClosestTo({node_id}, {n})"),
         }
     }
 }
@@ -322,7 +322,7 @@ mod test {
         let mut last_dist = NodeDistance::zero();
         for (i, conn) in conns.into_iter().enumerate() {
             let dist = conn.peer_node_id().distance(subject_node_identity.node_id());
-            assert!(dist > last_dist, "Ordering was incorrect on connection {}", i);
+            assert!(dist > last_dist, "Ordering was incorrect on connection {i}");
             last_dist = dist;
         }
     }

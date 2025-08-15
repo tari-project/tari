@@ -225,7 +225,7 @@ async fn it_checks_the_coinbase_reward() {
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    println!("err {:?}", err);
+    println!("err {err:?}");
     assert!(matches!(
         err,
         ValidationError::BlockError(BlockValidationError::TransactionError(

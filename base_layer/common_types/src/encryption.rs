@@ -69,7 +69,7 @@ pub fn decrypt_bytes_integral_nonce(
     // Attempt authentication and decryption
     let plaintext = cipher
         .decrypt(nonce_ga, payload)
-        .map_err(|e| format!("Decryption failed: {}", e))?;
+        .map_err(|e| format!("Decryption failed: {e}"))?;
 
     Ok(plaintext)
 }
@@ -94,7 +94,7 @@ pub fn encrypt_bytes_integral_nonce(
     // Attempt authenticated encryption
     let mut ciphertext = cipher
         .encrypt(nonce_ga, payload)
-        .map_err(|e| format!("Failed to encrypt: {}", e))?;
+        .map_err(|e| format!("Failed to encrypt: {e}"))?;
 
     // Concatenate the nonce and ciphertext (which already include the tag)
     let mut ciphertext_integral_nonce = nonce.to_vec();

@@ -52,7 +52,7 @@ impl BorshDeserialize for FixedByteArray {
         if len > MAX_ARR_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("length exceeded maximum of 60-bytes for FixedByteArray: {}", len),
+                format!("length exceeded maximum of 60-bytes for FixedByteArray: {len}"),
             ));
         }
         let mut bytes = Vec::with_capacity(len);

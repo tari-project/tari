@@ -138,7 +138,7 @@ impl<const L: usize> CompositeKey<L> {
 impl<const L: usize> Display for CompositeKey<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for b in self.as_bytes() {
-            write!(f, "{:02x}", b)?;
+            write!(f, "{b:02x}")?;
         }
         Ok(())
     }

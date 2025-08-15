@@ -83,7 +83,7 @@ impl DnsSeedResolver {
                     .inspect_err(|err| {
                         warn!(
                             target: LOG_TARGET,
-                            "Failed to parse DNS seed peer string: {}. Error: {}", txt, err
+                            "Failed to parse DNS seed peer string: {txt}. Error: {err}"
                         );
                     })
                     .ok()
@@ -130,7 +130,7 @@ impl FromStr for SeedPeer {
         let public_key = UncompressedCommsPublicKey::from_hex(part_a)
             .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{}", e))?];
+        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{e}"))?];
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,
@@ -226,7 +226,7 @@ mod test {
         async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver::connect(DnsNameServer::System).unwrap();
             let seeds = resolver.resolve("seeds.nextnet.tari.com").await.unwrap();
-            println!("{:?}", seeds);
+            println!("{seeds:?}");
             assert!(!seeds.is_empty());
         }
     }

@@ -103,11 +103,11 @@ impl TorCommand for AddOnion<'_> {
 
         if !self.flags.is_empty() {
             let flags = self.flags.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",");
-            s.push_str(&format!(" Flags={}", flags));
+            s.push_str(&format!(" Flags={flags}"));
         }
 
         if let Some(num_streams) = self.num_streams {
-            s.push_str(&format!(" NumStreams={}", num_streams));
+            s.push_str(&format!(" NumStreams={num_streams}"));
         }
 
         s.push_str(&format!(
@@ -213,7 +213,7 @@ mod test {
         );
         assert_eq!(
             command.to_command_string().unwrap(),
-            format!("ADD_ONION NEW:{} Port=9090,127.0.0.1:9090", key)
+            format!("ADD_ONION NEW:{key} Port=9090,127.0.0.1:9090")
         );
     }
 }

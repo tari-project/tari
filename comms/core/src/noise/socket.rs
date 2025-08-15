@@ -327,7 +327,7 @@ where TSocket: AsyncRead + Unpin
                                 };
                             },
                             Err(e) => {
-                                warn!(target: LOG_TARGET, "Decryption Error: {}", e);
+                                warn!(target: LOG_TARGET, "Decryption Error: {e}");
                                 self.read_state = ReadState::DecryptionError(e);
                             },
                         },
@@ -373,7 +373,7 @@ where TSocket: AsyncRead + Unpin
                 ReadState::DecryptionError(ref e) => {
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("DecryptionError: {}", e),
+                        format!("DecryptionError: {e}"),
                     )))
                 },
             }
@@ -463,8 +463,8 @@ where TSocket: AsyncWrite + Unpin
                                 };
                             },
                             Err(e) => {
-                                warn!(target: LOG_TARGET, "Encryption Error: {}", e);
-                                let err = io::Error::new(io::ErrorKind::InvalidData, format!("EncryptionError: {}", e));
+                                warn!(target: LOG_TARGET, "Encryption Error: {e}");
+                                let err = io::Error::new(io::ErrorKind::InvalidData, format!("EncryptionError: {e}"));
                                 self.write_state = WriteState::EncryptionError(e);
                                 return Poll::Ready(Err(err));
                             },
@@ -523,7 +523,7 @@ where TSocket: AsyncWrite + Unpin
                 WriteState::EncryptionError(ref e) => {
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        format!("EncryptionError: {}", e),
+                        format!("EncryptionError: {e}"),
                     )))
                 },
             }
@@ -588,7 +588,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             Err(err) => {
                 info!(
                     target: LOG_TARGET,
-                    "Noise handshake failed because '{:?}'. Closing socket.", err
+                    "Noise handshake failed because '{err:?}'. Closing socket."
                 );
                 self.socket.shutdown().await?;
                 Err(err)
@@ -643,7 +643,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             .socket
             .state
             .into_transport_mode()
-            .map_err(|err| io::Error::other(format!("Invalid snow state: {}", err)))?;
+            .map_err(|err| io::Error::other(format!("Invalid snow state: {err}")))?;
 
         Ok(NoiseSocket {
             state: transport_state,

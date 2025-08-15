@@ -235,7 +235,7 @@ async fn request_response_errors_and_streaming() {
         // If we delay some small time, we'll probably always get the former (but arbitrary delays cause flakiness and
         // should be avoided)
         RpcError::ClientClosed | RpcError::RequestCancelled => {},
-        err => panic!("Unexpected error {:?}", err),
+        err => panic!("Unexpected error {err:?}"),
     }
 
     shutdown.trigger();

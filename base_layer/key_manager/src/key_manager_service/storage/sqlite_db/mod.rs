@@ -78,10 +78,7 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + C
             .map(|v| {
                 v.into_iter()
                     .map(|b| {
-                        let m = format!("Running migration {}", b);
-                        // std::io::stdout()
-                        //     .write_all(m.as_ref())
-                        //     .expect("Couldn't write migration number to stdout");
+                        let m = format!("Running migration {b}");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -106,7 +103,7 @@ where
                 let cipher = acquire_read_lock!(self.cipher);
                 let km = km
                     .decrypt(&cipher)
-                    .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
+                    .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
                 Some(KeyManagerState::try_from(km)?)
             },
         };
@@ -132,7 +129,7 @@ where
         let km_sql = NewKeyManagerStateSql::from(key_manager);
         let km_sql = km_sql
             .encrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {e}")))?;
         km_sql.commit(&mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -155,14 +152,14 @@ where
         let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
         let mut bytes: [u8; 8] = [0u8; 8];
         bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Index should exist"));
         let index = u64::from_le_bytes(bytes) + 1;
         km.primary_key_index = index.to_le_bytes().to_vec();
         let km = km
             .encrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {e}")))?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -185,11 +182,11 @@ where
         let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
         km.primary_key_index = index.to_le_bytes().to_vec();
         let km = km
             .encrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {}", e)))?;
+            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {e}")))?;
         KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -267,20 +264,17 @@ mod test {
         let db_name = format!("{}.sqlite3", "test");
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
+        let db_path = format!("{db_folder}{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
         let mut conn =
-            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         conn.run_pending_migrations(MIGRATIONS)
             .map(|v| {
                 v.into_iter()
                     .map(|b| {
-                        let m = format!("Running migration {}", b);
-                        // std::io::stdout()
-                        //     .write_all(m.as_ref())
-                        //     .expect("Couldn't write migration number to stdout");
+                        let m = format!("Running migration {b}");
                         m
                     })
                     .collect::<Vec<String>>()

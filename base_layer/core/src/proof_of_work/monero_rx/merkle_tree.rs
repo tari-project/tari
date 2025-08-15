@@ -56,15 +56,13 @@ fn cn_fast_hash2(hash1: &Hash, hash2: &Hash) -> Hash {
 fn tree_hash_count(count: usize) -> Result<usize, MergeMineError> {
     if count < 3 {
         return Err(MergeMineError::HashingError(format!(
-            "Cannot calculate tree hash root. Expected count to be greater than 3 but got {}",
-            count
+            "Cannot calculate tree hash root. Expected count to be greater than 3 but got {count}"
         )));
     }
 
     if count > 0x10000000 {
         return Err(MergeMineError::HashingError(format!(
-            "Cannot calculate tree hash root. Expected count to be less than 0x10000000 but got {}",
-            count
+            "Cannot calculate tree hash root. Expected count to be less than 0x10000000 but got {count}",
         )));
     }
 

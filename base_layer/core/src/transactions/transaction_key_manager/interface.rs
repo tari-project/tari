@@ -153,10 +153,10 @@ impl fmt::Display for TariKeyId {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TariKeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
-            TariKeyId::Derived { key: k } => write!(f, "{}.{}", DERIVED_KEY_BRANCH, k),
-            TariKeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
-            TariKeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
+            TariKeyId::Managed { branch, index } => write!(f, "{MANAGED_KEY_BRANCH}.{branch}.{index}"),
+            TariKeyId::Derived { key } => write!(f, "{DERIVED_KEY_BRANCH}.{key}"),
+            TariKeyId::Imported { key: public_key } => write!(f, "{IMPORTED_KEY_BRANCH}.{public_key}"),
+            TariKeyId::Zero => write!(f, "{ZERO_KEY_BRANCH}"),
         }
     }
 }

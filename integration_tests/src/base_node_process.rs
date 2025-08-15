@@ -245,7 +245,7 @@ pub async fn spawn_base_node_with_config(
 
         let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;
         if let Err(e) = result {
-            panic!("{:?}", e);
+            panic!("{e:?}");
         }
     });
 

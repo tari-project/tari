@@ -90,7 +90,7 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
                 ))
             },
             // This would only occur if a programming error sent out the unsupported response
-            resp => Err(format!("Response not supported {:?}", resp)),
+            resp => Err(format!("Response not supported {resp:?}")),
         }
     }
 }

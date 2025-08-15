@@ -293,8 +293,7 @@ mod test {
         }
         if LEGACY_RANGE.contains(&network_wire_byte) {
             return Err(format!(
-                "Invalid network wire byte `{}` for network `{}`",
-                network_wire_byte, network
+                "Invalid network wire byte `{network_wire_byte}` for network `{network}`"
             ));
         }
 
@@ -309,8 +308,7 @@ mod test {
         };
         if !valid {
             return Err(format!(
-                "Invalid network wire byte `{}` for network `{}`",
-                network_wire_byte, network
+                "Invalid network wire byte `{network_wire_byte}` for network `{network}`"
             ));
         }
         Ok(())

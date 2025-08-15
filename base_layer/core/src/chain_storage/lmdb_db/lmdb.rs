@@ -130,7 +130,7 @@ where
         }
         error!(
             target: LOG_TARGET,
-            "Could not insert value into lmdb transaction: {:?}", e
+            "Could not insert value into lmdb transaction: {e:?}"
         );
         ChainStorageError::AccessError(e.to_string())
     })
@@ -159,7 +159,7 @@ where
         }
         error!(
             target: LOG_TARGET,
-            "Could not replace value in lmdb transaction: {:?}", e
+            "Could not replace value in lmdb transaction: {e:?}"
         );
         ChainStorageError::AccessError(e.to_string())
     });
@@ -228,7 +228,7 @@ where
 {
     let mut access = txn.access();
     let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
 
@@ -263,7 +263,7 @@ where
     match access.get(db.db.as_ref(), key).to_opt() {
         Ok(None) => Ok(None),
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not get value from lmdb: {:?}", e);
+            error!(target: LOG_TARGET, "Could not get value from lmdb: {e:?}");
             Err(ChainStorageError::AccessError(e.to_string()))
         },
         Ok(Some(v)) => match deserialize(v) {
@@ -271,7 +271,7 @@ where
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Could not could not deserialize value from lmdb: {:?}", e
+                    "Could not could not deserialize value from lmdb: {e:?}"
                 );
                 Err(ChainStorageError::AccessError(e.to_string()))
             },
@@ -289,7 +289,7 @@ where
     match access.get(db, key).to_opt() {
         Ok(None) => Ok(None),
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not get value from lmdb: {:?}", e);
+            error!(target: LOG_TARGET, "Could not get value from lmdb: {e:?}");
             Err(ChainStorageError::AccessError(e.to_string()))
         },
         Ok(Some(v)) => match deserialize(v) {
@@ -297,7 +297,7 @@ where
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Could not could not deserialize value from lmdb: {:?}", e
+                    "Could not could not deserialize value from lmdb: {e:?}"
                 );
                 Err(ChainStorageError::AccessError(e.to_string()))
             },
@@ -313,7 +313,7 @@ where
 {
     let access = txn.access();
     let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
     let mut result = vec![];
@@ -323,7 +323,7 @@ where
             if e == Error::Code(error::NOTFOUND) {
                 return Ok(result);
             }
-            error!(target: LOG_TARGET, "Error in lmdb_get_multiple:{}", e);
+            error!(target: LOG_TARGET, "Error in lmdb_get_multiple:{e}");
             // No matches
             return Err(e.into());
         },
@@ -342,14 +342,14 @@ where V: DeserializeOwned {
     let access = txn.access();
     match cursor.last::<[u8], [u8]>(&access).to_opt() {
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not get value from lmdb: {:?}", e);
+            error!(target: LOG_TARGET, "Could not get value from lmdb: {e:?}");
             Err(ChainStorageError::AccessError(e.to_string()))
         },
         Ok(None) => Ok(None),
         Ok(Some((_k, v))) => deserialize(v).map(Some).map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Could not could not deserialize value from lmdb: {:?}", e
+                "Could not could not deserialize value from lmdb: {e:?}"
             );
             ChainStorageError::AccessError(e.to_string())
         }),
@@ -375,7 +375,7 @@ where K: AsLmdbBytes + ?Sized {
     match access.get::<K, [u8]>(db, key).to_opt() {
         Ok(None) => Ok(false),
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not read from lmdb: {:?}", e);
+            error!(target: LOG_TARGET, "Could not read from lmdb: {e:?}");
             Err(ChainStorageError::AccessError(e.to_string()))
         },
         Ok(Some(_)) => Ok(true),
@@ -385,7 +385,7 @@ where K: AsLmdbBytes + ?Sized {
 /// Returns the amount of entries of the database table
 pub fn lmdb_len(txn: &ConstTransaction<'_>, db: &Database) -> Result<usize, ChainStorageError> {
     let stats = txn.db_stat(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not read length from lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not read length from lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
     Ok(stats.entries)
@@ -403,7 +403,7 @@ where
     let access = txn.access();
 
     let cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
 
@@ -439,7 +439,7 @@ where
 {
     let access = txn.access();
     let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
 
@@ -464,7 +464,7 @@ where
 {
     let access = txn.access();
     let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
     let iter = CursorIter::new(
@@ -490,7 +490,7 @@ pub fn lmdb_all<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<(Vec
 where V: DeserializeOwned {
     let access = txn.access();
     let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {e:?}");
         ChainStorageError::AccessError(e.to_string())
     })?;
 
@@ -554,7 +554,7 @@ where
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Could not could not deserialize value from lmdb: {:?}", e
+                    "Could not could not deserialize value from lmdb: {e:?}"
                 );
                 return Err(ChainStorageError::AccessError(e.to_string()));
             },

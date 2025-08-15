@@ -71,7 +71,7 @@ fn add_pre_mine_utxos_to_genesis_block(file: &str, block: &mut Block) {
         } else if let Ok(excess) = serde_json::from_str::<PrivateKey>(line) {
             block.header.total_kernel_offset = &block.header.total_kernel_offset + &excess;
         } else {
-            panic!("Error: Could not deserialize line: {} in file: {}", line, file);
+            panic!("Error: Could not deserialize line: {line} in file: {file}");
         }
     }
     block.header.output_smt_size += outputs.len() as u64;
@@ -744,8 +744,7 @@ mod test {
             true
         } else {
             println!(
-                "\nNetwork mismatch!! Required: {:?}, current: {:?}.\n",
-                network, current_network
+                "\nNetwork mismatch!! Required: {network:?}, current: {current_network:?}.\n"
             );
             false
         }

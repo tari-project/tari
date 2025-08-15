@@ -38,7 +38,7 @@ impl TryFrom<proto::TransactionMetadata> for TransactionMetadata {
             .burned_commitment
             .map(|burned_commitment| {
                 CompressedCommitment::from_canonical_bytes(&burned_commitment.data)
-                    .map_err(|e| format!("burned_commitment.data: {}", e))
+                    .map_err(|e| format!("burned_commitment.data: {e}"))
             })
             .transpose()?;
         Ok(Self {

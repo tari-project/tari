@@ -74,7 +74,7 @@ pub fn pubsub_connector(buf_size: usize) -> (PubsubDomainConnector, Subscription
                 {
                     warn!(
                         target: LOG_TARGET,
-                        "Error forwarding pubsub messages to publisher: {}", err
+                        "Error forwarding pubsub messages to publisher: {err}"
                     );
                 }
                 future::ready(())
@@ -144,7 +144,7 @@ where
                     Err(wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
                         warn!(
                             target: LOG_TARGET,
-                            "Subscription '{}' for topic '{:?}' lagged. {} message(s) dropped.", label, topic, n
+                            "Subscription '{label}' for topic '{topic:?}' lagged. {n} message(s) dropped."
                         );
                         None
                     },

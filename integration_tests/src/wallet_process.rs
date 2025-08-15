@@ -183,7 +183,7 @@ pub async fn spawn_wallet(
         }
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_app_config, cli) {
-            panic!("{:?}", e);
+            panic!("{e:?}");
         }
     });
 

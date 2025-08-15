@@ -204,7 +204,7 @@ impl MultiaddressesWithStats {
                     addr.update_latency(latency_measurement);
                 },
                 None => {
-                    trace!(target: LOG_TARGET, "Peer address '{}' not in claim, stats not updated", address);
+                    trace!(target: LOG_TARGET, "Peer address '{address}' not in claim, stats not updated");
                     all_exist = false
                 },
             }
@@ -225,7 +225,7 @@ impl MultiaddressesWithStats {
                 true
             },
             None => {
-                trace!(target: LOG_TARGET, "Peer address '{}' not in claim, stats not updated", address);
+                trace!(target: LOG_TARGET, "Peer address '{address}' not in claim, stats not updated");
                 false
             },
         }

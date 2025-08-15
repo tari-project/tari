@@ -244,7 +244,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             "Propagating message for {}, propagating it. {}",
             dht_header.destination, dht_header.message_tag
         );
-        debug!(target: LOG_TARGET, "{}", debug_info);
+        debug!(target: LOG_TARGET, "{debug_info}");
         let mut send_params = SendMessageParams::new();
         send_params
             .with_debug_info(debug_info)

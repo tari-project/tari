@@ -260,7 +260,7 @@ impl AggregateBody {
         trace!(target: LOG_TARGET, "Checking kernel signatures",);
         for kernel in &self.kernels {
             kernel.verify_signature().map_err(|e| {
-                warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
+                warn!(target: LOG_TARGET, "Kernel ({kernel}) signature failed {e:?}.");
                 e
             })?;
         }
@@ -306,7 +306,7 @@ impl AggregateBody {
             if utxo.features.output_type == OutputType::Coinbase {
                 coinbase_counter += 1;
                 if utxo.features.maturity < (height + coinbase_min_maturity) {
-                    warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
+                    warn!(target: LOG_TARGET, "Coinbase {utxo} found with maturity set too low");
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
                 coinbase_utxo_sum = &coinbase_utxo_sum + &utxo.commitment.to_commitment()?;
@@ -319,12 +319,12 @@ impl AggregateBody {
 
         debug!(
             target: LOG_TARGET,
-            "{} coinbases found in body.", coinbase_counter,
+            "{coinbase_counter} coinbases found in body."
         );
         if coinbase_counter > maximum_coinbase_count {
             warn!(
                 target: LOG_TARGET,
-                "{} coinbases found in body. Only {} is permitted.", coinbase_counter, maximum_coinbase_count
+                "{coinbase_counter} coinbases found in body. Only {maximum_coinbase_count} is permitted."
             );
             return Err(TransactionError::TooManyCoinbaseKernels {
                 max: maximum_coinbase_count,
@@ -349,7 +349,7 @@ impl AggregateBody {
         if coinbase_kernel.is_none() || coinbase_kernel_counter != 1 {
             warn!(
                 target: LOG_TARGET,
-                "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_kernel_counter,
+                "{coinbase_kernel_counter} coinbase kernels found in body. Only a single coinbase kernel is permitted."
             );
             return Err(TransactionError::MoreThanOneCoinbaseKernel);
         }
@@ -391,7 +391,7 @@ impl AggregateBody {
             if input.features()?.maturity > height {
                 debug!(
                     target: LOG_TARGET,
-                    "Input found that has not yet matured to spending height: {}", input
+                    "Input found that has not yet matured to spending height: {input}"
                 );
                 return Err(TransactionError::InputMaturity);
             }
@@ -525,16 +525,16 @@ impl Display for AggregateBody {
         }
         writeln!(fmt, "--- Transaction Kernels ---")?;
         for (i, kernel) in self.kernels.iter().enumerate() {
-            writeln!(fmt, "Kernel {}:", i)?;
-            writeln!(fmt, "{}", kernel)?;
+            writeln!(fmt, "Kernel {i}:")?;
+            writeln!(fmt, "{kernel}")?;
         }
         writeln!(fmt, "--- Inputs ({}) ---", self.inputs.len())?;
         for input in &self.inputs {
-            writeln!(fmt, "{}", input)?;
+            writeln!(fmt, "{input}")?;
         }
         writeln!(fmt, "--- Outputs ({}) ---", self.outputs.len())?;
         for output in &self.outputs {
-            writeln!(fmt, "{}", output)?;
+            writeln!(fmt, "{output}")?;
         }
         Ok(())
     }

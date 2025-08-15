@@ -100,7 +100,7 @@ impl TorControlPortClient {
                     .await?;
             },
             Authentication::Cookie(cookie) => {
-                self.send_line(format!("AUTHENTICATE {}", cookie)).await?;
+                self.send_line(format!("AUTHENTICATE {cookie}")).await?;
             },
         }
 
@@ -195,7 +195,7 @@ impl TorControlPortClient {
 
     async fn request_response<T: TorCommand + Display>(&mut self, command: T) -> Result<T::Output, TorClientError>
     where T::Error: Into<TorClientError> {
-        trace!(target: LOG_TARGET, "Sent command: {}", command);
+        trace!(target: LOG_TARGET, "Sent command: {command}");
         let cmd_str = command.to_command_string().map_err(Into::into)?;
         self.send_line(cmd_str).await?;
         let responses = self.recv_next_responses().await?;

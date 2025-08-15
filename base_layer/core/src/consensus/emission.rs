@@ -389,7 +389,7 @@ mod test {
         let total_supply = 21_000_000_000 * T - premine;
         let residual = (supply - premine) * 2 - total_supply;
         // Within 0.01% of mining half the total supply
-        assert!(residual < total_supply / 10000, "Residual: {}", residual);
+        assert!(residual < total_supply / 10000, "Residual: {residual}");
         // Head to tail emission
         let mut iter = iter.skip_while(|(num, _, _)| *num < 3_220_980);
         let (num, reward, supply) = iter.next().unwrap();
@@ -417,7 +417,7 @@ mod test {
         // Check supply inflation. Because of rounding, it could be between 98 and 100 bips
         let epoch_supply = 771 * T * epoch_length;
         let inflation = (10000 * epoch_supply / supply).as_u64(); // 1 bip => 100
-        assert!(inflation < 100 && inflation > 98, "Inflation: {} bips", inflation);
+        assert!(inflation < 100 && inflation > 98, "Inflation: {inflation} bips");
     }
 
     #[test]

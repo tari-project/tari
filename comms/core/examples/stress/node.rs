@@ -125,7 +125,7 @@ pub async fn create(
         })
         .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default())));
 
-    let listener_addr = format!("/ip4/0.0.0.0/tcp/{}", port).parse().unwrap();
+    let listener_addr = format!("/ip4/0.0.0.0/tcp/{port}").parse().unwrap();
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()

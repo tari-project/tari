@@ -187,7 +187,7 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
     trace!(target: LOG_TARGET, "Checking kernel signatures",);
     for kernel in body.kernels() {
         kernel.verify_signature().map_err(|e| {
-            warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
+            warn!(target: LOG_TARGET, "Kernel ({kernel}) signature failed {e:?}.");
             e
         })?;
     }
@@ -199,7 +199,7 @@ fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Resu
     check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
-            "output ({}) script size exceeded max size {:?}.", output, e
+            "output ({output}) script size exceeded max size {e:?}."
         );
         e
     })
@@ -213,7 +213,7 @@ fn check_encrypted_data_byte_size(
     check_tari_encrypted_data_byte_size(output.encrypted_data(), max_encrypted_data_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
-            "output ({}) script size exceeded max size {:?}.", output, e
+            "output ({output}) script size exceeded max size {e:?}."
         );
         e
     })
@@ -352,7 +352,7 @@ fn check_weight(
 ) -> Result<(), ValidationError> {
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
-        .map_err(|e| ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e)))?;
+        .map_err(|e| ValidationError::SerializationError(format!("Unable to calculate body weight: {e}")))?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
@@ -386,7 +386,7 @@ fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Transa
         if !input.is_mature_at(height)? {
             debug!(
                 target: LOG_TARGET,
-                "Input found that has not yet matured to spending height: {}", input
+                "Input found that has not yet matured to spending height: {input}"
             );
             return Err(TransactionError::InputMaturity);
         }

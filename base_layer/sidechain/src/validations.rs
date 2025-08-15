@@ -49,7 +49,7 @@ pub fn check_proof_elements(
 
                 if proven_3_chain < 3 {
                     proven_3_chain += 1;
-                    debug!(target: LOG_TARGET, "3-chain rule: {} of 3 proven", proven_3_chain);
+                    debug!(target: LOG_TARGET, "3-chain rule: {proven_3_chain} of 3 proven");
                 }
 
                 debug!(target: LOG_TARGET, "Setting last parent to {}", qc.parent_id);
@@ -125,8 +125,8 @@ pub fn check_proof_elements(
     if justified != header_block_id {
         return Err(SidechainProofValidationError::InvalidProof {
             details: format!(
-                "Last parent block ID does not match the block ID in the header. Expected {}, but got {}",
-                header_block_id, last_parent,
+                "Last parent block ID does not match the block ID in the header. Expected {header_block_id}, but got \
+                 {last_parent}"
             ),
         });
     }

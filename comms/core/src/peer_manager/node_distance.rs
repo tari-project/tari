@@ -174,8 +174,7 @@ mod test {
                         .unwrap()
                         .get_bucket_index(),
                     expected,
-                    "Failed for dist = {}",
-                    lsb_dist
+                    "Failed for dist = {lsb_dist}"
                 );
             }
 
@@ -217,8 +216,8 @@ mod test {
                 let dist = NodeDistance::from_node_ids(&a, &b);
                 let i = u32::from(dist.get_bucket_index());
                 let dist = dist.as_u128();
-                assert!(2u128.pow(i) <= dist, "Failed for {}, i = {}", dist, i);
-                assert!(dist < 2u128.pow(i + 1), "Failed for {}, i = {}", dist, i,);
+                assert!(2u128.pow(i) <= dist, "Failed for {dist}, i = {i}");
+                assert!(dist < 2u128.pow(i + 1), "Failed for {dist}, i = {i}");
             }
         }
     }

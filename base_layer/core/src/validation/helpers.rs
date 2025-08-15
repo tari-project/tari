@@ -99,7 +99,7 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
     } else {
         *timestamps.get(mid_index).expect("Already checked")
     };
-    trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
+    trace!(target: LOG_TARGET, "Median timestamp:{median_timestamp}");
     Ok(median_timestamp)
 }
 pub fn check_header_timestamp_greater_than_median(
@@ -219,7 +219,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     if db.fetch_output(&output_hash)?.is_some() {
         warn!(
             target: LOG_TARGET,
-            "Validation failed due to already spent input: {}", input
+            "Validation failed due to already spent input: {input}"
         );
         // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
         // been Some
@@ -237,7 +237,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
     let script_size = script
         .get_serialized_size()
-        .map_err(|e| ValidationError::SerializationError(format!("Failed to get serialized script size: {}", e)))?;
+        .map_err(|e| ValidationError::SerializationError(format!("Failed to get serialized script size: {e}")))?;
     if script_size > max_script_size {
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,
@@ -273,7 +273,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     {
         warn!(
             target: LOG_TARGET,
-            "Duplicate UTXO set commitment found for output: {}", output
+            "Duplicate UTXO set commitment found for output: {output}"
         );
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
     }
@@ -624,8 +624,7 @@ pub fn validate_output_version(
             .contains(&opcode.get_version())
         {
             let msg = format!(
-                "Transaction output script opcode is not allowed by consensus ({})",
-                opcode
+                "Transaction output script opcode is not allowed by consensus ({opcode})"
             );
             return Err(ValidationError::ConsensusError(msg));
         }

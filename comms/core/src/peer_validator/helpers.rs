@@ -119,8 +119,7 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
             validate_onion3_address(&addr)
         },
         p => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Unsupported address type '{}'",
-            p
+            "Unsupported address type '{p}'"
         ))),
     }
 }
@@ -128,8 +127,7 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
 fn expect_end_of_address(mut iter: multiaddr::Iter<'_>) -> Result<(), PeerValidatorError> {
     match iter.next() {
         Some(p) => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Unexpected multiaddress component '{}'",
-            p
+            "Unexpected multiaddress component '{p}'"
         ))),
         None => Ok(()),
     }
@@ -142,8 +140,7 @@ fn validate_tcp_port(expected_tcp: Protocol) -> Result<(), PeerValidatorError> {
         )),
         Protocol::Tcp(_) => Ok(()),
         p => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Expected TCP address component but got '{}'",
-            p
+            "Expected TCP address component but got '{p}'"
         ))),
     }
 }

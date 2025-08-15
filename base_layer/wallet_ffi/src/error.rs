@@ -458,27 +458,27 @@ impl From<multiaddr::Error> for LibWalletError {
         match err {
             multiaddr::Error::ParsingError(_) => Self {
                 code: 801,
-                message: format!("{:?}", err),
+                message: format!("{err:?}"),
             },
             multiaddr::Error::InvalidMultiaddr => Self {
                 code: 802,
-                message: format!("{:?}", err),
+                message: format!("{err:?}"),
             },
             multiaddr::Error::DataLessThanLen => Self {
                 code: 803,
-                message: format!("{:?}", err),
+                message: format!("{err:?}"),
             },
             multiaddr::Error::InvalidProtocolString => Self {
                 code: 804,
-                message: format!("{:?}", err),
+                message: format!("{err:?}"),
             },
             multiaddr::Error::UnknownProtocolString(_) => Self {
                 code: 805,
-                message: format!("{:?}", err),
+                message: format!("{err:?}"),
             },
             multiaddr::Error::InvalidUvar(_) => Self {
                 code: 806,
-                message: format!("{:?}", err),
+                message: format!("{err:?}"),
             },
             err => Self {
                 code: 810,
@@ -494,7 +494,7 @@ impl From<SchnorrSignatureError> for LibWalletError {
         match err {
             SchnorrSignatureError::InvalidChallenge => Self {
                 code: 901,
-                message: format!("{:?}", err),
+                message: format!("{err:?}"),
             },
         }
     }
@@ -531,7 +531,7 @@ impl From<MnemonicError> for LibWalletError {
         error!(target: LOG_TARGET, "{}", err);
         Self {
             code: 910,
-            message: format!("{:?}", err),
+            message: format!("{err:?}"),
         }
     }
 }
@@ -541,7 +541,7 @@ impl From<KeyManagerServiceError> for LibWalletError {
         error!(target: LOG_TARGET, "{}",  err);
         Self {
             code: 458,
-            message: format!("{:?}", err),
+            message: format!("{err:?}"),
         }
     }
 }
@@ -551,7 +551,7 @@ impl From<PeerManagerError> for LibWalletError {
         error!(target: LOG_TARGET, "Peer manager error: {}",  err);
         Self {
             code: 459,
-            message: format!("{:?}", err),
+            message: format!("{err:?}"),
         }
     }
 }

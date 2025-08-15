@@ -96,7 +96,7 @@ mod test {
         let dns = DnsNameServer::custom(socket, String::from("my_dns"));
 
         // test formatting
-        assert_eq!(format!("{}", dns), "127.0.0.1:8080/my_dns");
+        assert_eq!(format!("{dns}"), "127.0.0.1:8080/my_dns");
 
         // from str
         let new_dns = DnsNameServer::from_str("'127.0.0.1:8080/my_dns'").unwrap();

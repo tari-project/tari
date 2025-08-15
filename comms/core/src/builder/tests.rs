@@ -256,7 +256,7 @@ async fn peer_to_peer_messaging() {
         replies.push(reply_rx);
         let outbound_msg = OutboundMessage::with_reply(
             node_identity2.node_id().clone(),
-            format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+            format!("#{i:0>3} - comms messaging is so hot right now!").into(),
             reply_tx.into(),
         );
         outbound_tx1.send(outbound_msg).unwrap();
@@ -277,7 +277,7 @@ async fn peer_to_peer_messaging() {
     for i in 0..NUM_MSGS {
         let outbound_msg = OutboundMessage::new(
             node_identity1.node_id().clone(),
-            format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+            format!("#{i:0>3} - comms messaging is so hot right now!").into(),
         );
         outbound_tx2.send(outbound_msg).unwrap();
     }
@@ -287,7 +287,7 @@ async fn peer_to_peer_messaging() {
     // Check that we got all the messages
     let check_messages = |msgs: Vec<InboundMessage>| {
         for (i, msg) in msgs.iter().enumerate() {
-            let expected_msg_prefix = format!("#{:0>3}", i);
+            let expected_msg_prefix = format!("#{i:0>3}");
             // 0..4 zero padded prefix bytes e.g. #003, #023, #100
             assert_eq!(&msg.body[0..4], expected_msg_prefix.as_bytes());
         }
@@ -365,7 +365,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity2.node_id().clone(),
-                format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+                format!("#{i:0>3} - comms messaging is so hot right now!").into(),
             );
             outbound_tx1.send(outbound_msg).unwrap();
         }
@@ -375,7 +375,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity1.node_id().clone(),
-                format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+                format!("#{i:0>3} - comms messaging is so hot right now!").into(),
             );
             outbound_tx2.send(outbound_msg).unwrap();
         }

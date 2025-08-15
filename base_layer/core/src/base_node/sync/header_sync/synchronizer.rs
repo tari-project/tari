@@ -158,7 +158,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 Err(err) => {
                     let ban_reason = BlockHeaderSyncError::get_ban_reason(&err);
                     if let Some(reason) = ban_reason {
-                        warn!(target: LOG_TARGET, "{}", err);
+                        warn!(target: LOG_TARGET, "{err}");
                         let duration = match reason.ban_duration {
                             BanPeriod::Short => self.config.short_ban_period,
                             BanPeriod::Long => self.config.ban_period,
@@ -199,7 +199,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let mut conn = self.dial_sync_peer(node_id).await?;
         debug!(
             target: LOG_TARGET,
-            "Attempting to synchronize headers with `{}`", node_id
+            "Attempting to synchronize headers with `{node_id}`"
         );
 
         let config = RpcClient::builder()
@@ -224,7 +224,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             });
         }
 
-        debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
+        debug!(target: LOG_TARGET, "Sync peer latency is {latency:.2?}");
         let sync_peer = self
             .sync_peers
             .get(peer_index)
@@ -236,7 +236,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, BlockHeaderSyncError> {
         let timer = Instant::now();
-        debug!(target: LOG_TARGET, "Dialing {} sync peer", node_id);
+        debug!(target: LOG_TARGET, "Dialing {node_id} sync peer");
         let conn = self.connectivity.dial_peer(node_id.clone()).await?;
         info!(
             target: LOG_TARGET,
@@ -289,9 +289,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             HeaderSyncStatus::InSyncOrAhead => {
                 debug!(
                     target: LOG_TARGET,
-                    "Headers are in sync at height {} but tip is {}. Proceeding to archival/pruned block sync",
-                    best_header_height,
-                    best_block_height
+                    "Headers are in sync at height {best_header_height} but tip is {best_block_height}. Proceeding to archival/pruned block sync"
                 );
 
                 Ok(AttemptSyncResult {
@@ -580,7 +578,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         split_info: ChainSplitInfo,
         max_latency: Duration,
     ) -> Result<(), BlockHeaderSyncError> {
-        info!(target: LOG_TARGET, "Starting header sync from peer {}", sync_peer);
+        info!(target: LOG_TARGET, "Starting header sync from peer {sync_peer}");
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
         let mut has_switched_to_new_chain = false;
@@ -667,8 +665,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             trace!(
                 target: LOG_TARGET,
-                "{}",
-                header
+                "{header}"
             );
             if let Some(prev_header_height) = prev_height {
                 if header.height != prev_header_height.saturating_add(1) {

@@ -70,8 +70,7 @@ where u64: From<Idx>
     pub fn new(start: Idx, end_exclusive: Idx, chunk_size: usize) -> Result<Self, String> {
         if start > end_exclusive {
             return Err(format!(
-                "`start` {} must be less than or equal to `end_exclusive` {}",
-                start, end_exclusive
+                "`start` {start} must be less than or equal to `end_exclusive` {end_exclusive}"
             ));
         }
         Ok(Self {
@@ -314,8 +313,7 @@ mod test {
 
         // If the iterator never ends, we have the params used
         eprintln!(
-            "iterator_symmetry: rand_start = {}, rand_end = {}, size = {}",
-            rand_start, rand_end, size
+            "iterator_symmetry: rand_start = {rand_start}, rand_end = {rand_end}, size = {size}"
         );
         let iter_rev = NonOverlappingIntegerPairIter::<u8>::new(rand_start, rand_end, size)
             .unwrap()
@@ -331,8 +329,7 @@ mod test {
             .collect::<Vec<_>>();
         assert_eq!(
             collect1, collect2,
-            "Failed with rand_start = {}, rand_end = {}, size = {}",
-            rand_start, rand_end, size
+            "Failed with rand_start = {rand_start}, rand_end = {rand_end}, size = {size}"
         );
     }
 }

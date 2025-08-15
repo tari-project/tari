@@ -618,7 +618,7 @@ mod transaction_validator {
         let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
             Ok((tx, _, _)) => tx,
-            Err(e) => panic!("Error found: {}", e),
+            Err(e) => panic!("Error found: {e}"),
         };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
@@ -641,7 +641,7 @@ mod transaction_validator {
         let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
             Ok((tx, _, _)) => tx,
-            Err(e) => panic!("Error found: {}", e),
+            Err(e) => panic!("Error found: {e}"),
         };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();

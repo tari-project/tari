@@ -87,7 +87,7 @@ impl Default for PeerFeatures {
 
 impl fmt::Display for PeerFeatures {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -101,15 +101,14 @@ mod tests {
             assert_ne!(
                 feature.to_i32(),
                 UNKNOWN_PEER_FEATURE,
-                "Failed for feature: {:?}",
-                feature
+                "Failed for feature: {feature:?}",
             );
             match feature {
                 PeerFeatures::NONE => assert_eq!(feature.to_i32(), 0),
                 PeerFeatures::MESSAGE_PROPAGATION => assert_eq!(feature.to_i32(), 1),
                 PeerFeatures::DHT_STORE_FORWARD => assert_eq!(feature.to_i32(), 2),
                 PeerFeatures::COMMUNICATION_NODE => assert_eq!(feature.to_i32(), 3),
-                _ => panic!("Unexpected feature: {:?}", feature),
+                _ => panic!("Unexpected feature: {feature:?}"),
             }
         }
     }

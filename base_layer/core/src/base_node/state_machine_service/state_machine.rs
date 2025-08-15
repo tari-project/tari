@@ -199,7 +199,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             (s, e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "No state transition occurs for event {:?} in state {}", e, s
+                    "No state transition occurs for event {e:?} in state {s}"
                 );
                 s
             },
@@ -216,7 +216,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         };
 
         if let Err(e) = self.status_event_sender.send(status) {
-            debug!(target: LOG_TARGET, "Error broadcasting a StatusEvent update: {}", e);
+            debug!(target: LOG_TARGET, "Error broadcasting a StatusEvent update: {e}");
         }
     }
 
@@ -250,7 +250,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             if let Shutdown(reason) = &state {
                 info!(
                     target: LOG_TARGET,
-                    "Base Node state machine is shutting down because {}", reason
+                    "Base Node state machine is shutting down because {reason}"
                 );
                 break;
             }
@@ -264,9 +264,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let _size = self.event_publisher.send(Arc::new(next_event.clone()));
             trace!(
                 target: LOG_TARGET,
-                "Base Node event in State [{}]:  {}",
-                state,
-                next_event
+                "Base Node event in State [{state}]:  {next_event}"
             );
             state = self.transition(state, next_event);
         }
@@ -309,8 +307,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
             info!(
                 target: LOG_TARGET,
-                "[BN SM UPDATE] Updated Listening state. Removed bootstrap_phase: {}. Console should now show 'Listening'",
-                had_bootstrap_phase
+                "[BN SM UPDATE] Updated Listening state. Removed bootstrap_phase: {had_bootstrap_phase}. Console should now show 'Listening'"
             );
         } else {
             debug!(

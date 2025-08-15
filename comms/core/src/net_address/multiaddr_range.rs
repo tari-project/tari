@@ -41,8 +41,8 @@ impl FromStr for MultiaddrRange {
 impl fmt::Display for MultiaddrRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => write!(f, "{}", ipv4_addr_range),
-            MultiaddrRange::Multiaddr(multiaddr) => write!(f, "{}", multiaddr),
+            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => write!(f, "{ipv4_addr_range}"),
+            MultiaddrRange::Multiaddr(multiaddr) => write!(f, "{multiaddr}"),
         }
     }
 }
@@ -144,16 +144,16 @@ impl Ipv4Range {
             } else if part.contains(':') {
                 let range_parts: Vec<&str> = part.split(':').collect();
                 if range_parts.len() != 2 {
-                    return Err(format!("Invalid range format for IPv4 octet {}", i));
+                    return Err(format!("Invalid range format for IPv4 octet {i}"));
                 }
                 start_octets[i] = range_parts[0]
                     .parse()
-                    .map_err(|_| format!("Invalid range start for IPv4 octet {}", i))?;
+                    .map_err(|_| format!("Invalid range start for IPv4 octet {i}"))?;
                 end_octets[i] = range_parts[1]
                     .parse()
-                    .map_err(|_| format!("Invalid range end for IPv4 octet {}", i))?;
+                    .map_err(|_| format!("Invalid range end for IPv4 octet {i}"))?;
             } else {
-                start_octets[i] = part.parse().map_err(|_| format!("Invalid IPv4 octet {}", i))?;
+                start_octets[i] = part.parse().map_err(|_| format!("Invalid IPv4 octet {i}"))?;
                 end_octets[i] = start_octets[i];
             }
         }
@@ -246,8 +246,7 @@ impl PortRange {
                 .map_err(|_| format!("Invalid port range end '{}'", parts.get(1).expect("Already checked")))?;
             if end < start {
                 return Err(format!(
-                    "Invalid port range '{}', end `{}` is less than start `{}`",
-                    range_str, end, start
+                    "Invalid port range '{range_str}', end `{end}` is less than start `{start}`"
                 ));
             }
             return Ok(PortRange { start, end });

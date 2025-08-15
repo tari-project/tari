@@ -189,7 +189,7 @@ async fn main() {
         graph_output_dir,
         &PythonRenderType::NetworkGraphFull,
     ) {
-        println!("Error rendering graphs: {}", e);
+        println!("Error rendering graphs: {e}");
     }
 
     shutdown_all(nodes).await;

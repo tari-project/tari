@@ -108,7 +108,7 @@ impl SeedStrap {
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "SeedStrap: Error during peer discovery via seed nodes: {}. SeedStrap round considered failed.", err
+                    "SeedStrap: Error during peer discovery via seed nodes: {err}. SeedStrap round considered failed."
                 );
 
                 debug!(
@@ -213,7 +213,7 @@ impl SeedStrap {
             let (peers_from_seed, new_peers_this_seed, duplicates_this_seed, spawn_another_task) = match result {
                 Ok((peers, n_new, n_dup)) => (peers, n_new, n_dup, false),
                 Err(e) => {
-                    debug!(target: LOG_TARGET, "SeedStrap: get_peers task unsuccessful, starting a new one: {}", e);
+                    debug!(target: LOG_TARGET, "SeedStrap: get_peers task unsuccessful, starting a new one: {e}");
                     (Vec::new(), 0, 0, true)
                 },
             };
@@ -289,8 +289,7 @@ impl SeedStrap {
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "SeedStrap: Error getting all peers after seed bootstrap: {}",
-                    e
+                    "SeedStrap: Error getting all peers after seed bootstrap: {e}"
                 );
                 0 // Default to 0 if we can't get the peers
             },
@@ -298,9 +297,8 @@ impl SeedStrap {
 
         info!(
             target: LOG_TARGET,
-            "SeedStrap: Peer DB counts after seed bootstrap completion: Total peers in DB = {}, Non-seed peers in DB = {}",
-            total_peer_db_size,
-            non_seed_peers_from_db_count
+            "SeedStrap: Peer DB counts after seed bootstrap completion: Total peers in DB = {total_peer_db_size}, Non-seed peers in DB = {non_seed_peers_from_db_count}"
+
         );
 
         Ok(total_peers_added_this_round)
@@ -429,8 +427,7 @@ async fn get_peers(
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
-                    "SeedStrap: Peer dial_peer to seed '{}' timed out after {:?}",
-                    seed_peer_node_id_str, dial_peer_timeout
+                    "SeedStrap: Peer dial_peer to seed '{seed_peer_node_id_str}' timed out after {dial_peer_timeout:?}"
                 );
                 return (vec![], 0, 0);
             },
@@ -438,8 +435,7 @@ async fn get_peers(
 
         debug!(
             target: LOG_TARGET,
-            "SeedStrap: Connected to seed peer '{}'. Requesting peer list. Try {} of {}.",
-            seed_peer_node_id_str, attempt, NUM_RETRIES,
+            "SeedStrap: Connected to seed peer '{seed_peer_node_id_str}'. Requesting peer list. Try {attempt} of {NUM_RETRIES}."
         );
 
         match fetch_peers_from_connection(
@@ -457,15 +453,14 @@ async fn get_peers(
                 if peers.is_empty() && !conn.is_connected() && attempt < NUM_RETRIES {
                     debug!(
                         target: LOG_TARGET,
-                        "SeedStrap: Connection to seed peer '{}' lost on try {}. Will retry.",
-                        seed_peer_node_id_str, attempt,
+                        "SeedStrap: Connection to seed peer '{seed_peer_node_id_str}' lost on try {attempt}. Will retry."
                     );
                     continue;
                 }
                 if let Err(e) = conn.disconnect(Minimized::Yes, "SeedStrap disconnect seed on Ok").await {
-                    warn!(target: LOG_TARGET, "SeedStrap: Failed to disconnect from seed peer '{}': {}", seed_peer_node_id_str, e);
+                    warn!(target: LOG_TARGET, "SeedStrap: Failed to disconnect from seed peer '{seed_peer_node_id_str}': {e}");
                 } else {
-                    debug!(target: LOG_TARGET, "SeedStrap: Successfully disconnected from seed peer '{}'", seed_peer_node_id_str);
+                    debug!(target: LOG_TARGET, "SeedStrap: Successfully disconnected from seed peer '{seed_peer_node_id_str}'" );
                 }
                 peers_from_seed = peers;
                 break;
@@ -486,8 +481,7 @@ async fn get_peers(
                 {
                     warn!(
                         target: LOG_TARGET,
-                        "SeedStrap: Also failed to disconnect from seed peer '{}' after fetch failure: {}",
-                        seed_peer_node_id_str, disc_err
+                        "SeedStrap: Also failed to disconnect from seed peer '{seed_peer_node_id_str}' after fetch failure: {disc_err}"
                     );
                 }
                 return (vec![], 0, 0);
@@ -695,7 +689,7 @@ async fn fetch_peers_from_connection(
             return Err(NetworkDiscoveryError::Timeout {
                 operation: "connect_rpc".to_string(),
                 peer: conn.peer_node_id().to_hex(),
-                duration: format!("{:.2?}", rpc_connect_timeout),
+                duration: format!("{rpc_connect_timeout:.2?}"),
             });
         },
     };
@@ -746,7 +740,7 @@ async fn fetch_peers_from_connection(
             return Err(NetworkDiscoveryError::Timeout {
                 operation: "get_peers".to_string(),
                 peer: conn.peer_node_id().to_hex(),
-                duration: format!("{:.2?}", rpc_get_peers_stream_timeout),
+                duration: format!("{rpc_get_peers_stream_timeout:.2?}"),
             });
         },
     };
@@ -777,16 +771,14 @@ where
 
     debug!(
         target: LOG_TARGET,
-        "SeedStrap: Beginning to collect peer stream items from seed '{}'", seed_node_id_str
+        "SeedStrap: Beginning to collect peer stream items from seed '{seed_node_id_str}'"
     );
 
     loop {
         debug!(
             target: LOG_TARGET,
-            "SeedStrap: Attempting to get next peer from stream for seed '{}'. Processed {} items so far ({} with peers).",
-            seed_node_id_str,
-            stream_items_processed_total,
-            stream_items_with_peers
+            "SeedStrap: Attempting to get next peer from stream for seed '{seed_node_id_str}'. Processed {stream_items_processed_total} items so far ({stream_items_with_peers} with peers)."
+
         );
 
         // Add timeout to prevent hanging indefinitely on a stalled stream
@@ -795,10 +787,9 @@ where
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
-                    "SeedStrap: Timeout after {:.2?} waiting for next peer from stream for seed '{}'. Breaking from \
-                    peer stream collection.",
-                    rpc_streaming_timeout,
-                    seed_node_id_str
+                    "SeedStrap: Timeout after {rpc_streaming_timeout:.2?} waiting for next peer from stream for seed '{seed_node_id_str}'. Breaking from \
+                    peer stream collection."
+
                 );
                 // Treat as if the stream ended, but it was due to a timeout
                 // This allows the outer loop to try another seed peer
@@ -822,10 +813,8 @@ where
                         } else {
                             debug!(
                                 target: LOG_TARGET,
-                                "SeedStrap: Stream item #{} from seed '{}' contains an empty (None) \
-                                GetPeersResponse.peer field.",
-                                stream_items_processed_total,
-                                seed_node_id_str
+                                "SeedStrap: Stream item #{stream_items_processed_total} from seed '{seed_node_id_str}' contains an empty (None) \
+                                GetPeersResponse.peer field."
                             );
                         }
                     },
@@ -833,10 +822,7 @@ where
                         stream_items_processed_total += 1;
                         warn!(
                             target: LOG_TARGET,
-                            "SeedStrap: Error in stream item #{} from seed '{}': {}. Breaking from peer stream collection.",
-                            stream_items_processed_total,
-                            seed_node_id_str,
-                            e
+                            "SeedStrap: Error in stream item #{stream_items_processed_total} from seed '{seed_node_id_str}': {e}. Breaking from peer stream collection.",
                         );
                         debug!(
                             target: LOG_TARGET,
@@ -851,11 +837,8 @@ where
                     None => {
                         debug!(
                             target: LOG_TARGET,
-                            "SeedStrap: Peer stream ended for seed '{}'. Processed {} items in total, {} of which \
-                            contained peers.",
-                            seed_node_id_str,
-                            stream_items_processed_total,
-                            stream_items_with_peers
+                            "SeedStrap: Peer stream ended for seed '{seed_node_id_str}'. Processed {stream_items_processed_total} items in total, {stream_items_with_peers} of which \
+                            contained peers."
                         );
                         break; // Stream ended gracefully
                     },

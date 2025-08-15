@@ -208,7 +208,7 @@ async fn main() {
             .await
             .unwrap()
             .len();
-        println!("Seed node knows {} peers ({} connections)", count, num_connections);
+        println!("Seed node knows {count} peers ({num_connections} connections)");
     }
 
     take_a_break(NUM_NODES).await;
@@ -224,16 +224,16 @@ async fn main() {
 
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
-    println!("{} messages sent in total across the network", total_messages);
+    println!("{total_messages} messages sent in total across the network");
 
     network_peer_list_stats(&nodes, &wallets).await;
     network_connectivity_stats(&nodes, &wallets, QUIET_MODE).await;
 
     banner!("Summary");
-    println!("Total messages sent: {}", total_messages);
-    println!("Discovery messages: {}", discovery_messages);
-    println!("Total discoveries: {}/{}", discovery_successes, discovery_sent);
-    println!("Prop successes: {}/{}", num_prop_successes, num_prop_total);
+    println!("Total messages sent: {total_messages}");
+    println!("Discovery messages: {discovery_messages}");
+    println!("Total discoveries: {discovery_successes}/{discovery_sent}");
+    println!("Prop successes: {num_prop_successes}/{num_prop_total}");
 
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");

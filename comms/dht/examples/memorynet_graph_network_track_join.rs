@@ -264,13 +264,13 @@ async fn main() {
         graph_output_dir,
         &PythonRenderType::NetworkGraphFull,
     ) {
-        println!("Error rendering graphs: {}", e);
+        println!("Error rendering graphs: {e}");
     }
 
     if let Err(e) =
         run_python_network_graph_render("join_propagation", graph_output_dir, &PythonRenderType::Propagation)
     {
-        println!("Error rendering graphs: {}", e);
+        println!("Error rendering graphs: {e}");
     }
 
     shutdown_all(nodes).await;

@@ -112,7 +112,7 @@ impl OutboundMessageRequester {
             .send_message(
                 SendMessageParams::new()
                     .direct_node_id(dest_node_id.clone())
-                    .with_debug_info(format!("Send direct to {}. Source: {}", dest_node_id, source_info))
+                    .with_debug_info(format!("Send direct to {dest_node_id}. Source: {source_info}"))
                     .finish(),
                 message,
             )
@@ -176,7 +176,7 @@ impl OutboundMessageRequester {
         self.send_message(
             SendMessageParams::new()
                 .broadcast(exclude_peers)
-                .with_debug_info(format!("broadcast requested from {}", source_info))
+                .with_debug_info(format!("broadcast requested from {source_info}"))
                 .with_encryption(encryption)
                 .with_destination(destination)
                 .finish(),
@@ -279,9 +279,8 @@ impl OutboundMessageRequester {
         if cfg!(debug_assertions) {
             trace!(
                 target: LOG_TARGET,
-                "Send Message: params:{} message:{:?}",
-                params,
-                message
+                "Send Message: params:{params} message:{message:?}"
+
             );
         }
         let header = if params.broadcast_strategy.is_direct() {
@@ -304,7 +303,7 @@ impl OutboundMessageRequester {
         T: prost::Message,
     {
         if cfg!(debug_assertions) {
-            trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
+            trace!(target: LOG_TARGET, "Send Message: {params} {message:?}");
         }
         let msg = wrap_in_envelope_body!(message);
         let body = prepare_message(params.encryption.is_encrypt(), &msg)?;
@@ -321,7 +320,7 @@ impl OutboundMessageRequester {
         T: prost::Message,
     {
         if cfg!(debug_assertions) {
-            trace!(target: LOG_TARGET, "Send Message: {} {:?}", params, message);
+            trace!(target: LOG_TARGET, "Send Message: {params} {message:?}");
         }
         let msg = wrap_in_envelope_body!(message);
         let body = prepare_message(params.encryption.is_encrypt(), &msg)?;

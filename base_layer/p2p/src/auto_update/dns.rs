@@ -64,13 +64,13 @@ impl DnsSoftwareUpdate {
         let records = self.config.update_uris.iter().map(|addr| {
             let mut client = self.client.clone();
             async move {
-                log::debug!(target: LOG_TARGET, "Checking {} for updates...", addr);
+                log::debug!(target: LOG_TARGET, "Checking {addr} for updates...");
                 match client.query_txt(addr.as_str()).await {
                     Ok(recs) => recs
                         .iter()
                         .filter_map(|s| UpdateSpec::from_str(s).ok())
                         .map(|update| {
-                            log::trace!(target: LOG_TARGET, "Update: {}", update);
+                            log::trace!(target: LOG_TARGET, "Update: {update}");
                             update
                         })
                         .filter(|u| u.application == app)
@@ -78,7 +78,7 @@ impl DnsSoftwareUpdate {
                         .filter(|u| u.version > *current_version)
                         .collect::<Vec<_>>(),
                     Err(err) => {
-                        log::warn!(target: LOG_TARGET, "Failed to retrieve TXT records: {}", err);
+                        log::warn!(target: LOG_TARGET, "Failed to retrieve TXT records: {err}");
                         Vec::new()
                     },
                 }
@@ -118,14 +118,14 @@ impl DnsSoftwareUpdate {
                     return Ok(None);
                 }
 
-                log::debug!(target: LOG_TARGET, "Update found! {}", best_update);
+                log::debug!(target: LOG_TARGET, "Update found! {best_update}");
                 Ok(Some(best_update.clone()))
             },
             None => {
                 log::debug!(
                     target: LOG_TARGET,
-                    "No new updates found. Current version {}",
-                    current_version
+                    "No new updates found. Current version {current_version}"
+
                 );
                 Ok(None)
             },
@@ -175,7 +175,7 @@ impl FromStr for UpdateSpec {
             .next()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow!("No hash in TXT record"))?;
-        let hash = from_hex(hash).map_err(|e| DnsError::HexError(format!("{}", e)))?;
+        let hash = from_hex(hash).map_err(|e| DnsError::HexError(format!("{e}")))?;
         if parts.next().is_some() {
             return Err(anyhow!("String contained too many parts"));
         }

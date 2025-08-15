@@ -594,7 +594,7 @@ mod test {
             .expect("Couldn't convert CipherSeed to Mnemonic");
         match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
-            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
+            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {e}"),
         }
         // Language known
         let mnemonic_seed = CipherSeed::from_mnemonic_with_language(&mnemonic_seq, MnemonicLanguage::Japanese, None)
@@ -632,7 +632,7 @@ mod test {
             .expect("Couldn't convert CipherSeed to Mnemonic");
         match CipherSeed::from_mnemonic(&mnemonic_seq, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
-            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
+            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {e}"),
         }
 
         let mnemonic_seq = seed

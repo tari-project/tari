@@ -71,9 +71,7 @@ where F: FnOnce() -> R {
     let trace_id = OsRng.next_u32();
     trace!(
         target: LOG_TARGET,
-        "[{}] Entered blocking thread. trace_id: {}",
-        name,
-        trace_id
+        "[{name}] Entered blocking thread. trace_id: {trace_id}"
     );
     let ret = f();
     trace!(

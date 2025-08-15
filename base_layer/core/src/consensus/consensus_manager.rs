@@ -141,7 +141,7 @@ impl ConsensusManager {
         let block_window = constants.difficulty_block_window();
 
         let block_window_u =
-            usize::try_from(block_window).map_err(|e| format!("difficulty block window exceeds usize::MAX: {}", e))?;
+            usize::try_from(block_window).map_err(|e| format!("difficulty block window exceeds usize::MAX: {e}"))?;
 
         TargetDifficultyWindow::new(block_window_u, constants.pow_target_block_interval(pow_algo))
     }
@@ -247,11 +247,11 @@ impl ConsensusManager {
             .iter()
             .filter(|v| v.effective_from_height <= height)
             .max_by_key(|v| v.effective_from_height)
-            .ok_or_else(|| format!("Last effective maturity tranche for height {} not found", height))?;
+            .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
         let last_effective_index = maturity_tranches
             .iter()
             .position(|v| v == last_effective_tranche)
-            .ok_or_else(|| format!("Last effective maturity tranche index for height {} not found", height))?;
+            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?;
         let previous_effective_tranch = maturity_tranches
             .get(last_effective_index.saturating_sub(1))
             .expect("Index should exist")

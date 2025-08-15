@@ -127,7 +127,7 @@ impl DnsClient {
                 .inspect_err(|e| {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to parse DNS TXT record. Error: {}", e
+                        "Failed to parse DNS TXT record. Error: {e}"
                     );
                 })
                 .transpose()

@@ -63,7 +63,7 @@ pub fn monero_randomx_difficulty(
     consensus: &ConsensusManager,
 ) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header, genesis_block_hash, consensus)?;
-    trace!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
+    trace!(target: LOG_TARGET, "Valid Monero data: {monero_pow_data}");
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key(), None, None)?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
@@ -103,7 +103,7 @@ pub fn tari_randomx_difficulty(
 /// Calculate the RandomX mining hash using the virtual machine together with the achieved difficulty
 fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let hash = vm.calculate_hash(input)?;
-    debug!(target: LOG_TARGET, "RandomX Hash: {:?}", hash);
+    debug!(target: LOG_TARGET, "RandomX Hash: {hash:?}");
     let difficulty = Difficulty::little_endian_difficulty(&hash)?;
     Ok((difficulty, hash))
 }
@@ -143,7 +143,7 @@ pub fn verify_header(
         trace!(target: LOG_TARGET, "Error deserializing, Monero extra field");
         ex_field
     });
-    debug!(target: LOG_TARGET, "Extra field: {:?}", extra_field);
+    debug!(target: LOG_TARGET, "Extra field: {extra_field:?}");
     // Check that the Tari MM hash is found in the Monero coinbase transaction
     // and that only 1 Tari header is found
 
@@ -252,7 +252,7 @@ pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, Me
 where T: AsRef<[u8]> {
     let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError {})?;
     let obj = consensus::deserialize::<monero::Block>(&bytes)
-        .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {}", e)))?;
+        .map_err(|e| MergeMineError::ValidationError(format!("blocktemplate blob invalid: {e}")))?;
     Ok(obj)
 }
 
@@ -384,7 +384,7 @@ pub fn insert_aux_chain_mr_and_info_into_block<T: AsRef<[u8]>>(
         mt_params.to_varint()
     };
     extra_field.0.insert(0, SubField::MergeMining(encoded, hash));
-    debug!(target: LOG_TARGET, "Inserted extra field: {:?}", extra_field);
+    debug!(target: LOG_TARGET, "Inserted extra field: {extra_field:?}");
 
     block.miner_tx.prefix.extra = extra_field.into();
 
@@ -1029,7 +1029,7 @@ mod test {
         assert_eq!(
             "ExtraField([TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, \
              58, 168, 109, 46, 133, 127, 7])])",
-            &format!("{:?}", extra_field_before_parse)
+            &format!("{extra_field_before_parse:?}")
         );
         assert!(ExtraField::try_parse(&extra_field_before_parse.clone().into()).is_ok());
 
@@ -1037,7 +1037,7 @@ mod test {
         assert_eq!(
             "ExtraField([Padding(230), TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), \
              Nonce([246, 58, 168, 109, 46, 133, 127, 7])])",
-            &format!("{:?}", extra_field_before_parse)
+            &format!("{extra_field_before_parse:?}")
         );
         assert!(ExtraField::try_parse(&extra_field_before_parse.clone().into()).is_err());
 
@@ -1055,7 +1055,7 @@ mod test {
                  109, 46, 133, 127, 7])])",
                 hex::encode(hash)
             ),
-            &format!("{:?}", extra_field_after_tag)
+            &format!("{extra_field_after_tag:?}")
         );
     }
 
@@ -1283,8 +1283,7 @@ mod test {
         let count = "01";
 
         let input = from_hex(&format!(
-            "{}{}{}{}{}{}",
-            versions, timestamp, prev_block, nonce, tx_hash, count
+            "{versions}{timestamp}{prev_block}{nonce}{tx_hash}{count}"
         ))
         .unwrap();
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();

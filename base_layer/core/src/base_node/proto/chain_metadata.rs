@@ -64,7 +64,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
         let hash: FixedHash = metadata
             .best_block_hash
             .try_into()
-            .map_err(|e| format!("Malformed best block: {}", e))?;
+            .map_err(|e| format!("Malformed best block: {e}"))?;
 
         ChainMetadata::new(
             best_block_height,

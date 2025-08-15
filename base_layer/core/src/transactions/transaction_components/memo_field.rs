@@ -794,7 +794,7 @@ impl MemoField {
         match MemoField::try_deserialize_address_or_transaction_data(bytes, p_tag) {
             Ok(payment_id) => payment_id,
             Err(e) => {
-                debug!("Failed to parse Memo from bytes: {}, returning Raw", e);
+                debug!("Failed to parse Memo from bytes: {e}, returning Raw");
                 MemoField {
                     inner: InnerMemoField::Raw(raw_bytes),
                 }
@@ -1002,7 +1002,7 @@ impl MemoField {
     pub fn payment_id_as_string(&self) -> String {
         match &self.inner {
             InnerMemoField::Empty => self.to_string(),
-            InnerMemoField::U256(v) => format!("{}", v),
+            InnerMemoField::U256(v) => format!("{v}"),
             InnerMemoField::Open { payment_id, .. } => MemoField::stringify_bytes(payment_id),
             InnerMemoField::AddressAndData { payment_id, .. } => MemoField::stringify_bytes(payment_id),
             InnerMemoField::TransactionInfo { payment_id, .. } => MemoField::stringify_bytes(payment_id),

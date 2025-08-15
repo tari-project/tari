@@ -65,7 +65,7 @@ impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>
         let db = Self::new(database_connection);
 
         if let Err(e) = db.run_migrations() {
-            warn!(target: LOG_TARGET, "Migrations failed to run: {}", e)
+            warn!(target: LOG_TARGET, "Migrations failed to run: {e}")
         }
 
         db
@@ -77,10 +77,7 @@ impl<TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError>
             .map(|v| {
                 v.into_iter()
                     .map(|b| {
-                        let m = format!("Running migration {}", b);
-                        // std::io::stdout()
-                        //     .write_all(m.as_ref())
-                        //     .expect("Couldn't write migration number to stdout");
+                        let m = format!("Running migration {b}");
                         m
                     })
                     .collect::<Vec<String>>()

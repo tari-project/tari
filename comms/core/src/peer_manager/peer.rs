@@ -367,7 +367,7 @@ impl Display for Peer {
             match self.features {
                 PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
                 PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),
-                f => format!("{:?}", f),
+                f => format!("{f:?}"),
             },
             user_agent,
         ))

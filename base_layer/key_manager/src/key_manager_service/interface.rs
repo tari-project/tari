@@ -159,10 +159,10 @@ where PK: ByteArray
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
-            KeyId::Derived { key: k } => write!(f, "{}.{}", DERIVED_KEY_BRANCH, k),
-            KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
-            KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
+            KeyId::Managed { branch: b, index: i } => write!(f, "{MANAGED_KEY_BRANCH}.{b}.{i}"),
+            KeyId::Derived { key: k } => write!(f, "{DERIVED_KEY_BRANCH}.{k}"),
+            KeyId::Imported { key: public_key } => write!(f, "{IMPORTED_KEY_BRANCH}.{}", public_key.to_hex()),
+            KeyId::Zero => write!(f, "{ZERO_KEY_BRANCH}",),
         }
     }
 }

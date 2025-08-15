@@ -48,7 +48,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
         if tx
             .calculate_weight(consensus_constants.transaction_weight_params())
             .map_err(|e| {
-                ValidationError::SerializationError(format!("Unable to calculate the transaction weight: {}", e))
+                ValidationError::SerializationError(format!("Unable to calculate the transaction weight: {e}"))
             })? >
             consensus_constants.max_block_transaction_weight()
         {

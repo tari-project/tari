@@ -199,9 +199,9 @@ async fn main() {
         DEFAULT_GRAPH_OUTPUT_DIR,
         &PythonRenderType::Propagation,
     ) {
-        println!("Error rendering graphs: {}", e);
+        println!("Error rendering graphs: {e}");
     }
-    println!("Wrote graph output to {}/join_propagation", DEFAULT_GRAPH_OUTPUT_DIR);
+    println!("Wrote graph output to {DEFAULT_GRAPH_OUTPUT_DIR}/join_propagation");
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");
     shutdown_all(nodes).await;

@@ -54,9 +54,8 @@ impl LinearWeightedMovingAverage {
         }
         if target_time.checked_mul(LWMA_MAX_BLOCK_TIME_RATIO).is_none() {
             return Err(format!(
-                "LinearWeightedMovingAverage::new(...) expected `target_time` to be at least {} times smaller than \
-                 `u64::MAX`",
-                LWMA_MAX_BLOCK_TIME_RATIO,
+                "LinearWeightedMovingAverage::new(...) expected `target_time` to be at least \
+                 {LWMA_MAX_BLOCK_TIME_RATIO} times smaller than `u64::MAX`",
             ));
         }
         Ok(Self {
@@ -136,7 +135,7 @@ impl LinearWeightedMovingAverage {
             ave_difficulty,
             target
         );
-        trace!(target: LOG_TARGET, "New target difficulty: {}", target);
+        trace!(target: LOG_TARGET, "New target difficulty: {target}");
         if target < Difficulty::min().as_u64() {
             None
         } else {
@@ -187,9 +186,8 @@ impl LinearWeightedMovingAverage {
         }
         if target_time.checked_mul(LWMA_MAX_BLOCK_TIME_RATIO).is_none() {
             return Err(format!(
-                "LinearWeightedMovingAverage::update_target_time(...) expected `target_time` to be at least {} times \
-                 smaller than `u64::MAX`",
-                LWMA_MAX_BLOCK_TIME_RATIO,
+                "LinearWeightedMovingAverage::update_target_time(...) expected `target_time` to be at least \
+                 {LWMA_MAX_BLOCK_TIME_RATIO} times smaller than `u64::MAX`",
             ));
         }
         self.target_time = u128::from(target_time);

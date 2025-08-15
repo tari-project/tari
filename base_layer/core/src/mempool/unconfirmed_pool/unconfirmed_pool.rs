@@ -152,7 +152,7 @@ impl UnconfirmedPool {
 
         debug!(
             target: LOG_TARGET,
-            "Inserted transaction {} into unconfirmed pool:", prioritized_tx
+            "Inserted transaction {prioritized_tx} into unconfirmed pool:"
         );
         self.tx_by_key.insert(new_key, prioritized_tx);
 

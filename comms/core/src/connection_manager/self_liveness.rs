@@ -135,7 +135,7 @@ where
                         timer.elapsed()
                     );
                     if let Err(err) = socket.write(&[WireMode::Liveness.as_byte()]).await {
-                        warn!(target: LOG_TARGET, "🔌️ self liveness failed to write byte: {}", err);
+                        warn!(target: LOG_TARGET, "🔌️ self liveness failed to write byte: {err}");
                         self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
                         continue;
                     }
@@ -143,7 +143,7 @@ where
                     loop {
                         match self.ping_pong(&mut framed).await {
                             Ok(Some(latency)) => {
-                                debug!(target: LOG_TARGET, "⚡️️ self liveness check latency {:.2?}", latency);
+                                debug!(target: LOG_TARGET, "⚡️️ self liveness check latency {latency:.2?}");
                                 self.tx_watch.send_replace(SelfLivenessStatus::Live(latency));
                             },
                             Ok(None) => {
@@ -152,9 +152,8 @@ where
                                 break;
                             },
                             Err(err) => {
-                                warn!(target: LOG_TARGET, "🔌️ self liveness ping pong failed: {}", err);
+                                warn!(target: LOG_TARGET, "🔌️ self liveness ping pong failed: {err}");
                                 self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
-                                // let _ = framed.close().await;
                                 break;
                             },
                         }
@@ -167,7 +166,7 @@ where
                     self.tx_watch.send_replace(SelfLivenessStatus::Unreachable);
                     warn!(
                         target: LOG_TARGET,
-                        "🔌️ Failed to dial own public address {} for self check: {}", address, err
+                        "🔌️ Failed to dial own public address {address} for self check: {err}"
                     );
                 },
             }
@@ -184,7 +183,7 @@ where
         match framed.next().await {
             Some(res) => {
                 let val = res?;
-                trace!(target: LOG_TARGET, "Received: {}", val);
+                trace!(target: LOG_TARGET, "Received: {val}");
                 Ok(Some(timer.elapsed()))
             },
             None => Ok(None),

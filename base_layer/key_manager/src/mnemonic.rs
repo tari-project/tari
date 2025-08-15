@@ -354,7 +354,7 @@ mod test {
         assert_eq!(my_enum, MnemonicLanguage::Spanish);
         let my_language = "TariVerse";
         match MnemonicLanguage::from_str(my_language) {
-            Ok(_) => panic!("Language '{}' is not a member of 'MnemonicLanguage'!", my_language),
+            Ok(_) => panic!("Language '{my_language}' is not a member of 'MnemonicLanguage'!"),
             Err(e) => assert_eq!(e, strum::ParseError::VariantNotFound),
         }
     }
@@ -519,7 +519,7 @@ mod test {
             OsRng.fill_bytes(&mut secretkey_bytes);
             let mnemonic_seq = mnemonic::from_bytes(&secretkey_bytes, MnemonicLanguage::English).unwrap();
             let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).unwrap();
-            assert_eq!(&secretkey_bytes, mnemonic_bytes.reveal(), "failed len = {}", len);
+            assert_eq!(&secretkey_bytes, mnemonic_bytes.reveal(), "failed len = {len}");
         }
     }
 }

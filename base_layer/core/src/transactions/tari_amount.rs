@@ -338,7 +338,7 @@ impl TryFrom<Decimal> for Minotari {
         if v.is_sign_negative() {
             Err(MicroMinotariError::ParseError("value cannot be negative".to_string()))
         } else if v.scale() > 6 {
-            Err(MicroMinotariError::ParseError(format!("too many decimals ({})", v)))
+            Err(MicroMinotariError::ParseError(format!("too many decimals ({v})")))
         } else {
             let (micro_tari, _, _) = (v * 1_000_000u64).trunc(0).into_parts();
             let micro_tari = micro_tari.try_into().map_err(|_| DecimalConvertError::Overflow)?;

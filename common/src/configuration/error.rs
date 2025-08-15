@@ -61,7 +61,7 @@ mod test {
         let config_error = ConfigError::new("testing", Some(String::from("coverage")));
 
         // test formatting
-        assert_eq!(format!("{}", config_error), "testing: coverage");
+        assert_eq!(format!("{config_error}"), "testing: coverage");
 
         // create new error
         let clap_error = ClapError {

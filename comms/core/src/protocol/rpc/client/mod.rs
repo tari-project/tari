@@ -110,7 +110,7 @@ impl RpcClient {
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
     {
-        trace!(target: LOG_TARGET,"connect to {:?} with {:?}", node_id, config);
+        trace!(target: LOG_TARGET,"connect to {node_id:?} with {config:?}");
         let (request_tx, request_rx) = mpsc::channel(1);
         let shutdown = Shutdown::new();
         let shutdown_signal = shutdown.to_signal();
@@ -683,7 +683,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             payload: request.message.to_vec(),
         };
 
-        trace!(target: LOG_TARGET, "Sending request: {}", req);
+        trace!(target: LOG_TARGET, "Sending request: {req}");
 
         if reply.is_closed() {
             warn!(
@@ -711,7 +711,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
         let timer = Instant::now();
         if let Err(err) = self.send_request(req).await {
-            warn!(target: LOG_TARGET, "{}", err);
+            warn!(target: LOG_TARGET, "{err}");
             #[cfg(feature = "metrics")]
             metrics::client_errors(&self.protocol_id).inc();
             let _result = response_tx.send(Err(err.into())).await;
@@ -775,7 +775,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 Err(RpcError::ReplyTimeout) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Request {} (method={}) timed out", request_id, method,
+                        "Request {request_id} (method={method}) timed out"
                     );
                     #[cfg(feature = "metrics")]
                     metrics::client_timeouts(&self.protocol_id).inc();
@@ -789,7 +789,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 Err(RpcError::ClientClosed) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Request {} (method={}) was closed (read_reply)", request_id, method,
+                        "Request {request_id} (method={method}) was closed (read_reply)"
                     );
                     self.request_rx.close();
                     break;
@@ -815,7 +815,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     }
                 },
                 Ok(Err(err)) => {
-                    debug!(target: LOG_TARGET, "Remote service returned error: {}", err);
+                    debug!(target: LOG_TARGET, "Remote service returned error: {err}");
                     if !response_tx.is_closed() {
                         let _result = response_tx.send(Err(err)).await;
                     }
@@ -823,7 +823,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 },
                 Err(err @ RpcError::ResponseIdDidNotMatchRequest { .. }) |
                 Err(err @ RpcError::UnexpectedAckResponse) => {
-                    warn!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{err}");
                     // Ignore the response, this can happen when there is excessive latency. The server sends back a
                     // reply before the deadline but it is only received after the client has timed
                     // out
@@ -900,7 +900,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 {
                     warn!(
                         target: LOG_TARGET,
-                        "Possible delayed response received for previous request {}", actual
+                        "Possible delayed response received for previous request {actual}"
                     );
                     num_ignored += 1;
 

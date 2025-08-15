@@ -435,7 +435,7 @@ impl AsyncRead for MemorySocket {
                         buf.advance(bytes_to_read);
 
                         current_buffer.advance(bytes_to_read);
-                        trace!("reading {} bytes", bytes_to_read);
+                        trace!("reading {bytes_to_read} bytes");
 
                         bytes_read += bytes_to_read;
                     }
@@ -470,7 +470,7 @@ impl AsyncWrite for MemorySocket {
 
         match self.outgoing.poll_ready(cx) {
             Poll::Ready(Ok(())) => {
-                trace!("writing {} bytes", len);
+                trace!("writing {len} bytes");
                 if let Err(e) = self.outgoing.start_send(Bytes::copy_from_slice(buf)) {
                     if e.is_disconnected() {
                         return Poll::Ready(Err(io::Error::new(ErrorKind::BrokenPipe, e)));

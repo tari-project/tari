@@ -139,7 +139,7 @@ impl ByteArray for NodeId {
     /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
     fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         bytes.try_into().map_err(|err| ByteArrayError::ConversionError {
-            reason: format!("{:?}", err),
+            reason: format!("{err:?}"),
         })
     }
 
@@ -154,7 +154,7 @@ impl ByteArray for Box<NodeId> {
     /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
     fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         let node_id = NodeId::try_from(bytes).map_err(|err| ByteArrayError::ConversionError {
-            reason: format!("{:?}", err),
+            reason: format!("{err:?}"),
         })?;
         Ok(Box::new(node_id))
     }
@@ -276,7 +276,7 @@ mod test {
     fn display() {
         let node_id = NodeId::try_from(&[144u8, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap();
 
-        let result = format!("{}", node_id);
+        let result = format!("{node_id}");
         assert_eq!("901c6a70dcc5d87709d92a4d9f", result);
     }
 

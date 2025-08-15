@@ -457,14 +457,14 @@ impl PeerDatabaseSql {
 
             match self.get_peer_by_node_id_inner(&node_id, conn)? {
                 Some(mut existing_peer) => {
-                    trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{}'", node_id);
+                    trace!(target: LOG_TARGET, "Replacing peer that has NodeId '{node_id}'");
                     existing_peer.merge(&peer);
                     let update_peer_sql = PeerDatabaseSql::update_peer_sql(existing_peer.clone())?;
                     self.update_peer_inner(update_peer_sql, conn)?;
                     Ok(existing_peer.id.unwrap_or_default())
                 },
                 None => {
-                    trace!(target: LOG_TARGET, "Adding peer with node id '{}'", node_id);
+                    trace!(target: LOG_TARGET, "Adding peer with node id '{node_id}'");
                     let new_peer_sql = self.add_peer_sql(peer)?;
                     let peer_id = self.add_peer_inner(new_peer_sql, conn)?;
                     Ok(peer_id)
@@ -591,8 +591,7 @@ impl PeerDatabaseSql {
             .execute(conn)?;
         if inserted == 0 {
             return Err(StorageError::UnexpectedResult(format!(
-                "Could not insert peer '{}'",
-                node_id
+                "Could not insert peer '{node_id}'"
             )));
         }
 
@@ -2621,7 +2620,7 @@ mod tests {
         peers_db.reset_offline_non_wallet_peers().unwrap();
         let all_peers = peers_db.get_all_peers(Some(PeerFeatures::COMMUNICATION_NODE)).unwrap();
         for peer in &all_peers {
-            assert!(peer.last_connect_attempt().is_none(), "peer: {}", peer);
+            assert!(peer.last_connect_attempt().is_none(), "peer: {peer}");
         }
 
         // - last_failed_reason

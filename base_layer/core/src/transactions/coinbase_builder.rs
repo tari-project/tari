@@ -457,7 +457,7 @@ pub async fn generate_coinbase_with_wallet_output(
             wallet_payment_address.get_memo_field_payment_id_bytes(),
             TxType::Coinbase,
         )
-        .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {}, size too large", e)))?
+        .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {e}, size too large")))?
     };
 
     let sender_offset = key_manager

@@ -1078,7 +1078,7 @@ impl fmt::Display for SenderState {
                 txn.body.outputs().len(),
                 change_output.is_some(),
             ),
-            Failed(err) => write!(f, "Failed({:?})", err),
+            Failed(err) => write!(f, "Failed({err:?})"),
         }
     }
 }
@@ -1316,7 +1316,7 @@ mod test {
         assert!(sender.is_finalizing());
         match sender.finalize(&key_manager).await {
             Ok(_) => (),
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         }
         let tx = sender.get_transaction().unwrap();
         let rules = create_consensus_rules();
@@ -1417,7 +1417,7 @@ mod test {
         assert!(alice.is_finalizing());
         match alice.finalize(&key_manager).await {
             Ok(_) => (),
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         };
         assert!(alice.is_finalized());
 
@@ -1540,7 +1540,7 @@ mod test {
         assert!(alice.is_finalizing());
         match alice.finalize(&key_manager).await {
             Ok(_) => (),
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         };
 
         assert!(alice.is_finalized());
@@ -1653,7 +1653,7 @@ mod test {
         assert!(alice.is_finalizing());
         match alice.finalize(&key_manager).await {
             Ok(_) => (),
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         };
 
         assert!(alice.is_finalized());
@@ -1741,7 +1741,7 @@ mod test {
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
         match builder.build().await {
             Ok(_) => {},
-            Err(e) => panic!("Unexpected error: {:?}", e),
+            Err(e) => panic!("Unexpected error: {e:?}"),
         };
     }
 
@@ -1837,7 +1837,7 @@ mod test {
         assert!(alice.is_finalizing());
         match alice.finalize(&key_manager_alice).await {
             Ok(_) => (),
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         };
 
         assert!(alice.is_finalized());
