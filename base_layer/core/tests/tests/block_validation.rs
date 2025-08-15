@@ -127,6 +127,7 @@ async fn test_monero_blocks() {
             target_time: 200,
         })
         .with_blockchain_version(tari_core::consensus::consensus_constants::BlockVersion::V0)
+        .with_valid_blockchain_version_range(0..=0)
         .build();
     let cm = ConsensusManager::builder(network)
         .add_consensus_constants(cc)

@@ -1090,6 +1090,11 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    pub fn with_valid_blockchain_version_range(mut self, range: RangeInclusive<u16>) -> Self {
+        self.consensus.valid_blockchain_version_range = range;
+        self
+    }
+
     pub fn build(self) -> ConsensusConstants {
         self.consensus
     }
