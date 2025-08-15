@@ -56,7 +56,7 @@ impl CommandContext {
                 );
                 println!();
             },
-            Err(err) => eprintln!("Error generating certificates: {}", err),
+            Err(err) => eprintln!("Error generating certificates: {err}"),
         }
         Ok(())
     }

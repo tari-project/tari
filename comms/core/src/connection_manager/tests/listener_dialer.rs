@@ -164,7 +164,7 @@ async fn smoke() {
             ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) => {
                 new_inbound_substream = Some((node_id, proto, in_stream));
             },
-            _ => panic!("Unexpected event: {:?}", event),
+            _ => panic!("Unexpected event: {event:?}"),
         }
     }
 
@@ -339,7 +339,7 @@ async fn excluded_yes() {
     // Check that the dial failed. We're checking that the dial attempt was never made.
     let res = reply_rx.await.unwrap();
     assert_eq!(
-        format!("{:?}", res),
+        format!("{res:?}"),
         format!("Err(AllPeerAddressesAreExcluded(\"{}\"))", node_identity1.node_id())
     );
 

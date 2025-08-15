@@ -211,7 +211,7 @@ where
                 .event_publisher
                 .send(Arc::new(TransactionEvent::ReceivedTransaction(data.tx_id)))
                 .map_err(|e| {
-                    trace!(target: LOG_TARGET, "Error sending event due to no subscribers: {:?}", e);
+                    trace!(target: LOG_TARGET, "Error sending event due to no subscribers: {e:?}");
                     e
                 });
             Ok(())
@@ -472,9 +472,8 @@ where
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(self.id)))
-                .map_err(|e| {
-                    trace!(target: LOG_TARGET, "Error sending event, no subscribers: {:?}", e);
-                    e
+                .inspect_err(|e| {
+                    trace!(target: LOG_TARGET, "Error sending event, no subscribers: {e:?}");
                 });
             break;
         }
@@ -516,7 +515,7 @@ where
         self.resources.db.cancel_pending_transaction(self.id).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
-                "Pending Transaction does not exist and could not be cancelled: {:?}", e
+                "Pending Transaction does not exist and could not be cancelled: {e:?}"
             );
             TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
         })?;
@@ -534,12 +533,11 @@ where
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,
-                    "Error sending event because there are no subscribers: {:?}",
-                    e
+                    "Error sending event because there are no subscribers: {e:?}"
                 );
                 TransactionServiceProtocolError::new(
                     self.id,
-                    TransactionServiceError::BroadcastSendError(format!("{:?}", e)),
+                    TransactionServiceError::BroadcastSendError(format!("{e:?}")),
                 )
             });
 

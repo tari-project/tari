@@ -408,6 +408,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
+
+    #![allow(clippy::indexing_slicing)]
     use std::sync::Mutex;
 
     use futures::{executor::block_on, future};

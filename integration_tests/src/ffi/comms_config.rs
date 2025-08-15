@@ -48,7 +48,7 @@ impl CommsConfig {
                 &mut error,
             );
             if error > 0 {
-                println!("comms config error {}", error);
+                println!("comms config error {error}");
                 panic!("comms config error");
             }
         }

@@ -390,6 +390,7 @@ impl Into<CommsDatabase> for PeerStorageSql {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{borrow::BorrowMut, iter::repeat_with};
 
     use chrono::{DateTime, Utc};

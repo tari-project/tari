@@ -246,7 +246,7 @@ impl WalletSqliteDatabase {
         let seed_bytes = Hidden::hide(seed.encipher(None)?);
         let ciphertext_integral_nonce =
             encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_master_seed".to_vec(), seed_bytes)
-                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))?;
         WalletSettingSql::new(DbKey::MasterSeed, ciphertext_integral_nonce.to_hex()).set(conn)?;
 
         Ok(())
@@ -264,7 +264,7 @@ impl WalletSqliteDatabase {
                         b"wallet_setting_master_seed".to_vec(),
                         &from_hex(seed_str.as_str())?,
                     )
-                    .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
+                    .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?,
                 );
                 CipherSeed::from_enciphered_bytes(decrypted_key_bytes.reveal(), None)?
             };
@@ -279,7 +279,7 @@ impl WalletSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
         let o = o
             .decrypt(&cipher)
-            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
+            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?;
         Ok(o)
     }
 
@@ -287,7 +287,7 @@ impl WalletSqliteDatabase {
     fn encrypt_value<T: Encryptable<XChaCha20Poly1305>>(&self, o: T) -> Result<T, WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
         o.encrypt(&cipher)
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))
+            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))
     }
 
     fn get_comms_address(&self, conn: &mut SqliteConnection) -> Result<Option<Multiaddr>, WalletStorageError> {
@@ -317,7 +317,7 @@ impl WalletSqliteDatabase {
         let bytes =
             Hidden::hide(bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?);
         let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), bytes)
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))?;
 
         WalletSettingSql::new(DbKey::TorId, ciphertext_integral_nonce.to_hex()).set(conn)?;
 
@@ -332,7 +332,7 @@ impl WalletSqliteDatabase {
                 // including private key informations
                 let decrypted_key_bytes = Hidden::hide(
                     decrypt_bytes_integral_nonce(&cipher, b"wallet_setting_tor_id".to_vec(), &from_hex(&key_str)?)
-                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?,
+                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?,
                 );
 
                 bincode::deserialize(decrypted_key_bytes.reveal())
@@ -677,9 +677,7 @@ impl WalletBackend for WalletSqliteDatabase {
                 Err(e) => {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to decrypt burnt proof: id={}: {}",
-                        id,
-                        e
+                        "Failed to decrypt burnt proof: id={id}: {e}"
                     );
                     Err(WalletStorageError::AeadError(e.to_string()))
                 },
@@ -688,9 +686,7 @@ impl WalletBackend for WalletSqliteDatabase {
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to fetch burnt proof: id={}: {}",
-                    id,
-                    e
+                    "Failed to fetch burnt proof: id={id}: {e}"
                 );
 
                 Err(WalletStorageError::BurntProofNotFound(id))
@@ -717,9 +713,7 @@ impl WalletBackend for WalletSqliteDatabase {
                     Err(e) => {
                         error!(
                             target: LOG_TARGET,
-                            "Failed to decrypt burnt proof: id={}: {}",
-                            entry_id,
-                            e
+                            "Failed to decrypt burnt proof: id={entry_id}: {e}"
                         );
 
                         None
@@ -1100,6 +1094,7 @@ impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
     use tari_common_types::encryption::{decrypt_bytes_integral_nonce, Encryptable};
     use tari_key_manager::cipher_seed::CipherSeed;
@@ -1122,7 +1117,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}/{}", db_folder, db_name);
+        let db_path = format!("{db_folder}/{db_name}");
         let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
         // Encrypt with a passphrase
@@ -1167,7 +1162,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}/{}", db_folder, db_name);
+        let db_path = format!("{db_folder}/{db_name}");
         let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
         // Encrypt with a passphrase
@@ -1190,7 +1185,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}/{}", db_folder, db_name);
+        let db_path = format!("{db_folder}/{db_name}");
         let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
         let seed = CipherSeed::new();
@@ -1273,7 +1268,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
         let mut conn = connection.get_pooled_connection().unwrap();
 
         let key1 = "key1".to_string();
@@ -1325,7 +1320,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 

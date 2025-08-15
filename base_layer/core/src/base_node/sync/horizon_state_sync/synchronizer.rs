@@ -191,7 +191,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             BanPeriod::Short => self.config.short_ban_period,
                             BanPeriod::Long => self.config.ban_period,
                         };
-                        warn!(target: LOG_TARGET, "{}", err);
+                        warn!(target: LOG_TARGET, "{err}");
                         self.peer_ban_manager
                             .ban_peer_if_required(&node_id, reason.reason, duration)
                             .await;
@@ -241,13 +241,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let peer_index = self
             .get_sync_peer_index(node_id)
             .ok_or(HorizonSyncError::PeerNotFound)?;
-        let sync_peer = &self.sync_peers[peer_index];
+        let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
         self.hooks.call_on_starting_hook(sync_peer);
 
         let mut conn = self.dial_sync_peer(node_id).await?;
         debug!(
             target: LOG_TARGET,
-            "Attempting to synchronize horizon state with `{}`", node_id
+            "Attempting to synchronize horizon state with `{node_id}`"
         );
 
         let config = RpcClient::builder()
@@ -261,7 +261,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let latency = client
             .get_last_request_latency()
             .expect("unreachable panic: last request latency must be set after connect");
-        self.sync_peers[peer_index].set_latency(latency);
+        self.sync_peers
+            .get_mut(peer_index)
+            .expect("Already checked")
+            .set_latency(latency);
         if latency > self.max_latency {
             return Err(HorizonSyncError::MaxLatencyExceeded {
                 peer: conn.peer_node_id().clone(),
@@ -269,14 +272,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 max_latency: self.max_latency,
             });
         }
-        debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
+        debug!(target: LOG_TARGET, "Sync peer latency is {latency:.2?}");
 
-        Ok((client, self.sync_peers[peer_index].clone()))
+        Ok((
+            client,
+            self.sync_peers.get(peer_index).expect("Already checked").clone(),
+        ))
     }
 
     async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, HorizonSyncError> {
         let timer = Instant::now();
-        debug!(target: LOG_TARGET, "Dialing {} sync peer", node_id);
+        debug!(target: LOG_TARGET, "Dialing {node_id} sync peer");
         let conn = self.connectivity.dial_peer(node_id.clone()).await?;
         info!(
             target: LOG_TARGET,
@@ -382,7 +388,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let local_metadata = self.db.get_chain_metadata().await?;
         let new_prune_height = cmp::min(local_metadata.best_block_height(), self.horizon_sync_height);
         if local_metadata.pruned_height() < new_prune_height {
-            debug!(target: LOG_TARGET, "Pruning block chain to height {}", new_prune_height);
+            debug!(target: LOG_TARGET, "Pruning block chain to height {new_prune_height}");
             self.db.prune_to_height(new_prune_height).await?;
         }
 
@@ -396,7 +402,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
-        info!(target: LOG_TARGET, "Starting kernel sync from peer {}", sync_peer);
+        info!(target: LOG_TARGET, "Starting kernel sync from peer {sync_peer}");
         let local_num_kernels = self.db().fetch_mmr_size(MmrTree::Kernel).await?;
 
         let remote_num_kernels = to_header.kernel_mmr_size;
@@ -570,7 +576,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
-        info!(target: LOG_TARGET, "Starting output sync from peer {}", sync_peer);
+        info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
         let tip_header = db.fetch_tip_header().await?;
 
@@ -700,9 +706,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         Some(output_hash) => {
                             debug!(
                                 target: LOG_TARGET,
-                                "STXO hash `{}` received from sync peer ({})",
-                                output_hash,
-                                stxo_counter,
+                                "STXO hash `{output_hash}` received from sync peer ({stxo_counter})",
                             );
                             // let smt_key = NodeKey::try_from(commitment_bytes.as_slice())?;
                             // match output_smt.delete(&smt_key)? {

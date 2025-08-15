@@ -69,7 +69,7 @@ impl DbConnectionUrl {
         use DbConnectionUrl::{File, Memory, MemoryShared};
         match self {
             Memory => ":memory:".to_owned(),
-            MemoryShared(identifier) => format!("file:{}?mode=memory&cache=shared", identifier),
+            MemoryShared(identifier) => format!("file:{identifier}?mode=memory&cache=shared"),
             File(path) => path
                 .to_str()
                 .expect("Invalid non-UTF8 character in database path")
@@ -145,7 +145,7 @@ impl DbConnection {
     /// override the default setting of 1.
     /// Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
     pub fn connect_url(db_url: &DbConnectionUrl, sqlite_pool_size: Option<usize>) -> Result<Self, StorageError> {
-        debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
+        debug!(target: LOG_TARGET, "Connecting to database using '{db_url:?}'");
 
         // Ensure the path exists
         if let DbConnectionUrl::File(ref path) = db_url {
@@ -170,8 +170,7 @@ impl DbConnection {
         match DB_WRITE_LOCK.write() {
             Ok(value) => Ok(value),
             Err(err) => Err(StorageError::DatabaseMigrationLockError(format!(
-                "Failed to acquire write lock for database migration: {}",
-                err
+                "Failed to acquire write lock for database migration: {err}"
             ))),
         }
     }
@@ -201,7 +200,7 @@ impl DbConnection {
                 .map(|_| rng.sample(Alphanumeric) as char)
                 .take(len)
                 .collect::<String>();
-            format!("{}{}", prefix, rand_str)
+            format!("{prefix}{rand_str}")
         }
 
         let path = DbConnection::temp_db_dir().join(prefixed_string("data-", 20));
@@ -225,8 +224,8 @@ impl DbConnection {
         let mut conn = self.get_pooled_connection()?;
         let result: Vec<String> = conn
             .run_pending_migrations(migrations)
-            .map(|v| v.into_iter().map(|b| format!("Running migration {}", b)).collect())
-            .map_err(|err| StorageError::DatabaseMigrationFailed(format!("Database migration failed {}", err)))?;
+            .map(|v| v.into_iter().map(|b| format!("Running migration {b}")).collect())
+            .map_err(|err| StorageError::DatabaseMigrationFailed(format!("Database migration failed {err}")))?;
 
         Ok(result.join("\r\n"))
     }
@@ -247,10 +246,10 @@ impl Drop for DbConnection {
                     debug!(target: LOG_TARGET, "DbConnection - Dropping database: {}", path.display());
                     // Explicitly cleanup and drop the connection pool to ensure all connections are released
                     let pool_state = self.pool.cleanup();
-                    debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {:?}", pool_state);
+                    debug!(target: LOG_TARGET, "DbConnection - Pool stats before cleanup: {pool_state:?}");
                     debug!(target: LOG_TARGET, "DbConnection - Cleaning up tempdir: {}", parent.display());
                     if let Err(e) = fs::remove_dir_all(parent) {
-                        error!(target: LOG_TARGET, "Failed to clean up temp dir: {}", e);
+                        error!(target: LOG_TARGET, "Failed to clean up temp dir: {e}");
                     } else {
                         debug!(target: LOG_TARGET, "Temp dir cleaned up: {}", parent.display());
                     }

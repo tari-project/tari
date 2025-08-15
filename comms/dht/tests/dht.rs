@@ -433,8 +433,7 @@ async fn test_dht_propagate_dedup() {
     // Expected race condition: If A->B->C before A->C then C->B does not happen
     assert!(
         (1..=2).contains(&recv_count),
-        "expected recv_count to be in [1-2] but was {}",
-        recv_count
+        "expected recv_count to be in [1-2] but was {recv_count}"
     );
 
     let received = filter_received(collect_try_recv!(node_C_messaging, timeout = Duration::from_secs(20)));

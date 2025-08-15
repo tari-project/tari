@@ -94,7 +94,7 @@ impl ProtobufReflector {
                 schemas.insert("Transfer".to_string(), self.generate_transfer_schema()?);
             },
             _ => {
-                return Err(McpError::invalid_request(format!("Unknown service: {}", service_name)));
+                return Err(McpError::invalid_request(format!("Unknown service: {service_name}")));
             },
         }
 
@@ -289,7 +289,7 @@ impl ProtobufReflector {
             })),
             metadata: Some(Box::new(Metadata {
                 title: Some(message_name.to_string()),
-                description: Some(format!("Generic schema for message type {}", message_name)),
+                description: Some(format!("Generic schema for message type {message_name}")),
                 ..Default::default()
             })),
             ..Default::default()

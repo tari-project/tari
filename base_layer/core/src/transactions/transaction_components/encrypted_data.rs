@@ -90,9 +90,18 @@ impl EncryptedData {
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
         let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + memo.get_size()]);
-        bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
-        bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
-        bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&memo.to_bytes());
+        bytes
+            .get_mut(..SIZE_VALUE)
+            .expect("Already checked")
+            .copy_from_slice(value.as_u64().to_le_bytes().as_ref());
+        bytes
+            .get_mut(SIZE_VALUE..SIZE_VALUE + SIZE_MASK)
+            .expect("Already checked")
+            .copy_from_slice(mask.as_bytes());
+        bytes
+            .get_mut(SIZE_VALUE + SIZE_MASK..)
+            .expect("Already checked")
+            .copy_from_slice(&memo.to_bytes());
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -106,10 +115,13 @@ impl EncryptedData {
 
         // Put everything together: nonce, ciphertext, tag
         let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + memo.get_size()];
-        data[..SIZE_TAG].clone_from_slice(&tag);
-        data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
-        data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + memo.get_size()]
-            .clone_from_slice(bytes.as_slice());
+        data.get_mut(..SIZE_TAG).expect("Already checked").copy_from_slice(&tag);
+        data.get_mut(SIZE_TAG..SIZE_TAG + SIZE_NONCE)
+            .expect("Already checked")
+            .copy_from_slice(&nonce);
+        data.get_mut(SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + memo.get_size())
+            .expect("Already checked")
+            .copy_from_slice(bytes.as_slice());
         Ok(Self {
             data: MaxSizeBytes::try_from(data)
                 .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))?,
@@ -125,8 +137,18 @@ impl EncryptedData {
         encrypted_data: &EncryptedData,
     ) -> Result<(MicroMinotari, PrivateKey, MemoField), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
-        let tag = Tag::from_slice(&encrypted_data.as_bytes()[..SIZE_TAG]);
-        let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[SIZE_TAG..SIZE_TAG + SIZE_NONCE]);
+        let tag = Tag::from_slice(
+            encrypted_data
+                .as_bytes()
+                .get(..SIZE_TAG)
+                .ok_or(EncryptedDataError::IncorrectLength("Tag too short".to_string()))?,
+        );
+        let nonce = XNonce::from_slice(
+            encrypted_data
+                .as_bytes()
+                .get(SIZE_TAG..SIZE_TAG + SIZE_NONCE)
+                .ok_or(EncryptedDataError::IncorrectLength("Data too short".to_string()))?,
+        );
         let mut bytes = Zeroizing::new(vec![
             0;
             encrypted_data
@@ -135,7 +157,12 @@ impl EncryptedData {
                 .saturating_sub(SIZE_TAG)
                 .saturating_sub(SIZE_NONCE)
         ]);
-        bytes.clone_from_slice(&encrypted_data.as_bytes()[SIZE_TAG + SIZE_NONCE..]);
+        bytes.copy_from_slice(
+            encrypted_data
+                .as_bytes()
+                .get(SIZE_TAG + SIZE_NONCE..)
+                .ok_or(EncryptedDataError::IncorrectLength("Data too short".to_string()))?,
+        );
 
         // Set up the AEAD
         let aead_key = kdf_aead(encryption_key, commitment);
@@ -146,11 +173,23 @@ impl EncryptedData {
 
         // Decode the value and mask
         let mut value_bytes = [0u8; SIZE_VALUE];
-        value_bytes.clone_from_slice(&bytes[0..SIZE_VALUE]);
+        value_bytes.copy_from_slice(
+            bytes
+                .get(0..SIZE_VALUE)
+                .ok_or(EncryptedDataError::IncorrectLength("Value too short".to_string()))?,
+        );
         Ok((
             u64::from_le_bytes(value_bytes).into(),
-            PrivateKey::from_canonical_bytes(&bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK])?,
-            MemoField::from_bytes(&bytes[SIZE_VALUE + SIZE_MASK..]),
+            PrivateKey::from_canonical_bytes(
+                bytes
+                    .get(SIZE_VALUE..SIZE_VALUE + SIZE_MASK)
+                    .ok_or(EncryptedDataError::IncorrectLength("Data too short".to_string()))?,
+            )?,
+            MemoField::from_bytes(
+                bytes
+                    .get(SIZE_VALUE + SIZE_MASK..)
+                    .ok_or(EncryptedDataError::IncorrectLength("Data too long".to_string()))?,
+            ),
         ))
     }
 
@@ -266,6 +305,7 @@ fn kdf_aead(encryption_key: &PrivateKey, commitment: &CompressedCommitment) -> E
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use static_assertions::const_assert;
     use tari_common_types::{
         tari_address::{TARI_ADDRESS_INTERNAL_DUAL_SIZE, TARI_ADDRESS_INTERNAL_SINGLE_SIZE},
@@ -286,9 +326,9 @@ mod test {
         let amount = MicroMinotari::from(value);
         let encrypted_data = {
             let mut bytes = Zeroizing::new(vec![0; SIZE_VALUE + SIZE_MASK + SIZE_VALUE]);
-            bytes[..SIZE_VALUE].clone_from_slice(value.to_le_bytes().as_ref());
-            bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].clone_from_slice(mask.as_bytes());
-            bytes[SIZE_VALUE + SIZE_MASK..].clone_from_slice(&id.to_le_bytes().to_vec());
+            bytes[..SIZE_VALUE].copy_from_slice(value.to_le_bytes().as_ref());
+            bytes[SIZE_VALUE..SIZE_VALUE + SIZE_MASK].copy_from_slice(mask.as_bytes());
+            bytes[SIZE_VALUE + SIZE_MASK..].copy_from_slice(&id.to_le_bytes().to_vec());
 
             // Produce a secure random nonce
             let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -304,10 +344,10 @@ mod test {
 
             // Put everything together: nonce, ciphertext, tag
             let mut data = vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + SIZE_VALUE];
-            data[..SIZE_TAG].clone_from_slice(&tag);
-            data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].clone_from_slice(&nonce);
+            data[..SIZE_TAG].copy_from_slice(&tag);
+            data[SIZE_TAG..SIZE_TAG + SIZE_NONCE].copy_from_slice(&nonce);
             data[SIZE_TAG + SIZE_NONCE..SIZE_TAG + SIZE_NONCE + SIZE_VALUE + SIZE_MASK + SIZE_VALUE]
-                .clone_from_slice(bytes.as_slice());
+                .copy_from_slice(bytes.as_slice());
             EncryptedData {
                 data: MaxSizeBytes::try_from(data)
                     .map_err(|_| EncryptedDataError::IncorrectLength("Data too long".to_string()))

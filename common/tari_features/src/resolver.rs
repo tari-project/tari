@@ -126,7 +126,7 @@ pub fn build_features() {
     list_active_features();
     list_removed_features();
     if let Err(e) = resolve_features(target) {
-        eprintln!("Could not build Tari due to issues with the feature flag set.\n{}", e);
+        eprintln!("Could not build Tari due to issues with the feature flag set.\n{e}");
         panic!();
     }
 }

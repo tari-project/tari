@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
+
 use tari_mmr::{ArrayLike, ArrayLikeExt, MemBackendVec};
 
 #[test]
@@ -34,8 +36,8 @@ fn len_push_get_truncate_for_each_shift_clear() {
     mem_vec
         .iter()
         .enumerate()
-        .for_each(|(i, val)| assert_eq!(db_vec.get(i).unwrap(), Some(*val)));
-    assert_eq!(db_vec.get(mem_vec.len()).unwrap(), None);
+        .for_each(|(i, val)| assert_eq!(db_vec.get(i), Some(*val)));
+    assert_eq!(db_vec.get(mem_vec.len()), None);
 
     mem_vec.truncate(4);
     assert!(db_vec.truncate(4).is_ok());
@@ -45,8 +47,8 @@ fn len_push_get_truncate_for_each_shift_clear() {
     assert!(mem_vec.shift(2).is_ok());
     assert!(db_vec.shift(2).is_ok());
     assert_eq!(db_vec.len().unwrap(), 2);
-    assert_eq!(db_vec.get(0).unwrap(), Some(300));
-    assert_eq!(db_vec.get(1).unwrap(), Some(400));
+    assert_eq!(db_vec.get(0), Some(300));
+    assert_eq!(db_vec.get(1), Some(400));
 
     assert!(db_vec.clear().is_ok());
     assert_eq!(db_vec.len().unwrap(), 0);

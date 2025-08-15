@@ -53,7 +53,7 @@ pub async fn recovery_event_monitoring(
                 unsafe {
                     (recovery_progress_callback)(context.0, RecoveryEvent::Progress as u8, current, total);
                 }
-                info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
+                info!(target: LOG_TARGET, "Recovery progress: {current}/{total}");
             },
             Ok(UtxoScannerEvent::Completed {
                 final_height,
@@ -65,10 +65,7 @@ pub async fn recovery_event_monitoring(
                 let rate = (final_height as f32) * 1000f32 / (elapsed.as_millis() as f32);
                 info!(
                     target: LOG_TARGET,
-                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s)",
-                    final_height,
-                    elapsed,
-                    rate,
+                    "Recovery complete! Scanned {final_height} blocks in {elapsed:.2?} ({rate:.2?} blocks/s)"
                 );
                 unsafe {
                     (recovery_progress_callback)(
@@ -95,7 +92,7 @@ pub async fn recovery_event_monitoring(
                 }
                 info!(
                     target: LOG_TARGET,
-                    "UTXO Scanning round failed on retry {} of {}: {}", num_retries, retry_limit, error
+                    "UTXO Scanning round failed on retry {num_retries} of {retry_limit}: {error}"
                 );
             },
             Err(broadcast::error::RecvError::Closed) => {
@@ -103,7 +100,7 @@ pub async fn recovery_event_monitoring(
             },
             Err(e) => {
                 // Event lagging
-                warn!(target: LOG_TARGET, "{}", e);
+                warn!(target: LOG_TARGET, "{e}");
             },
         }
     }

@@ -305,7 +305,7 @@ impl StartupDiagnostics {
                 results.push(DiagnosticResult {
                     component: "Node gRPC Address".to_string(),
                     status: DiagnosticStatus::Healthy,
-                    message: format!("Valid address: {}", address),
+                    message: format!("Valid address: {address}"),
                     suggestions: vec![],
                     details: None,
                 });
@@ -316,7 +316,7 @@ impl StartupDiagnostics {
                         results.push(DiagnosticResult {
                             component: "Node gRPC Port".to_string(),
                             status: DiagnosticStatus::Healthy,
-                            message: format!("Port {} is available", port),
+                            message: format!("Port {port} is available"),
                             suggestions: vec![],
                             details: None,
                         });
@@ -324,7 +324,7 @@ impl StartupDiagnostics {
                         results.push(DiagnosticResult {
                             component: "Node gRPC Port".to_string(),
                             status: DiagnosticStatus::Warning,
-                            message: format!("Port {} is in use", port),
+                            message: format!("Port {port} is in use"),
                             suggestions: vec![
                                 "Check if node is already running".to_string(),
                                 "Use a different port".to_string(),
@@ -338,7 +338,7 @@ impl StartupDiagnostics {
                 results.push(DiagnosticResult {
                     component: "Node gRPC Address".to_string(),
                     status: DiagnosticStatus::Error,
-                    message: format!("Invalid address format: {}", address),
+                    message: format!("Invalid address format: {address}"),
                     suggestions: vec![
                         "Use format: host:port".to_string(),
                         "Example: 127.0.0.1:18142".to_string(),
@@ -354,7 +354,7 @@ impl StartupDiagnostics {
                 results.push(DiagnosticResult {
                     component: "Wallet gRPC Address".to_string(),
                     status: DiagnosticStatus::Healthy,
-                    message: format!("Valid address: {}", address),
+                    message: format!("Valid address: {address}"),
                     suggestions: vec![],
                     details: None,
                 });
@@ -365,7 +365,7 @@ impl StartupDiagnostics {
                         results.push(DiagnosticResult {
                             component: "Wallet gRPC Port".to_string(),
                             status: DiagnosticStatus::Healthy,
-                            message: format!("Port {} is available", port),
+                            message: format!("Port {port} is available"),
                             suggestions: vec![],
                             details: None,
                         });
@@ -373,7 +373,7 @@ impl StartupDiagnostics {
                         results.push(DiagnosticResult {
                             component: "Wallet gRPC Port".to_string(),
                             status: DiagnosticStatus::Warning,
-                            message: format!("Port {} is in use", port),
+                            message: format!("Port {port} is in use"),
                             suggestions: vec![
                                 "Check if wallet is already running".to_string(),
                                 "Use a different port".to_string(),
@@ -387,7 +387,7 @@ impl StartupDiagnostics {
                 results.push(DiagnosticResult {
                     component: "Wallet gRPC Address".to_string(),
                     status: DiagnosticStatus::Error,
-                    message: format!("Invalid address format: {}", address),
+                    message: format!("Invalid address format: {address}"),
                     suggestions: vec![
                         "Use format: host:port".to_string(),
                         "Example: 127.0.0.1:18143".to_string(),
@@ -413,7 +413,7 @@ impl StartupDiagnostics {
                     results.push(DiagnosticResult {
                         component: "Base Node Service".to_string(),
                         status: DiagnosticStatus::Healthy,
-                        message: format!("Running and healthy at {}", address),
+                        message: format!("Running and healthy at {address}"),
                         suggestions: vec!["No action needed - will use existing service".to_string()],
                         details: None,
                     });
@@ -454,7 +454,7 @@ impl StartupDiagnostics {
                     results.push(DiagnosticResult {
                         component: "Wallet Service".to_string(),
                         status: DiagnosticStatus::Healthy,
-                        message: format!("Running and healthy at {}", address),
+                        message: format!("Running and healthy at {address}"),
                         suggestions: vec!["No action needed - will use existing service".to_string()],
                         details: None,
                     });
@@ -559,8 +559,8 @@ impl StartupDiagnostics {
         let unknown_count = results.iter().filter(|r| r.status == DiagnosticStatus::Unknown).count();
 
         report.push_str(&format!(
-            "Summary: {} healthy, {} warnings, {} errors, {} unknown\n\n",
-            healthy_count, warning_count, error_count, unknown_count
+            "Summary: {healthy_count} healthy, {warning_count} warnings, {error_count} errors, {unknown_count} \
+             unknown\n\n"
         ));
 
         // Group results by status
@@ -582,7 +582,7 @@ impl StartupDiagnostics {
                 DiagnosticStatus::Unknown => "🔶 UNKNOWN",
             };
 
-            report.push_str(&format!("{}\n", status_name));
+            report.push_str(&format!("{status_name}\n"));
             report.push_str(&format!("{}\n", "=".repeat(status_name.len())));
 
             for result in status_results {
@@ -591,12 +591,12 @@ impl StartupDiagnostics {
                 if !result.suggestions.is_empty() {
                     report.push_str("  Suggestions:\n");
                     for suggestion in &result.suggestions {
-                        report.push_str(&format!("    - {}\n", suggestion));
+                        report.push_str(&format!("    - {suggestion}\n"));
                     }
                 }
 
                 if let Some(ref details) = result.details {
-                    report.push_str(&format!("  Details: {}\n", details));
+                    report.push_str(&format!("  Details: {details}\n"));
                 }
 
                 report.push('\n');

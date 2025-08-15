@@ -63,7 +63,7 @@ impl McpResource for NetworkStatusResource {
         let response = client
             .get_network_status(GetNetworkStatusRequest {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get network status: {}", e)))?;
+            .map_err(|e| McpError::resource_access_failed(format!("Failed to get network status: {e}")))?;
 
         let status = response.into_inner();
 

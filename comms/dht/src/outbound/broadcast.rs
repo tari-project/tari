@@ -203,7 +203,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     pub async fn handle(mut self) -> Result<(), PipelineError> {
         let request = self.request.take().expect("request cannot be None");
-        trace!(target: LOG_TARGET, "Processing outbound request {}", request);
+        trace!(target: LOG_TARGET, "Processing outbound request {request}");
         let messages = self.generate_outbound_messages(request).await?;
         trace!(
             target: LOG_TARGET,
@@ -216,7 +216,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .unordered()
             .filter_map(|result| future::ready(result.err()))
             .for_each(|err| {
-                warn!(target: LOG_TARGET, "Error when sending broadcast messages: {}", err);
+                warn!(target: LOG_TARGET, "Error when sending broadcast messages: {err}");
                 future::ready(())
             })
             .await;
@@ -241,7 +241,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         body: BytesMut,
         reply_tx: oneshot::Sender<SendMessageResponse>,
     ) -> Result<Vec<DhtOutboundMessage>, DhtOutboundError> {
-        trace!(target: LOG_TARGET, "Send params: {:?}", params);
+        trace!(target: LOG_TARGET, "Send params: {params:?}");
         if params
             .broadcast_strategy
             .direct_public_key()
@@ -358,7 +358,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .select_peers(broadcast_strategy)
             .await
             .map_err(|err| {
-                error!(target: LOG_TARGET, "{}", err);
+                error!(target: LOG_TARGET, "{err}");
                 DhtOutboundError::PeerSelectionFailed
             })
     }
@@ -369,8 +369,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     ) -> Result<Peer, DhtOutboundError> {
         trace!(
             target: LOG_TARGET,
-            "Initiating peer discovery for public key '{}'",
-            dest_public_key
+            "Initiating peer discovery for public key '{dest_public_key}'"
+
         );
 
         // Peer not found, let's try and discover it
@@ -389,7 +389,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             },
             // Error during discovery
             Err(err) => {
-                debug!(target: LOG_TARGET, "Peer discovery failed because '{}'.", err);
+                debug!(target: LOG_TARGET, "Peer discovery failed because '{err}'.");
                 Err(DhtOutboundError::DiscoveryFailed)
             },
         }
@@ -490,7 +490,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         match encryption {
             // Encrypt the message, protecting the sender identity
             OutboundEncryption::EncryptFor(recipient_public_key) => {
-                trace!(target: LOG_TARGET, "Encrypting message for {}", recipient_public_key);
+                trace!(target: LOG_TARGET, "Encrypting message for {recipient_public_key}");
                 let ristretto_recipient_public_key = recipient_public_key
                     .to_public_key()
                     .map_err(|e| DhtOutboundError::MessageFormatError(e.to_string()))?;

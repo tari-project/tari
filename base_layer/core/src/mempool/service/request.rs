@@ -52,7 +52,7 @@ impl Display for MempoolRequest {
                     .first_kernel_excess_sig()
                     .map(|sig| sig.get_signature().to_hex())
                     .unwrap_or_else(|| "No kernels!".to_string());
-                write!(f, "SubmitTransaction ({})", sig_hex)
+                write!(f, "SubmitTransaction ({sig_hex})")
             },
             MempoolRequest::GetFeePerGramStats { count, tip_height } => {
                 write!(f, "GetFeePerGramStats(count: {}, tip_height: {})", *count, *tip_height)

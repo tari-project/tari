@@ -91,13 +91,24 @@ impl ArrayLike for PrunedHashSet {
         Ok(self.len()? - 1)
     }
 
-    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
+    // fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
+    //     // If the index is from before we started adding hashes, we can return the hash *if and only if* it is a peak
+    //     if index < self.base_offset {
+    //         return Ok(match self.peak_indices.binary_search(&index) {
+    //             Ok(nth_peak) => self.peak_hashes.get(nth_peak),
+    //             Err(_) => None,
+    //         });
+    //     }
+    //     self.hashes.get(index - self.base_offset)
+    // }
+
+    fn get(&self, index: usize) -> Option<Self::Value> {
         // If the index is from before we started adding hashes, we can return the hash *if and only if* it is a peak
         if index < self.base_offset {
-            return Ok(match self.peak_indices.binary_search(&index) {
-                Ok(nth_peak) => Some(self.peak_hashes[nth_peak].clone()),
+            return match self.peak_indices.binary_search(&index) {
+                Ok(nth_peak) => self.peak_hashes.get(nth_peak),
                 Err(_) => None,
-            });
+            };
         }
         self.hashes.get(index - self.base_offset)
     }
@@ -112,7 +123,7 @@ impl ArrayLike for PrunedHashSet {
 
     fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
         for index in 0..self.len()? {
-            if let Some(stored_item) = self.get(index)? {
+            if let Some(stored_item) = self.get(index) {
                 if stored_item == *item {
                     return Ok(Some(index));
                 }

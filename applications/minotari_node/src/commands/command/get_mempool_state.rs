@@ -64,13 +64,13 @@ impl CommandContext {
                 .unwrap_or_else(|| "N/A".to_string());
             if let Some(ref filter) = filter {
                 if !tx_sig.contains(filter) {
-                    println!("--- TX: {} ---", tx_sig);
+                    println!("--- TX: {tx_sig} ---");
                     println!("{}", tx.body);
                     continue;
                 }
             } else {
                 let fee = match tx.body.get_total_fee() {
-                    Ok(fee) => format!("{}", fee),
+                    Ok(fee) => format!("{fee}"),
                     Err(e) => e.to_string(),
                 };
                 println!(

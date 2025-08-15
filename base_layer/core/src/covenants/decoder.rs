@@ -117,10 +117,7 @@ impl<R: io::Read> CovenantReadExt for R {
         if len > max_size {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!(
-                    "Received variable length bytes that exceed {} bytes (max: {})",
-                    len, max_size
-                ),
+                format!("Received variable length bytes that exceed {len} bytes (max: {max_size})"),
             ));
         }
         let mut buf = vec![0u8; len];

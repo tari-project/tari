@@ -106,7 +106,7 @@ fn multiline_find_display_length(lines: &str) -> usize {
 pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     let terminal_title = format!("Minotari Base Node - Version {}", env!("CARGO_PKG_VERSION"));
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
-        println!("Error setting terminal title. {}", e)
+        println!("Error setting terminal title. {e}")
     }
 
     let chunks: Vec<Vec<String>> = commands.chunks(chunk_size).map(|x| x.to_vec()).collect();
@@ -150,7 +150,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     let target_line_length = multiline_find_display_length(banner);
 
     for line in banner.lines() {
-        println!("{}", line);
+        println!("{line}");
     }
     println!("\n{}", box_line(target_line_length, true));
     let logo = include!("../../assets/tari_logo.rs");
@@ -179,7 +179,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: usize) {
     // There are 24 fixed rows besides the possible changed "Commands" rows
     // and plus 2 more blank rows for better layout.
     for row in rows {
-        println!("{}", row);
+        println!("{row}");
     }
     println!("{}", box_line(target_line_length, false));
 }

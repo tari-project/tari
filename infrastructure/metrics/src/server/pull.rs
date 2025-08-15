@@ -33,7 +33,7 @@ pub async fn start(listen_addr: SocketAddr, registry: Registry) {
         .and(with(registry))
         .and_then(metrics_text_handler);
 
-    log::info!(target: LOG_TARGET, "Metrics server started on {}", listen_addr);
+    log::info!(target: LOG_TARGET, "Metrics server started on {listen_addr}");
     let routes = route.with(warp::log("metrics_server"));
     warp::serve(routes).run(listen_addr).await;
 }

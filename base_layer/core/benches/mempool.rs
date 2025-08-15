@@ -29,6 +29,7 @@ mod benches {
 
 #[cfg(feature = "benches")]
 mod benches {
+    #![allow(clippy::indexing_slicing)]
     use std::sync::Arc;
 
     use criterion::{criterion_group, Criterion};

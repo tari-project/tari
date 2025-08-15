@@ -102,7 +102,7 @@ impl ChainMetadataService {
                         self.handle_liveness_event(&event).await {
                         Ok(_) => {}
                         Err(e) => {
-                           info!( target: LOG_TARGET, "Failed to handle liveness event because '{}'", e);
+                           info!( target: LOG_TARGET, "Failed to handle liveness event because '{e}'");
                            if let ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id,reason) = e {
                                log_if_error!(
                                  level: info,
@@ -160,7 +160,7 @@ impl ChainMetadataService {
             LivenessEvent::PingRoundBroadcast(num_peers) => {
                 trace!(
                     target: LOG_TARGET,
-                    "New chain metadata round sent to {} peer(s)", num_peers
+                    "New chain metadata round sent to {num_peers} peer(s)"
                 );
                 // If there were no pings for a while, we are probably alone.
                 if *num_peers == 0 {

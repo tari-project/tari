@@ -58,7 +58,7 @@ impl<T: Hex> FromStr for FromHex<T> {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         T::from_hex(s)
             .map(Self)
-            .map_err(|e| ParserError::HexError(format!("{}", e)))
+            .map_err(|e| ParserError::HexError(format!("{e}")))
     }
 }
 

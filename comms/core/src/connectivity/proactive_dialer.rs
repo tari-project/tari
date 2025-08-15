@@ -82,10 +82,7 @@ impl ProactiveDialer {
         if current_connections >= target {
             debug!(
                 target: LOG_TARGET,
-                "({}) Current connections ({}) meet or exceed target ({}), no proactive dialing needed",
-                task_id,
-                current_connections,
-                target
+                "({task_id}) Current connections ({current_connections}) meet or exceed target ({target}), no proactive dialing needed",
             );
 
             return Ok(0);
@@ -94,11 +91,8 @@ impl ProactiveDialer {
         let needed = target.saturating_sub(current_connections);
         debug!(
             target: LOG_TARGET,
-            "({}) Proactive dialing: need {} more connections ({}/{})",
-            task_id,
-            needed,
-            current_connections,
-            target
+            "({task_id}) Proactive dialing: need {needed} more connections ({current_connections}/{target})",
+
         );
 
         // Calculate how many peers to dial based on success rate and multiplier
@@ -107,11 +101,8 @@ impl ProactiveDialer {
 
         debug!(
             target: LOG_TARGET,
-            "({}) Success rate: {:.2}, will dial {} peers for {} needed connections",
-            task_id,
-            success_rate,
-            dial_count,
-            needed
+            "({task_id}) Success rate: {success_rate:.2}, will dial {dial_count} peers for {needed} needed connections",
+
         );
 
         // Select healthy peers for dialing
@@ -127,8 +118,8 @@ impl ProactiveDialer {
         if candidates.is_empty() {
             warn!(
                 target: LOG_TARGET,
-                "({}) No healthy peer candidates available for proactive dialing",
-                task_id
+                "({task_id}) No healthy peer candidates available for proactive dialing"
+
             );
 
             return Ok(0);
@@ -139,10 +130,7 @@ impl ProactiveDialer {
 
         info!(
             target: LOG_TARGET,
-            "({}) Proactive dialing initiated for {} peers ({} needed connections)",
-            task_id,
-            dialed_count,
-            needed
+            "({task_id}) Proactive dialing initiated for {dialed_count} peers ({needed} needed connections)"
         );
 
         // Record final metrics

@@ -59,17 +59,24 @@ impl BasicAuthCredentials {
         // Validate the password is a well formed byte representation of a PHC string
         let bytes = phc_password_hash.reveal().to_vec();
         let _parse_result = PasswordHash::parse(&String::from_utf8(bytes)?, Encoding::B64)?;
+
+        // Prepare the username bytes for constant time comparison ahead of time
+        let bytes = user_name.as_bytes();
         // Random bytes are used for constant time username comparison to ensure that the compiler does not do any
         // funny optimizations and to ensure that comparison for the same username for every new credentials instance
         // forces a different bitwise comparison.
         let mut random_bytes = [0u8; MAX_USERNAME_LEN];
         let mut rng = rand::thread_rng();
         rng.fill_bytes(&mut random_bytes);
-        // Prepare the username bytes for constant time comparison ahead of time
-        let bytes = user_name.as_bytes();
         let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
-        user_name_bytes[0..bytes.len()].clone_from_slice(bytes);
-        user_name_bytes[bytes.len()..MAX_USERNAME_LEN].clone_from_slice(&random_bytes[bytes.len()..MAX_USERNAME_LEN]);
+
+        let (prefix, suffix) = user_name_bytes.split_at_mut(bytes.len());
+        prefix.copy_from_slice(bytes);
+        suffix.copy_from_slice(
+            random_bytes
+                .get(bytes.len()..MAX_USERNAME_LEN)
+                .expect("Already checked"),
+        );
 
         Ok(Self {
             user_name_bytes_length: user_name.len(),
@@ -118,12 +125,13 @@ impl BasicAuthCredentials {
 
         // Add the username bytes to the buffer
         let bytes_len_clipped = min(bytes.len(), MAX_USERNAME_LEN);
-        compare_bytes[0..bytes_len_clipped].clone_from_slice(&bytes[..bytes_len_clipped]);
-
-        // The remaining bytes are padded afterwards (and not initialized at the start) to ensure that this function
-        // always does the same amount of work irrespective of the username length.
-        compare_bytes[bytes.len()..MAX_USERNAME_LEN]
-            .clone_from_slice(&self.random_bytes[bytes.len()..MAX_USERNAME_LEN]);
+        let (prefix, suffix) = compare_bytes.split_at_mut(bytes_len_clipped);
+        prefix.copy_from_slice(bytes);
+        suffix.copy_from_slice(
+            self.random_bytes
+                .get(bytes.len()..MAX_USERNAME_LEN)
+                .expect("Already checked"),
+        );
 
         // Perform the bitwise comparison and combine the result with the valid username result.
         // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.
@@ -159,9 +167,9 @@ impl BasicAuthCredentials {
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         let password_str = String::from_utf8_lossy(password);
-        let token_str = Zeroizing::new(format!("{}:{}", username, password_str));
+        let token_str = Zeroizing::new(format!("{username}:{password_str}"));
         let mut token = base64::encode(token_str.deref());
-        let header = format!("Basic {}", token);
+        let header = format!("Basic {token}");
         token.zeroize();
         match password_str {
             Cow::Borrowed(_) => {},
@@ -215,13 +223,13 @@ mod tests {
             if let BasicAuthError::InvalidScheme(s) = err {
                 assert_eq!(s, "");
             } else {
-                panic!("Unexpected error: {:?}", err);
+                panic!("Unexpected error: {err:?}");
             };
             let err = BasicAuthCredentials::parse_header("Cookie YWRtaW46c2VjcmV0").unwrap_err();
             if let BasicAuthError::InvalidScheme(s) = err {
                 assert_eq!(s, "Cookie");
             } else {
-                panic!("Unexpected error: {:?}", err);
+                panic!("Unexpected error: {err:?}");
             };
         }
     }
@@ -441,12 +449,12 @@ mod tests {
             let avg_long = round_to_6_decimals(long.iter().sum::<u128>() as f64 / long.len() as f64 / COUNTS as f64);
             let avg_actual =
                 round_to_6_decimals(actual.iter().sum::<u128>() as f64 / actual.len() as f64 / COUNTS as f64);
-            println!("Test runs:                                 {}", test_runs);
-            println!("Minimum variance:                          {} %", min_variance);
-            println!("Average variance:                          {} %", avg_variance);
-            println!("Average short username time:               {} microseconds", avg_short);
-            println!("Average long username time:                {} microseconds", avg_long);
-            println!("Average actual username time:              {} microseconds", avg_actual);
+            println!("Test runs:                                 {test_runs}");
+            println!("Minimum variance:                          {min_variance} %");
+            println!("Average variance:                          {avg_variance} %");
+            println!("Average short username time:               {avg_short} microseconds");
+            println!("Average long username time:                {avg_long} microseconds");
+            println!("Average actual username time:              {avg_actual} microseconds");
 
             // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);
@@ -591,12 +599,12 @@ mod tests {
             let avg_long = round_to_6_decimals(long.iter().sum::<u128>() as f64 / long.len() as f64 / COUNTS as f64);
             let avg_actual =
                 round_to_6_decimals(actual.iter().sum::<u128>() as f64 / actual.len() as f64 / COUNTS as f64);
-            println!("Test runs:                                 {}", test_runs);
-            println!("Minimum variance:                          {} %", min_variance);
-            println!("Average variance:                          {} %", avg_variance);
-            println!("Average short username time:               {} microseconds", avg_short);
-            println!("Average long username time:                {} microseconds", avg_long);
-            println!("Average actual username time:              {} microseconds", avg_actual);
+            println!("Test runs:                                 {test_runs}");
+            println!("Minimum variance:                          {min_variance} %");
+            println!("Average variance:                          {avg_variance} %");
+            println!("Average short username time:               {avg_short} microseconds");
+            println!("Average long username time:                {avg_long} microseconds");
+            println!("Average actual username time:              {avg_actual} microseconds");
 
             // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);

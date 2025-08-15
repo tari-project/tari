@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
@@ -239,7 +240,7 @@ pub fn test_message_pagination() {
         // Test lower bounds
         for num in 0..8 {
             let message = MessageBuilder::new()
-                .message(format!("Test {:?}", num))
+                .message(format!("Test {num:?}"))
                 .unwrap()
                 .receiver_address(address.clone())
                 .sender_address(address.clone())
@@ -271,7 +272,7 @@ pub fn test_message_pagination() {
         // Test upper bounds
         for num in 0..3000 {
             let message = MessageBuilder::new()
-                .message(format!("Test {:?}", num))
+                .message(format!("Test {num:?}"))
                 .unwrap()
                 .receiver_address(address.clone())
                 .sender_address(address.clone())

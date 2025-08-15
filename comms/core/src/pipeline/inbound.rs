@@ -106,18 +106,17 @@ where
             self.executor
                 .spawn(async move {
                     let timer = Instant::now();
-                    trace!(target: LOG_TARGET, "Start inbound pipeline {}", id);
+                    trace!(target: LOG_TARGET, "Start inbound pipeline {id}");
                     match time::timeout(Duration::from_secs(10), service.oneshot(item)).await {
                         Ok(Ok(_)) => {},
                         Ok(Err(err)) => {
-                            warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{}'", err);
+                            warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{err}'");
                         },
                         Err(_) => {
                             debug!(
                                 target: LOG_TARGET,
-                                "Inbound pipeline {} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
+                                "Inbound pipeline {id} timed out and was aborted. THIS SHOULD NOT HAPPEN: there was a \
                                  deadlock or excessive delay in processing this pipeline.",
-                                id
                             );
                         },
                     }

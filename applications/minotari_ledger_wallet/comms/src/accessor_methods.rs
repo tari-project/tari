@@ -76,15 +76,14 @@ fn verify() -> Result<(), LedgerDeviceError> {
         Ok(app_name) => {
             if app_name != EXPECTED_NAME {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "Ledger application is not the 'Minotari Wallet' application: expected '{}', running '{}'.",
-                    EXPECTED_NAME, app_name
+                    "Ledger application is not the 'Minotari Wallet' application: expected '{EXPECTED_NAME}', running \
+                     '{app_name}'."
                 )));
             }
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "Ledger application is not the 'Minotari Wallet' application ({})",
-                e
+                "Ledger application is not the 'Minotari Wallet' application ({e})"
             )))
         },
     }
@@ -97,15 +96,14 @@ fn verify() -> Result<(), LedgerDeviceError> {
                 Version::parse(&version).map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?;
             if ledger_version < req {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "'Minotari Wallet' application version check failed: min version '{}', running '{}'.",
-                    MIN_LEDGER_APP_VERSION, version
+                    "'Minotari Wallet' application version check failed: min version '{MIN_LEDGER_APP_VERSION}', \
+                     running '{version}'."
                 )));
             }
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "'Minotari Wallet' application version check ({})",
-                e
+                "'Minotari Wallet' application version check ({e})",
             )))
         },
     }
@@ -122,8 +120,7 @@ fn verify() -> Result<(), LedgerDeviceError> {
                 let schnorr_signature = signature.to_schnorr_signature().map_err(|e| {
                     LedgerDeviceError::Processing(format!(
                         "Error 0: 'Minotari Wallet' application could not convert the compressed signature to a \
-                         Schnorr signature ({:?}). Please update the firmware on your device.",
-                        e
+                         Schnorr signature ({e:?}). Please update the firmware on your device.",
                     ))
                 })?;
                 if !schnorr_signature.verify(&public_key, nonce) {
@@ -137,17 +134,15 @@ fn verify() -> Result<(), LedgerDeviceError> {
             },
             Err(e) => {
                 return Err(LedgerDeviceError::Processing(format!(
-                    "Error 2: 'Minotari Wallet' application could not retrieve a public key ({:?}). Please update the \
-                     firmware on your device.",
-                    e
+                    "Error 2: 'Minotari Wallet' application could not retrieve a public key ({e:?}). Please update \
+                     the firmware on your device."
                 )))
             },
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "Error 3: 'Minotari Wallet' application could not create a signature ({:?}). Please update the \
-                 firmware on your device.",
-                e
+                "Error 3: 'Minotari Wallet' application could not create a signature ({e:?}). Please update the \
+                 firmware on your device."
             )))
         },
     };
@@ -163,9 +158,8 @@ fn verify() -> Result<(), LedgerDeviceError> {
         },
         Err(e) => {
             return Err(LedgerDeviceError::Processing(format!(
-                "Error 5: 'Minotari Wallet' application could not create a signature ({:?}). Please update the \
-                 firmware on your device.",
-                e
+                "Error 5: 'Minotari Wallet' application could not create a signature ({e:?}). Please update the \
+                 firmware on your device."
             )))
         },
     }
@@ -186,11 +180,11 @@ pub fn ledger_get_app_name() -> Result<String, LedgerDeviceError> {
                     }
                     val
                 },
-                Err(e) => return Err(LedgerDeviceError::Processing(format!("1 GetAppName: {}", e))),
+                Err(e) => return Err(LedgerDeviceError::Processing(format!("1 GetAppName: {e}"))),
             };
             Ok(name.to_string())
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("2 GetAppName: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("2 GetAppName: {e}"))),
     }
 }
 
@@ -207,17 +201,17 @@ pub fn ledger_get_version() -> Result<String, LedgerDeviceError> {
                     }
                     val
                 },
-                Err(e) => return Err(LedgerDeviceError::Processing(format!("1 GetVersion: {}", e))),
+                Err(e) => return Err(LedgerDeviceError::Processing(format!("1 GetVersion: {e}"))),
             };
             Ok(name.to_string())
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("2 GetVersion: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("2 GetVersion: {e}"))),
     }
 }
 
 /// Get the public alpha key from the ledger device
 pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{}'", account);
+    debug!(target: LOG_TARGET, "ledger_get_public_spend_key: account '{account}'");
     verify_ledger_application()?;
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetPublicSpendKey, vec![]).execute() {
@@ -229,10 +223,11 @@ pub fn ledger_get_public_spend_key(account: u64) -> Result<CompressedPublicKey, 
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let public_alpha = CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?;
+            let public_alpha =
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(public_alpha)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicSpendKey: {e}"))),
     }
 }
 
@@ -244,8 +239,7 @@ pub fn ledger_get_public_key(
 ) -> Result<RistrettoPublicKey, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
-        "ledger_get_public_key: account '{}', index '{}', branch '{:?}'",
-        account, index, branch
+        "ledger_get_public_key: account '{account}', index '{index}', branch '{branch:?}'"
     );
     verify_ledger_application()?;
 
@@ -263,10 +257,11 @@ pub fn ledger_get_public_key(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let public_key = RistrettoPublicKey::from_canonical_bytes(&result.data()[1..33])?;
+            let public_key =
+                RistrettoPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(public_key)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetPublicKey: {e}"))),
     }
 }
 
@@ -281,7 +276,7 @@ pub fn ledger_get_script_signature(
     commitment: &CompressedCommitment,
     message: [u8; 32],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_script_signature: account '{}', message '{}'", account, message.to_hex());
+    debug!(target: LOG_TARGET, "ledger_get_script_signature: account '{account}', message '{}'", message.to_hex());
     verify_ledger_application()?;
 
     let mut data = Vec::new();
@@ -326,15 +321,15 @@ pub fn ledger_get_script_signature(
             }
             let data = result.data();
             let signature = ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(&data[1..33])?,
-                CompressedPublicKey::from_canonical_bytes(&data[33..65])?,
-                PrivateKey::from_canonical_bytes(&data[65..97])?,
-                PrivateKey::from_canonical_bytes(&data[97..129])?,
-                PrivateKey::from_canonical_bytes(&data[129..161])?,
+                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))?,
+                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))?,
             );
             Ok(signature)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetScriptSignature: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetScriptSignature: {e}"))),
     }
 }
 
@@ -398,7 +393,7 @@ pub fn ledger_get_script_offset(
     for command in commands {
         match command.execute() {
             Ok(r) => result = Some(r),
-            Err(e) => return Err(LedgerDeviceError::Processing(format!("GetScriptOffset: {}", e))),
+            Err(e) => return Err(LedgerDeviceError::Processing(format!("GetScriptOffset: {e}"))),
         }
     }
 
@@ -411,7 +406,8 @@ pub fn ledger_get_script_offset(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let script_offset = PrivateKey::from_canonical_bytes(&result.data()[1..33])?;
+            let script_offset =
+                PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(script_offset)
         },
         None => Err(LedgerDeviceError::Processing("GetScriptOffset: No result".to_string())),
@@ -420,7 +416,7 @@ pub fn ledger_get_script_offset(
 
 /// Get the view key from the ledger device
 pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError> {
-    debug!(target: LOG_TARGET, "ledger_get_view_key: account '{}'", account);
+    debug!(target: LOG_TARGET, "ledger_get_view_key: account '{account}'");
     verify_ledger_application()?;
 
     match Command::<Vec<u8>>::build_command(account, Instruction::GetViewKey, vec![]).execute() {
@@ -432,10 +428,10 @@ pub fn ledger_get_view_key(account: u64) -> Result<PrivateKey, LedgerDeviceError
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let view_key = PrivateKey::from_canonical_bytes(&result.data()[1..33])?;
+            let view_key = PrivateKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?;
             Ok(view_key)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetViewKey: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetViewKey: {e}"))),
     }
 }
 
@@ -448,8 +444,7 @@ pub fn ledger_get_dh_shared_secret(
 ) -> Result<DiffieHellmanSharedSecret<RistrettoPublicKey>, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
-        "ledger_get_dh_shared_secret: account '{}', index '{}', branch '{:?}'",
-        account, index, branch
+        "ledger_get_dh_shared_secret: account '{account}', index '{index}', branch '{branch:?}'"
     );
     verify_ledger_application()?;
 
@@ -467,11 +462,12 @@ pub fn ledger_get_dh_shared_secret(
                     AppSW::try_from(result.retcode())?
                 )));
             }
-            let shared_secret =
-                DiffieHellmanSharedSecret::<RistrettoPublicKey>::from_canonical_bytes(&result.data()[1..33])?;
+            let shared_secret = DiffieHellmanSharedSecret::<RistrettoPublicKey>::from_canonical_bytes(
+                result.data().get(1..33).expect("Index should exist"),
+            )?;
             Ok(shared_secret)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetDHSharedSecret: {e}"))),
     }
 }
 
@@ -510,12 +506,12 @@ pub fn ledger_get_raw_schnorr_signature(
             }
 
             let signature = Signature::new(
-                CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?,
-                PrivateKey::from_canonical_bytes(&result.data()[33..65])?,
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
             );
             Ok(signature)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!("GetRawSchnorrSignature: {}", e))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetRawSchnorrSignature: {e}"))),
     }
 }
 
@@ -528,8 +524,7 @@ pub fn ledger_get_script_schnorr_signature(
 ) -> Result<CompressedCheckSigSchnorrSignature, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
-        "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}'",
-        account, private_key_index, private_key_branch
+        "ledger_get_raw_schnorr_signature: account '{account}', pk index '{private_key_index}', pk branch '{private_key_branch:?}'"
     );
     verify_ledger_application()?;
 
@@ -552,15 +547,12 @@ pub fn ledger_get_script_schnorr_signature(
             }
 
             let signature = CompressedCheckSigSchnorrSignature::new(
-                CompressedPublicKey::from_canonical_bytes(&result.data()[1..33])?,
-                PrivateKey::from_canonical_bytes(&result.data()[33..65])?,
+                CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
+                PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
             );
             Ok(signature)
         },
-        Err(e) => Err(LedgerDeviceError::Processing(format!(
-            "GetScriptSchnorrSignature: {}",
-            e
-        ))),
+        Err(e) => Err(LedgerDeviceError::Processing(format!("GetScriptSchnorrSignature: {e}"))),
     }
 }
 
@@ -634,21 +626,20 @@ pub fn ledger_get_one_sided_metadata_signature(
             }
             let data = result.data();
             Ok(ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(&data[1..33])
+                CompressedCommitment::from_canonical_bytes(data.get(1..33).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                CompressedPublicKey::from_canonical_bytes(&data[33..65])
+                CompressedPublicKey::from_canonical_bytes(data.get(33..65).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(&data[65..97])
+                PrivateKey::from_canonical_bytes(data.get(65..97).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(&data[97..129])
+                PrivateKey::from_canonical_bytes(data.get(97..129).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(&data[129..161])
+                PrivateKey::from_canonical_bytes(data.get(129..161).expect("Index should exist"))
                     .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
             ))
         },
         Err(e) => Err(LedgerDeviceError::Instruction(format!(
-            "GetOneSidedMetadataSignature: {}",
-            e
+            "GetOneSidedMetadataSignature: {e}"
         ))),
     }
 }

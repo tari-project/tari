@@ -126,7 +126,7 @@ async fn main() {
                     log::info!("Server stopped successfully");
                 }
                 Ok(Err(e)) => {
-                    log::error!("Error during shutdown: {}", e);
+                    log::error!("Error during shutdown: {e}");
                 }
                 Err(_) => {
                     log::warn!("Shutdown timed out after 5 seconds, forcing exit");

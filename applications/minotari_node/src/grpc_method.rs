@@ -170,14 +170,14 @@ impl FromStr for GrpcMethod {
             "get_side_chain_utxos" => Ok(GrpcMethod::GetSideChainUtxos),
             "search_payment_references" => Ok(GrpcMethod::SearchPaymentReferences),
             "search_payment_references_via_output_hash" => Ok(GrpcMethod::SearchPaymentReferencesViaOutputHash),
-            _ => Err(format!("'{}' not supported", s)),
+            _ => Err(format!("'{s}' not supported")),
         }
     }
 }
 
 impl fmt::Display for GrpcMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

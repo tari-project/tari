@@ -73,8 +73,8 @@ pub fn register_miner_process(
 ) {
     let pow_algo = PowAlgorithm::from_str(&pow_algo).unwrap();
     eprintln!(
-        "Registering miner process '{}' on '{}' and '{}' with pow algo '{:?}'",
-        miner_name, base_node_name, wallet_name, pow_algo
+        "Registering miner process '{miner_name}' on '{base_node_name}' and '{wallet_name}' with pow algo \
+         '{pow_algo:?}'"
     );
     let miner = MinerProcess {
         name: miner_name.clone(),
@@ -106,7 +106,7 @@ impl MinerProcess {
             },
             _ => serde_json::to_string(&self.pow_algo).unwrap(),
         };
-        eprintln!("Using pow algo: {}", pow_algo);
+        eprintln!("Using pow algo: {pow_algo}");
 
         let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
             .await
@@ -140,7 +140,7 @@ impl MinerProcess {
                 config_property_overrides: vec![
                     (
                         "miner.base_node_grpc_address".to_string(),
-                        format!("http://127.0.0.1:{}", node),
+                        format!("http://127.0.0.1:{node}"),
                     ),
                     ("miner.num_mining_threads".to_string(), "1".to_string()),
                     ("miner.mine_on_tip_only".to_string(), "false".to_string()),
@@ -164,9 +164,9 @@ impl MinerProcess {
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
     let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
-    let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
+    let wallet_addr = format!("http://127.0.0.1:{wallet_grpc_port}");
 
-    eprintln!("Wallet GRPC at {}", wallet_addr);
+    eprintln!("Wallet GRPC at {wallet_addr}");
 
     Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
 }

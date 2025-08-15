@@ -41,8 +41,8 @@ impl FromStr for MultiaddrRange {
 impl fmt::Display for MultiaddrRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => write!(f, "{}", ipv4_addr_range),
-            MultiaddrRange::Multiaddr(multiaddr) => write!(f, "{}", multiaddr),
+            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => write!(f, "{ipv4_addr_range}"),
+            MultiaddrRange::Multiaddr(multiaddr) => write!(f, "{multiaddr}"),
         }
     }
 }
@@ -74,16 +74,16 @@ impl FromStr for Ipv4AddrRange {
             return Err("Invalid multiaddr format".to_string());
         }
 
-        if parts[1] != "ip4" {
+        if *parts.get(1).expect("Already checked") != "ip4" {
             return Err("Only IPv4 addresses are supported".to_string());
         }
 
-        let ip_range = Ipv4Range::new(parts[2])?;
-        if parts[3] != "tcp" {
+        let ip_range = Ipv4Range::new(parts.get(2).expect("Already checked"))?;
+        if *parts.get(3).expect("Already checked") != "tcp" {
             return Err("Only TCP protocol is supported".to_string());
         }
 
-        let port_range = PortRange::new(parts[4])?;
+        let port_range = PortRange::new(parts.get(4).expect("Already checked"))?;
         Ok(Ipv4AddrRange { ip_range, port_range })
     }
 }
@@ -124,6 +124,7 @@ struct Ipv4Range {
 }
 
 impl Ipv4Range {
+    #[allow(clippy::indexing_slicing)]
     fn new(range_str: &str) -> Result<Self, String> {
         let parts: Vec<&str> = range_str.split('.').collect();
         if parts.len() != 4 {
@@ -143,16 +144,16 @@ impl Ipv4Range {
             } else if part.contains(':') {
                 let range_parts: Vec<&str> = part.split(':').collect();
                 if range_parts.len() != 2 {
-                    return Err(format!("Invalid range format for IPv4 octet {}", i));
+                    return Err(format!("Invalid range format for IPv4 octet {i}"));
                 }
                 start_octets[i] = range_parts[0]
                     .parse()
-                    .map_err(|_| format!("Invalid range start for IPv4 octet {}", i))?;
+                    .map_err(|_| format!("Invalid range start for IPv4 octet {i}"))?;
                 end_octets[i] = range_parts[1]
                     .parse()
-                    .map_err(|_| format!("Invalid range end for IPv4 octet {}", i))?;
+                    .map_err(|_| format!("Invalid range end for IPv4 octet {i}"))?;
             } else {
-                start_octets[i] = part.parse().map_err(|_| format!("Invalid IPv4 octet {}", i))?;
+                start_octets[i] = part.parse().map_err(|_| format!("Invalid IPv4 octet {i}"))?;
                 end_octets[i] = start_octets[i];
             }
         }
@@ -163,6 +164,7 @@ impl Ipv4Range {
         })
     }
 
+    #[allow(clippy::indexing_slicing)]
     fn contains(&self, addr: Ipv4Addr) -> bool {
         let octets = addr.octets();
         let start_octets = self.start.octets();
@@ -232,16 +234,19 @@ impl PortRange {
             if parts.len() != 2 {
                 return Err("Invalid port range format".to_string());
             }
-            let start = parts[0]
+            let start = parts
+                .first()
+                .ok_or("Invalid length".to_string())?
                 .parse()
-                .map_err(|_| format!("Invalid port range start '{}'", parts[0]))?;
-            let end = parts[1]
+                .map_err(|_| format!("Invalid port range start '{}'", parts.first().expect("Already checked")))?;
+            let end = parts
+                .get(1)
+                .ok_or("Invalid length".to_string())?
                 .parse()
-                .map_err(|_| format!("Invalid port range end '{}'", parts[1]))?;
+                .map_err(|_| format!("Invalid port range end '{}'", parts.get(1).expect("Already checked")))?;
             if end < start {
                 return Err(format!(
-                    "Invalid port range '{}', end `{}` is less than start `{}`",
-                    range_str, end, start
+                    "Invalid port range '{range_str}', end `{end}` is less than start `{start}`"
                 ));
             }
             return Ok(PortRange { start, end });

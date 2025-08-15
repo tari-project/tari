@@ -137,7 +137,7 @@ pub async fn send_transaction_reply_direct(
             SendMessageResponse::Failed(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Transaction Reply Send Direct for TxID {} failed: {}", tx_id, err
+                    "Transaction Reply Send Direct for TxID {tx_id} failed: {err}"
                 );
                 if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
                     store_and_forward_send_result = send_transaction_reply_store_and_forward(
@@ -178,20 +178,20 @@ pub async fn send_transaction_reply_direct(
 
                     Ok(SendMessageResponse::Failed(e)) => warn!(
                         target: LOG_TARGET,
-                        "Failed to send message ({}) Discovery failed for TxId: {}", e, tx_id
+                        "Failed to send message ({e}) Discovery failed for TxId: {tx_id}"
                     ),
                     Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
                     Err(e) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
+                            "Error waiting for Discovery while sending message to TxId: {tx_id} {e:?}"
                         );
                     },
                 }
             },
         },
         Err(e) => {
-            warn!(target: LOG_TARGET, "Direct Transaction Reply Send failed: {:?}", e);
+            warn!(target: LOG_TARGET, "Direct Transaction Reply Send failed: {e:?}");
         },
     }
     Ok(direct_send_result || store_and_forward_send_result)
@@ -224,7 +224,7 @@ async fn send_transaction_reply_store_and_forward(
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
-                "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e,
+                "Sending Transaction Reply (TxId: {tx_id}) to neighbours for Store and Forward failed: {e:?}"
             );
             return Ok(false);
         },

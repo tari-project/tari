@@ -39,7 +39,7 @@ pub trait ArrayLike {
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error>;
 
     /// Return the item at the given index
-    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error>;
+    fn get(&self, index: usize) -> Option<Self::Value>;
 
     /// Remove all stored items from the backend.
     fn clear(&mut self) -> Result<(), Self::Error>;
@@ -82,8 +82,8 @@ impl<T: Clone + PartialEq> ArrayLike for Vec<T> {
         Ok(self.len() - 1)
     }
 
-    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
-        Ok((self as &[Self::Value]).get(index).cloned())
+    fn get(&self, index: usize) -> Option<Self::Value> {
+        (self as &[Self::Value]).get(index).cloned()
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {

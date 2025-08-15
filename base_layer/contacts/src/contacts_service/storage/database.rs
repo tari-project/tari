@@ -249,19 +249,19 @@ where T: ContactsBackend + 'static
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ContactsServiceStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
-    error!(target: LOG_TARGET, "{}", msg);
+    let msg = format!("Unexpected result for database query {req}. Response: {res}");
+    error!(target: LOG_TARGET, "{msg}");
     Err(ContactsServiceStorageError::UnexpectedResult(msg))
 }
 
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::Contact(c) => f.write_str(&format!("Contact: {:?}", c)),
-            DbKey::ContactId(id) => f.write_str(&format!("Contact: {:?}", id)),
+            DbKey::Contact(c) => f.write_str(&format!("Contact: {c:?}")),
+            DbKey::ContactId(id) => f.write_str(&format!("Contact: {id:?}")),
             DbKey::Contacts => f.write_str("Contacts"),
-            DbKey::Messages(c, _l, _p) => f.write_str(&format!("Messages for id: {:?}", c)),
-            DbKey::Message(m) => f.write_str(&format!("Message for id: {:?}", m)),
+            DbKey::Messages(c, _l, _p) => f.write_str(&format!("Messages for id: {c:?}")),
+            DbKey::Message(m) => f.write_str(&format!("Message for id: {m:?}")),
             DbKey::Conversationalists => f.write_str("Conversationalists"),
         }
     }
@@ -283,9 +283,7 @@ impl Display for DbValue {
 fn log_error<T>(req: DbKey, err: ContactsServiceStorageError) -> Result<T, ContactsServiceStorageError> {
     error!(
         target: LOG_TARGET,
-        "Database access error on request: {}: {}",
-        req,
-        err
+        "Database access error on request: {req}: {err}"
     );
     Err(err)
 }

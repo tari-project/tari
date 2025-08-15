@@ -54,6 +54,7 @@ impl<W: io::Write> CovenentWriteExt for W {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_types::types::FixedHash;
 
     use super::*;

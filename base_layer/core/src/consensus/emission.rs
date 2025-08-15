@@ -164,8 +164,9 @@ impl EmissionSchedule {
             let mut carry_last = 0u8;
             for i in 0..len {
                 let index = len - 1 - i;
-                let carry = (num[index] >= 5).into();
-                num[index] = (2 * num[index]) % 10 + carry_last;
+                let carry = (*num.get(index).expect("should exists") >= 5).into();
+                *num.get_mut(index).expect("Should exists") =
+                    (2 * *num.get(index).expect("should exists")) % 10 + carry_last;
                 carry_last = carry;
             }
             carry_last > 0
@@ -332,6 +333,7 @@ impl Emission for EmissionSchedule {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     #[test]
     fn calc_array() {
         assert_eq!(EmissionSchedule::decay_params("1.00"), None);
@@ -387,7 +389,7 @@ mod test {
         let total_supply = 21_000_000_000 * T - premine;
         let residual = (supply - premine) * 2 - total_supply;
         // Within 0.01% of mining half the total supply
-        assert!(residual < total_supply / 10000, "Residual: {}", residual);
+        assert!(residual < total_supply / 10000, "Residual: {residual}");
         // Head to tail emission
         let mut iter = iter.skip_while(|(num, _, _)| *num < 3_220_980);
         let (num, reward, supply) = iter.next().unwrap();
@@ -415,7 +417,7 @@ mod test {
         // Check supply inflation. Because of rounding, it could be between 98 and 100 bips
         let epoch_supply = 771 * T * epoch_length;
         let inflation = (10000 * epoch_supply / supply).as_u64(); // 1 bip => 100
-        assert!(inflation < 100 && inflation > 98, "Inflation: {} bips", inflation);
+        assert!(inflation < 100 && inflation > 98, "Inflation: {inflation} bips");
     }
 
     #[test]

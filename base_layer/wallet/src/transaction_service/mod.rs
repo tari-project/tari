@@ -285,7 +285,7 @@ where
             .await;
 
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Transaction Service error: {}", e);
+                error!(target: LOG_TARGET, "Transaction Service error: {e}");
             }
             info!(target: LOG_TARGET, "Transaction Service shutdown");
         });

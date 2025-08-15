@@ -106,12 +106,12 @@ impl ToolRegistry {
 
         // Validate parameters
         tool.validate_params(&params)
-            .map_err(|e| McpError::invalid_request(format!("Parameter validation failed: {}", e)))?;
+            .map_err(|e| McpError::invalid_request(format!("Parameter validation failed: {e}")))?;
 
         // Execute the tool
         tool.execute(params)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Tool '{}' execution failed: {}", name, e)))
+            .map_err(|e| McpError::tool_execution_failed(format!("Tool '{name}' execution failed: {e}")))
     }
 
     /// Get the permission level required for a tool
@@ -140,7 +140,7 @@ pub fn get_required_string_param(params: &Value, key: &str) -> McpResult<String>
         .get(key)
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| McpError::invalid_request(format!("Missing required string parameter: {}", key)))
+        .ok_or_else(|| McpError::invalid_request(format!("Missing required string parameter: {key}")))
 }
 
 /// Helper function to validate optional string parameter
@@ -153,7 +153,7 @@ pub fn get_required_number_param(params: &Value, key: &str) -> McpResult<f64> {
     params
         .get(key)
         .and_then(|v| v.as_f64())
-        .ok_or_else(|| McpError::invalid_request(format!("Missing required number parameter: {}", key)))
+        .ok_or_else(|| McpError::invalid_request(format!("Missing required number parameter: {key}")))
 }
 
 /// Helper function to validate required boolean parameter
@@ -161,7 +161,7 @@ pub fn get_required_bool_param(params: &Value, key: &str) -> McpResult<bool> {
     params
         .get(key)
         .and_then(|v| v.as_bool())
-        .ok_or_else(|| McpError::invalid_request(format!("Missing required boolean parameter: {}", key)))
+        .ok_or_else(|| McpError::invalid_request(format!("Missing required boolean parameter: {key}")))
 }
 
 /// Helper function to validate required u64 parameter
@@ -169,5 +169,5 @@ pub fn get_required_u64_param(params: &Value, key: &str) -> McpResult<u64> {
     params
         .get(key)
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| McpError::invalid_request(format!("Missing required u64 parameter: {}", key)))
+        .ok_or_else(|| McpError::invalid_request(format!("Missing required u64 parameter: {key}")))
 }

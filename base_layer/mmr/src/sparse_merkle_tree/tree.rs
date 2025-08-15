@@ -541,7 +541,7 @@ mod test {
         let right_hash = leaf_hash(&key2, &value2);
         let expected = branch_hash(0, &short_key(0), left_hash, right_hash);
         let root = tree.root();
-        assert_eq!(root.unsafe_hash().to_string(), format!("{:x}", expected));
+        assert_eq!(root.unsafe_hash().to_string(), format!("{expected:x}"));
         assert!(root.is_branch());
         let left = root.as_branch().unwrap().left().as_leaf().unwrap();
         let right = root.as_branch().unwrap().right().as_leaf().unwrap();

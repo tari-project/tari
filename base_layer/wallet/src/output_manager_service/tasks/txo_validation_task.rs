@@ -217,7 +217,7 @@ where
                 .map_err(|e| {
                     OutputManagerProtocolError::new(
                         self.operation_id,
-                        OutputManagerError::BaseNodeClientError(format!("Error querying base node: {}", e)),
+                        OutputManagerError::BaseNodeClientError(format!("Error querying base node: {e}")),
                     )
                 })?;
 
@@ -495,8 +495,7 @@ where
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
                 return Err(OutputManagerError::BaseNodeClientError(format!(
-                    "Error asking base node for header: {}",
-                    rpc_error
+                    "Error asking base node for header: {rpc_error}"
                 )));
             },
         };
@@ -550,7 +549,7 @@ where
         if let Err(e) = self.event_publisher.send(Arc::new(event)) {
             debug!(
                 target: LOG_TARGET,
-                "Error sending event because there are no subscribers: {:?}", e
+                "Error sending event because there are no subscribers: {e:?}"
             );
         }
     }

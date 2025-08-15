@@ -91,7 +91,7 @@ impl Display for SyncPeer {
             self.node_id(),
             self.claimed_chain_metadata(),
             self.latency()
-                .map(|d| format!("{:.2?}", d))
+                .map(|d| format!("{d:.2?}"))
                 .unwrap_or_else(|| "--".to_string())
         )
     }
@@ -132,6 +132,7 @@ impl PartialOrd for SyncPeer {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
     use rand::rngs::OsRng;

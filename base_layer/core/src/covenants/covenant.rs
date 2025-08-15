@@ -186,6 +186,7 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use borsh::{BorshDeserialize, BorshSerialize};
 
     use crate::{

@@ -137,13 +137,13 @@ pub async fn network_graph_snapshot(
         fs::create_dir_all(path).expect("Could not create temp graph directory");
     }
 
-    let tmp_file_path_connections = tmp_file_path.join(format!("connections-{:03}.dot", frame_num));
+    let tmp_file_path_connections = tmp_file_path.join(format!("connections-{frame_num:03}.dot"));
     let mut file = File::create(tmp_file_path_connections).expect("Could not create dot file");
     file.write_all(Dot::new(&graph).to_string().as_bytes())
         .expect("Could not write dot file");
 
     if num_neighbours.is_some() {
-        let tmp_file_path_neighbours = tmp_file_path.join(format!("neighbours-{:03}.dot", frame_num));
+        let tmp_file_path_neighbours = tmp_file_path.join(format!("neighbours-{frame_num:03}.dot"));
         let mut file = File::create(tmp_file_path_neighbours).expect("Could not create dot file");
         file.write_all(Dot::new(&neighbour_graph).to_string().as_bytes())
             .expect("Could not write dot file");
@@ -200,7 +200,7 @@ pub fn run_python_network_graph_render(
         .map_err(|_| "Could not execute Python command".to_string())?;
     let output = result
         .wait_with_output()
-        .map_err(|e| format!("Python command did not complete: {}", e))?;
+        .map_err(|e| format!("Python command did not complete: {e}"))?;
     match output.status.code() {
         Some(0) => Ok(()),
         _ => Err(format!(
@@ -254,7 +254,7 @@ pub async fn create_message_propagation_graphs(
                 .expect("Should be able to find node2");
             network_graph.add_edge(from_index, to_index, "".to_string());
         }
-        let current_file_path = tmp_file_path.join(format!("hop-{:03}.dot", hop));
+        let current_file_path = tmp_file_path.join(format!("hop-{hop:03}.dot"));
         hop += 1;
         let mut file = File::create(current_file_path).expect("Could not create dot file");
         file.write_all(Dot::new(&network_graph).to_string().as_bytes())
@@ -315,7 +315,7 @@ pub async fn track_join_message_drain_messaging_events(messaging_rx: &mut NodeEv
         println!("{}", neighbour_names.join(", "));
     }
 
-    println!("{} messages sent between nodes", num_messages);
+    println!("{num_messages} messages sent between nodes");
 
     graph
 }

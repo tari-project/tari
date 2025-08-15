@@ -127,7 +127,7 @@ impl McpTool for ImportUtxosTool {
         for output in outputs {
             let output_str = output.as_str().unwrap();
             let bytes = hex::decode(output_str)
-                .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {}", e)))?;
+                .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {e}")))?;
             output_bytes.push(bytes);
         }
 
@@ -142,7 +142,7 @@ impl McpTool for ImportUtxosTool {
         let response = client
             .import_utxos(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to import UTXOs: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to import UTXOs: {e}")))?;
 
         let response = response.into_inner();
 

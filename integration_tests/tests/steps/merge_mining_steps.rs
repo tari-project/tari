@@ -66,7 +66,7 @@ async fn merge_mining_response_height(world: &mut TariWorld) {
         world.last_merge_miner_response
     );
     let height = height.unwrap();
-    assert!(height.as_u64().is_some(), "Height is invalid {}", height);
+    assert!(height.as_u64().is_some(), "Height is invalid {height}");
 }
 
 #[when(expr = "I ask for a block template from proxy {word}")]
@@ -84,12 +84,11 @@ async fn merge_mining_response_block_template_is_valid(world: &mut TariWorld) {
         world.last_merge_miner_response
     );
     let result = result.unwrap();
-    assert!(result.get("_aux").is_some(), "Result has no `_aux` {}", result);
+    assert!(result.get("_aux").is_some(), "Result has no `_aux` {result}");
     assert_eq!(
         result.get("status").unwrap().as_str().unwrap(),
         "OK",
-        "Result has no `status` {}",
-        result
+        "Result has no `status` {result}"
     );
 }
 
@@ -107,7 +106,7 @@ async fn merge_mining_submit_block(world: &mut TariWorld, mining_proxy_name: Str
     );
     let block_template_blob = block_template_blob.unwrap().clone();
     let merge_miner = world.get_mut_merge_miner(&mining_proxy_name).unwrap();
-    println!("block_template {:?}", block_template_blob);
+    println!("block_template {block_template_blob:?}");
     world.last_merge_miner_response = merge_miner.submit_block(&block_template_blob).await;
     println!("last_merge_miner_response {:?}", world.last_merge_miner_response);
     println!("last_merge_miner_response {:?}", world.last_merge_miner_response);
@@ -124,9 +123,9 @@ async fn merge_mining_submission_is_valid(world: &mut TariWorld, how: String) {
     );
     let result = result.unwrap();
     if how == *"with" {
-        assert!(result.get("_aux").is_some(), "Result has no `_aux` {}", result);
+        assert!(result.get("_aux").is_some(), "Result has no `_aux` {result}");
         let status = result.get("status");
-        assert!(status.is_some(), "Result has no status {}", result);
+        assert!(status.is_some(), "Result has no status {result}");
     } else {
         assert!(
             world.last_merge_miner_response.get("status").is_some(),
@@ -160,12 +159,11 @@ async fn merge_mining_bloch_header_by_hash_is_valid(world: &mut TariWorld) {
     );
     let result = result.unwrap();
     let status = result.get("status");
-    assert!(status.is_some(), "Result has no status {}", result);
+    assert!(status.is_some(), "Result has no status {result}");
     assert_eq!(
         result.get("status").unwrap().as_str().unwrap(),
         "OK",
-        "Result has no `status` {}",
-        result
+        "Result has no `status` {result}"
     );
 }
 
@@ -178,22 +176,20 @@ async fn merge_mining_response_last_block_header_is_valid(world: &mut TariWorld)
         world.last_merge_miner_response
     );
     let result = result.unwrap();
-    assert!(result.get("_aux").is_some(), "Result has no `_aux` {}", result);
+    assert!(result.get("_aux").is_some(), "Result has no `_aux` {result}");
     let status = result.get("status");
-    assert!(status.is_some(), "Result has no status {}", result);
+    assert!(status.is_some(), "Result has no status {result}");
     assert_eq!(
         result.get("status").unwrap().as_str().unwrap(),
         "OK",
-        "Result has no `status` {}",
-        result
+        "Result has no `status` {result}"
     );
     let block_header = result.get("block_header");
-    assert!(block_header.is_some(), "Result has no `block_header` {}", result);
+    assert!(block_header.is_some(), "Result has no `block_header` {result}");
     let block_header = block_header.unwrap();
     assert!(
         block_header.get("hash").is_some(),
-        "Block_header has no `hash` {}",
-        block_header
+        "Block_header has no `hash` {block_header}"
     );
 }
 

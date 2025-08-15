@@ -47,7 +47,7 @@ impl TransactionSendStatus {
         unsafe {
             status = ffi_import::transaction_send_status_decode(self.ptr, &mut error);
             if error > 0 {
-                println!("transaction_send_status_decode error {}", error);
+                println!("transaction_send_status_decode error {error}");
                 panic!("transaction_send_status_decode error");
             }
         }

@@ -166,9 +166,7 @@ impl HiddenServiceBuilder {
 
         debug!(
             target: LOG_TARGET,
-            "Building tor hidden service with control port '{}' and port mapping '{}'",
-            control_server_addr,
-            proxied_port_mapping
+            "Building tor hidden service with control port '{control_server_addr}' and port mapping '{proxied_port_mapping}'"
         );
 
         let controller = HiddenServiceController::new(

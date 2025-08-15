@@ -77,7 +77,7 @@ impl ServiceA {
                     let (request, reply_tx) = request_context.split();
 
                     let service_b_response = self.service_b_handle.send_msg(request.clone()).await;
-                    println!("Service A got a response from service B: {}", service_b_response);
+                    println!("Service A got a response from service B: {service_b_response}");
 
                     let mut response = self.response_msg.clone();
                     response.push_str(request.clone().as_str());

@@ -89,14 +89,14 @@ fn parse_addr(addr: &Multiaddr) -> io::Result<u16> {
     } else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("Invalid Multiaddr '{:?}'", addr),
+            format!("Invalid Multiaddr '{addr:?}'"),
         ));
     };
 
     if iter.next().is_some() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("Invalid Multiaddr '{:?}'", addr),
+            format!("Invalid Multiaddr '{addr:?}'"),
         ));
     }
 

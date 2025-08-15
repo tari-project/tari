@@ -48,7 +48,7 @@ impl DnsResolver for SystemDnsResolver {
 
         match protos {
             (Protocol::Dns(domain), Protocol::Tcp(port)) | (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
-                dns_lookup(format!("{}:{}", domain, port)).boxed()
+                dns_lookup(format!("{domain}:{port}")).boxed()
             },
             (Protocol::Ip4(host), Protocol::Tcp(port)) => boxed_ready(Ok((host, port).into())),
             (Protocol::Ip6(host), Protocol::Tcp(port)) => boxed_ready(Ok((host, port).into())),
@@ -61,7 +61,7 @@ impl DnsResolver for SystemDnsResolver {
 async fn dns_lookup<T>(addr: T) -> Result<SocketAddr, DnsResolverError>
 where T: ToSocketAddrs + Display + Send + Sync + 'static {
     tokio::task::spawn_blocking(move || {
-        debug!(target: LOG_TARGET, "Resolving address `{}` using system resolver", addr);
+        debug!(target: LOG_TARGET, "Resolving address `{addr}` using system resolver");
         addr.to_socket_addrs()
             .map_err(|err| DnsResolverError::NameResolutionFailed {
                 source: err,

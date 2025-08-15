@@ -88,7 +88,7 @@ impl TestFactory for NetAddressFactory {
             }
         });
 
-        format!("/memory/{}", port)
+        format!("/memory/{port}")
             .parse()
             .map_err(TestFactoryError::build_failed())
     }

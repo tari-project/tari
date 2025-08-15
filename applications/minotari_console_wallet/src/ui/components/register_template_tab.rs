@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use std::{path::Path, str::FromStr};
 
 use blake2::Blake2b;
@@ -536,8 +537,7 @@ impl RegisterTemplateTab {
                         Err(e) => {
                             self.confirmation_dialog = None;
                             self.error_message = Some(format!(
-                                "Failed to register code template:\n{:?}\nPress Enter to continue.",
-                                e
+                                "Failed to register code template:\n{e:?}\nPress Enter to continue."
                             ))
                         },
                         Ok(_) => {
@@ -582,15 +582,15 @@ impl RegisterTemplateTab {
                                             hex_string = hash.to_hex();
                                         },
                                         Err(e) => {
-                                            error = Some(format!("Error {:?}\nPress Enter to continue.", e));
+                                            error = Some(format!("Error {e:?}\nPress Enter to continue."));
                                         },
                                     },
                                     code => {
-                                        error = Some(format!("Error {:?}\nPress Enter to continue.", code));
+                                        error = Some(format!("Error {code:?}\nPress Enter to continue."));
                                     },
                                 },
                                 Err(e) => {
-                                    error = Some(format!("Error {:?}\nPress Enter to continue.", e));
+                                    error = Some(format!("Error {e:?}\nPress Enter to continue."));
                                 },
                             }
                         });
@@ -686,7 +686,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             let status = match (*rx.borrow()).clone() {
                 UiTransactionSendStatus::Initiated => "Initiated",
                 UiTransactionSendStatus::Error(e) => {
-                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                    self.error_message = Some(format!("Error sending transaction: {e}, Press Enter to continue."));
                     return;
                 },
                 UiTransactionSendStatus::TransactionComplete => {
@@ -706,7 +706,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                 f,
                 area,
                 "Please Wait".to_string(),
-                format!("Template Registration Status: {}", status),
+                format!("Template Registration Status: {status}"),
                 Color::Green,
                 120,
                 10,

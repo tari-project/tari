@@ -281,6 +281,7 @@ pub fn create_message_domain_separated_hash_parts(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use prost::Message;
     use rand::rngs::OsRng;
 

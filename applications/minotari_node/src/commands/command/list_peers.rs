@@ -49,7 +49,7 @@ impl CommandContext {
             "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => Some(PeerFeatures::COMMUNICATION_NODE),
             "wallet" | "wallets" | "w" => Some(PeerFeatures::COMMUNICATION_CLIENT),
             _ => {
-                println!("Unknown filter '{:?}'; list-peers", filter);
+                println!("Unknown filter '{filter:?}'; list-peers");
                 println!("  Try 'basenode', 'basenodes', 'base-node', 'base_node', 'wallet', 'wallets', 'w'");
                 None
             },
@@ -97,7 +97,7 @@ impl CommandContext {
                         .to_std()
                         .map(format_duration_basic)
                         .unwrap_or_else(|_| "?".into());
-                    s.push(format!("last seen: {}", duration));
+                    s.push(format!("last seen: {duration}"));
                 }
 
                 if s.is_empty() {
@@ -129,7 +129,7 @@ impl CommandContext {
         }
         table.print_stdout();
 
-        println!("{} peer(s) known by this node", num_peers);
+        println!("{num_peers} peer(s) known by this node");
         Ok(())
     }
 }

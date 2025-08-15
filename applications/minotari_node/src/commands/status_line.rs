@@ -66,7 +66,7 @@ fn format(k: &&str, v: &str) -> String {
     if k.is_empty() {
         v.to_string()
     } else {
-        format!("{}: {}", k, v)
+        format!("{k}: {v}")
     }
 }
 

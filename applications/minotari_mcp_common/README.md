@@ -312,7 +312,7 @@ fn example() -> McpResult<Value> {
     
     // Internal error
     operation.execute()
-        .map_err(|e| McpError::internal_error(format!("Operation failed: {}", e)))?;
+        .map_err(|e| McpError::internal_error(format!("Operation failed: {e}")))?;
     
     Ok(result)
 }

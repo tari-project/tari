@@ -33,7 +33,7 @@ pub fn format_duration_basic(duration: Duration) -> String {
             format!("{}m {}s", mins, secs % 60)
         }
     } else {
-        format!("{}s", secs)
+        format!("{secs}s")
     }
 }
 

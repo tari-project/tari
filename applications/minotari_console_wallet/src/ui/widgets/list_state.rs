@@ -154,6 +154,7 @@ impl WindowedListState {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::convert::TryFrom;
 
     use crate::ui::widgets::WindowedListState;
