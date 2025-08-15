@@ -130,7 +130,7 @@ impl BlockTemplateManager<'_> {
                         b
                     },
                     Err(err) => {
-                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err);
+                        error!(target: LOG_TARGET, "grpc get_new_block ({err})");
                         return Err(err);
                     },
                 }
@@ -166,7 +166,7 @@ impl BlockTemplateManager<'_> {
                     val
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err);
+                    error!(target: LOG_TARGET, "grpc get_new_block_template ({err})");
                     return Err(err);
                 },
             };
@@ -176,12 +176,12 @@ impl BlockTemplateManager<'_> {
                 .as_ref()
                 .map(|h| h.height)
                 .unwrap_or_default();
-            debug!(target: LOG_TARGET, "Requested new block template at height: #{} (try {})", height, loop_count);
+            debug!(target: LOG_TARGET, "Requested new block template at height: #{height} (try {loop_count})");
             let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template).await?;
 
             let template_with_coinbase =
                 merge_mining::add_coinbase(&coinbase_output, &coinbase_kernel, new_template.template.clone())?;
-            debug!(target: LOG_TARGET, "Added coinbase to new block template (try {})", loop_count);
+            debug!(target: LOG_TARGET, "Added coinbase to new block template (try {loop_count})");
 
             return Ok((template_with_coinbase, height));
         }

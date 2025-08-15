@@ -144,7 +144,7 @@ impl McpTool for SendShaAtomicSwapTool {
         let response = client
             .send_sha_atomic_swap_transaction(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to send SHA atomic swap: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to send SHA atomic swap: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -263,7 +263,7 @@ impl McpTool for ClaimShaAtomicSwapTool {
         let response = client
             .claim_sha_atomic_swap_transaction(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim SHA atomic swap: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim SHA atomic swap: {e}")))?
             .into_inner();
 
         let result = response
@@ -387,7 +387,7 @@ impl McpTool for ClaimHtlcRefundTool {
         let response = client
             .claim_htlc_refund_transaction(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim HTLC refund: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to claim HTLC refund: {e}")))?
             .into_inner();
 
         let result = response

@@ -99,9 +99,8 @@ where TClientFactory: HttpClientFactory
         while let Some(request_context) = request_stream.next().await {
             // Incoming requests
             let (request, reply_tx) = request_context.split();
-            let response = self.handle_request(request).await.map_err(|e| {
-                error!(target: LOG_TARGET, "Error handling request: {:?}", e);
-                e
+            let response = self.handle_request(request).await.inspect_err(|e| {
+                error!(target: LOG_TARGET, "Error handling request: {e:?}");
             });
             let _result = reply_tx.send(response).inspect_err(|_| {
                 warn!(target: LOG_TARGET, "Failed to send reply");
@@ -135,7 +134,7 @@ where TClientFactory: HttpClientFactory
     ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError> {
         trace!(
             target: LOG_TARGET,
-            "Handling Wallet Base Node Service Request: {:?}", request
+            "Handling Wallet Base Node Service Request: {request:?}"
         );
         match request {
             BaseNodeServiceRequest::GetBaseNodeLatency => {

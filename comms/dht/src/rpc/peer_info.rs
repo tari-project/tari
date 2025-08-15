@@ -73,7 +73,7 @@ impl TryFrom<DiscoveryMessage> for UnvalidatedPeerInfo {
 
     fn try_from(value: DiscoveryMessage) -> Result<Self, Self::Error> {
         let public_key = CommsPublicKey::from_canonical_bytes(&value.public_key)
-            .map_err(|e| anyhow!("DiscoveryMessage invalid public key: {}", e))?;
+            .map_err(|e| anyhow!("DiscoveryMessage invalid public key: {e}"))?;
 
         let features = PeerFeatures::from_bits(value.peer_features)
             .ok_or_else(|| anyhow!("Invalid peer features. Bits: {:#04x}", value.peer_features))?;
@@ -104,7 +104,7 @@ impl TryFrom<DiscoveryResponseMessage> for UnvalidatedPeerInfo {
 
     fn try_from(value: DiscoveryResponseMessage) -> Result<Self, Self::Error> {
         let public_key = CommsPublicKey::from_canonical_bytes(&value.public_key)
-            .map_err(|e| anyhow!("DiscoveryMessage invalid public key: {}", e))?;
+            .map_err(|e| anyhow!("DiscoveryMessage invalid public key: {e}"))?;
 
         let features = PeerFeatures::from_bits(value.peer_features)
             .ok_or_else(|| anyhow!("Invalid peer features. Bits: {:#04x}", value.peer_features))?;
@@ -136,7 +136,7 @@ impl TryFrom<JoinMessage> for UnvalidatedPeerInfo {
 
     fn try_from(value: JoinMessage) -> Result<Self, Self::Error> {
         let public_key = CommsPublicKey::from_canonical_bytes(&value.public_key)
-            .map_err(|e| anyhow!("JoinMessage invalid public key: {}", e))?;
+            .map_err(|e| anyhow!("JoinMessage invalid public key: {e}"))?;
 
         let features = PeerFeatures::from_bits(value.peer_features)
             .ok_or_else(|| anyhow!("Invalid peer features. Bits: {:#04x}", value.peer_features))?;

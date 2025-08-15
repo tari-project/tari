@@ -56,10 +56,10 @@ impl CommandContext {
             match connectivity.dial_peer(dest_node_id).await {
                 Ok(connection) => {
                     println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
-                    println!("Connection: {}", connection);
+                    println!("Connection: {connection}");
                 },
                 Err(err) => {
-                    println!("☠️ {}", err);
+                    println!("☠️ {err}");
                 },
             }
         });

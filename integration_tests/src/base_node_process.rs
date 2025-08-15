@@ -127,12 +127,12 @@ pub async fn spawn_base_node_with_config(
             .join("base_nodes")
             .join(format!("{}_grpc_port_{}", bn_name.clone(), grpc_port));
 
-        let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
+        let base_node_address = Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{port}")).unwrap();
         base_node_identity = NodeIdentity::random(&mut OsRng, base_node_address, PeerFeatures::COMMUNICATION_NODE);
         save_as_json(temp_dir_path.join("base_node.json"), &base_node_identity).unwrap();
     };
 
-    println!("Base node identity: {}", base_node_identity);
+    println!("Base node identity: {base_node_identity}");
     let identity = base_node_identity.clone();
 
     let shutdown = Shutdown::new();
@@ -171,12 +171,12 @@ pub async fn spawn_base_node_with_config(
         println!("Using base_node temp_dir: {}", temp_dir_path.clone().display());
         base_node_config.base_node.network = Network::LocalNet;
         base_node_config.base_node.grpc_enabled = true;
-        base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{}", grpc_port).parse().unwrap());
+        base_node_config.base_node.grpc_address = Some(format!("/ip4/127.0.0.1/tcp/{grpc_port}").parse().unwrap());
         base_node_config.base_node.report_grpc_error = true;
         base_node_config.base_node.metadata_auto_ping_interval = Duration::from_secs(3);
         base_node_config.base_node.http_wallet_query_service.port = http_port.try_into().unwrap();
         base_node_config.base_node.http_wallet_query_service.external_address =
-            Some(format!("http://127.0.0.1:{}", http_port).parse().unwrap());
+            Some(format!("http://127.0.0.1:{http_port}").parse().unwrap());
 
         base_node_config.base_node.data_dir = temp_dir_path.to_path_buf();
         base_node_config.base_node.identity_file = PathBuf::from("base_node_id.json");
@@ -186,7 +186,7 @@ pub async fn spawn_base_node_with_config(
         base_node_config.base_node.lmdb_path = temp_dir_path.to_path_buf();
         base_node_config.base_node.p2p.transport.transport_type = TransportType::Tcp;
         base_node_config.base_node.p2p.transport.tcp.listener_address =
-            format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
+            format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap();
         base_node_config.base_node.p2p.public_addresses = MultiaddrList::from(vec![base_node_config
             .base_node
             .p2p
@@ -196,7 +196,7 @@ pub async fn spawn_base_node_with_config(
             .clone()]);
         base_node_config.base_node.p2p.allow_test_addresses = true;
         base_node_config.base_node.p2p.dht = DhtConfig::default_local_test();
-        base_node_config.base_node.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
+        base_node_config.base_node.p2p.dht.database_url = DbConnectionUrl::file(format!("{port}-dht.sqlite"));
         base_node_config.base_node.p2p.dht.network_discovery.enabled = true;
         base_node_config
             .base_node
@@ -239,8 +239,8 @@ pub async fn spawn_base_node_with_config(
             .num_initial_sync_rounds_seed_bootstrap = 1;
 
         println!(
-            "Initializing base node: name={}; port={}; grpc_port={}; is_seed_node={}, http_port={}",
-            name_cloned, port, grpc_port, is_seed_node, http_port
+            "Initializing base node: name={name_cloned}; port={port}; grpc_port={grpc_port}; \
+             is_seed_node={is_seed_node}, http_port={http_port}"
         );
 
         let result = run_base_node(shutdown, Arc::new(base_node_identity), Arc::new(base_node_config)).await;

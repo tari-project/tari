@@ -1418,9 +1418,7 @@ mod test {
                     {
                         keys.clone()
                     } else {
-                        panic!(
-                            "Expected CheckMultiSigVerifyAggregatePubKey opcode in script at index {index}"
-                        );
+                        panic!("Expected CheckMultiSigVerifyAggregatePubKey opcode in script at index {index}");
                     };
                 let script_backup_key = if let Some(Opcode::PushPubKey(key)) = output.script.as_slice().get(5) {
                     key.deref().clone()

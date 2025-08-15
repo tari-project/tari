@@ -239,11 +239,11 @@ impl DbStatsArgs {
 
                 let mut table_data = Table::new(&all_stats.component_databases);
                 let table = table_data.with(Style::rounded());
-                println!("{}", table);
+                println!("{table}");
             },
             OutputFormat::Json => {
                 let json = serde_json::to_string_pretty(&all_stats)?;
-                println!("{}", json);
+                println!("{json}");
             },
             OutputFormat::Csv => {
                 let mut wtr = csv::Writer::from_writer(std::io::stdout());
@@ -301,7 +301,7 @@ impl DbStatsArgs {
 
                         let mut table_data = Table::new(&lmdb_databases);
                         let table = table_data.with(Style::rounded());
-                        println!("{}", table);
+                        println!("{table}");
 
                         println!("\nSummary:");
                         println!("  Total Databases: {}", lmdb_stats.summary.total_databases);
@@ -311,7 +311,7 @@ impl DbStatsArgs {
                         println!("  Average Entries per DB: {}", lmdb_stats.summary.avg_entries_per_db);
                     },
                     Err(e) => {
-                        println!("Failed to analyze base node LMDB database: {}", e);
+                        println!("Failed to analyze base node LMDB database: {e}");
                     },
                 }
             } else {
@@ -347,7 +347,7 @@ impl DbStatsArgs {
 
                                 let mut table_data = Table::new(&sqlite_tables);
                                 let table = table_data.with(Style::rounded());
-                                println!("{}", table);
+                                println!("{table}");
                             }
 
                             println!("\nSummary:");
@@ -485,16 +485,11 @@ fn find_base_node_lmdb_database(databases: &[ComponentDatabaseInfo]) -> Option<&
 
 fn collect_database_stats(db_path: &Path) -> Result<DbStatsOutput> {
     // Open LMDB environment directly in read-only mode (like the original working approach)
-    let env =
-        create_readonly_lmdb_environment(db_path).map_err(|e| anyhow!("Failed to open LMDB environment: {}", e))?;
+    let env = create_readonly_lmdb_environment(db_path).map_err(|e| anyhow!("Failed to open LMDB environment: {e}"))?;
 
     // Get environment information
-    let env_info = env
-        .info()
-        .map_err(|e| anyhow!("Failed to get environment info: {}", e))?;
-    let env_stat = env
-        .stat()
-        .map_err(|e| anyhow!("Failed to get environment stat: {}", e))?;
+    let env_info = env.info().map_err(|e| anyhow!("Failed to get environment info: {e}"))?;
+    let env_stat = env.stat().map_err(|e| anyhow!("Failed to get environment stat: {e}"))?;
 
     let environment = EnvironmentInfo {
         mapsize: env_info.mapsize,
@@ -596,7 +591,7 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
 
         // Get row count
         let row_count: u64 = conn
-            .query_row(&format!("SELECT COUNT(*) FROM {}", table_name), [], |row| row.get(0))
+            .query_row(&format!("SELECT COUNT(*) FROM {table_name}"), [], |row| row.get(0))
             .unwrap_or(0);
 
         // Estimate table size using database_list and page info

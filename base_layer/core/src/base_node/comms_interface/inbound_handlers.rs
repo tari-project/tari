@@ -846,7 +846,6 @@ where B: BlockchainBackend + 'static
                 );
                 Err(CommsInterfaceError::InvalidPeerResponse(format!(
                     "Invalid response from peer `{source_peer}`: Peer failed to provide the block that was propagated"
-
                 )))
             },
             Err(CommsInterfaceError::UnexpectedApiResponse) => {

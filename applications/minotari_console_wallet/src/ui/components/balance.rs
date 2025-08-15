@@ -55,7 +55,7 @@ impl<B: Backend> Component<B> for Balance {
             Span::styled("Available:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
             Span::raw(format!("{}", balance.available_balance)),
-            Span::raw(format!(" (Time Locked: {})", time_locked)),
+            Span::raw(format!(" (Time Locked: {time_locked})")),
         ]);
         let incoming_balance = Spans::from(vec![
             Span::styled("Pending Incoming:", Style::default().fg(Color::Magenta)),

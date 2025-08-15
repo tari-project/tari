@@ -117,8 +117,7 @@ impl MockOutputManagerService {
         match request {
             OutputManagerRequest::GetBalance => Ok(OutputManagerResponse::Balance(self.state.get_balance())),
             _ => Err(OutputManagerError::InvalidResponseError(format!(
-                "Request '{}' not defined for MockOutputManagerService!",
-                request
+                "Request '{request}' not defined for MockOutputManagerService!"
             ))),
         }
     }

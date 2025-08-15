@@ -62,7 +62,7 @@ pub enum ConversionError {
 
 impl From<ConversionError> for McpError {
     fn from(err: ConversionError) -> Self {
-        McpError::tool_execution_failed(format!("Parameter conversion error: {}", err))
+        McpError::tool_execution_failed(format!("Parameter conversion error: {err}"))
     }
 }
 
@@ -175,7 +175,7 @@ impl JsonParameterExtractor for Value {
                 method: method.to_string(),
                 param: key.to_string(),
                 expected: "string".to_string(),
-                actual: format!("{:?}", other),
+                actual: format!("{other:?}"),
             }),
             None => Err(ConversionError::MissingParameter {
                 method: method.to_string(),
@@ -194,13 +194,13 @@ impl JsonParameterExtractor for Value {
                 method: method.to_string(),
                 param: key.to_string(),
                 expected: "unsigned integer".to_string(),
-                actual: format!("{}", n),
+                actual: format!("{n}"),
             }),
             Some(other) => Err(ConversionError::InvalidParameterType {
                 method: method.to_string(),
                 param: key.to_string(),
                 expected: "number".to_string(),
-                actual: format!("{:?}", other),
+                actual: format!("{other:?}"),
             }),
             None => Err(ConversionError::MissingParameter {
                 method: method.to_string(),
@@ -220,7 +220,7 @@ impl JsonParameterExtractor for Value {
                 method: method.to_string(),
                 param: key.to_string(),
                 expected: "boolean".to_string(),
-                actual: format!("{:?}", other),
+                actual: format!("{other:?}"),
             }),
             None => Err(ConversionError::MissingParameter {
                 method: method.to_string(),
@@ -240,7 +240,7 @@ impl JsonParameterExtractor for Value {
                 method: method.to_string(),
                 param: key.to_string(),
                 expected: "array".to_string(),
-                actual: format!("{:?}", other),
+                actual: format!("{other:?}"),
             }),
             None => Err(ConversionError::MissingParameter {
                 method: method.to_string(),

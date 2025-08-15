@@ -623,9 +623,7 @@ pub fn validate_output_version(
             .opcode
             .contains(&opcode.get_version())
         {
-            let msg = format!(
-                "Transaction output script opcode is not allowed by consensus ({opcode})"
-            );
+            let msg = format!("Transaction output script opcode is not allowed by consensus ({opcode})");
             return Err(ValidationError::ConsensusError(msg));
         }
     }

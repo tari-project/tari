@@ -404,7 +404,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     let event = decide_horizon_sync(&mut carol_state_machine, header_sync_carol_from_bob).await;
     match event {
         StateEvent::ProceedToBlockSync(_) => println!("Carol chose `ProceedToBlockSync` instead"),
-        _ => panic!("2. Carol should not choose '{:?}'", event),
+        _ => panic!("2. Carol should not choose '{event:?}'"),
     }
 
     // Give Bob some more blocks
@@ -476,7 +476,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     let event = decide_horizon_sync(&mut carol_state_machine, header_sync_carol_from_alice).await;
     match event {
         StateEvent::Continue => println!("Carol chose `Continue` instead"),
-        _ => panic!("5. Carol should not choose '{:?}'", event),
+        _ => panic!("5. Carol should not choose '{event:?}'"),
     }
     // Alice will not be banned
     assert!(!sync::wait_for_is_peer_banned(&carol_node, alice_node.node_identity.node_id(), 1).await);
@@ -575,7 +575,7 @@ async fn test_consecutive_horizon_sync_from_prune_node_happy_path() {
     let event = decide_horizon_sync(&mut carol_state_machine, header_sync_carol_from_alice).await;
     match event {
         StateEvent::Continue => println!("Carol chose `Continue` instead"),
-        _ => panic!("9. Carol should not choose '{:?}'", event),
+        _ => panic!("9. Carol should not choose '{event:?}'"),
     }
     // Alice will not be banned
     assert!(!sync::wait_for_is_peer_banned(&carol_node, alice_node.node_identity.node_id(), 1).await);

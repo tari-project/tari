@@ -1282,10 +1282,7 @@ mod test {
         let tx_hash = "77139305ea53cfe95cf7235d2fed6fca477395b019b98060acdbc0f8fb0b8b92"; // miner tx
         let count = "01";
 
-        let input = from_hex(&format!(
-            "{versions}{timestamp}{prev_block}{nonce}{tx_hash}{count}"
-        ))
-        .unwrap();
+        let input = from_hex(&format!("{versions}{timestamp}{prev_block}{nonce}{tx_hash}{count}")).unwrap();
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();
         let rx = RandomXFactory::default();
 

@@ -69,8 +69,8 @@ impl CommandContext {
             .build()
             .lines()
             .skip(1)
-            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
-        println!("{}", image);
+            .fold("".to_string(), |acc, l| format!("{acc}{l}\n"));
+        println!("{image}");
         Ok(())
     }
 }

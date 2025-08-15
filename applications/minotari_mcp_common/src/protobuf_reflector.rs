@@ -45,7 +45,7 @@ impl ProtobufReflector {
     /// Create a new reflector from FileDescriptorSet bytes
     pub fn new(descriptor_set: &[u8]) -> McpResult<Self> {
         let descriptor_pool = DescriptorPool::decode(descriptor_set)
-            .map_err(|e| McpError::server_error(format!("Failed to decode descriptor set: {}", e)))?;
+            .map_err(|e| McpError::server_error(format!("Failed to decode descriptor set: {e}")))?;
         
         Ok(Self {
             descriptor_pool,

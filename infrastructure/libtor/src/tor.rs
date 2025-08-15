@@ -118,7 +118,7 @@ impl Tor {
         // log destination
         instance.log_destination = data_dir.join("tor.log");
 
-        debug!(target: LOG_TARGET, "tor instance: {:?}", instance);
+        debug!(target: LOG_TARGET, "tor instance: {instance:?}");
         Ok(instance)
     }
 
@@ -130,11 +130,11 @@ impl Tor {
                     transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
                 }
                 transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse().unwrap();
-                debug!(target: LOG_TARGET, "updated comms transport: {:?}", transport);
+                debug!(target: LOG_TARGET, "updated comms transport: {transport:?}");
                 Ok(())
             },
             _ => {
-                let e = format!("Expected a TorHiddenService comms transport, received: {:?}", transport);
+                let e = format!("Expected a TorHiddenService comms transport, received: {transport:?}");
                 Err(ExitError::new(ExitCode::ConfigError, e))
             },
         }

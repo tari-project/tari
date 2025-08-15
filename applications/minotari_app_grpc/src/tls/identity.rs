@@ -27,7 +27,7 @@ use tonic::transport::Identity;
 use crate::tls::error::GrpcTlsError;
 
 pub async fn read_identity(config_dir: PathBuf) -> Result<Identity, GrpcTlsError> {
-    let err = |file| move |e| GrpcTlsError::FileReadError(format!("Could not load the file `{:?}`: {}", file, e));
+    let err = |file| move |e| GrpcTlsError::FileReadError(format!("Could not load the file `{file:?}`: {e}"));
 
     let cert_file = config_dir.join("server.pem");
     let cert = tokio::fs::read(&cert_file).await.map_err(err(cert_file))?;

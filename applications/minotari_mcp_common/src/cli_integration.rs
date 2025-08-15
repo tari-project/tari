@@ -216,7 +216,7 @@ impl NodeArgumentBuilder {
         if self.include_base_args {
             for (key, value) in self.config.property_overrides {
                 args.push("-p".to_string());
-                args.push(format!("{}={}", key, value));
+                args.push(format!("{key}={value}"));
             }
         }
 
@@ -317,7 +317,7 @@ impl WalletArgumentBuilder {
         if self.include_base_args {
             for (key, value) in self.config.property_overrides {
                 args.push("-p".to_string());
-                args.push(format!("{}={}", key, value));
+                args.push(format!("{key}={value}"));
             }
         }
 
@@ -342,7 +342,7 @@ impl CliIntegrationUtils {
         if address.starts_with("http://") || address.starts_with("https://") {
             address.to_string()
         } else {
-            format!("http://{}", address)
+            format!("http://{address}")
         }
     }
 

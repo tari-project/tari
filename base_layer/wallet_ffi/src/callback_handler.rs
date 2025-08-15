@@ -147,71 +147,71 @@ where TBackend: TransactionBackend + 'static
     ) -> Self {
         info!(
             target: LOG_TARGET,
-            "ReceivedTransactionCallback -> Assigning Fn: {:?}", callback_received_transaction
+            "ReceivedTransactionCallback -> Assigning Fn: {callback_received_transaction:?}"
         );
         info!(
             target: LOG_TARGET,
-            "ReceivedTransactionReplyCallback -> Assigning Fn: {:?}", callback_received_transaction_reply
+            "ReceivedTransactionReplyCallback -> Assigning Fn: {callback_received_transaction_reply:?}"
         );
         info!(
             target: LOG_TARGET,
-            "ReceivedFinalizedTransactionCallback -> Assigning Fn: {:?}", callback_received_finalized_transaction
+            "ReceivedFinalizedTransactionCallback -> Assigning Fn: {callback_received_finalized_transaction:?}"
         );
         info!(
             target: LOG_TARGET,
-            "TransactionBroadcastCallback -> Assigning Fn: {:?}", callback_transaction_broadcast
+            "TransactionBroadcastCallback -> Assigning Fn: {callback_transaction_broadcast:?}"
         );
         info!(
             target: LOG_TARGET,
-            "TransactionMinedCallback -> Assigning Fn: {:?}", callback_transaction_mined
+            "TransactionMinedCallback -> Assigning Fn: {callback_transaction_mined:?}"
         );
         info!(
             target: LOG_TARGET,
-            "TransactionMinedUnconfirmedCallback -> Assigning Fn: {:?}", callback_transaction_mined_unconfirmed
+            "TransactionMinedUnconfirmedCallback -> Assigning Fn: {callback_transaction_mined_unconfirmed:?}"
         );
         info!(
             target: LOG_TARGET,
-            "FauxTransactionConfirmedCallback -> Assigning Fn: {:?}", callback_faux_transaction_confirmed
+            "FauxTransactionConfirmedCallback -> Assigning Fn: {callback_faux_transaction_confirmed:?}"
         );
         info!(
             target: LOG_TARGET,
-            "FauxTransactionUnconfirmedCallback -> Assigning Fn: {:?}", callback_faux_transaction_unconfirmed
+            "FauxTransactionUnconfirmedCallback -> Assigning Fn: {callback_faux_transaction_unconfirmed:?}"
         );
         info!(
             target: LOG_TARGET,
-            "TransactionSendResultCallback -> Assigning Fn:  {:?}", callback_transaction_send_result
+            "TransactionSendResultCallback -> Assigning Fn:  {callback_transaction_send_result:?}"
         );
         info!(
             target: LOG_TARGET,
-            "TransactionCancellationCallback -> Assigning Fn:  {:?}", callback_transaction_cancellation
+            "TransactionCancellationCallback -> Assigning Fn:  {callback_transaction_cancellation:?}"
         );
         info!(
             target: LOG_TARGET,
-            "TxoValidationCompleteCallback -> Assigning Fn:  {:?}", callback_txo_validation_complete
+            "TxoValidationCompleteCallback -> Assigning Fn:  {callback_txo_validation_complete:?}"
         );
         info!(
             target: LOG_TARGET,
-            "ContactsLivenessDataUpdatedCallback -> Assigning Fn:  {:?}", callback_contacts_liveness_data_updated
+            "ContactsLivenessDataUpdatedCallback -> Assigning Fn:  {callback_contacts_liveness_data_updated:?}"
         );
         info!(
             target: LOG_TARGET,
-            "BalanceUpdatedCallback -> Assigning Fn:  {:?}", callback_balance_updated
+            "BalanceUpdatedCallback -> Assigning Fn:  {callback_balance_updated:?}"
         );
         info!(
             target: LOG_TARGET,
-            "TransactionValidationCompleteCallback -> Assigning Fn:  {:?}", callback_transaction_validation_complete
+            "TransactionValidationCompleteCallback -> Assigning Fn:  {callback_transaction_validation_complete:?}"
         );
         info!(
             target: LOG_TARGET,
-            "SafMessagesReceivedCallback -> Assigning Fn:  {:?}", callback_saf_messages_received
+            "SafMessagesReceivedCallback -> Assigning Fn:  {callback_saf_messages_received:?}"
         );
         info!(
             target: LOG_TARGET,
-            "ConnectivityStatusCallback -> Assigning Fn:  {:?}", callback_connectivity_status
+            "ConnectivityStatusCallback -> Assigning Fn:  {callback_connectivity_status:?}"
         );
         info!(
             target: LOG_TARGET,
-            "WalletScannedHeight -> Assigning Fn:  {:?}", callback_wallet_scanned_height
+            "WalletScannedHeight -> Assigning Fn:  {callback_wallet_scanned_height:?}"
         );
 
         Self {
@@ -263,7 +263,7 @@ where TBackend: TransactionBackend + 'static
                 result = self.transaction_service_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
-                            trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {:?}", msg);
+                            trace!(target: LOG_TARGET, "Transaction Service Callback Handler event {msg:?}");
                             match (*msg).clone() {
                                 TransactionEvent::ReceivedTransaction(tx_id) => {
                                     self.receive_transaction_event(tx_id);
@@ -331,7 +331,7 @@ where TBackend: TransactionBackend + 'static
                 result = self.output_manager_service_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
-                            trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                            trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {msg:?}");
                             match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
                                     self.output_validation_complete_event(request_key,  0);
@@ -389,14 +389,14 @@ where TBackend: TransactionBackend + 'static
                             }
                         },
                         Err(e) => {
-                            error!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
+                            error!(target: LOG_TARGET, "Problem with utxo scanner: {e}");
                         },
                 },
 
                 result = self.dht_event_stream.recv() => {
                     match result {
                         Ok(msg) => {
-                            trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
+                            trace!(target: LOG_TARGET, "DHT Callback Handler event {msg:?}");
                             if let DhtEvent::StoreAndForwardMessagesReceived = *msg {
                                 self.saf_messages_received_event();
                             }
@@ -419,7 +419,7 @@ where TBackend: TransactionBackend + 'static
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                            warn!(target: LOG_TARGET, "Missed {n} from Output Manager Service events");
                         }
                         Err(broadcast::error::RecvError::Closed) => {}
                     }
@@ -437,7 +437,7 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction callback function for u64: {}", tx_id
+                    "Calling Received Transaction callback function for u64: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -446,7 +446,7 @@ where TBackend: TransactionBackend + 'static
             },
             Err(e) => error!(
                 target: LOG_TARGET,
-                "Error retrieving Pending Inbound Transaction: {:?}", e
+                "Error retrieving Pending Inbound Transaction: {e:?}"
             ),
         }
     }
@@ -456,14 +456,14 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Reply callback function for u64: {}", tx_id
+                    "Calling Received Transaction Reply callback function for u64: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_received_transaction_reply)(self.context.0, boxing);
                 }
             },
-            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {e:?}"),
         }
     }
 
@@ -472,14 +472,14 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Finalized Transaction callback function for TxId: {}", tx_id
+                    "Calling Received Finalized Transaction callback function for TxId: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_received_finalized_transaction)(self.context.0, boxing);
                 }
             },
-            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {e:?}"),
         }
     }
 
@@ -504,7 +504,7 @@ where TBackend: TransactionBackend + 'static
                 }
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "Could not obtain balance ({:?})", e);
+                error!(target: LOG_TARGET, "Could not obtain balance ({e:?})");
             },
         }
     }
@@ -524,7 +524,7 @@ where TBackend: TransactionBackend + 'static
     fn receive_transaction_send_result(&mut self, tx_id: TxId, status: TransactionSendStatus) {
         debug!(
             target: LOG_TARGET,
-            "Calling Transaction Send Result callback function for TxId: {} with result {}", tx_id, status
+            "Calling Transaction Send Result callback function for TxId: {tx_id} with result {status}"
         );
         let boxing = Box::into_raw(Box::new(status));
         unsafe {
@@ -551,12 +551,12 @@ where TBackend: TransactionBackend + 'static
         match transaction {
             None => error!(
                 target: LOG_TARGET,
-                "Error retrieving Cancelled Transaction TxId {}", tx_id
+                "Error retrieving Cancelled Transaction TxId {tx_id}"
             ),
             Some(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Transaction Cancellation callback function for TxId: {}", tx_id
+                    "Calling Transaction Cancellation callback function for TxId: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -571,14 +571,14 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Broadcast callback function for TxId: {}", tx_id
+                    "Calling Received Transaction Broadcast callback function for TxId: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_transaction_broadcast)(self.context.0, boxing);
                 }
             },
-            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {e:?}"),
         }
     }
 
@@ -587,14 +587,14 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Mined callback function for TxId: {}", tx_id
+                    "Calling Received Transaction Mined callback function for TxId: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_transaction_mined)(self.context.0, boxing);
                 }
             },
-            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {e:?}"),
         }
     }
 
@@ -603,14 +603,14 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Mined Unconfirmed callback function for TxId: {}", tx_id
+                    "Calling Received Transaction Mined Unconfirmed callback function for TxId: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_transaction_mined_unconfirmed)(self.context.0, boxing, confirmations);
                 }
             },
-            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {e:?}"),
         }
     }
 
@@ -619,14 +619,14 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Faux Transaction Confirmed callback function for TxId: {}", tx_id
+                    "Calling Received Faux Transaction Confirmed callback function for TxId: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_faux_transaction_confirmed)(self.context.0, boxing);
                 }
             },
-            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {e:?}"),
         }
     }
 
@@ -635,21 +635,21 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Faux Transaction Unconfirmed callback function for TxId: {}", tx_id
+                    "Calling Received Faux Transaction Unconfirmed callback function for TxId: {tx_id}"
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_faux_transaction_unconfirmed)(self.context.0, boxing, confirmations);
                 }
             },
-            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {e:?}"),
         }
     }
 
     fn transaction_validation_complete_event(&mut self, request_key: u64, success: u64) {
         debug!(
             target: LOG_TARGET,
-            "Calling Transaction Validation Complete callback function for Request Key: {}", request_key,
+            "Calling Transaction Validation Complete callback function for Request Key: {request_key}"
         );
         unsafe {
             (self.callback_transaction_validation_complete)(self.context.0, request_key, success);
@@ -659,9 +659,7 @@ where TBackend: TransactionBackend + 'static
     fn output_validation_complete_event(&mut self, request_key: u64, success: u64) {
         debug!(
             target: LOG_TARGET,
-            "Calling Output Validation Complete callback function for Request Key: {} with success = {:?}",
-            request_key,
-            success,
+            "Calling Output Validation Complete callback function for Request Key: {request_key} with success = {success:?}"
         );
 
         unsafe {

@@ -299,7 +299,7 @@ impl Callbacks {
     }
 
     pub fn callback_wallet_scanned_height(&mut self, height: u64) {
-        println!("wallet scanned up to height {}.", height);
+        println!("wallet scanned up to height {height}.");
     }
 
     pub fn on_basenode_state_update(&mut self, state: *mut c_void) {

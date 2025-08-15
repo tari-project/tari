@@ -105,7 +105,7 @@ impl CommandContext {
                 (nodes, clients + 1)
             }
         });
-        status_line.add_field("Connections", format!("{}|{}", num_nodes, num_clients));
+        status_line.add_field("Connections", format!("{num_nodes}|{num_clients}"));
         let banned_peers = self.fetch_banned_peers().await?;
         status_line.add_field("Banned", banned_peers.len());
 
@@ -133,7 +133,7 @@ impl CommandContext {
                 status_line.add("️🔌");
             },
             SelfLivenessStatus::Live(latency) => {
-                status_line.add(format!("⚡️ {:.2?}", latency));
+                status_line.add(format!("⚡️ {latency:.2?}"));
             },
         }
 
@@ -151,10 +151,10 @@ impl CommandContext {
         let target = "base_node::app::status";
         match output {
             StatusLineOutput::StdOutAndLog => {
-                println!("{}", status_line);
-                log::info!(target: target, "{}", status_line);
+                println!("{status_line}");
+                log::info!(target: target, "{status_line}");
             },
-            StatusLineOutput::Log => log::info!(target: target, "{}", status_line),
+            StatusLineOutput::Log => log::info!(target: target, "{status_line}"),
         };
         Ok(())
     }

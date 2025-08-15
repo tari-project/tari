@@ -619,8 +619,7 @@ mod tests {
             block.header.nonce += 1;
         }
         Err(format!(
-            "Failed to generate nonce for difficulty {} within 20000 iterations",
-            difficulty
+            "Failed to generate nonce for difficulty {difficulty} within 20000 iterations"
         ))
     }
 

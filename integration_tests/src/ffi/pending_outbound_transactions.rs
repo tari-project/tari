@@ -47,7 +47,7 @@ impl PendingOutboundTransactions {
         unsafe {
             length = ffi_import::pending_outbound_transactions_get_length(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_outbound_transactions_get_length error {}", error);
+                println!("pending_outbound_transactions_get_length error {error}");
                 panic!("pending_outbound_transactions_get_length error");
             }
         }
@@ -60,7 +60,7 @@ impl PendingOutboundTransactions {
         unsafe {
             ptr = ffi_import::pending_outbound_transactions_get_at(self.ptr, position, &mut error);
             if error > 0 {
-                println!("pending_outbound_transactions_get_at error {}", error);
+                println!("pending_outbound_transactions_get_at error {error}");
                 panic!("pending_outbound_transactions_get_at error");
             }
         }

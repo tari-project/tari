@@ -59,8 +59,8 @@ impl FromStr for MonerodMethod {
             "get_last_block_header" | "getlastblockheader" => Ok(MonerodMethod::GetLastBlockHeader),
             "get_block" | "getblovk" => Ok(MonerodMethod::GetLastBlockHeader),
             _ => {
-                let msg = format!("Unknown monerod rpc method: '{}'", s);
-                warn!(target: LOG_TARGET, "{}", msg);
+                let msg = format!("Unknown monerod rpc method: '{s}'");
+                warn!(target: LOG_TARGET, "{msg}");
                 Err(MmProxyError::ConversionError(msg))
             },
         }
@@ -79,7 +79,7 @@ impl Display for MonerodMethod {
             MonerodMethod::GetBlock => "get_block".to_string(),
             MonerodMethod::RpcMethodNotDefined => "rpc_method_not_defined".to_string(),
         };
-        write!(f, "{}", str)
+        write!(f, "{str}")
     }
 }
 

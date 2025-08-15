@@ -163,10 +163,10 @@ async fn test_monero_blocks() {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash),
         }) => (),
         Err(e) => {
-            panic!("Failed due to other error:{:?}", e);
+            panic!("Failed due to other error:{e:?}");
         },
         Ok(res) => {
-            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+            panic!("Block add unexpectedly succeeded with result: {res:?}");
         },
     };
 
@@ -178,10 +178,10 @@ async fn test_monero_blocks() {
             source: ValidationError::MergeMineError(_),
         }) => (),
         Err(e) => {
-            panic!("Failed due to other error:{:?}", e);
+            panic!("Failed due to other error:{e:?}");
         },
         Ok(res) => {
-            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+            panic!("Block add unexpectedly succeeded with result: {res:?}");
         },
     };
     // now lets fix the seed, and try again
@@ -197,10 +197,10 @@ async fn test_monero_blocks() {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
         }) => (),
         Err(e) => {
-            panic!("Failed due to other error:{:?}", e);
+            panic!("Failed due to other error:{e:?}");
         },
         Ok(res) => {
-            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+            panic!("Block add unexpectedly succeeded with result: {res:?}");
         },
     };
     // lets fix block3

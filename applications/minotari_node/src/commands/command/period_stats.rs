@@ -70,7 +70,7 @@ impl CommandContext {
         let mut period_solvetime = 0;
         print!("Searching for height: ");
         while height > 0 {
-            print!("{}", height);
+            print!("{height}");
             io::stdout().flush().await?;
 
             let block = self

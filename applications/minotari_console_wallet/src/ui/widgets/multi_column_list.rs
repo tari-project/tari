@@ -112,7 +112,7 @@ where T: Into<Vec<ListItem<'a>>>
                 None => column_areas[c + 1],
                 Some(heading) => {
                     let padded_heading = if c == 0 && self.highlight_style.is_some() {
-                        format!("  {}", heading)
+                        format!("  {heading}")
                     } else {
                         heading.to_string()
                     };

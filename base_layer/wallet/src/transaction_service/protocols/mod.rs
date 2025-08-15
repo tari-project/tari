@@ -55,8 +55,7 @@ pub fn check_transaction_size<T: Serialize>(
         });
         error!(
             target: LOG_TARGET,
-            "Transaction '{}' too large, cannot be broadcast ({:?}).",
-            tx_id, err
+            "Transaction '{tx_id}' too large, cannot be broadcast ({err:?})."
         );
         Err(err)
     } else {

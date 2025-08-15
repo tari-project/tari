@@ -29,11 +29,11 @@ async fn it_works() {
         Ok(mut client) => {
             let _res = client.identify(grpc::GetIdentityRequest {}).await;
             #[cfg(debug_assertions)]
-            eprintln!("Wallet identify: {:?}", _res);
+            eprintln!("Wallet identify: {_res:?}");
         },
         Err(_err) => {
             #[cfg(debug_assertions)]
-            eprintln!("Could not connect: {:?}", _err);
+            eprintln!("Could not connect: {_err:?}");
         },
     }
 }

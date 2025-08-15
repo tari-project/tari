@@ -129,24 +129,24 @@ fn main() {
             "Unknown panic message".to_string()
         };
 
-        error!(target: "tari::p2pool::main", "Panic occurred at {}: {}", location, message);
+        error!(target: "tari::p2pool::main", "Panic occurred at {location}: {message}");
 
         // Optionally, write a custom message directly to the file
         let mut file = File::create("minotari-node-panic.log").unwrap();
-        file.write_all(format!("Panic at {}: {}", location, message).as_bytes())
+        file.write_all(format!("Panic at {location}: {message}").as_bytes())
             .unwrap();
         // if cfg!(debug_assertions) {
         // In debug mode, we want to see the panic message
-        eprintln!("Panic occurred at {}: {}", location, message);
+        eprintln!("Panic occurred at {location}: {message}");
         std::process::exit(500);
         // }
     }));
 
     if let Err(err) = main_inner() {
-        eprintln!("{:?}", err);
+        eprintln!("{err:?}");
         let exit_code = err.exit_code;
         if let Some(hint) = exit_code.hint() {
-            eprintln!("{}", hint);
+            eprintln!("{hint}");
             eprintln!();
         }
         error!(
@@ -191,7 +191,7 @@ fn main_inner() -> Result<(), ExitError> {
     let mut config = ApplicationConfig::load_from(&cfg)?;
     #[cfg(not(all(unix, feature = "libtor")))]
     let config = ApplicationConfig::load_from(&cfg)?;
-    debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
+    debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(

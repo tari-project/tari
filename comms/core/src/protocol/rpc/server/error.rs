@@ -88,7 +88,7 @@ impl RpcServerError {
         match self {
             DecodeError(_) => "DecodeError".to_string(),
             Io(err) => {
-                format!("Io({:?})",err.kind())
+                format!("Io({:?})", err.kind())
             },
             HandshakeError(_) => "HandshakeError".to_string(),
             ProtocolServiceNotFound(_) => "ProtocolServiceNotFound".to_string(),

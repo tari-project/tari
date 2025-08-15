@@ -93,7 +93,7 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
     let args = SendMinotariArgs {
         amount: MicroMinotari(amount),
         destination: wallet_b_address,
-        payment_id: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
+        payment_id: format!("Send amount {amount} from {wallet_a} to {wallet_b}"),
     };
     cli.command2 = Some(CliCommands::SendMinotari(args));
 
@@ -114,7 +114,7 @@ async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: Stri
 
     let args = BurnMinotariArgs {
         amount: MicroMinotari(amount),
-        payment_id: format!("Burn, burn amount {} !!!", amount),
+        payment_id: format!("Burn, burn amount {amount} !!!"),
     };
     cli.command2 = Some(CliCommands::BurnMinotari(args));
 
@@ -163,10 +163,7 @@ async fn make_it_rain(
         start_time: None,
         one_sided: false,
         burn_tari: false,
-        payment_id: format!(
-            "Make it raing amount {} from {} to {}",
-            start_amount, wallet_a, wallet_b
-        ),
+        payment_id: format!("Make it raing amount {start_amount} from {wallet_a} to {wallet_b}"),
     };
 
     cli.command2 = Some(CliCommands::MakeItRain(args));
@@ -190,7 +187,7 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
         amount_per_split: MicroMinotari(amount),
         num_splits: usize::try_from(splits).unwrap(),
         fee_per_gram: MicroMinotari(20),
-        payment_id: format!("coin split amount {} with splits {}", amount, splits),
+        payment_id: format!("coin split amount {amount} with splits {splits}"),
     };
 
     cli.command2 = Some(CliCommands::CoinSplit(args));
@@ -336,7 +333,7 @@ async fn export_wallet_view_and_spend_keys_via_cli(
         tokio::time::sleep(Duration::from_secs(5)).await;
         wallet_ps.clone()
     } else {
-        panic!("Wallet '{}' not found", wallet_name);
+        panic!("Wallet '{wallet_name}' not found");
     };
 
     let mut cli = get_default_cli();
@@ -381,11 +378,11 @@ async fn recover_wallet_from_view_and_spend_keys_via_cli(
     let keys_file = if let Some(file) = keys_file {
         file
     } else {
-        panic!("View and spend keys file not found for '{}'", view_and_spend_key);
+        panic!("View and spend keys file not found for '{view_and_spend_key}'");
     };
-    let keys_content = std::fs::read_to_string(keys_file).unwrap_or_else(|e| panic!("Failed to read keys file: {}", e));
+    let keys_content = std::fs::read_to_string(keys_file).unwrap_or_else(|e| panic!("Failed to read keys file: {e}"));
     let keys_json: serde_json::Value =
-        serde_json::from_str(&keys_content).unwrap_or_else(|e| panic!("Failed to parse keys JSON: {}", e));
+        serde_json::from_str(&keys_content).unwrap_or_else(|e| panic!("Failed to parse keys JSON: {e}"));
     let view_key = keys_json["view_key"]
         .as_str()
         .unwrap_or_else(|| panic!("Missing 'view_key' in keys file"));

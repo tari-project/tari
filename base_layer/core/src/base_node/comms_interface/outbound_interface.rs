@@ -100,8 +100,8 @@ impl OutboundNodeCommsInterface {
         new_block: NewBlock,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), CommsInterfaceError> {
-        self.block_sender.send((new_block, exclude_peers)).map_err(|err| {
-            CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {err}"))
-        })
+        self.block_sender
+            .send((new_block, exclude_peers))
+            .map_err(|err| CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {err}")))
     }
 }

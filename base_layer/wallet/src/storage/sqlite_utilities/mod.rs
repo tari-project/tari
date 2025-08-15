@@ -69,7 +69,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
     connection
         .run_pending_migrations(MIGRATIONS)
-        .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
+        .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {err}")))?;
 
     Ok(WalletDbConnection::new(pool, Some(file_lock)))
 }
@@ -83,7 +83,7 @@ pub fn run_migration_and_create_sqlite_memory_connection() -> Result<WalletDbCon
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
     connection
         .run_pending_migrations(MIGRATIONS)
-        .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
+        .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {err}")))?;
 
     Ok(WalletDbConnection::new(pool, None))
 }
@@ -112,7 +112,7 @@ pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorage
     if let Err(e) = file.try_lock_exclusive() {
         error!(
             target: LOG_TARGET,
-            "Could not acquire exclusive write lock on database lock file: {:?}", e
+            "Could not acquire exclusive write lock on database lock file: {e:?}"
         );
         return Err(WalletStorageError::CannotAcquireFileLock);
     }
@@ -135,12 +135,11 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
     ),
     WalletStorageError,
 > {
-    let connection = run_migration_and_create_sqlite_connection(db_path, sqlite_pool_size).map_err(|e| {
+    let connection = run_migration_and_create_sqlite_connection(db_path, sqlite_pool_size).inspect_err(|e| {
         error!(
             target: LOG_TARGET,
-            "Error creating Sqlite Connection in Wallet: {:?}", e
+            "Error creating Sqlite Connection in Wallet: {e:?}"
         );
-        e
     })?;
 
     let wallet_backend = WalletSqliteDatabase::new(connection.clone(), passphrase)?;

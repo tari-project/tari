@@ -409,37 +409,36 @@ where
                 event = output_manager_event_stream.recv() => {
                     match event {
                         Ok(msg) => self.handle_output_manager_service_event(msg).await,
-                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {e}"),
                     };
                 }
                // Base Node Monitoring Service event
                 event = base_node_service_event_stream.recv() => {
                     match event {
                         Ok(msg) => self.handle_base_node_service_event(msg).await,
-                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {e}"),
                     };
                 },
                 event = utxo_scanner_events.recv() => {
                     match event {
                         Ok(msg) => self.handle_utxo_scanner_service_event(msg, &mut transaction_validation_protocol_handles).await,
-                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {}", e),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {e}"),
                     }
                 },
                 //Incoming request
                 Some(request_context) = request_stream.next() => {
                     let start = Instant::now();
                     let (request, reply_tx) = request_context.split();
-                    let event = format!("Handling Service API Request ({})", request);
-                    trace!(target: LOG_TARGET, "{}", event);
+                    let event = format!("Handling Service API Request ({request})");
+                    trace!(target: LOG_TARGET, "{event}");
                     let _result = self.handle_request(request,
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
                         &mut transaction_broadcast_protocol_handles,
                         &mut transaction_validation_protocol_handles,
                         reply_tx,
-                    ).await.map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
-                        e
+                    ).await.inspect_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling request: {e:?}");
                     });
                     trace!(target: LOG_TARGET,
                         "{}, processed in {}ms",
@@ -465,7 +464,7 @@ where
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}",
                                 e, self.resources.node_identity.node_id().short_str(), msg.dht_header.message_tag);
                             let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
-                                Transaction Sender message: {:?}", e).to_string())));
+                                Transaction Sender message: {e:?}").to_string())));
                         }
                         _ => (),
                     }
@@ -563,7 +562,7 @@ where
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.dht_header.message_tag);
                     if let Err(e) = self.handle_transaction_cancelled_message(origin_public_key, inner_msg, ).await {
-                        warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e);
+                        warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {e:?}");
                     }
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Cancelled message, Trace: {}, processed in {}ms",
@@ -572,40 +571,40 @@ where
                     );
                 }
                 Some(join_result) = send_transaction_protocol_handles.next() => {
-                    trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {:?}", join_result);
+                    trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {join_result:?}");
                     match join_result {
                         Ok(join_result_inner) => self.complete_send_transaction_protocol(
                             join_result_inner,
                             &mut transaction_broadcast_protocol_handles
                         ),
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {e:?}"),
                     };
                 }
                 Some(join_result) = receive_transaction_protocol_handles.next() => {
-                    trace!(target: LOG_TARGET, "Receive Transaction Protocol has ended with result {:?}", join_result);
+                    trace!(target: LOG_TARGET, "Receive Transaction Protocol has ended with result {join_result:?}");
                     match join_result {
                         Ok(join_result_inner) => self.complete_receive_transaction_protocol(
                             join_result_inner,
                             &mut transaction_broadcast_protocol_handles
                         ),
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Send Transaction Protocol: {e:?}"),
                     };
                 }
                 Some(join_result) = transaction_broadcast_protocol_handles.next() => {
-                    trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {:?}", join_result);
+                    trace!(target: LOG_TARGET, "Transaction Broadcast protocol has ended with result {join_result:?}");
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_broadcast_protocol(join_result_inner),
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {e:?}"),
                     };
                 }
                 Some(join_result) = transaction_validation_protocol_handles.next() => {
-                    trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {:?}", join_result);
+                    trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {join_result:?}");
                     match join_result {
                         Ok(join_result_inner) => self.complete_transaction_validation_protocol(
                             join_result_inner,
                             &mut transaction_broadcast_protocol_handles,
                         ),
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {e:?}"),
                     };
                 }
                  _ = shutdown.wait() => {
@@ -639,7 +638,7 @@ where
     ) -> Result<(), TransactionServiceError> {
         let mut reply_channel = Some(reply_channel);
 
-        trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
+        trace!(target: LOG_TARGET, "Handling Service Request: {request}");
         let response = match request {
             TransactionServiceRequest::SendTransaction {
                 destination,
@@ -914,7 +913,7 @@ where
                 sidechain_deployment_key,
             } => {
                 let payment_id = MemoField::new_open(
-                    format!("Template Registration: {}", template_name).into_bytes(),
+                    format!("Template Registration: {template_name}").into_bytes(),
                     TxType::CodeTemplateRegistration,
                 )
                 .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
@@ -1236,7 +1235,7 @@ where
                     .start_transaction_validation_protocol(transaction_validation_join_handles)
                     .await
                     .map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                        warn!(target: LOG_TARGET, "Error validating  txos: {e:?}");
                         e
                     });
             },
@@ -1266,7 +1265,7 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        debug!(target: LOG_TARGET, "Sending transaction to {} with {}", destination, amount);
+        debug!(target: LOG_TARGET, "Sending transaction to {destination} with {amount}");
         let tx_id = TxId::new_random();
         if let Err(e) = self.verify_send(&destination, TariAddressFeatures::create_interactive_only()) {
             let err = match e {
@@ -1401,7 +1400,7 @@ where
                 .map_err(|e| TransactionServiceError::Other(e.to_string()))?
             {
                 Some(output) => res.push(output),
-                None => warn!(target: LOG_TARGET, "UTXO not found for hash: {}", hash),
+                None => warn!(target: LOG_TARGET, "UTXO not found for hash: {hash}"),
             }
         }
 
@@ -1631,13 +1630,13 @@ where
                 &[0; 32],
                 input
                     .commitment()
-                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?,
+                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {tx_id}, {e}")))?,
             );
             trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: input_data {:?}", input.input_data);
             input_keys = input_keys +
                 input
                     .run_and_verify_script(&factory, Some(context))
-                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?
+                    .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {tx_id}, {e}")))?
                     .to_public_key()?;
         }
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: validated inputs");
@@ -1645,15 +1644,14 @@ where
         for output in transaction.transaction.body.outputs() {
             output
                 .verify_metadata_signature()
-                .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {}, {}", tx_id, e)))?;
+                .map_err(|e| TransactionServiceError::ServiceError(format!("TxId: {tx_id}, {e}")))?;
             output_keys = output_keys + output.sender_offset_public_key.clone().to_public_key()?;
         }
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: validated outputs");
         let lhs = input_keys - output_keys;
         if lhs != UncompressedPublicKey::from_secret_key(&transaction.transaction.script_offset) {
             return Err(TransactionServiceError::ServiceError(format!(
-                "Invalid script offset (TxId: {})",
-                tx_id
+                "Invalid script offset (TxId: {tx_id})"
             )));
         }
         trace!(target: LOG_TARGET, "finalized_aggregate_encumbed_tx: validated script offstet");
@@ -1890,7 +1888,7 @@ where
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                    "Transaction (TxId: {tx_id}) could not be finalized. Failure error: {e:?}"
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
@@ -1909,7 +1907,7 @@ where
             },
             None => vec![],
         };
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
@@ -1973,7 +1971,7 @@ where
         recipient_script: Option<TariScript>,
         mut payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
-        debug!(target: LOG_TARGET, "Sending one sided transaction to {} with {}", dest_address, amount);
+        debug!(target: LOG_TARGET, "Sending one sided transaction to {dest_address} with {amount}");
         let tx_id = TxId::new_random();
         // let override the payment_id if the address says we should
         if dest_address.features().contains(TariAddressFeatures::PAYMENT_ID) {
@@ -2160,7 +2158,7 @@ where
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                    "Transaction (TxId: {tx_id}) could not be finalized. Failure error: {e:?}"
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
@@ -2173,7 +2171,7 @@ where
             },
             None => (vec![], None),
         };
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
@@ -2393,7 +2391,7 @@ where
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                    "Transaction (TxId: {tx_id}) could not be finalized. Failure error: {e:?}"
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
@@ -2406,7 +2404,7 @@ where
             },
             None => (vec![], None),
         };
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {tx_id}");
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
@@ -2684,7 +2682,7 @@ where
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                    "Transaction (TxId: {tx_id}) could not be finalized. Failure error: {e:?}"
                 );
                 TransactionServiceProtocolError::new(tx_id, e.into())
             })?;
@@ -2698,7 +2696,7 @@ where
             },
             None => (vec![], None),
         };
-        info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {tx_id}");
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
@@ -2740,7 +2738,7 @@ where
             )?,
         )
         .await?;
-        info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {tx_id}");
 
         Ok((tx_id, BurntProof {
             // Key used to claim the burn on L2
@@ -3022,8 +3020,7 @@ where
         if let Err(e) = recipient_reply {
             // We should ban but there is no banning in the wallet...
             return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode RecipientSignedMessage: {:?}",
-                e
+                "Could not decode RecipientSignedMessage: {e:?}"
             )));
         }
 
@@ -3045,9 +3042,8 @@ where
                     if elapsed_time < self.resources.config.resend_response_cooldown {
                         trace!(
                             target: LOG_TARGET,
-                            "A repeated Transaction Reply (TxId: {}) has been received before the resend cooldown has \
-                             expired. Ignoring.",
-                            tx_id
+                            "A repeated Transaction Reply (TxId: {tx_id}) has been received before the resend cooldown has \
+                             expired. Ignoring."
                         );
                         return false;
                     }
@@ -3069,9 +3065,8 @@ where
                 // Send a cancellation message
                 debug!(
                     target: LOG_TARGET,
-                    "A repeated Transaction Reply (TxId: {}) has been received for cancelled completed transaction. \
-                     Transaction Cancelled response is being sent.",
-                    tx_id
+                    "A repeated Transaction Reply (TxId: {tx_id}) has been received for cancelled completed transaction. \
+                     Transaction Cancelled response is being sent."
                 );
                 tokio::spawn(send_transaction_cancelled_message(
                     tx_id,
@@ -3082,7 +3077,7 @@ where
                 // Resend the reply
                 debug!(
                     target: LOG_TARGET,
-                    "A repeated Transaction Reply (TxId: {}) has been received. Reply is being resent.", tx_id
+                    "A repeated Transaction Reply (TxId: {tx_id}) has been received. Reply is being resent."
                 );
                 tokio::spawn(send_finalized_transaction_message(
                     tx_id,
@@ -3097,7 +3092,7 @@ where
             if let Err(e) = self.resources.db.increment_send_count(tx_id) {
                 warn!(
                     target: LOG_TARGET,
-                    "Could not increment send count for completed transaction TxId {}: {:?}", tx_id, e
+                    "Could not increment send count for completed transaction TxId {tx_id}: {e:?}"
                 );
             }
             return Ok(());
@@ -3115,9 +3110,8 @@ where
             // Send a cancellation message
             debug!(
                 target: LOG_TARGET,
-                "A repeated Transaction Reply (TxId: {}) has been received for cancelled pending outbound \
-                 transaction. Transaction Cancelled response is being sent.",
-                tx_id
+                "A repeated Transaction Reply (TxId: {tx_id}) has been received for cancelled pending outbound \
+                 transaction. Transaction Cancelled response is being sent."
             );
             tokio::spawn(send_transaction_cancelled_message(
                 tx_id,
@@ -3128,7 +3122,7 @@ where
             if let Err(e) = self.resources.db.increment_send_count(tx_id) {
                 warn!(
                     target: LOG_TARGET,
-                    "Could not increment send count for completed transaction TxId {}: {:?}", tx_id, e
+                    "Could not increment send count for completed transaction TxId {tx_id}: {e:?}"
                 );
             }
             return Ok(());
@@ -3165,20 +3159,18 @@ where
                         Err(e) => {
                             error!(
                                 target: LOG_TARGET,
-                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {:?}", e
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {e:?}"
                             );
                             return;
                         },
                     };
                     let _result = self
                         .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                        .map_err(|resp| {
+                        .inspect_err(|resp| {
                             error!(
                                 target: LOG_TARGET,
-                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {:?}",
-                                resp
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {resp:?}"
                             );
-                            resp
                         });
                 } else if val.transaction_status == TransactionStatus::Queued {
                     trace!(
@@ -3198,11 +3190,11 @@ where
                 }
                 warn!(
                     target: LOG_TARGET,
-                    "Error completing Send Transaction Protocol (Id: {}): {:?}", id, error
+                    "Error completing Send Transaction Protocol (Id: {id}): {error:?}"
                 );
                 let _size = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
+                    .send(Arc::new(TransactionEvent::Error(format!("{error:?}"))));
             },
         }
     }
@@ -3228,12 +3220,11 @@ where
             };
         };
 
-        self.db.cancel_pending_transaction(tx_id).map_err(|e| {
+        self.db.cancel_pending_transaction(tx_id).inspect_err(|e| {
             warn!(
                 target: LOG_TARGET,
-                "Pending Transaction does not exist and could not be cancelled: {:?}", e
+                "Pending Transaction does not exist and could not be cancelled: {e:?}"
             );
-            e
         })?;
 
         self.resources.output_manager_service.cancel_transaction(tx_id).await?;
@@ -3254,16 +3245,14 @@ where
                 tx_id,
                 TxCancellationReason::UserCancelled,
             )))
-            .map_err(|e| {
+            .inspect_err(|e| {
                 trace!(
                     target: LOG_TARGET,
-                    "Error sending event because there are no subscribers: {:?}",
-                    e
+                    "Error sending event because there are no subscribers: {e:?}"
                 );
-                e
             });
 
-        info!(target: LOG_TARGET, "Pending Transaction (TxId: {}) cancelled", tx_id);
+        info!(target: LOG_TARGET, "Pending Transaction (TxId: {tx_id}) cancelled");
 
         Ok(())
     }
@@ -3279,8 +3268,7 @@ where
             Err(e) => {
                 // Should ban....
                 return Err(TransactionServiceError::InvalidMessageError(format!(
-                    "Could not decode TransactionCancelledMessage: {:?}",
-                    e
+                    "Could not decode TransactionCancelledMessage: {e:?}"
                 )));
             },
         };
@@ -3294,8 +3282,7 @@ where
             } else {
                 trace!(
                     target: LOG_TARGET,
-                    "Received a Transaction Cancelled (TxId: {}) message from an unknown source, ignoring",
-                    tx_id
+                    "Received a Transaction Cancelled (TxId: {tx_id}) message from an unknown source, ignoring"
                 );
             }
         }
@@ -3386,8 +3373,7 @@ where
 
         if let Err(e) = sender_message {
             return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode TransactionSenderMessage: {:?}",
-                e
+                "Could not decode TransactionSenderMessage: {e:?}"
             )));
         }
         let sender_message: TransactionSenderMessage = sender_message
@@ -3458,7 +3444,7 @@ where
                 if let Err(e) = self.resources.db.increment_send_count(tx_id) {
                     warn!(
                         target: LOG_TARGET,
-                        "Could not increment send count for inbound transaction TxId {}: {:?}", tx_id, e
+                        "Could not increment send count for inbound transaction TxId {tx_id}: {e:?}"
                     );
                 }
 
@@ -3530,8 +3516,7 @@ where
         if let Err(e) = finalized_transaction {
             // Should ban but there is no banning in the wallet...
             return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode TransactionFinalizedMessage: {:?}",
-                e
+                "Could not decode TransactionFinalizedMessage: {e:?}",
             )));
         }
         let finalized_transaction = finalized_transaction.unwrap();
@@ -3559,16 +3544,14 @@ where
                             debug!(
                                 target: LOG_TARGET,
                                 "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: \
-                                 {}) but Source Public Key did not match",
-                                tx_id
+                                 {tx_id}) but Source Public Key did not match"
                             );
                             return Err(TransactionServiceError::TransactionDoesNotExistError);
                         }
                         info!(
                             target: LOG_TARGET,
-                            "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: {}). \
-                             Restarting protocol",
-                            tx_id
+                            "Received Finalized Transaction for a cancelled pending Inbound Transaction (TxId: {tx_id}). \
+                             Restarting protocol"
                         );
                         self.db.uncancel_pending_transaction(tx_id)?;
                         self.resources
@@ -3719,25 +3702,23 @@ where
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
-                            "Error broadcasting completed transaction TxId: {} to mempool: {:?}", id, e
+                            "Error broadcasting completed transaction TxId: {id} to mempool: {e:?}"
                         );
                         return;
                     },
                 };
                 let _result = self
                     .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
-                            "Error broadcasting completed transaction TxId: {} to mempool: {:?}", id, e
+                            "Error broadcasting completed transaction TxId: {id} to mempool: {e:?}"
                         );
-                        e
                     });
 
                 trace!(
                     target: LOG_TARGET,
-                    "Receive Transaction Protocol for TxId: {} completed successfully",
-                    id
+                    "Receive Transaction Protocol for TxId: {id} completed successfully"
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -3746,22 +3727,21 @@ where
                 match error {
                     TransactionServiceError::RepeatedMessageError => debug!(
                         target: LOG_TARGET,
-                        "Receive Transaction Protocol (Id: {}) aborted as it is a repeated transaction that has \
-                         already been processed",
-                        id
+                        "Receive Transaction Protocol (Id: {id}) aborted as it is a repeated transaction that has \
+                         already been processed"
                     ),
                     TransactionServiceError::Shutdown => {
                         return;
                     },
                     _ => warn!(
                         target: LOG_TARGET,
-                        "Error completing Receive Transaction Protocol (Id: {}): {}", id, error
+                        "Error completing Receive Transaction Protocol (Id: {id}): {error}"
                     ),
                 }
 
                 let _size = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
+                    .send(Arc::new(TransactionEvent::Error(format!("{error:?}"))));
             },
         }
     }
@@ -3787,7 +3767,7 @@ where
         if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
             debug!(
                 target: LOG_TARGET,
-                "Restarting listening for Transaction Finalize for Pending Inbound Transaction TxId: {}", tx_id
+                "Restarting listening for Transaction Finalize for Pending Inbound Transaction TxId: {tx_id}"
             );
             let (tx_finalized_sender, tx_finalized_receiver) = mpsc::channel(100);
             let (cancellation_sender, cancellation_receiver) = oneshot::channel();
@@ -3821,21 +3801,19 @@ where
     ) -> Result<(), TransactionServiceError> {
         trace!(target: LOG_TARGET, "Restarting transaction negotiation protocols");
         self.restart_all_send_transaction_protocols(send_transaction_join_handles)
-            .map_err(|resp| {
+            .inspect_err(|resp| {
                 error!(
                     target: LOG_TARGET,
-                    "Error restarting protocols for all pending outbound transactions: {:?}", resp
+                    "Error restarting protocols for all pending outbound transactions: {resp:?}"
                 );
-                resp
             })?;
 
         self.restart_all_receive_transaction_protocols(receive_transaction_join_handles)
-            .map_err(|resp| {
+            .inspect_err(|resp| {
                 error!(
                     target: LOG_TARGET,
-                    "Error restarting protocols for all pending inbound transactions: {:?}", resp
+                    "Error restarting protocols for all pending inbound transactions: {resp:?}"
                 );
-                resp
             })?;
 
         Ok(())
@@ -3877,7 +3855,7 @@ where
             let mut _lock = validation_in_progress.try_lock().map_err(|_| {
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction Validation Protocol (Id: {}) spawned while a previous protocol was busy, ignored", id
+                    "Transaction Validation Protocol (Id: {id}) spawned while a previous protocol was busy, ignored"
                 );
                 TransactionServiceProtocolError::new(id, TransactionServiceError::TransactionValidationInProgress)
             })?;
@@ -3892,7 +3870,7 @@ where
                         },
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
-                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
+                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
                                 continue 'outer;
                             }
                         }
@@ -3917,12 +3895,12 @@ where
             Ok(id) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction Validation Protocol (Id: {}) completed successfully", id
+                    "Transaction Validation Protocol (Id: {id}) completed successfully"
                 );
                 // Restart broadcast protocols for any transactions that were found to be no longer mined.
                 let _ = self
                     .restart_broadcast_protocols(transaction_broadcast_join_handles)
-                    .map_err(|e| warn!(target: LOG_TARGET, "Error restarting broadcast protocols: {}", e));
+                    .map_err(|e| warn!(target: LOG_TARGET, "Error restarting broadcast protocols: {e}"));
             },
             Err(TransactionServiceProtocolError { id, error }) => {
                 if let TransactionServiceError::Shutdown = error {
@@ -3930,7 +3908,7 @@ where
                 }
                 warn!(
                     target: LOG_TARGET,
-                    "Error completing Transaction Validation Protocol (id: {}): {:?}", id, error
+                    "Error completing Transaction Validation Protocol (id: {id}): {error:?}"
                 );
                 let reason = match error {
                     TransactionServiceError::TransactionValidationInProgress => 1,
@@ -3953,14 +3931,12 @@ where
     ) -> Result<(), TransactionServiceError> {
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
         self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
-            .map_err(|resp| {
+            .inspect_err(|resp| {
                 error!(
                     target: LOG_TARGET,
                     "Error broadcasting all valid and not cancelled Completed Transactions with status 'Completed' \
-                     and 'Broadcast': {:?}",
-                    resp
+                     and 'Broadcast': {resp:?}"
                 );
-                resp
             })?;
 
         Ok(())
@@ -3993,8 +3969,7 @@ where
         } else {
             trace!(
                 target: LOG_TARGET,
-                "Transaction Broadcast Protocol (TxId: {}) already started",
-                tx_id
+                "Transaction Broadcast Protocol (TxId: {tx_id}) already started"
             );
         }
 
@@ -4029,7 +4004,7 @@ where
             Ok(id) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction Broadcast Protocol for TxId: {} completed successfully", id
+                    "Transaction Broadcast Protocol for TxId: {id} completed successfully"
                 );
                 let _ = self.active_transaction_broadcast_protocols.remove(&id);
             },
@@ -4041,11 +4016,11 @@ where
                 }
                 warn!(
                     target: LOG_TARGET,
-                    "Error completing Transaction Broadcast Protocol (Id: {}): {:?}", id, error
+                    "Error completing Transaction Broadcast Protocol (Id: {id}): {error:?}"
                 );
                 let _size = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
+                    .send(Arc::new(TransactionEvent::Error(format!("{error:?}"))));
             },
         }
     }
@@ -4058,8 +4033,7 @@ where
         if let Err(e) = response {
             // Should we switch base nodes?
             return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode BaseNodeServiceResponse: {:?}",
-                e
+                "Could not decode BaseNodeServiceResponse: {e:?}"
             )));
         }
         let response = response.unwrap();
@@ -4168,13 +4142,11 @@ where
                 TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid: true }
             },
         };
-        let _size = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+        let _size = self.event_publisher.send(Arc::new(transaction_event)).inspect_err(|e| {
             trace!(
                 target: LOG_TARGET,
-                "Error sending event, usually because there are no subscribers: {:?}",
-                e
+                "Error sending event, usually because there are no subscribers: {e:?}"
             );
-            e
         });
         Ok(tx_id)
     }
@@ -4188,13 +4160,12 @@ where
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionServiceError> {
         let tx_id = completed_transaction.tx_id;
-        trace!(target: LOG_TARGET, "Submit transaction ({}) to db.", tx_id);
+        trace!(target: LOG_TARGET, "Submit transaction ({tx_id}) to db.");
         self.db
             .insert_completed_transaction(tx_id, completed_transaction.clone())?;
         trace!(
             target: LOG_TARGET,
-            "Launch the transaction broadcast protocol for submitted transaction ({}).",
-            tx_id
+            "Launch the transaction broadcast protocol for submitted transaction ({tx_id})."
         );
         if let Err(e) = check_transaction_size(&completed_transaction.transaction, tx_id) {
             self.cancel_transaction(tx_id, TxCancellationReason::Oversized).await;
@@ -4261,11 +4232,7 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "Replace-by-fee: Creating replacement for transaction {} with total fee {} (weight: {} grams, fee_per_gram: {})",
-            tx_id,
-            fee,
-            weight_in_grams,
-            fee_per_gram
+            "Replace-by-fee: Creating replacement for transaction {tx_id} with total fee {fee} (weight: {weight_in_grams} grams, fee_per_gram: {fee_per_gram})"
         );
 
         let new_tx_id = self
@@ -4282,11 +4249,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "Replace-by-fee: Created new transaction {} to replace {} with total fee: {}, fee_per_gram: {}",
-            new_tx_id,
-            tx_id,
-            fee,
-            fee_per_gram
+            "Replace-by-fee: Created new transaction {new_tx_id} to replace {tx_id} with total fee: {fee}, fee_per_gram: {fee_per_gram}"
         );
 
         Ok(new_tx_id)
@@ -4395,10 +4358,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "user-pay-for-fee: Created new transaction {} to spend outputs transaction with id: {}, weight: {} grams",
-            new_tx_id,
-            tx_id,
-            weight_in_grams,
+            "user-pay-for-fee: Created new transaction {new_tx_id} to spend outputs transaction with id: {tx_id}, weight: {weight_in_grams} grams"
         );
 
         Ok(new_tx_id)
@@ -4408,13 +4368,13 @@ where
         if let Err(e) = self.resources.output_manager_service.cancel_transaction(tx_id).await {
             warn!(
                 target: LOG_TARGET,
-                "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", tx_id, e
+                "Failed to Cancel outputs for TxId: {tx_id} after failed sending attempt with error {e:?}"
             );
         }
         if let Err(e) = self.resources.db.reject_completed_transaction(tx_id, reason) {
             warn!(
                 target: LOG_TARGET,
-                "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", tx_id, e
+                "Failed to Cancel TxId: {tx_id} after failed sending attempt with error {e:?}"
             );
         }
     }
@@ -4477,8 +4437,7 @@ where
         }
         if !address.features().contains(sending_method) {
             return Err(TransactionServiceError::InvalidAddress(format!(
-                "Address does not support feature {} ",
-                sending_method
+                "Address does not support feature {sending_method} "
             )));
         }
         if sending_method.contains(TariAddressFeatures::create_interactive_only()) &&

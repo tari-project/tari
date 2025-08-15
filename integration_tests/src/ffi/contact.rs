@@ -57,7 +57,7 @@ impl Contact {
                 &mut error,
             );
             if error > 0 {
-                println!("contact_create error {}", error);
+                println!("contact_create error {error}");
                 panic!("contact_create error");
             }
         }
@@ -70,7 +70,7 @@ impl Contact {
         unsafe {
             alias = FFIString::from_ptr(ffi_import::contact_get_alias(self.ptr, &mut error));
             if error > 0 {
-                println!("contact_get_alias error {}", error);
+                println!("contact_get_alias error {error}");
                 panic!("contact_get_alias error");
             }
         }
@@ -83,7 +83,7 @@ impl Contact {
         unsafe {
             ptr = ffi_import::contact_get_tari_address(self.ptr, &mut error);
             if error > 0 {
-                println!("contact_get_tari_address error {}", error);
+                println!("contact_get_tari_address error {error}");
                 panic!("contact_get_tari_address error");
             }
         }

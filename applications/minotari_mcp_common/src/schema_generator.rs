@@ -97,7 +97,7 @@ impl SchemaGenerator {
     pub fn validate_input(&self, method_name: &str, params: &Value) -> Result<(), SchemaError> {
         let schema = self
             .get_input_schema(method_name)
-            .ok_or_else(|| SchemaError::InvalidSchema(format!("No schema found for method: {}", method_name)))?;
+            .ok_or_else(|| SchemaError::InvalidSchema(format!("No schema found for method: {method_name}")))?;
 
         self.validate_value(params, schema, "root")
     }
@@ -106,7 +106,7 @@ impl SchemaGenerator {
     pub fn validate_output(&self, method_name: &str, response: &Value) -> Result<(), SchemaError> {
         let schema = self
             .get_output_schema(method_name)
-            .ok_or_else(|| SchemaError::InvalidSchema(format!("No output schema found for method: {}", method_name)))?;
+            .ok_or_else(|| SchemaError::InvalidSchema(format!("No output schema found for method: {method_name}")))?;
 
         self.validate_value(response, schema, "root")
     }
@@ -115,7 +115,7 @@ impl SchemaGenerator {
     pub fn generate_mcp_tool_schema(&self, method_name: &str) -> Result<Value, SchemaError> {
         let method_info = self
             .get_method_info(method_name)
-            .ok_or_else(|| SchemaError::InvalidSchema(format!("Method not found: {}", method_name)))?;
+            .ok_or_else(|| SchemaError::InvalidSchema(format!("Method not found: {method_name}")))?;
 
         let mut tool_schema = serde_json::json!({
             "name": self.method_to_tool_name(&method_info.name),
@@ -255,7 +255,7 @@ impl SchemaGenerator {
                     for req_prop in required_array {
                         if let Some(prop_name) = req_prop.as_str() {
                             if !obj.contains_key(prop_name) {
-                                return Err(SchemaError::MissingParameter(format!("{}.{}", path, prop_name)));
+                                return Err(SchemaError::MissingParameter(format!("{path}.{prop_name}")));
                             }
                         }
                     }
@@ -269,7 +269,7 @@ impl SchemaGenerator {
                 if let Some(value_obj) = value.as_object() {
                     for (prop_name, prop_value) in value_obj {
                         if let Some(prop_schema) = props_obj.get(prop_name) {
-                            let prop_path = format!("{}.{}", path, prop_name);
+                            let prop_path = format!("{path}.{prop_name}");
                             self.validate_value(prop_value, prop_schema, &prop_path)?;
                         }
                     }
@@ -280,7 +280,7 @@ impl SchemaGenerator {
         // Validate array items
         if let (Some(items_schema), Some(array_value)) = (schema_obj.get("items"), value.as_array()) {
             for (i, item) in array_value.iter().enumerate() {
-                let item_path = format!("{}[{}]", path, i);
+                let item_path = format!("{path}[{i}]");
                 self.validate_value(item, items_schema, &item_path)?;
             }
         }
@@ -318,7 +318,7 @@ impl SchemaGenerator {
                         if !regex.is_match(str_value) {
                             return Err(SchemaError::InvalidFormat {
                                 field: path.to_string(),
-                                reason: format!("does not match pattern: {}", pattern_str),
+                                reason: format!("does not match pattern: {pattern_str}"),
                             });
                         }
                     }

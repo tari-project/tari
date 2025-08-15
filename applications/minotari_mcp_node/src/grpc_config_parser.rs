@@ -219,7 +219,7 @@ impl GrpcConfigParser {
             let full_name = if spec.starts_with("tari.rpc.") {
                 spec.to_string()
             } else {
-                format!("tari.rpc.{}", spec)
+                format!("tari.rpc.{spec}")
             };
 
             self.allowed_methods_set.insert(full_name);
@@ -234,9 +234,8 @@ impl GrpcConfigParser {
         }
 
         Err(GrpcConfigError::InvalidMethodName(format!(
-            "Invalid method specification format: {}. Expected formats: 'Service/*', 'Service/Method', or \
-             'tari.rpc.Service/Method'",
-            spec
+            "Invalid method specification format: {spec}. Expected formats: 'Service/*', 'Service/Method', or \
+             'tari.rpc.Service/Method'"
         )))
     }
 

@@ -123,8 +123,7 @@ impl ResponseConverterRegistry {
 
         // No converter found
         Err(McpError::tool_execution_failed(format!(
-            "No response converter found for method: {}",
-            method_name
+            "No response converter found for method: {method_name}"
         )))
     }
 

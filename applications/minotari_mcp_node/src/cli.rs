@@ -229,7 +229,7 @@ impl Cli {
         // Add config property overrides
         for (key, value) in &self.common.config_property_overrides {
             args.push("-p".to_string());
-            args.push(format!("{}={}", key, value));
+            args.push(format!("{key}={value}"));
         }
 
         args

@@ -312,9 +312,7 @@ mod test {
         let rand_end = OsRng.gen::<u8>().saturating_add(rand_start);
 
         // If the iterator never ends, we have the params used
-        eprintln!(
-            "iterator_symmetry: rand_start = {rand_start}, rand_end = {rand_end}, size = {size}"
-        );
+        eprintln!("iterator_symmetry: rand_start = {rand_start}, rand_end = {rand_end}, size = {size}");
         let iter_rev = NonOverlappingIntegerPairIter::<u8>::new(rand_start, rand_end, size)
             .unwrap()
             .rev();

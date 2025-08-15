@@ -66,7 +66,7 @@ impl McpResource for SyncProgressResource {
         let version_response = client
             .get_version(Empty {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to connect to node: {}", e)))?;
+            .map_err(|e| McpError::resource_access_failed(format!("Failed to connect to node: {e}")))?;
 
         let _version = version_response.into_inner();
 

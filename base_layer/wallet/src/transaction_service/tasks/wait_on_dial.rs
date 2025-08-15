@@ -51,7 +51,7 @@ pub async fn wait_on_dial(
             if failed.is_empty() {
                 warn!(
                     target: LOG_TARGET,
-                    "Direct Send process for {} TX_ID: {} timed out", message, tx_id
+                    "Direct Send process for {message} TX_ID: {tx_id} timed out"
                 );
             } else {
                 warn!(
@@ -71,7 +71,7 @@ pub async fn wait_on_dial(
             true
         }
     } else {
-        warn!(target: LOG_TARGET, "{} Send Direct for TxID: {} failed", message, tx_id);
+        warn!(target: LOG_TARGET, "{message} Send Direct for TxID: {tx_id} failed");
         false
     }
 }

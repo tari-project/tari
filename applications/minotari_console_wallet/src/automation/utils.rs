@@ -200,14 +200,12 @@ pub(crate) fn read_and_verify<T: DeserializeOwned>(
     )?;
     if session_id != header.session_id {
         return Err(CommandError::InvalidArgument(format!(
-            "Session ID in header for file '{}' mismatch",
-            file_name
+            "Session ID in header for file '{file_name}' mismatch"
         )));
     }
     if session_info != &header {
         return Err(CommandError::InvalidArgument(format!(
-            "Session info in header for file '{}' mismatch",
-            file_name
+            "Session info in header for file '{file_name}' mismatch"
         )));
     }
     json_from_file_single_object::<_, T>(

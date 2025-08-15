@@ -40,7 +40,7 @@ impl HandleCommand<Args> for CommandContext {
 impl CommandContext {
     pub async fn get_chain_meta(&mut self) -> Result<(), Error> {
         let data = self.node_service.get_metadata().await?;
-        println!("{}", data);
+        println!("{data}");
         Ok(())
     }
 }

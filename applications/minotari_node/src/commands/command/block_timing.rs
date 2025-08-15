@@ -69,10 +69,10 @@ impl CommandContext {
             let (max, min, avg) = BlockHeader::timing_stats(&headers);
             let first = headers.first().ok_or(ArgsError::HeaderLost)?.height;
             let last = headers.last().ok_or(ArgsError::HeaderLost)?.height;
-            println!("Timing for blocks #{} - #{}", first, last);
-            println!("Max block time: {}", max);
-            println!("Min block time: {}", min);
-            println!("Avg block time: {}", avg);
+            println!("Timing for blocks #{first} - #{last}");
+            println!("Max block time: {max}");
+            println!("Min block time: {min}");
+            println!("Avg block time: {avg}");
             Ok(())
         }
     }

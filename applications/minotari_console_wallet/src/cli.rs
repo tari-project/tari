@@ -293,13 +293,13 @@ impl FromStr for CliRecipientInfo {
             .iter()
             .map(|v| {
                 v.parse()
-                    .map_err(|e| format!("'recipient_info' - invalid output_index: {}", e))
+                    .map_err(|e| format!("'recipient_info' - invalid output_index: {e}"))
             })
             .collect::<Result<Vec<usize>, String>>()?;
 
         // Parse recipient address
         let recipient_address = TariAddress::from_base58(parts.get(1).expect("Already checked"))
-            .map_err(|e| format!("'recipient_info' - invalid recipient address: {}", e))?;
+            .map_err(|e| format!("'recipient_info' - invalid recipient address: {e}"))?;
 
         Ok(CliRecipientInfo {
             output_indexes,
@@ -499,7 +499,7 @@ pub struct FinaliseShaAtomicSwapArgs {
 }
 
 fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
-    Vec::<u8>::from_hex(s).map_err(|e| CliParseError::HexError(format!("{}", e)))
+    Vec::<u8>::from_hex(s).map_err(|e| CliParseError::HexError(format!("{e}")))
 }
 
 #[derive(Debug, Args, Clone)]

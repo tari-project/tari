@@ -57,7 +57,7 @@ impl<B: Backend> Component<B> for BaseNode {
             Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
             Span::styled(
-                format!("#{}({})", tip_height, scanned_height),
+                format!("#{tip_height}({scanned_height})"),
                 Style::default().fg(Color::Green),
             ),
             Span::raw("   "),

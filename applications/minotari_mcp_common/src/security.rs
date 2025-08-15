@@ -268,12 +268,7 @@ impl AuditLogger {
 
         // Log to structured logger
         if success {
-            log::info!(
-                "MCP Operation: {} by {} (session: {})",
-                operation,
-                client_ip,
-                session_id
-            );
+            log::info!("MCP Operation: {operation} by {client_ip} (session: {session_id})");
         } else {
             log::warn!(
                 "MCP Operation Failed: {} by {} (session: {}) - {}",

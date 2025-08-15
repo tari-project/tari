@@ -294,9 +294,8 @@ impl SendTab {
                             )) {
                                 Err(e) => {
                                     self.error_message = Some(format!(
-                                        "Error sending one-sided transaction to stealth address:\n{}\nPress Enter to \
-                                         continue.",
-                                        e
+                                        "Error sending one-sided transaction to stealth address:\n{e}\nPress Enter to \
+                                         continue."
                                     ))
                                 },
                                 Ok(_) => reset_fields = true,
@@ -422,7 +421,7 @@ impl<B: Backend> Component<B> for SendTab {
             let status = match (*rx.borrow()).clone() {
                 UiTransactionSendStatus::Initiated => "Initiated",
                 UiTransactionSendStatus::Error(e) => {
-                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                    self.error_message = Some(format!("Error sending transaction: {e}, Press Enter to continue."));
                     return;
                 },
                 UiTransactionSendStatus::TransactionComplete => {
@@ -435,7 +434,7 @@ impl<B: Backend> Component<B> for SendTab {
                 f,
                 area,
                 "Please Wait".to_string(),
-                format!("Transaction Send Status: {}", status),
+                format!("Transaction Send Status: {status}"),
                 Color::Green,
                 120,
                 10,

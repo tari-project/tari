@@ -743,9 +743,7 @@ mod test {
         if current_network == network {
             true
         } else {
-            println!(
-                "\nNetwork mismatch!! Required: {network:?}, current: {current_network:?}.\n"
-            );
+            println!("\nNetwork mismatch!! Required: {network:?}, current: {current_network:?}.\n");
             false
         }
     }

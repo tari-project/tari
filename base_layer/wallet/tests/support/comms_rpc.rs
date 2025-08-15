@@ -345,8 +345,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -367,8 +366,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -385,8 +383,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -407,8 +404,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -429,8 +425,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -451,8 +446,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -473,8 +467,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -495,8 +488,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 
@@ -517,8 +509,7 @@ impl BaseNodeWalletRpcMockState {
             sleep(Duration::from_millis(100)).await;
         }
         Err(format!(
-            "Did not receive enough calls within the timeout period, received {}, expected {}.",
-            count, num_calls
+            "Did not receive enough calls within the timeout period, received {count}, expected {num_calls}."
         ))
     }
 }

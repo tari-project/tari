@@ -464,10 +464,10 @@ mod test {
     #[test]
     fn micro_tari_from_string() {
         let micro_tari = MicroMinotari::from(99_100_000);
-        let s = format!("{}", micro_tari);
+        let s = format!("{micro_tari}");
         assert_eq!(micro_tari, MicroMinotari::from_str(s.as_str()).unwrap());
         let tari = Minotari::try_from_f32_lossy(1.12).unwrap();
-        let s = format!("{}", tari);
+        let s = format!("{tari}");
         assert_eq!(MicroMinotari::from(tari), MicroMinotari::from_str(s.as_str()).unwrap());
         assert_eq!(
             MicroMinotari::from(5_000_000),
@@ -537,7 +537,7 @@ mod test {
         let max_value = MicroMinotari(u64::MAX);
 
         assert_eq!(max_value.as_u64().to_string(), "18446744073709551615");
-        let max_str_with_currency = format!("{}", max_value);
+        let max_str_with_currency = format!("{max_value}");
         assert_eq!(&max_str_with_currency, "18446744073709.551615 T");
         let max_str_no_currency = max_str_with_currency[0..max_str_with_currency.len() - 2].to_string();
         assert_eq!(&max_str_no_currency, "18446744073709.551615");

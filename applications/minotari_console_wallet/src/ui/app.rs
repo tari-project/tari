@@ -126,14 +126,14 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_control_key(&mut self, c: char) {
-        trace!(target: LOG_TARGET, "on_control_key: {}", c);
+        trace!(target: LOG_TARGET, "on_control_key: {c}");
         if c == 'q' {
             self.should_quit = true;
         }
     }
 
     pub fn on_key(&mut self, c: char) {
-        trace!(target: LOG_TARGET, "on_key: {}", c);
+        trace!(target: LOG_TARGET, "on_key: {c}");
         match c {
             '\t' => {
                 self.tabs.next();

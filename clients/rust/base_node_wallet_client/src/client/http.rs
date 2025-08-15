@@ -138,7 +138,7 @@ impl BaseNodeWalletClient for Client {
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             Err(anyhow!(
                 "Received error response from Base Node wallet service: {}. {}",
                 status,
@@ -153,38 +153,34 @@ impl BaseNodeWalletClient for Client {
         let server_address = self.http_server_address().await?;
         debug!(
             target: LOG_TARGET,
-            "Requesting block header at height {} from Base Node wallet service at {}",
-            height, server_address
+            "Requesting block header at height {height} from Base Node wallet service at {server_address}"
         );
         let mut target_url = server_address.join("/get_header_by_height")?;
-        target_url.set_query(Some(format!("height={}", height).as_str()));
+        target_url.set_query(Some(format!("height={height}").as_str()));
         let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
         self.set_last_latency(timer.elapsed()).await;
         if res.status() == StatusCode::NOT_FOUND {
             debug!(
                 target: LOG_TARGET,
-                "No block header found at height {} from Base Node wallet service at {}",
-                height, server_address
+                "No block header found at height {height} from Base Node wallet service at {server_address}"
             );
             return Ok(None);
         }
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             return Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body
+                "Received error response from Base Node wallet service: {status}. {body}"
             ));
         } else {
             let text = res.text().await?;
             match serde_json::from_str::<BlockHeader>(&text) {
                 Ok(header) => Ok(Some(header)),
                 Err(e) => {
-                    warn!(target: LOG_TARGET, "Error decoding block header at height {}: {}, Received:{}", height, e, text);
-                    Err(anyhow!("Error decoding block header at height {}: {}", height, e))
+                    warn!(target: LOG_TARGET, "Error decoding block header at height {height}: {e}, Received:{text}");
+                    Err(anyhow!("Error decoding block header at height {height}: {e}"))
                 },
             }
         }
@@ -193,22 +189,19 @@ impl BaseNodeWalletClient for Client {
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(
-            target: LOG_TARGET, "Requesting block height at epoch time {} from Base Node wallet service at {}",
-            epoch_time, server_address
+            target: LOG_TARGET, "Requesting block height at epoch time {epoch_time} from Base Node wallet service at {server_address}"
         );
         let mut target_url = server_address.join("/get_height_at_time")?;
-        target_url.set_query(Some(format!("time={}", epoch_time).as_str()));
+        target_url.set_query(Some(format!("time={epoch_time}").as_str()));
         let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
         self.set_last_latency(timer.elapsed()).await;
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body
+                "Received error response from Base Node wallet service: {status}. {body}"
             ))
         } else {
             Ok(res.json::<u64>().await?)
@@ -235,11 +228,9 @@ impl BaseNodeWalletClient for Client {
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             return Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body,
+                "Received error response from Base Node wallet service: {status}. {body}"
             ));
         }
         Ok(res.json::<models::GetUtxosByBlockResponse>().await?)
@@ -270,32 +261,28 @@ impl BaseNodeWalletClient for Client {
                     break;
                 }
                 target_url.set_query(Some(
-                    format!(
-                        "start_header_hash={}&limit={}&page={}",
-                        &start_header_hash_hex, limit, page
-                    )
-                    .as_str(),
+                    format!("start_header_hash={start_header_hash_hex}&limit={limit}&page={page}").as_str(),
                 ));
-                debug!(target: LOG_TARGET, "Requesting UTXOs by block from Base Node wallet service at {}", target_url);
+                debug!(target: LOG_TARGET, "Requesting UTXOs by block from Base Node wallet service at {target_url}");
                 match client.get(target_url.clone()).send().await {
                     Ok(response) => match response.json::<SyncUtxosByBlockResponse>().await {
                         Ok(response) => {
                             has_next_page = response.has_next_page;
-                            debug!(target: LOG_TARGET, "Received UTXOs for page {}", page);
+                            debug!(target: LOG_TARGET, "Received UTXOs for page {page}");
                             if let Err(send_error) = resp_tx.send(Ok(response)).await {
-                                error!(target: LOG_TARGET, "Error sending utxo response: {:?}", send_error);
+                                error!(target: LOG_TARGET, "Error sending utxo response: {send_error:?}");
                             }
                         },
                         Err(error) => {
                             if let Err(send_error) = resp_tx.send(Err(error.into())).await {
-                                error!(target: LOG_TARGET, "Error sending error result: {:?}", send_error);
+                                error!(target: LOG_TARGET, "Error sending error result: {send_error:?}");
                             }
                             break;
                         },
                     },
                     Err(error) => {
                         if let Err(send_error) = resp_tx.send(Err(error.into())).await {
-                            error!(target: LOG_TARGET, "Error sending error result: {:?}", send_error);
+                            error!(target: LOG_TARGET, "Error sending error result: {send_error:?}");
                         }
                         break;
                     },
@@ -332,11 +319,9 @@ impl BaseNodeWalletClient for Client {
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             return Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body
+                "Received error response from Base Node wallet service: {status}. {body}"
             ));
         }
         debug!(
@@ -346,9 +331,9 @@ impl BaseNodeWalletClient for Client {
         );
 
         let res_text = res.text().await?;
-        debug!(target: LOG_TARGET, "Response text: {}", res_text);
+        debug!(target: LOG_TARGET, "Response text: {res_text}");
         let json = serde_json::from_str::<GetUtxosMinedInfoResponse>(&res_text)
-            .map_err(|e| anyhow!("Failed to parse response JSON: {}", e))?;
+            .map_err(|e| anyhow!("Failed to parse response JSON: {e}"))?;
         Ok(json)
     }
 
@@ -375,11 +360,9 @@ impl BaseNodeWalletClient for Client {
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             return Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body
+                "Received error response from Base Node wallet service: {status}. {body}"
             ));
         }
         debug!(
@@ -389,7 +372,7 @@ impl BaseNodeWalletClient for Client {
         );
         let res_text = res.text().await?;
         let json = serde_json::from_str::<GetUtxosDeletedInfoResponse>(&res_text)
-            .map_err(|e| anyhow!("Failed to parse response JSON: {}", e))?;
+            .map_err(|e| anyhow!("Failed to parse response JSON: {e}"))?;
         Ok(json)
     }
 
@@ -408,11 +391,9 @@ impl BaseNodeWalletClient for Client {
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             return Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body
+                "Received error response from Base Node wallet service: {status}. {body}"
             ));
         }
         Ok(res.json::<Option<TransactionOutput>>().await?)
@@ -423,7 +404,7 @@ impl BaseNodeWalletClient for Client {
         transaction: tari_core::transactions::transaction_components::Transaction,
     ) -> Result<TxSubmissionResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
-        debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {}", server_address);
+        debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {server_address}");
         let target_url = server_address.join("/json_rpc")?;
         let request_body = serde_json::json!({
             "jsonrpc": "2.0",
@@ -438,24 +419,22 @@ impl BaseNodeWalletClient for Client {
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             return Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body
+                "Received error response from Base Node wallet service: {status}. {body}"
             ));
         }
-        info!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {}", server_address);
+        info!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {server_address}");
         let response = res.json::<JsonRpcResponse<TxSubmissionResponse>>().await?;
         match response.result {
             Some(result) => {
-                debug!(target: LOG_TARGET, "Transaction submission response: {:?}", result);
+                debug!(target: LOG_TARGET, "Transaction submission response: {result:?}");
                 Ok(result)
             },
             None => {
                 let error_message = response.error.unwrap_or_else(|| "Unknown error".to_string());
-                warn!(target: LOG_TARGET, "Transaction submission failed: {}", error_message);
-                Err(anyhow!("Transaction submission failed: {}", error_message))
+                warn!(target: LOG_TARGET, "Transaction submission failed: {error_message}");
+                Err(anyhow!("Transaction submission failed: {error_message}"))
             },
         }
     }
@@ -483,11 +462,9 @@ impl BaseNodeWalletClient for Client {
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
-            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {}. {}", status, body);
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
             return Err(anyhow!(
-                "Received error response from Base Node wallet service: {}. {}",
-                status,
-                body
+                "Received error response from Base Node wallet service: {status}. {body}"
             ));
         }
         debug!(

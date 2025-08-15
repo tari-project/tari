@@ -167,9 +167,9 @@ impl BasicAuthCredentials {
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         let password_str = String::from_utf8_lossy(password);
-        let token_str = Zeroizing::new(format!("{}:{}", username, password_str));
+        let token_str = Zeroizing::new(format!("{username}:{password_str}"));
         let mut token = base64::encode(token_str.deref());
-        let header = format!("Basic {}", token);
+        let header = format!("Basic {token}");
         token.zeroize();
         match password_str {
             Cow::Borrowed(_) => {},
@@ -223,13 +223,13 @@ mod tests {
             if let BasicAuthError::InvalidScheme(s) = err {
                 assert_eq!(s, "");
             } else {
-                panic!("Unexpected error: {:?}", err);
+                panic!("Unexpected error: {err:?}");
             };
             let err = BasicAuthCredentials::parse_header("Cookie YWRtaW46c2VjcmV0").unwrap_err();
             if let BasicAuthError::InvalidScheme(s) = err {
                 assert_eq!(s, "Cookie");
             } else {
-                panic!("Unexpected error: {:?}", err);
+                panic!("Unexpected error: {err:?}");
             };
         }
     }
@@ -449,12 +449,12 @@ mod tests {
             let avg_long = round_to_6_decimals(long.iter().sum::<u128>() as f64 / long.len() as f64 / COUNTS as f64);
             let avg_actual =
                 round_to_6_decimals(actual.iter().sum::<u128>() as f64 / actual.len() as f64 / COUNTS as f64);
-            println!("Test runs:                                 {}", test_runs);
-            println!("Minimum variance:                          {} %", min_variance);
-            println!("Average variance:                          {} %", avg_variance);
-            println!("Average short username time:               {} microseconds", avg_short);
-            println!("Average long username time:                {} microseconds", avg_long);
-            println!("Average actual username time:              {} microseconds", avg_actual);
+            println!("Test runs:                                 {test_runs}");
+            println!("Minimum variance:                          {min_variance} %");
+            println!("Average variance:                          {avg_variance} %");
+            println!("Average short username time:               {avg_short} microseconds");
+            println!("Average long username time:                {avg_long} microseconds");
+            println!("Average actual username time:              {avg_actual} microseconds");
 
             // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);
@@ -599,12 +599,12 @@ mod tests {
             let avg_long = round_to_6_decimals(long.iter().sum::<u128>() as f64 / long.len() as f64 / COUNTS as f64);
             let avg_actual =
                 round_to_6_decimals(actual.iter().sum::<u128>() as f64 / actual.len() as f64 / COUNTS as f64);
-            println!("Test runs:                                 {}", test_runs);
-            println!("Minimum variance:                          {} %", min_variance);
-            println!("Average variance:                          {} %", avg_variance);
-            println!("Average short username time:               {} microseconds", avg_short);
-            println!("Average long username time:                {} microseconds", avg_long);
-            println!("Average actual username time:              {} microseconds", avg_actual);
+            println!("Test runs:                                 {test_runs}");
+            println!("Minimum variance:                          {min_variance} %");
+            println!("Average variance:                          {avg_variance} %");
+            println!("Average short username time:               {avg_short} microseconds");
+            println!("Average long username time:                {avg_long} microseconds");
+            println!("Average actual username time:              {avg_actual} microseconds");
 
             // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);

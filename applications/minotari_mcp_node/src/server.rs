@@ -165,7 +165,7 @@ impl NodeMcpServer {
 
         // Convert Arc<dyn McpTool> to Box<dyn McpTool> for registration
         for (name, arc_tool) in discovered_tools {
-            log::info!("Registering auto-discovered tool: {}", name);
+            log::info!("Registering auto-discovered tool: {name}");
 
             // Create a wrapper that clones the Arc for each execution
             let arc_clone = arc_tool.clone();
@@ -214,7 +214,7 @@ impl NodeMcpServer {
         if let Some(ref process_launcher) = self.launched_process {
             log::info!("Stopping launched base node process...");
             if let Err(e) = process_launcher.stop().await {
-                log::warn!("Failed to stop launched base node: {}", e);
+                log::warn!("Failed to stop launched base node: {e}");
             }
         }
 
@@ -232,16 +232,16 @@ impl NodeMcpServer {
     async fn create_grpc_client(config: &NodeMcpConfig) -> McpResult<BaseNodeGrpcClient<Channel>> {
         let endpoint_url = config.node_grpc_url();
 
-        log::info!("Connecting to base node at: {}", endpoint_url);
+        log::info!("Connecting to base node at: {endpoint_url}");
 
         let endpoint = Endpoint::from_shared(endpoint_url)
-            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {}", e)))?;
+            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {e}")))?;
 
         let channel = endpoint
             .timeout(std::time::Duration::from_secs(config.node_grpc.timeout_secs))
             .connect()
             .await
-            .map_err(|e| McpError::config_error(format!("Failed to connect to base node: {}", e)))?;
+            .map_err(|e| McpError::config_error(format!("Failed to connect to base node: {e}")))?;
 
         // Create client (simplified - no authentication for now)
         let client = BaseNodeClient::new(channel);
@@ -264,7 +264,7 @@ impl NodeMcpServer {
         // Add the base node service endpoint
         let endpoint_url = config.node_grpc_url();
         let endpoint = Endpoint::from_shared(endpoint_url)
-            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {}", e)))?
+            .map_err(|e| McpError::config_error(format!("Invalid gRPC endpoint: {e}")))?
             .timeout(Duration::from_secs(config.node_grpc.timeout_secs))
             .connect_timeout(Duration::from_secs(5));
 
@@ -282,7 +282,7 @@ impl NodeMcpServer {
         // Check if already running using proper health monitor
         let health_monitor = ServiceHealthMonitors::base_node(&config.node_grpc.address);
         if health_monitor.is_service_ready().await {
-            log::info!("Base node already running and healthy on port {}", port);
+            log::info!("Base node already running and healthy on port {port}");
             return Ok(None); // No process launched by us
         }
 
@@ -292,8 +292,8 @@ impl NodeMcpServer {
         let launch_config = cli.extract_launch_config();
         let node_args = cli.extract_node_args();
 
-        log::info!("Launching base node with config: {:?}", launch_config);
-        log::info!("Node arguments: {:?}", node_args);
+        log::info!("Launching base node with config: {launch_config:?}");
+        log::info!("Node arguments: {node_args:?}");
 
         // Create process launcher using TariProcessLauncher
         let (launcher, mut status_rx) = TariProcessLauncher::launch_node(
@@ -312,7 +312,7 @@ impl NodeMcpServer {
         let launcher_handle = tokio::spawn(async move {
             match launcher_for_background.launch().await {
                 Ok(result) => {
-                    log::info!("Base node launched successfully: {:?}", result);
+                    log::info!("Base node launched successfully: {result:?}");
                     // Keep the launcher alive to maintain the process
                     loop {
                         if !launcher_for_background.is_running().await {
@@ -323,7 +323,7 @@ impl NodeMcpServer {
                     }
                 },
                 Err(e) => {
-                    log::error!("Failed to launch base node: {}", e);
+                    log::error!("Failed to launch base node: {e}");
                 },
             }
         });
@@ -341,11 +341,11 @@ impl NodeMcpServer {
 
             // Check launcher status
             if let Ok(status) = status_rx.try_recv() {
-                log::debug!("Launcher status: {:?}", status);
+                log::debug!("Launcher status: {status:?}");
                 match status {
                     ProcessLaunchStatus::Failed(err) => {
                         launcher_handle.abort();
-                        return Err(McpError::server_error(format!("Failed to start base node: {}", err)));
+                        return Err(McpError::server_error(format!("Failed to start base node: {err}")));
                     },
                     ProcessLaunchStatus::Running => {
                         log::info!("Base node process is running, waiting for health checks...");
