@@ -257,7 +257,8 @@ mod test {
     use tari_utilities::hex::from_hex;
 
     use super::*;
-    use crate::transaction_components::covenants::{byte_codes::*, covenant};
+    use crate::transaction_components::covenants::{byte_codes::*};
+    use crate::covenant;
 
     mod require_x_impl {
         use super::*;

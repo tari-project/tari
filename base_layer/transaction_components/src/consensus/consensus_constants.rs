@@ -1108,10 +1108,8 @@ mod test {
             emission::{Emission, EmissionSchedule},
             ConsensusConstants,
         },
-        transactions::{
-            tari_amount::{uT, MicroMinotari},
-            transaction_components::{OutputType, RangeProofType},
-        },
+        tari_amount::{uT, MicroMinotari},
+        transaction_components::{OutputType, RangeProofType},
     };
 
     #[test]

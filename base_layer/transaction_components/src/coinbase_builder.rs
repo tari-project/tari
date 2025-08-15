@@ -531,6 +531,7 @@ mod test {
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
         CoinbaseBuilder,
     };
+    use crate::test_helpers::TestParams;
 
     fn get_builder() -> (
         CoinbaseBuilder<MemoryDbKeyManager>,

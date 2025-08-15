@@ -54,16 +54,17 @@ mod test {
     use digest::{consts::U32, Update};
     use tari_crypto::hashing::DomainSeparation;
 
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     use super::*;
     use crate::{
         covenant,
-        covenants::{
+        transaction_components::covenants::{
             filters::test::setup_filter_test,
             test::{create_input, make_sample_sidechain_feature},
             BaseLayerCovenantsDomain,
             COVENANTS_FIELD_HASHER_LABEL,
         },
-        transactions::{transaction_components::OutputFeatures, transaction_key_manager::create_memory_db_key_manager},
+        transaction_components::OutputFeatures,
     };
 
     #[tokio::test]

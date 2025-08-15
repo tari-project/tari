@@ -60,7 +60,7 @@ mod tests {
     use super::*;
     use crate::{
         covenant,
-        covenants::{
+        transaction_components::covenants::{
             byte_codes::{ARG_HASH, ARG_OUTPUT_FIELD, FILTER_AND, FILTER_FIELD_EQ, FILTER_IDENTITY, FILTER_OR},
             OutputField,
         },

@@ -61,7 +61,7 @@ pub fn check_tari_script_byte_size(
     max_script_size: usize,
 ) -> Result<(), AggregatedBodyValidationError> {
     let script_size = script.get_serialized_size().map_err(|e| {
-        AggregatedBodyValidationError::SerializationError(format!("Failed to get serialized script size: {}", e))
+        AggregatedBodyValidationError::SerializationError(format!("Failed to get serialized script size: {e}"))
     })?;
     if script_size > max_script_size {
         return Err(AggregatedBodyValidationError::TariScriptExceedsMaxSize {
@@ -188,10 +188,7 @@ pub fn validate_output_version(
             .opcode
             .contains(&opcode.get_version())
         {
-            let msg = format!(
-                "Transaction output script opcode is not allowed by consensus ({})",
-                opcode
-            );
+            let msg = format!("Transaction output script opcode is not allowed by consensus ({opcode})");
             return Err(AggregatedBodyValidationError::ConsensusError(msg));
         }
     }
@@ -218,7 +215,7 @@ mod test {
     use tari_test_utils::unpack_enum;
 
     use super::*;
-    use crate::transactions::{test_helpers, test_helpers::TestParams, CryptoFactories};
+    use crate::{test_helpers, test_helpers::TestParams, crypto_factories::CryptoFactories};
 
     mod is_all_unique_and_sorted {
         use super::*;
@@ -285,14 +282,13 @@ mod test {
     }
 
     mod check_coinbase_maturity {
-        use futures::executor::block_on;
 
         use super::*;
-        use crate::transactions::{
+        use crate::{
             aggregated_body::AggregateBody,
             transaction_components::{RangeProofType, TransactionError},
-            transaction_key_manager::create_memory_db_key_manager,
         };
+        use tari_transaction_key_manager::create_memory_db_key_manager;
 
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
@@ -301,12 +297,12 @@ mod test {
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let key_manager = create_memory_db_key_manager().unwrap();
-            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(
+            let coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
                 None,
                 RangeProofType::RevealedValue,
-            ));
+            ).await;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 

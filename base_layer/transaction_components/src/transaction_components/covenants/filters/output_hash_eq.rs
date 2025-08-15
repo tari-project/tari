@@ -47,12 +47,12 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        covenants::{
+        transaction_components::covenants::{
             filters::test::setup_filter_test,
             test::{create_input, create_outputs},
         },
-        transactions::transaction_key_manager::create_memory_db_key_manager,
     };
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_output_with_specific_hash() {

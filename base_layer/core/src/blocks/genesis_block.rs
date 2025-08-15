@@ -427,14 +427,14 @@ mod test {
         input_mr_hash_from_pruned_mmr,
         kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
-        transactions::{
-            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
-            CryptoFactories,
-        },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
         PrunedInputMmr,
         PrunedOutputMmr,
+    };
+    use tari_transaction_components::{
+        transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
+        crypto_factories::CryptoFactories,
     };
     #[test]
     #[serial]

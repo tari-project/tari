@@ -58,9 +58,9 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::transaction_key_manager::create_memory_db_key_manager,
+        transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_outputset_using_symmetric_difference() {

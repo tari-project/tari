@@ -118,7 +118,7 @@ async fn add_many_chained_blocks(
 
 mod fetch_blocks {
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -209,7 +209,7 @@ mod fetch_blocks {
 
 mod fetch_headers {
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -297,7 +297,7 @@ mod find_headers_after_hash {
     use tari_common_types::types::FixedHash;
 
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_none_given_empty_vec() {
@@ -352,7 +352,7 @@ mod find_headers_after_hash {
 
 mod fetch_block_hashes_from_header_tip {
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -421,7 +421,7 @@ mod get_stats {
 
 mod fetch_total_size_stats {
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_measures_the_number_of_entries() {
@@ -480,7 +480,7 @@ mod prepare_new_block {
 
 mod fetch_header_containing_kernel_mmr {
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     #[tokio::test]
     async fn it_returns_corresponding_header() {
         let db = setup();
@@ -529,7 +529,7 @@ mod fetch_header_containing_kernel_mmr {
 
 mod clear_all_pending_headers {
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_clears_no_headers() {

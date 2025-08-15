@@ -8101,6 +8101,7 @@ dependencies = [
  "tari_script",
  "tari_service_framework",
  "tari_sidechain",
+ "tari_test_utils",
  "tari_transaction_key_manager",
  "tari_utilities",
  "thiserror 1.0.69",

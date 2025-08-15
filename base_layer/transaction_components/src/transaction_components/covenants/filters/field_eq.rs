@@ -85,9 +85,11 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        covenants::test::{create_context, create_input, create_outputs},
-        transactions::{transaction_components::OutputType, transaction_key_manager::create_memory_db_key_manager},
+        transaction_components::covenants::test::{create_context, create_input, create_outputs},
+        transaction_components::OutputType,
     };
+
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_uint() {

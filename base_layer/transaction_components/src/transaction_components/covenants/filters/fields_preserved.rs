@@ -49,9 +49,10 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::{transaction_components::OutputType, transaction_key_manager::create_memory_db_key_manager},
+        transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
+        transaction_components::OutputType,
     };
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_outputs_that_match_input_fields() {

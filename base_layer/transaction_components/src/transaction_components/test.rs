@@ -22,6 +22,8 @@
 
 #![allow(clippy::indexing_slicing)]
 use rand::rngs::OsRng;
+use tari_transaction_key_manager::MemoryDbKeyManager;
+use tari_common::configuration::Network;
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -29,35 +31,27 @@ use tari_crypto::{
     range_proof::RangeProofService,
     tari_utilities::hex::Hex,
 };
-use tari_p2p::Network;
 use tari_script::{inputs, script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
-
+use tari_transaction_key_manager::create_memory_db_key_manager_with_range_proof_size;
 use super::*;
 use crate::{
     consensus::ConsensusManager,
-    transactions::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, T},
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{
+            covenants::Covenant,
             memo_field::MemoField,
             transaction_output::batch_verify_range_proofs,
             OutputFeatures,
         },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            create_memory_db_key_manager_with_range_proof_size,
-            TransactionKeyManagerInterface,
-        },
-        transaction_protocol::TransactionProtocolError,
-        CryptoFactories,
-    },
+        crypto_factories::CryptoFactories,
     txn_schema,
-    validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
+    validation::{transaction::TransactionInternalConsistencyValidator},
 };
-
+use tari_transaction_key_manager::create_memory_db_key_manager;
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
     let key_manager = create_memory_db_key_manager().unwrap();
@@ -587,11 +581,9 @@ mod validate_internal_consistency {
 
     use super::*;
     use crate::{
-        covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
-        transactions::{
+        covenant,
+        transaction_components::covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
             test_helpers::{create_transaction_with, create_wallet_outputs},
-            transaction_key_manager::MemoryDbKeyManager,
-        },
     };
 
     async fn test_case(
@@ -599,7 +591,7 @@ mod validate_internal_consistency {
         utxo_params: &UtxoTestParams,
         height: u64,
         key_manager: &MemoryDbKeyManager,
-    ) -> Result<(), TransactionProtocolError> {
+    ) -> Result<(), TransactionError> {
         let (mut inputs, outputs) = create_wallet_outputs(
             100 * T,
             1,

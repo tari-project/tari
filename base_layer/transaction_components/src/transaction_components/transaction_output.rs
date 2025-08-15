@@ -585,14 +585,13 @@ pub fn batch_verify_range_proofs(
 #[cfg(test)]
 mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
-    use crate::transactions::{
+    use crate::{
         tari_amount::MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
-        CryptoFactories,
-    };
-
+        crypto_factories::CryptoFactories,
+    };use tari_transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::MemoryDbKeyManager;
     #[tokio::test]
     async fn it_builds_correctly() {
         let factories = CryptoFactories::default();

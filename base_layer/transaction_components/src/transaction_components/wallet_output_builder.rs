@@ -354,7 +354,7 @@ mod test {
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
     use super::*;
-    use crate::transactions::transaction_key_manager::create_memory_db_key_manager;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn test_try_build() {

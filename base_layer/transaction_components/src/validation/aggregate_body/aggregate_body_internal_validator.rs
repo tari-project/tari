@@ -356,7 +356,7 @@ fn check_weight(
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
         .map_err(|e| {
-            AggregatedBodyValidationError::SerializationError(format!("Unable to calculate body weight: {}", e))
+            AggregatedBodyValidationError::SerializationError(format!("Unable to calculate body weight: {e}"))
         })?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
@@ -520,20 +520,16 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use std::iter;
 
-    use futures::StreamExt;
     use rand::seq::SliceRandom;
     use tari_common::configuration::Network;
     use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
     use tari_script::script;
-
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     use super::*;
     use crate::{
-        covenants::Covenant,
-        transactions::{
+        transaction_components::covenants::Covenant,
             test_helpers,
             transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion},
-            transaction_key_manager::create_memory_db_key_manager,
-        },
     };
 
     mod check_lock_height {
@@ -659,21 +655,19 @@ mod test {
             kernels.sort();
 
             let key_manager = create_memory_db_key_manager().unwrap();
-            let mut outputs = futures::stream::unfold((), |_| async {
-                let (o, _, _) = test_helpers::create_utxo(
-                    100.into(),
-                    &key_manager,
-                    &OutputFeatures::create_burn_output(),
-                    &script!(Nop).unwrap(),
-                    &Covenant::default(),
-                    0.into(),
-                )
-                .await;
-                Some((o, ()))
-            })
-            .take(10)
-            .collect::<Vec<_>>()
-            .await;
+            let mut outputs = Vec::new();
+            for _ in 0 ..10{
+                    let (o, _, _) = test_helpers::create_utxo(
+                        100.into(),
+                        &key_manager,
+                        &OutputFeatures::create_burn_output(),
+                        &script!(Nop).unwrap(),
+                        &Covenant::default(),
+                        0.into(),
+                    )
+                        .await;
+                    outputs.push(o);
+            }
 
             while is_all_unique_and_sorted(&outputs) {
                 // Shuffle the outputs until they are not sorted
