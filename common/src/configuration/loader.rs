@@ -128,7 +128,7 @@ pub trait SubConfigPath {
     /// Path for `override_from` key in config
     fn subconfig_key() -> String {
         let main = <Self as SubConfigPath>::main_key_prefix();
-        format!("{}.override_from", main)
+        format!("{main}.override_from")
     }
 }
 impl<C: SubConfigPath> ConfigPath for C {
@@ -326,7 +326,7 @@ impl From<config::ConfigError> for ConfigurationError {
                 ref key,
                 ..
             } => Self {
-                field: format!("{:?}", key),
+                field: format!("{key:?}"),
                 value: Some(unexpected.to_string()),
                 message: err.to_string(),
             },

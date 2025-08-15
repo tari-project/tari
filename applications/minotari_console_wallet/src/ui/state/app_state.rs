@@ -19,6 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+#![allow(clippy::indexing_slicing)]
 use std::{
     collections::{HashMap, VecDeque},
     path::PathBuf,
@@ -711,15 +713,15 @@ impl AppStateInner {
                     let (payref_hex_opt, status_text) = if confirmations >= required_confirmations {
                         (
                             Some(payref_hex.clone()),
-                            format!("Available ({} confirmations)", confirmations),
+                            format!("Available ({confirmations} confirmations)"),
                         )
                     } else {
                         let remaining = required_confirmations - confirmations;
                         (
                             None,
                             format!(
-                                "Pending ({}/{} confirmations, {} blocks remaining)",
-                                confirmations, required_confirmations, remaining
+                                "Pending ({confirmations}/{required_confirmations} confirmations, {remaining} blocks \
+                                 remaining)"
                             ),
                         )
                     };
@@ -851,7 +853,7 @@ impl AppStateInner {
                 .contacts_service
                 .get_contact_online_status(contact.clone())
                 .await?;
-            ui_contacts.push(UiContact::from(contact.clone()).with_online_status(format!("{}", online_status)));
+            ui_contacts.push(UiContact::from(contact.clone()).with_online_status(format!("{online_status}")));
         }
 
         ui_contacts.sort_by(|a, b| {
@@ -901,7 +903,7 @@ impl AppStateInner {
             .build()
             .lines()
             .skip(1)
-            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
+            .fold("".to_string(), |acc, l| format!("{acc}{l}\n"));
         let identity = MyIdentity {
             tari_address_one_sided: wallet_id.address_one_sided.clone(),
             network_address: wallet_id
@@ -1127,7 +1129,7 @@ impl AppStateData {
             .build()
             .lines()
             .skip(1)
-            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
+            .fold("".to_string(), |acc, l| format!("{acc}{l}\n"));
 
         let identity = MyIdentity {
             tari_address_one_sided: wallet_identity.address_one_sided.clone(),

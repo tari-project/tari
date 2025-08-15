@@ -185,7 +185,7 @@ fn display_password_feedback(passphrase: &SafePassword) -> bool {
         println!("You may want to consider changing it to a stronger one.");
         println!("Here are some suggestions:");
         for suggestion in feedback {
-            println!("- {}", suggestion);
+            println!("- {suggestion}");
         }
         println!();
 
@@ -278,9 +278,9 @@ pub async fn init_wallet(
             .parent()
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
-    .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
+    .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {e}")))?;
     fs::create_dir_all(&config.p2p.datastore_path)
-        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {e}")))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
@@ -339,7 +339,7 @@ pub async fn init_wallet(
     .await
     .map_err(|e| match e {
         WalletError::CommsInitializationError(cie) => cie.to_exit_error(),
-        e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
+        e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {e}")),
     })?;
 
     debug!(
@@ -358,7 +358,7 @@ pub async fn init_wallet(
         let _result = fs::write(file_name, seed_words.reveal()).map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
-                format!("Problem writing seed words to file: {}", e),
+                format!("Problem writing seed words to file: {e}"),
             )
         });
     };
@@ -417,11 +417,11 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -
         // NOTE: https://github.com/tari-project/tari/issues/5227
         debug!("revalidating all transactions");
         if let Err(e) = wallet.transaction_service.revalidate_rejected_transactions().await {
-            error!(target: LOG_TARGET, "Failed to revalidate rejected transactions: {}", e);
+            error!(target: LOG_TARGET, "Failed to revalidate rejected transactions: {e}");
         }
         debug!("restarting transaction protocols");
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
-            error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
+            error!(target: LOG_TARGET, "Problem restarting transaction protocols: {e}");
         }
 
         // validate transaction outputs
@@ -435,7 +435,7 @@ async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
     debug!(target: LOG_TARGET, "Starting TXO validations.");
 
     wallet.output_manager_service.validate_txos().await.map_err(|e| {
-        error!(target: LOG_TARGET, "Error validating Unspent TXOs: {}", e);
+        error!(target: LOG_TARGET, "Error validating Unspent TXOs: {e}");
         ExitError::new(ExitCode::WalletError, e)
     })?;
 
@@ -520,7 +520,7 @@ pub fn tari_splash_screen(heading: &str) {
     println!("⠀⠀⠀⠀⠙⣿⣿⣼⣿⡟⣀⣶⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣰⣿⣿⠃⠀⠀⠀⠀⣿⣿⣿⠀⢸⣿⣿⠀⠀⠙⣿⣿⣷⣄⠀⠀⢸⣿⣿⠀");
     println!("⠀⠀⠀⠀⠀⠀⠙⣿⣿⣿⣿⠛⠀                                                          ");
     println!("⠀⠀⠀⠀⠀⠀⠀⠀⠙⠁⠀                                                            ");
-    println!("{}", heading);
+    println!("{heading}");
     println!();
 }
 
@@ -738,7 +738,7 @@ pub fn prompt_ledger_account(boot_mode: WalletBoot) -> Option<u64> {
         },
     };
 
-    println!("{}", question);
+    println!("{question}");
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
     let input = input.trim();
@@ -753,7 +753,7 @@ pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
     let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
     disable_raw_mode().expect("Could not disable raw mode");
 
-    println!("{} (hex)", prompt);
+    println!("{prompt} (hex)");
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
     let input = input.trim();
@@ -763,7 +763,7 @@ pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
     match PrivateKey::from_canonical_bytes(&Vec::<u8>::from_hex(input).expect("Bad hex data")) {
         Ok(pk) => Some(pk),
         Err(e) => {
-            panic!("Bad private key: {}", e)
+            panic!("Bad private key: {e}")
         },
     }
 }
@@ -772,7 +772,7 @@ pub fn prompt_public_key(prompt: &str) -> Option<CompressedPublicKey> {
     // see what we type, as we type it
     let must_re_enable_raw_mode = is_raw_mode_enabled().expect("Could not determine raw mode status");
     disable_raw_mode().expect("Could not disable raw mode");
-    println!("{} (hex or base58)", prompt);
+    println!("{prompt} (hex or base58)");
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
     if must_re_enable_raw_mode {

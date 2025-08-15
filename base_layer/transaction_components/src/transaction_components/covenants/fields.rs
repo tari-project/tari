@@ -196,7 +196,7 @@ impl OutputField {
                             Some(None) => Ok(false),
                             None => Err(CovenantError::InvalidArgument {
                                 filter: "is_eq",
-                                details: format!("Invalid type for field {}", self),
+                                details: format!("Invalid type for field {self}"),
                             }),
                         }
                     },
@@ -206,7 +206,7 @@ impl OutputField {
                 Some(field_val) => Ok(field_val == val),
                 None => Err(CovenantError::InvalidArgument {
                     filter: "is_eq",
-                    details: format!("Invalid type for field {}", self),
+                    details: format!("Invalid type for field {self}"),
                 }),
             },
         }

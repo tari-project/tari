@@ -51,7 +51,7 @@ impl DecideNextSync {
         let local_metadata = match shared.db.get_chain_metadata().await {
             Ok(m) => m,
             Err(e) => {
-                return FatalError(format!("Could not get local blockchain metadata. {}", e));
+                return FatalError(format!("Could not get local blockchain metadata. {e}"));
             },
         };
 
@@ -63,13 +63,13 @@ impl DecideNextSync {
 
         if local_metadata.pruning_horizon() > 0 {
             // Filter sync peers that claim to be able to provide blocks up until our pruned height
-            debug!(target: LOG_TARGET, "Local metadata: {}", local_metadata);
+            debug!(target: LOG_TARGET, "Local metadata: {local_metadata}");
             let mut sync_peers = self.sync_peers.clone();
             let sync_peers = sync_peers
                 .drain(..)
                 .filter(|sync_peer| {
                     let remote_metadata = sync_peer.claimed_chain_metadata();
-                    debug!(target: LOG_TARGET, "Peer metadata: {}", remote_metadata);
+                    debug!(target: LOG_TARGET, "Peer metadata: {remote_metadata}");
                     // Must be able to provide the correct amount of full blocks past the pruned height (i.e. the
                     // pruning horizon), otherwise our horizon spec will not be met
                     remote_metadata.best_block_height().saturating_sub(remote_metadata.pruned_height()) >=

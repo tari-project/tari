@@ -227,21 +227,20 @@ where
                 event = base_node_service_event_stream.recv() => {
                     match event {
                         Ok(msg) => self.handle_base_node_service_event(msg),
-                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {e}"),
                     }
                 },
                 event = utxo_scanner_events.recv() => {
                     match event {
                         Ok(msg) => self.handle_utxo_scanner_service_event(msg),
-                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {}", e),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on utxo scanner event broadcast channel: {e}"),
                     }
                 },
                 Some(request_context) = request_stream.next() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let response = self.handle_request(request).await.map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
-                        e
+                    let response = self.handle_request(request).await.inspect_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling request: {e:?}");
                     });
                     let _result = reply_tx.send(response).inspect_err(|_| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
@@ -263,7 +262,7 @@ where
         &mut self,
         request: OutputManagerRequest,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
-        trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
+        trace!(target: LOG_TARGET, "Handling Service Request: {request}");
         match request {
             OutputManagerRequest::AddOutput((uo, spend_priority)) => self
                 .add_output(None, *uo, spend_priority)
@@ -319,7 +318,7 @@ where
                     expected_commitment,
                     recipient_address,
                     MemoField::new_open(output_hash.to_vec(), TxType::PaymentToOther)
-                        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID: {}", e)))?,
+                        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID: {e}")))?,
                     0,
                     RangeProofType::BulletProofPlus,
                     0.into(),
@@ -595,9 +594,8 @@ where
             UtxoScannerEvent::ScanningRoundFailed { .. } => {},
             UtxoScannerEvent::Progress { .. } => {},
             UtxoScannerEvent::Completed { .. } => {
-                let _id = self.validate_outputs().map_err(|e| {
-                    warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
-                    e
+                let _id = self.validate_outputs().inspect_err(|e| {
+                    warn!(target: LOG_TARGET, "Error validating  txos: {e:?}");
                 });
             },
         }
@@ -637,12 +635,12 @@ where
                     if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationAlreadyBusy(id))) {
                         debug!(
                             target: LOG_TARGET,
-                            "Error sending event because there are no subscribers: {:?}", e
+                            "Error sending event because there are no subscribers: {e:?}"
                         );
                     }
                     debug!(
                         target: LOG_TARGET,
-                        "UTXO Validation Protocol (Id: {}) spawned while a previous protocol was busy, ignored", id
+                        "UTXO Validation Protocol (Id: {id}) spawned while a previous protocol was busy, ignored"
                     );
                     return;
                 },
@@ -658,14 +656,14 @@ where
                                 Ok(id) => {
                                     info!(
                                         target: LOG_TARGET,
-                                        "UTXO Validation Protocol (Id: {}) completed successfully", id
+                                        "UTXO Validation Protocol (Id: {id}) completed successfully"
                                     );
                                     return;
                                 },
                                 Err(OutputManagerProtocolError { id, error }) => {
                                     warn!(
                                         target: LOG_TARGET,
-                                        "Error completing UTXO Validation Protocol (Id: {}): {}", id, error
+                                        "Error completing UTXO Validation Protocol (Id: {id}): {error}"
                                     );
                                     let event_payload = match error {
                                         OutputManagerError::InconsistentBaseNodeDataError(_) |
@@ -678,7 +676,7 @@ where
                                     if let Err(e) = event_publisher.send(Arc::new(event_payload)) {
                                         debug!(
                                             target: LOG_TARGET,
-                                            "Error sending event because there are no subscribers: {:?}", e
+                                            "Error sending event because there are no subscribers: {e:?}"
                                         );
                                     }
 
@@ -687,13 +685,13 @@ where
                             }
                         },
                         _ = shutdown.wait() => {
-                            debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because the system \
-                                is shutting down", id);
+                            debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) shutting down because the system \
+                                is shutting down");
                             return;
                         },
                         event = utxo_scanner_service_event_stream.recv() => {
                             if let Ok(UtxoScannerEvent::Completed{..}) = event {
-                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) resetting because base node height changed", id);
+                                debug!(target: LOG_TARGET, "TXO Validation Protocol (Id: {id}) resetting because base node height changed");
                                 continue 'outer;
                             }
                         }
@@ -764,7 +762,7 @@ where
             None,
         )
         .await?;
-        trace!(target: LOG_TARGET, "TxId: {}, {:?}", tx_id, output);
+        trace!(target: LOG_TARGET, "TxId: {tx_id}, {output:?}");
         self.resources.db.add_unvalidated_output(tx_id, output)?;
 
         // Because we added new outputs, let try to trigger a validation for them
@@ -800,7 +798,7 @@ where
 
     fn get_balance(&self, current_tip_for_time_lock_calculation: Option<u64>) -> Result<Balance, OutputManagerError> {
         let balance = self.resources.db.get_balance(current_tip_for_time_lock_calculation)?;
-        trace!(target: LOG_TARGET, "Balance: {:?}", balance);
+        trace!(target: LOG_TARGET, "Balance: {balance:?}");
         Ok(balance)
     }
 
@@ -813,7 +811,7 @@ where
             .resources
             .db
             .get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)?;
-        trace!(target: LOG_TARGET, "Balance: {:?}", balance);
+        trace!(target: LOG_TARGET, "Balance: {balance:?}");
         Ok(balance)
     }
 
@@ -866,7 +864,7 @@ where
             TxType::PaymentToOther,
             vec![],
         )
-        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID, size: {}", e)))?;
+        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID, size: {e}")))?;
         let encrypted_data = self
             .resources
             .key_manager
@@ -957,11 +955,7 @@ where
     ) -> Result<MicroMinotari, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Getting fee estimate. Amount: {}. Fee per gram: {}. Num kernels: {}. Num outputs: {}",
-            amount,
-            fee_per_gram,
-            num_kernels,
-            num_outputs
+            "Getting fee estimate. Amount: {amount}. Fee per gram: {fee_per_gram}. Num kernels: {num_kernels}. Num outputs: {num_outputs}"
         );
         // We assume that default OutputFeatures and PushPubKey TariScript is used
         let features_and_scripts_byte_size = self
@@ -1019,7 +1013,7 @@ where
 
         let fee = utxo_selection.as_final_fee();
 
-        debug!(target: LOG_TARGET, "Fee calculated: {}", fee);
+        debug!(target: LOG_TARGET, "Fee calculated: {fee}");
         Ok(fee)
     }
 
@@ -1042,8 +1036,7 @@ where
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Preparing to send transaction - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, selection: {}",
-            tx_id, amount, fee_per_gram, payment_id, selection_criteria,
+            "Preparing to send transaction - TxId: {tx_id}, amount: {amount}, fee per gram: {fee_per_gram}, payment id: {payment_id}, selection: {selection_criteria}"
         );
         let features_and_scripts_byte_size = self
             .resources
@@ -1149,7 +1142,7 @@ where
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), change_output)?;
 
-        debug!(target: LOG_TARGET, "Prepared transaction (TxId: {}) to send", tx_id);
+        debug!(target: LOG_TARGET, "Prepared transaction (TxId: {tx_id}) to send");
 
         Ok(stp)
     }
@@ -1291,7 +1284,7 @@ where
     ) -> Result<TariKeyAndId, OutputManagerError> {
         let index = payment_id
             .get_u64_data()
-            .map_err(|e| OutputManagerError::InvalidPaymentIdFormat(format!("TxId: {}, {}", tx_id, e)))?;
+            .map_err(|e| OutputManagerError::InvalidPaymentIdFormat(format!("TxId: {tx_id}, {e}")))?;
         let script_key_id = TariKeyId::Managed {
             branch: TransactionKeyManagerBranch::PreMine.get_branch_key(),
             index,
@@ -1343,8 +1336,7 @@ where
             UseOutput::FromBlockchain(output_hash) => {
                 self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
                     OutputManagerError::ServiceError(format!(
-                        "Output with hash {} not found in blockchain (TxId: {})",
-                        output_hash, tx_id
+                        "Output with hash {output_hash} not found in blockchain (TxId: {tx_id})"
                     ))
                 })?
             },
@@ -1352,8 +1344,7 @@ where
         };
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
-                "Output commitment does not match expected commitment (TxId: {})",
-                tx_id
+                "Output commitment does not match expected commitment (TxId: {tx_id})"
             )));
         }
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: fetched outputs");
@@ -1429,14 +1420,12 @@ where
                 )
             } else {
                 return Err(OutputManagerError::ServiceError(format!(
-                    "Could not verify mask (TxId: {})",
-                    tx_id
+                    "Could not verify mask (TxId: {tx_id})"
                 )));
             }
         } else {
             return Err(OutputManagerError::ServiceError(format!(
-                "Could not decrypt output (TxId: {})",
-                tx_id
+                "Could not decrypt output (TxId: {tx_id})"
             )));
         };
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: decrypt secrets, created unblinded input");
@@ -1463,7 +1452,7 @@ where
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
         let amount = input.value - fee;
-        trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script, with fee {}", fee);
+        trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script, with fee {fee}");
 
         // Create sender transaction protocol builder with recipient data and no change
         let mut builder = SenderTransactionProtocol::builder(
@@ -1522,8 +1511,7 @@ where
         let sender_offset_private_key_id_self =
             stp.get_recipient_sender_offset_private_key()?
                 .ok_or(OutputManagerError::ServiceError(format!(
-                    "Missing sender offset private key ID (TxId: {})",
-                    tx_id
+                    "Missing sender offset private key ID (TxId: {tx_id})"
                 )))?;
 
         let shared_secret = {
@@ -1539,8 +1527,7 @@ where
                     recipient_address
                         .public_view_key()
                         .ok_or(OutputManagerError::ServiceError(format!(
-                            "Missing public view key (TxId: {})",
-                            tx_id
+                            "Missing public view key (TxId: {tx_id})"
                         )))?,
                 )
                 .await?;
@@ -1638,7 +1625,7 @@ where
         stp.finalize(&self.resources.key_manager)
             .await
             .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
-        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {tx_id}");
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: finalized partial transaction");
 
         let mut aggregated_script_signature_public_nonces = UncompressedPublicKey::default();
@@ -1717,14 +1704,12 @@ where
         // Fetch the output from the blockchain
         let output = self.fetch_utxo_from_node(output_hash).await?.ok_or_else(|| {
             OutputManagerError::ServiceError(format!(
-                "Output with hash {} not found in blockchain (TxId: {})",
-                output_hash, tx_id
+                "Output with hash {output_hash} not found in blockchain (TxId: {tx_id})"
             ))
         })?;
         if output.commitment != expected_commitment {
             return Err(OutputManagerError::ServiceError(format!(
-                "Output commitment does not match expected commitment (TxId: {})",
-                tx_id
+                "Output commitment does not match expected commitment (TxId: {tx_id})"
             )));
         }
         // Retrieve the list of n public keys from the script
@@ -1734,8 +1719,7 @@ where
             keys.clone()
         } else {
             return Err(OutputManagerError::ServiceError(format!(
-                "Invalid script (TxId: {})",
-                tx_id
+                "Invalid script (TxId: {tx_id})"
             )));
         };
         // Create a deterministic encryption key from the sum of the public keys
@@ -1773,14 +1757,12 @@ where
                 )
             } else {
                 return Err(OutputManagerError::ServiceError(format!(
-                    "Could not verify mask (TxId: {})",
-                    tx_id
+                    "Could not verify mask (TxId: {tx_id})"
                 )));
             }
         } else {
             return Err(OutputManagerError::ServiceError(format!(
-                "Could not decrypt output (TxId: {})",
-                tx_id
+                "Could not decrypt output (TxId: {tx_id})"
             )));
         };
 
@@ -1860,8 +1842,7 @@ where
         let sender_offset_private_key_id_self =
             stp.get_recipient_sender_offset_private_key()?
                 .ok_or(OutputManagerError::ServiceError(format!(
-                    "Missing sender offset private key ID (TxId: {})",
-                    tx_id
+                    "Missing sender offset private key ID (TxId: {tx_id})"
                 )))?;
 
         let shared_secret = self
@@ -1872,8 +1853,7 @@ where
                 recipient_address
                     .public_view_key()
                     .ok_or(OutputManagerError::ServiceError(format!(
-                        "Missing public view key (TxId: {})",
-                        tx_id
+                        "Missing public view key (TxId: {tx_id})"
                     )))?,
             )
             .await?;
@@ -1956,7 +1936,7 @@ where
         stp.finalize(&self.resources.key_manager)
             .await
             .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
-        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {}", tx_id);
+        info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {tx_id}");
 
         let tx = stp.get_transaction()?.clone();
 
@@ -2062,7 +2042,7 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let fee = stp.get_fee_amount()?;
-        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
         stp.finalize(&self.resources.key_manager).await?;
         if input_selection.requires_change_output() {
             let wallet_output = stp.get_finalized_change_output()?.ok_or_else(|| {
@@ -2084,14 +2064,13 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "Encumber send to self transaction ({}) outputs.",
-            tx_id
+            "Encumber send to self transaction ({tx_id}) outputs."
         );
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
         self.confirm_encumberance(tx_id, Vec::new()).await?;
-        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
         let tx = stp.into_transaction()?;
 
         Ok((fee, tx))
@@ -2126,7 +2105,7 @@ where
     pub fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Cancelling pending transaction outputs for TxId: {}", tx_id
+            "Cancelling pending transaction outputs for TxId: {tx_id}"
         );
         Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id)?)
     }
@@ -2153,13 +2132,8 @@ where
         let start = Instant::now();
         debug!(
             target: LOG_TARGET,
-            "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_features_and_scripts_byte_size: {}, \
-             selection_criteria: {:?}",
-            amount,
-            fee_per_gram,
-            num_outputs,
-            total_output_features_and_scripts_byte_size,
-            selection_criteria
+            "select_utxos amount: {amount}, fee_per_gram: {fee_per_gram}, num_outputs: {num_outputs}, output_features_and_scripts_byte_size: {total_output_features_and_scripts_byte_size}, \
+             selection_criteria: {selection_criteria:?}"
         );
         let mut utxos = Vec::new();
 
@@ -2175,7 +2149,7 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "select_utxos selection criteria: {}", selection_criteria
+            "select_utxos selection criteria: {selection_criteria}"
         );
         let start_new = Instant::now();
         let uo = self
@@ -2213,7 +2187,7 @@ where
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
         );
 
-        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo_len);
+        trace!(target: LOG_TARGET, "We found {uo_len} UTXOs to select from");
 
         let mut requires_change_output = false;
         let mut utxos_total_value = MicroMinotari::from(0);
@@ -2222,7 +2196,7 @@ where
         for o in uo {
             utxos_total_value += o.wallet_output.value;
 
-            trace!(target: LOG_TARGET, "-- utxos_total_value = {:?}", utxos_total_value);
+            trace!(target: LOG_TARGET, "-- utxos_total_value = {utxos_total_value:?}");
             utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = fee_calc.calculate(
@@ -2243,7 +2217,7 @@ where
                 total_output_features_and_scripts_byte_size + default_features_and_scripts_size,
             );
 
-            trace!(target: LOG_TARGET, "-- amt+fee = {:?} {}", amount, fee_with_change);
+            trace!(target: LOG_TARGET, "-- amt+fee = {amount:?} {fee_with_change}");
             if utxos_total_value > amount + fee_with_change {
                 requires_change_output = true;
                 break;
@@ -2264,8 +2238,7 @@ where
         if !perfect_utxo_selection && !enough_spendable {
             if uo_len == TRANSACTION_INPUTS_LIMIT as usize {
                 return Err(OutputManagerError::TooManyInputsToFulfillTransaction(format!(
-                    "Input limit '{}' reached",
-                    TRANSACTION_INPUTS_LIMIT
+                    "Input limit '{TRANSACTION_INPUTS_LIMIT}' reached"
                 )));
             }
             let current_tip_for_time_lock_calculation = tip_height;
@@ -2502,10 +2475,7 @@ where
         );
         tx_builder
             .with_payment_id(MemoField::open_from_string(
-                &format!(
-                    "Coin split transaction, {} into {} outputs",
-                    accumulated_amount, number_of_splits
-                ),
+                &format!("Coin split transaction, {accumulated_amount} into {number_of_splits} outputs"),
                 TxType::CoinSplit,
             ))
             .with_lock_height(0)
@@ -2535,7 +2505,7 @@ where
                     OutputFeatures::default(),
                     amount_per_split,
                     Covenant::default(),
-                    MemoField::open_from_string(&format!("{} even coin splits", number_of_splits), TxType::CoinSplit),
+                    MemoField::open_from_string(&format!("{number_of_splits} even coin splits"), TxType::CoinSplit),
                     fee,
                 )
                 .await?;
@@ -2559,8 +2529,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "Encumber coin split (even) transaction (tx_id={}) outputs",
-            tx_id
+            "Encumber coin split (even) transaction (tx_id={tx_id}) outputs"
         );
 
         // encumbering transaction
@@ -2571,8 +2540,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "finalizing coin split transaction (tx_id={}).",
-            tx_id
+            "finalizing coin split transaction (tx_id={tx_id})."
         );
 
         // finalizing transaction
@@ -2673,7 +2641,7 @@ where
             self.resources.key_manager.clone(),
         );
         let payment_id = MemoField::open_from_string(
-            &format!("Coin split, {} into {} outputs", accumulated_amount, number_of_splits),
+            &format!("Coin split, {accumulated_amount} into {number_of_splits} outputs"),
             TxType::CoinSplit,
         );
         tx_builder
@@ -2744,14 +2712,12 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "Encumber coin split transaction (tx_id={}) outputs",
-            tx_id
+            "Encumber coin split transaction (tx_id={tx_id}) outputs"
         );
 
         trace!(
             target: LOG_TARGET,
-            "finalizing coin split transaction (tx_id={}).",
-            tx_id
+            "finalizing coin split transaction (tx_id={tx_id})."
         );
 
         // finalizing transaction
@@ -2788,8 +2754,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "finalizing coin split transaction (tx_id={}).",
-            tx_id
+            "finalizing coin split transaction (tx_id={tx_id})."
         );
 
         let value = if has_leftover_change {
@@ -2973,8 +2938,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "Encumber coin join transaction (tx_id={}) outputs",
-            tx_id
+            "Encumber coin join transaction (tx_id={tx_id}) outputs"
         );
 
         // encumbering transaction
@@ -2985,8 +2949,7 @@ where
 
         trace!(
             target: LOG_TARGET,
-            "finalizing coin join transaction (tx_id={}).",
-            tx_id
+            "finalizing coin join transaction (tx_id={tx_id})."
         );
 
         // finalizing transaction
@@ -3164,9 +3127,9 @@ where
 
                 let tx_id = stp.get_tx_id()?;
 
-                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
+                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({tx_id}).");
                 let fee = stp.get_fee_amount()?;
-                trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+                trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
                 stp.finalize(&self.resources.key_manager).await?;
                 if let Some(wallet_output) = stp.get_finalized_change_output()? {
                     let change_output = DbWalletOutput::from_wallet_output(
@@ -3247,7 +3210,7 @@ where
 
         let tx_id = stp.get_tx_id()?;
 
-        trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({}).", tx_id);
+        trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({tx_id}).");
 
         let fee = stp.get_fee_amount()?;
 
@@ -3499,16 +3462,15 @@ fn get_multi_sig_script_components(
         Ok((keys.clone(), *m))
     } else {
         Err(OutputManagerError::ServiceError(format!(
-            "Invalid script (TxId: {})",
-            tx_id
+            "Invalid script (TxId: {tx_id})"
         )))
     }
 }
 
 fn service_error_with_id(tx_id: TxId, err: String, log_error: bool) -> OutputManagerError {
-    let err_str = format!("TxId: {} ({})", tx_id, err);
+    let err_str = format!("TxId: {tx_id} ({err})");
     if log_error {
-        error!(target: LOG_TARGET, "{}", err_str);
+        error!(target: LOG_TARGET, "{err_str}");
     }
     OutputManagerError::ServiceError(err_str)
 }
@@ -3541,7 +3503,7 @@ impl fmt::Display for Balance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Available balance: {}", self.available_balance)?;
         if let Some(locked) = self.time_locked_balance {
-            writeln!(f, "Time locked: {}", locked)?;
+            writeln!(f, "Time locked: {locked}")?;
         }
         writeln!(f, "Pending incoming balance: {}", self.pending_incoming_balance)?;
         writeln!(f, "Pending outgoing balance: {}", self.pending_outgoing_balance)?;

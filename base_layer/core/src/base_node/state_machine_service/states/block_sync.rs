@@ -116,11 +116,11 @@ impl BlockSync {
                     randomx_vm_cnt,
                     randomx_vm_flags,
                 });
-                warn!(target: LOG_TARGET, "Block sync failed: {}", err);
+                warn!(target: LOG_TARGET, "Block sync failed: {err}");
                 if let Err(e) = shared.db.swap_to_highest_pow_chain().await {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to reset chain to highest proof of work: {}", e
+                        "Failed to reset chain to highest proof of work: {e}"
                     );
                 }
                 StateEvent::BlockSyncFailed
@@ -129,17 +129,17 @@ impl BlockSync {
 
         // Cleanup
         if let Err(e) = shared.db.cleanup_orphans().await {
-            warn!(target: LOG_TARGET, "Failed to remove orphan blocks: {}", e);
+            warn!(target: LOG_TARGET, "Failed to remove orphan blocks: {e}");
         }
         match shared.db.clear_all_pending_headers().await {
             Ok(num_cleared) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Cleared {} pending headers from database", num_cleared
+                    "Cleared {num_cleared} pending headers from database"
                 );
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Failed to clear pending headers: {}", e);
+                warn!(target: LOG_TARGET, "Failed to clear pending headers: {e}");
             },
         }
 

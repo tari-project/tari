@@ -55,7 +55,7 @@ impl fmt::Display for RecipientState {
                 "Finalized({:?}, maturity = {})",
                 signed_message.output.features.output_type, signed_message.output.features.maturity
             ),
-            Failed(err) => write!(f, "Failed({:?})", err),
+            Failed(err) => write!(f, "Failed({err:?})"),
         }
     }
 }

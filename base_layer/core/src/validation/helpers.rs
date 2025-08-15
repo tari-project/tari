@@ -40,6 +40,7 @@ use crate::{
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::BaseConsensusManager,
     proof_of_work::{
+        cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -73,22 +74,24 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
         trace!(
             target: LOG_TARGET,
             "No median timestamp available, estimating median as avg of [{}] and [{}]",
-            timestamps[mid_index - 1],
-            timestamps[mid_index],
+            timestamps.get(mid_index - 1).expect("Already checked"),
+            timestamps.get(mid_index).expect("Already checked"),
         );
         // To compute this mean, we use `u128` to avoid overflow with the internal `u64` typing
         // Note that the final cast back to `u64` will never truncate since each summand is bounded by `u64`
         // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
         EpochTime::from(
             u64::try_from(
-                (u128::from(timestamps[mid_index - 1].as_u64()) + u128::from(timestamps[mid_index].as_u64())) / 2,
+                (u128::from(timestamps.get(mid_index - 1).expect("Already checked").as_u64()) +
+                    u128::from(timestamps.get(mid_index).expect("Already checked").as_u64())) /
+                    2,
             )
             .unwrap_or(u64::MAX),
         )
     } else {
-        timestamps[mid_index]
+        *timestamps.get(mid_index).expect("Already checked")
     };
-    trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
+    trace!(target: LOG_TARGET, "Median timestamp:{median_timestamp}");
     Ok(median_timestamp)
 }
 pub fn check_header_timestamp_greater_than_median(
@@ -133,6 +136,13 @@ pub fn check_target_difficulty(
         PowAlgorithm::RandomXM => monero_randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
         PowAlgorithm::RandomXT => tari_randomx_difficulty(block_header, randomx_factory, &tari_vm_key)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
+        PowAlgorithm::Cuckaroo => {
+            let cuckaroo_cycle_length = consensus
+                .consensus_constants(block_header.height)
+                .cuckaroo_cycle_length();
+            let cuckaroo_bits = consensus.consensus_constants(block_header.height).cuckaroo_edge_bits();
+            cuckaroo_difficulty(block_header, cuckaroo_cycle_length, cuckaroo_bits)?
+        },
     };
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
         Some(achieved_target) => Ok(achieved_target),
@@ -184,7 +194,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     if db.fetch_output(&output_hash)?.is_some() {
         warn!(
             target: LOG_TARGET,
-            "Validation failed due to already spent input: {}", input
+            "Validation failed due to already spent input: {input}"
         );
         // We know that the output here must be spent because `fetch_unspent_output_hash_by_commitment` would have
         // been Some
@@ -209,7 +219,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     {
         warn!(
             target: LOG_TARGET,
-            "Duplicate UTXO set commitment found for output: {}", output
+            "Duplicate UTXO set commitment found for output: {output}"
         );
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
     }

@@ -94,7 +94,7 @@ impl RpcServerError {
             ProtocolServiceNotFound(_) => "ProtocolServiceNotFound".to_string(),
             UnexpectedIncomingMessage(_) => "UnexpectedIncomingMessage".to_string(),
             err => {
-                format!("{:?}", err)
+                format!("{err:?}")
             },
         }
     }

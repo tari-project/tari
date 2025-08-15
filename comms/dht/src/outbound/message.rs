@@ -182,7 +182,7 @@ impl fmt::Display for DhtOutboundMessage {
         let header_str = self
             .custom_header
             .as_ref()
-            .map(|h| format!("{} (Propagated)", h))
+            .map(|h| format!("{h} (Propagated)"))
             .unwrap_or_else(|| {
                 format!(
                     "Flags: {:?}, Destination: {}, Trace: {}",

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![allow(clippy::mutex_atomic)]
-
+#![allow(clippy::indexing_slicing)]
 use std::{
     collections::HashMap,
     fmt,
@@ -123,7 +123,7 @@ pub fn get_next_name() -> String {
         *i - 1
     };
 
-    format!("Node{}", pos)
+    format!("Node{pos}")
 }
 
 pub async fn shutdown_all(nodes: Vec<TestNode>) {
@@ -140,7 +140,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
         let wallet1 = wallets.get(i).unwrap();
         let wallet2 = wallets.get(i + 1).unwrap();
 
-        banner!("🌎 '{}' is going to try discover '{}'.", wallet1, wallet2);
+        banner!("🌎 '{wallet1}' is going to try discover '{wallet2}'.");
 
         let start = Instant::now();
         let discovery_result = wallet1
@@ -410,11 +410,11 @@ pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: b
                 },
             }
         }
-        println!("{} messages sent between nodes", num_messages);
+        println!("{num_messages} messages sent between nodes");
         num_messages
     } else {
         let len = drain_fut.await.len();
-        println!("📨 {} messages exchanged", len);
+        println!("📨 {len} messages exchanged");
         len
     }
 }
@@ -461,10 +461,7 @@ fn connection_manager_logger(
                 );
             },
             PeerInboundConnectFailed(err) => {
-                println!(
-                    "'{}' failed to accept inbound connection because '{:?}'",
-                    node_name, err
-                );
+                println!("'{node_name}' failed to accept inbound connection because '{err:?}'");
             },
             NewInboundSubstream(node_id, protocol, _) => {
                 println!(
@@ -552,7 +549,7 @@ impl TestNode {
                         let _result = events_tx.send(logger(event)).await;
                     },
                     Err(broadcast::error::RecvError::Closed) => break,
-                    Err(err) => log::error!("{}", err),
+                    Err(err) => log::error!("{err}"),
                 }
             }
         });
@@ -630,7 +627,7 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(NodeIdentity::random(
         &mut OsRng,
-        format!("/memory/{}", port).parse().unwrap(),
+        format!("/memory/{port}").parse().unwrap(),
         features,
     ))
 }

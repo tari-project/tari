@@ -22,8 +22,8 @@
 use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
-    tari_proof_of_work::{DifficultyError, PowError},
     tari_amount::MicroMinotari,
+    tari_proof_of_work::{DifficultyError, PowError},
     transaction_components::{covenants::CovenantError, OutputType, RangeProofType, TransactionError},
     validation::AggregatedBodyValidationError,
     BanPeriod,
@@ -35,7 +35,7 @@ use thiserror::Error;
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
-    proof_of_work::monero_rx::MergeMineError,
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
 };
 
 #[derive(Debug, Error)]
@@ -171,6 +171,8 @@ pub enum ValidationError {
     OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
     #[error("Validation error: {0}")]
     AggregatedBodyValidation(#[from] AggregatedBodyValidationError),
+    #[error("Cuckaroo POW error: {0}")]
+    CuckarooPowError(#[from] CuckarooVerificationError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -241,6 +243,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
             err @ ValidationError::AggregatedBodyValidation(_) |
+            err @ ValidationError::CuckarooPowError(_) |
             err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,

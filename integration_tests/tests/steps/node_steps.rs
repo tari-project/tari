@@ -20,6 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{
     convert::{TryFrom, TryInto},
     time::Duration,
@@ -83,7 +84,7 @@ async fn start_base_node_step(world: &mut TariWorld, name: String) {
 #[when(expr = "I have {int} base nodes connected to all seed nodes")]
 async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes: u64) {
     for i in 0..nodes {
-        let node = format!("Node_{}", i);
+        let node = format!("Node_{i}");
         println!("Initializing node {}", node.clone());
         spawn_base_node(world, false, node, world.all_seed_nodes().to_vec()).await;
     }
@@ -140,7 +141,7 @@ async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, n
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
-    panic!("Peer was not connected in time, connected to {} peers", connected_peers);
+    panic!("Peer was not connected in time, connected to {connected_peers} peers");
 }
 
 #[then(expr = "all nodes are on the same chain at height {int}")]
@@ -175,10 +176,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "base nodes not successfully synchronized at height {}, {:?}",
-        height, nodes_at_height
-    );
+    panic!("base nodes not successfully synchronized at height {height}, {nodes_at_height:?}");
 }
 
 #[then(expr = "all nodes are on the same network difficulty")]
@@ -235,10 +233,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "base nodes not successfully synchronized at height {}, {:?}",
-        height, nodes_at_height
-    );
+    panic!("base nodes not successfully synchronized at height {height}, {nodes_at_height:?}");
 }
 
 #[when(expr = "node {word} is at height {int}")]
@@ -259,10 +254,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
     }
 
     // base node didn't synchronize successfully at height, so we bail out
-    panic!(
-        "base node didn't synchronize successfully with height {}, current chain height {}",
-        height, chain_hgt
-    );
+    panic!("base node didn't synchronize successfully with height {height}, current chain height {chain_hgt}");
 }
 
 #[then(expr = "node {word} has a pruned height of {int}")]
@@ -281,10 +273,7 @@ async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "Node {} pruned height is {} and never reached expected pruned height of {}",
-        node, last_pruned_height, height
-    )
+    panic!("Node {node} pruned height is {last_pruned_height} and never reached expected pruned height of {height}")
 }
 
 #[given(expr = "I have a base node {word} connected to seed {word}")]
@@ -302,7 +291,7 @@ async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
 #[given(expr = "I have {int} seed nodes")]
 async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
     for node in 0..seed_nodes {
-        spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
+        spawn_base_node(world, true, format!("seed_node_{node}"), vec![]).await;
     }
 }
 
@@ -317,7 +306,7 @@ async fn transaction_in_state(
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let sig = &tx.body.kernels()[0].excess_sig;
     let mut last_state = "UNCHECKED: DEFAULT TEST STATE";
 
@@ -346,10 +335,7 @@ async fn transaction_in_state(
         tokio::time::sleep(Duration::from_millis(HALF_SECOND * 2)).await;
     }
 
-    panic!(
-        "The node {} has tx {} in state {} instead of the expected {}",
-        node, tx_name, last_state, state
-    );
+    panic!("The node {node} has tx {tx_name} in state {last_state} instead of the expected {state}");
 }
 
 #[then(expr = "I wait until base node {word} has {int} unconfirmed transactions in its mempool")]
@@ -370,10 +356,7 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "The node {} has {} unconfirmed txs instead of the expected {}",
-        node, unconfirmed_txs, num_transactions
-    );
+    panic!("The node {node} has {unconfirmed_txs} unconfirmed txs instead of the expected {num_transactions}");
 }
 
 #[then(expr = "{word} is in the {word} of all nodes")]
@@ -392,7 +375,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let sig = &tx.body.kernels()[0].excess_sig;
 
     let mut node_pool_status: IndexMap<&String, &str> = IndexMap::new();
@@ -441,8 +424,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
     }
 
     panic!(
-        "More than {}% ({} node(s)) failed to get {} in {}, {:?}",
-        can_fail_percent, can_fail, tx_name, pool, node_pool_status
+        "More than {can_fail_percent}% ({can_fail} node(s)) failed to get {tx_name} in {pool}, {node_pool_status:?}"
     );
 }
 
@@ -453,7 +435,7 @@ pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node:
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let resp = client
         .submit_transaction(grpc::SubmitTransactionRequest {
             transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
@@ -465,7 +447,7 @@ pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node:
     if result.result == 1 {
         Ok(())
     } else {
-        panic!("Transaction {} wasn't submit to {}", tx_name, node)
+        panic!("Transaction {tx_name} wasn't submit to {node}")
     }
 }
 
@@ -475,7 +457,7 @@ pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String
     let tx = world
         .transactions
         .get(&tx_name)
-        .unwrap_or_else(|| panic!("Couldn't find transaction {}", tx_name));
+        .unwrap_or_else(|| panic!("Couldn't find transaction {tx_name}"));
     let resp = client
         .submit_transaction(grpc::SubmitTransactionRequest {
             transaction: Some(grpc::Transaction::try_from(tx.clone()).unwrap()),
@@ -485,10 +467,7 @@ pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String
     let result = resp.into_inner();
 
     if result.result == 1 {
-        panic!(
-            "Transaction {} was submitted, but should not have been to {}",
-            tx_name, node
-        )
+        panic!("Transaction {tx_name} was submitted, but should not have been to {node}")
     } else {
         Ok(())
     }
@@ -594,15 +573,9 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
     }
 
     if current_height == expected_height {
-        println!(
-            "Base node {} is at the same height {} as node {}",
-            &base_node, current_height, &peer_node
-        );
+        println!("Base node {base_node} is at the same height {current_height} as node {peer_node}");
     } else {
-        panic!(
-            "Base node {} failed to synchronize at the same height as node {}",
-            base_node, peer_node
-        );
+        panic!("Base node {base_node} failed to synchronize at the same height as node {peer_node}");
     }
 }
 
@@ -610,7 +583,7 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
 #[then(expr = "I stop node {word}")]
 async fn stop_node(world: &mut TariWorld, node: String) {
     let base_ps = world.base_nodes.get_mut(&node).unwrap();
-    println!("Stopping node {}", node);
+    println!("Stopping node {node}");
     base_ps.kill();
 }
 
@@ -845,7 +818,7 @@ async fn generate_block_with_many_coinbases(
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
-        Err(e) => panic!("The block should have been valid, {}", e),
+        Err(e) => panic!("The block should have been valid, {e}"),
     }
 
     world.blocks.insert(block_name, block);
@@ -929,7 +902,7 @@ async fn generate_block_with_2_coinbases(world: &mut TariWorld, node: String) {
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
-        Err(e) => panic!("The block should have been valid, {}", e),
+        Err(e) => panic!("The block should have been valid, {e}"),
     }
 }
 
@@ -982,7 +955,7 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
             coinbase_kernel_count += 1;
         }
     }
-    println!("{}", body);
+    println!("{body}");
     for utxo in body.outputs() {
         if utxo.is_coinbase() {
             coinbase_utxo_count += 1;
@@ -1006,7 +979,7 @@ async fn generate_block_with_2_as_single_request_coinbases(world: &mut TariWorld
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
-        Err(e) => panic!("The block should have been valid, {}", e),
+        Err(e) => panic!("The block should have been valid, {e}"),
     }
 }
 
@@ -1046,7 +1019,7 @@ async fn generate_block_as_single_request_with_zero_coinbase(world: &mut TariWor
             coinbase_kernel_count += 1;
         }
     }
-    println!("{}", body);
+    println!("{body}");
     for utxo in body.outputs() {
         if utxo.is_coinbase() {
             coinbase_utxo_count += 1;
@@ -1064,7 +1037,7 @@ async fn generate_block_as_single_request_with_zero_coinbase(world: &mut TariWor
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
-        Err(e) => panic!("The block should have been valid, {}", e),
+        Err(e) => panic!("The block should have been valid, {e}"),
     }
 }
 
@@ -1125,7 +1098,7 @@ async fn generate_block_with_zero_coinbase(world: &mut TariWorld, node: String) 
 
     match client.submit_block(new_block).await {
         Ok(_) => (),
-        Err(e) => panic!("The block should have been valid, {}", e),
+        Err(e) => panic!("The block should have been valid, {e}"),
     }
 }
 
@@ -1155,10 +1128,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "Node {} never reached initial sync. Stuck at tip {}",
-        node, longest_chain
-    )
+    panic!("Node {node} never reached initial sync. Stuck at tip {longest_chain}")
 }
 
 #[when(expr = "I have {int} base nodes with pruning horizon {int} force syncing on node {word}")]
@@ -1169,7 +1139,7 @@ async fn force_sync_node_with_an_army_of_pruned_nodes(
     node: String,
 ) {
     for i in 0..=nodes_count {
-        let node_name = format!("BaseNode-{}", i);
+        let node_name = format!("BaseNode-{i}");
 
         let mut base_node_config = BaseNodeConfig::default();
         let peers = vec![node.clone()];
@@ -1205,8 +1175,5 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
         tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
     }
 
-    panic!(
-        "Node {} only received {} of {} expected peers",
-        node, last_num_of_peers, num_peers
-    )
+    panic!("Node {node} only received {last_num_of_peers} of {num_peers} expected peers")
 }

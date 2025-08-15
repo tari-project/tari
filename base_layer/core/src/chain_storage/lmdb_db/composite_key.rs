@@ -94,21 +94,26 @@ impl<const L: usize> CompositeKey<L> {
         if new_len > L {
             return false;
         }
-        self.bytes.as_mut_slice()[self.len..new_len].copy_from_slice(b);
+        self.bytes
+            .as_mut_slice()
+            .get_mut(self.len..new_len)
+            .expect("Already checked")
+            .copy_from_slice(b);
         self.len = new_len;
         true
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes.as_slice()[..self.len]
+        self.bytes.as_slice().get(..self.len).expect("Never fails")
     }
 
     pub fn to_be_u64(&self, offset: usize) -> Result<u64, ChainStorageError> {
-        if offset + 8 > self.len {
-            return Err(ChainStorageError::CompositeKeyLengthExceeded);
-        }
         let mut buf = [0u8; 8];
-        buf.copy_from_slice(&self.bytes[offset..offset + 8]);
+        buf.copy_from_slice(
+            self.bytes
+                .get(offset..offset + 8)
+                .ok_or(ChainStorageError::CompositeKeyLengthExceeded)?,
+        );
         Ok(u64::from_be_bytes(buf))
     }
 
@@ -133,7 +138,7 @@ impl<const L: usize> CompositeKey<L> {
 impl<const L: usize> Display for CompositeKey<L> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for b in self.as_bytes() {
-            write!(f, "{:02x}", b)?;
+            write!(f, "{b:02x}")?;
         }
         Ok(())
     }
@@ -163,11 +168,12 @@ impl<const L: usize> TryFrom<&[u8]> for CompositeKey<L> {
     type Error = ChainStorageError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        if value.len() > L {
-            return Err(ChainStorageError::CompositeKeyLengthExceeded);
-        }
         let mut key = Self::new();
-        key.bytes.as_mut_slice()[..value.len()].copy_from_slice(value);
+        key.bytes
+            .as_mut_slice()
+            .get_mut(..value.len())
+            .ok_or(ChainStorageError::CompositeKeyLengthExceeded)?
+            .copy_from_slice(value);
         key.len = value.len();
         Ok(key)
     }
@@ -242,12 +248,13 @@ impl<'a, const SECTIONS: usize> Iterator for SectionIter<'a, SECTIONS> {
             return None;
         }
 
-        Some(&self.slice[lower..upper])
+        self.slice.get(lower..upper)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     mod section_iter {

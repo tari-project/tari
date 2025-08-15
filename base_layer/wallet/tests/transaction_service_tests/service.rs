@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{
     convert::{TryFrom, TryInto},
     mem::size_of,
@@ -1057,7 +1058,7 @@ async fn test_spend_dust_to_other_in_oversized_transaction() {
         )
         .await
         .unwrap();
-    println!("tx_id: {}", tx_id);
+    println!("tx_id: {tx_id}");
 
     let mut count = 0;
     loop {
@@ -1216,7 +1217,7 @@ async fn test_spend_dust_happy_path() {
         )
         .await
         .unwrap();
-    println!("tx_id: {}", tx_id);
+    println!("tx_id: {tx_id}");
 
     let mut count = 0;
     let mut fees_bob = loop {
@@ -1975,7 +1976,7 @@ async fn test_htlc_send_and_claim() {
     let bob_temp_dir = tempdir().unwrap();
     let bob_db_path_string = bob_temp_dir.path().to_str().unwrap().to_string();
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let bob_db_path = format!("{}/{}", bob_db_path_string, bob_db_name);
+    let bob_db_path = format!("{bob_db_path_string}/{bob_db_name}");
     let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), bob_connection, None).await;
 
@@ -2255,7 +2256,7 @@ async fn manage_multiple_transactions() {
         )
         .await
         .unwrap();
-    log::trace!("A to B 1 TxID: {}", tx_id_a_to_b_1);
+    log::trace!("A to B 1 TxID: {tx_id_a_to_b_1}");
     log::trace!("Sending A to C 1");
     let carol_address = TariAddress::new_single_address_with_interactive_only(
         carol_node_identity.public_key().clone(),
@@ -2275,7 +2276,7 @@ async fn manage_multiple_transactions() {
         .unwrap();
     let alice_completed_tx = alice_ts.get_completed_transactions(None, None, None, 0).await.unwrap();
     assert_eq!(alice_completed_tx.len(), 0);
-    log::trace!("A to C 1 TxID: {}", tx_id_a_to_c_1);
+    log::trace!("A to C 1 TxID: {tx_id_a_to_c_1}");
 
     let alice_address = TariAddress::new_single_address_with_interactive_only(
         alice_node_identity.public_key().clone(),
@@ -2404,7 +2405,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
     let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+    let alice_db_path = format!("{path_string}/{alice_db_name}");
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
 
     let bob_node_identity =
@@ -2506,9 +2507,9 @@ async fn finalize_tx_with_incorrect_pubkey() {
     let path_string = temp_dir.path().to_str().unwrap().to_string();
 
     let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+    let alice_db_path = format!("{path_string}/{alice_db_name}");
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+    let bob_db_path = format!("{path_string}/{bob_db_name}");
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
@@ -2634,9 +2635,9 @@ async fn finalize_tx_with_missing_output() {
     let path_string = temp_dir.path().to_str().unwrap().to_string();
 
     let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let alice_db_path = format!("{}/{}", path_string, alice_db_name);
+    let alice_db_path = format!("{path_string}/{alice_db_name}");
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+    let bob_db_path = format!("{path_string}/{bob_db_name}");
     let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
     let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
@@ -4083,7 +4084,7 @@ async fn test_restarting_transaction_protocols() {
 
     // match bob_stp.finalize(&key_manager).await {
     //     Ok(_) => (),
-    //     Err(e) => panic!("Should be able to finalize tx: {}", e),
+    //     Err(e) => panic!("Should be able to finalize tx: {e}"),
     // };
     // let tx = bob_stp.get_transaction().unwrap().clone();
 

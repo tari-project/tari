@@ -49,6 +49,7 @@ impl Filter for FieldsHashedEqFilter {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use blake2::Blake2b;
     use digest::{consts::U32, Update};
     use tari_crypto::hashing::DomainSeparation;

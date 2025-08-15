@@ -153,20 +153,19 @@ impl Display for DhtRequest {
                 received_from.to_hex(),
             ),
             GetMsgHashHitCount(hash, _) => write!(f, "GetMsgHashHitCount({})", hash.to_hex()),
-            SelectPeers(s, _) => write!(f, "SelectPeers (Strategy={})", s),
-            GetMetadata(key, _) => write!(f, "GetMetadata (key={})", key),
+            SelectPeers(s, _) => write!(f, "SelectPeers (Strategy={s})"),
+            GetMetadata(key, _) => write!(f, "GetMetadata (key={key})"),
             SetMetadata(key, value, _) => {
                 write!(f, "SetMetadata (key={}, value={} bytes)", key, value.len())
             },
-            DialDiscoverPeer { public_key, .. } => write!(f, "DialDiscoverPeer(public_key={})", public_key),
+            DialDiscoverPeer { public_key, .. } => write!(f, "DialDiscoverPeer(public_key={public_key})"),
             BanPeer {
                 public_key,
                 severity,
                 reason,
             } => write!(
                 f,
-                "BanPeer (peer={:#.5}, severity={:?}, reason={})",
-                public_key, severity, reason
+                "BanPeer (peer={public_key:#.5}, severity={severity:?}, reason={reason})"
             ),
         }
     }
@@ -317,7 +316,7 @@ impl DhtActor {
     pub fn spawn(self) {
         task::spawn(async move {
             if let Err(err) = self.run().await {
-                error!(target: LOG_TARGET, "DhtActor failed to start with error: {:?}", err);
+                error!(target: LOG_TARGET, "DhtActor failed to start with error: {err:?}");
             }
         });
     }
@@ -332,7 +331,7 @@ impl DhtActor {
             target: LOG_TARGET,
             "DhtActor started. {}",
             offline_ts
-                .map(|dt| format!("Dht has been offline since '{}'", dt))
+                .map(|dt| format!("Dht has been offline since '{dt}'"))
                 .unwrap_or_default()
         );
 
@@ -344,19 +343,19 @@ impl DhtActor {
         loop {
             tokio::select! {
                 Some(request) = self.request_rx.recv() => {
-                    trace!(target: LOG_TARGET, "DhtActor received request: {}", request);
+                    trace!(target: LOG_TARGET, "DhtActor received request: {request}");
                     pending_jobs.push(self.request_handler(request));
                 },
 
                 Some(result) = pending_jobs.next() => {
                     if let Err(err) = result {
-                        debug!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
+                        debug!(target: LOG_TARGET, "Error when handling DHT request message. {err}" );
                     }
                 },
 
                 _ = dedup_cache_trim_ticker.tick() => {
                     if let Err(err) = self.msg_hash_dedup_cache.trim_entries() {
-                        error!(target: LOG_TARGET, "Error when trimming message dedup cache: {:?}", err);
+                        error!(target: LOG_TARGET, "Error when trimming message dedup cache: {err:?}");
                     }
                 },
 
@@ -374,7 +373,7 @@ impl DhtActor {
             .database
             .set_metadata_value(DhtMetadataKey::OfflineTimestamp, &Utc::now())
         {
-            warn!(target: LOG_TARGET, "Failed to mark offline time: {:?}", err);
+            warn!(target: LOG_TARGET, "Failed to mark offline time: {err:?}");
         }
     }
 
@@ -431,7 +430,7 @@ impl DhtActor {
                         Err(err) => {
                             warn!(
                                 target: LOG_TARGET,
-                                "Unable to update message dedup cache because {:?}", err
+                                "Unable to update message dedup cache because {err:?}"
                             );
                             let _ = reply_tx.send(0);
                         },
@@ -458,7 +457,7 @@ impl DhtActor {
                     {
                         Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
                         Err(err) => {
-                            warn!(target: LOG_TARGET, "Peer selection failed: {:?}", err);
+                            warn!(target: LOG_TARGET, "Peer selection failed: {err:?}");
                             reply_tx.send(Vec::new()).map_err(|_| DhtActorError::ReplyCanceled)
                         },
                     }
@@ -476,11 +475,11 @@ impl DhtActor {
                 Box::pin(async move {
                     match db.set_metadata_value_bytes(key, value) {
                         Ok(_) => {
-                            debug!(target: LOG_TARGET, "Dht metadata '{}' set", key);
+                            debug!(target: LOG_TARGET, "Dht metadata '{key}' set");
                             let _result = reply_tx.send(Ok(()));
                         },
                         Err(err) => {
-                            warn!(target: LOG_TARGET, "Unable to set metadata because {:?}", err);
+                            warn!(target: LOG_TARGET, "Unable to set metadata because {err:?}");
                             let _result = reply_tx.send(Err(err.into()));
                         },
                     }
@@ -565,7 +564,7 @@ impl DhtActor {
         mut connectivity: ConnectivityRequester,
         broadcast_strategy: BroadcastStrategy,
     ) -> Result<Vec<NodeId>, DhtActorError> {
-        trace!(target: LOG_TARGET, "Select peers broadcast strategy: {}", broadcast_strategy);
+        trace!(target: LOG_TARGET, "Select peers broadcast strategy: {broadcast_strategy}" );
         #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
         let peers = match broadcast_strategy {
@@ -749,7 +748,7 @@ impl DhtActor {
                     .iter()
                     .any(|v| v.contains(addr.address()))
             }) {
-                trace!(target: LOG_TARGET, "Peer '{}' has only excluded addresses. Skipping.", id);
+                trace!(target: LOG_TARGET, "Peer '{id}' has only excluded addresses. Skipping.");
             } else {
                 filtered_peers.push(id.clone());
             }
@@ -883,7 +882,7 @@ impl DiscoveryDialTask {
                     ConnectionManagerError::DialConnectFailedAllAddresses => {
                         debug!(
                             target: LOG_TARGET,
-                            "Dial failed for peer {}. Attempting discovery.", public_key
+                            "Dial failed for peer {public_key}. Attempting discovery."
                         );
                         self.discover_peer(public_key).await
                     },
@@ -894,7 +893,7 @@ impl DiscoveryDialTask {
         } else {
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' not found, initiating discovery", public_key
+                "Peer '{public_key}' not found, initiating discovery"
             );
             self.discover_peer(public_key).await
         }

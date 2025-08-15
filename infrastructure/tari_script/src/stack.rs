@@ -107,75 +107,58 @@ impl StackItem {
                 array.extend_from_slice(scalar);
             },
         };
-        &array[n..]
+        array.get(n..).expect("Length is always valid")
     }
 
     /// Take a byte slice and read the next stack item from it, including any associated data. `read_next` returns a
     /// tuple of the deserialised item, and an updated slice that has the Opcode and data removed.
     pub fn read_next(bytes: &[u8]) -> Option<(Self, &[u8])> {
         let code = bytes.first()?;
+        let remaining = bytes.get(1..)?;
         match *code {
-            TYPE_NUMBER => StackItem::b_to_number(&bytes[1..]),
-            TYPE_HASH => StackItem::b_to_hash(&bytes[1..]),
-            TYPE_COMMITMENT => StackItem::b_to_commitment(&bytes[1..]),
-            TYPE_PUBKEY => StackItem::b_to_pubkey(&bytes[1..]),
-            TYPE_SIG => StackItem::b_to_sig(&bytes[1..]),
-            TYPE_SCALAR => StackItem::b_to_scalar(&bytes[1..]),
+            TYPE_NUMBER => StackItem::b_to_number(remaining),
+            TYPE_HASH => StackItem::b_to_hash(remaining),
+            TYPE_COMMITMENT => StackItem::b_to_commitment(remaining),
+            TYPE_PUBKEY => StackItem::b_to_pubkey(remaining),
+            TYPE_SIG => StackItem::b_to_sig(remaining),
+            TYPE_SCALAR => StackItem::b_to_scalar(remaining),
             _ => None,
         }
     }
 
     fn b_to_number(b: &[u8]) -> Option<(Self, &[u8])> {
-        if b.len() < 8 {
-            return None;
-        }
         let mut arr = [0u8; 8];
-        arr.copy_from_slice(&b[..8]);
-        Some((StackItem::Number(i64::from_le_bytes(arr)), &b[8..]))
+        arr.copy_from_slice(b.get(..8)?);
+        Some((StackItem::Number(i64::from_le_bytes(arr)), b.get(8..)?))
     }
 
     fn b_to_hash(b: &[u8]) -> Option<(Self, &[u8])> {
-        if b.len() < 32 {
-            return None;
-        }
         let mut arr = [0u8; 32];
-        arr.copy_from_slice(&b[..32]);
-        Some((StackItem::Hash(arr), &b[32..]))
+        arr.copy_from_slice(b.get(..32)?);
+        Some((StackItem::Hash(arr), b.get(32..)?))
     }
 
     fn b_to_scalar(b: &[u8]) -> Option<(Self, &[u8])> {
-        if b.len() < 32 {
-            return None;
-        }
         let mut arr = [0u8; 32];
-        arr.copy_from_slice(&b[..32]);
-        Some((StackItem::Scalar(arr), &b[32..]))
+        arr.copy_from_slice(b.get(..32)?);
+        Some((StackItem::Scalar(arr), b.get(32..)?))
     }
 
     fn b_to_commitment(b: &[u8]) -> Option<(Self, &[u8])> {
-        if b.len() < 32 {
-            return None;
-        }
-        let c = CompressedCommitment::from_canonical_bytes(&b[..32]).ok()?;
-        Some((StackItem::Commitment(c), &b[32..]))
+        let c = CompressedCommitment::from_canonical_bytes(b.get(..32)?).ok()?;
+        Some((StackItem::Commitment(c), b.get(32..)?))
     }
 
     fn b_to_pubkey(b: &[u8]) -> Option<(Self, &[u8])> {
-        if b.len() < 32 {
-            return None;
-        }
-        let p = CompressedKey::from_canonical_bytes(&b[..32]).ok()?;
-        Some((StackItem::PublicKey(p), &b[32..]))
+        let p = CompressedKey::from_canonical_bytes(b.get(..32)?).ok()?;
+        Some((StackItem::PublicKey(p), b.get(32..)?))
     }
 
     fn b_to_sig(b: &[u8]) -> Option<(Self, &[u8])> {
-        if b.len() < 64 {
-            return None;
-        }
-        let r = RistrettoPublicKey::from_canonical_bytes(&b[..32]).ok()?;
-        let s = RistrettoSecretKey::from_canonical_bytes(&b[32..64]).ok()?;
+        let r = RistrettoPublicKey::from_canonical_bytes(b.get(..32)?).ok()?;
+        let s = RistrettoSecretKey::from_canonical_bytes(b.get(32..64)?).ok()?;
         let sig = CompressedCheckSigSchnorrSignature::new_from_schnorr(CheckSigSchnorrSignature::new(r, s));
-        Some((StackItem::Signature(sig), &b[64..]))
+        Some((StackItem::Signature(sig), b.get(64..)?))
     }
 }
 
@@ -526,8 +509,7 @@ mod test {
             assert_eq!(
                 item,
                 expected_inputs.pop().unwrap(),
-                "Stack items did not match at index {}",
-                i
+                "Stack items did not match at index {i}"
             );
         }
 

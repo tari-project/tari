@@ -112,7 +112,7 @@ impl NewOutputSql {
             metadata_signature_u_y: output.wallet_output.metadata_signature.u_y().to_vec(),
             features_json: serde_json::to_string(&output.wallet_output.features).map_err(|s| {
                 OutputManagerStorageError::ConversionError {
-                    reason: format!("Could not parse features from JSON:{}", s),
+                    reason: format!("Could not parse features from JSON:{s}"),
                 }
             })?,
             covenant,

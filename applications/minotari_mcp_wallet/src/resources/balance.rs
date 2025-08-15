@@ -63,7 +63,7 @@ impl McpResource for BalanceResource {
         let response = client
             .get_balance(GetBalanceRequest {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get balance: {}", e)))?;
+            .map_err(|e| McpError::resource_access_failed(format!("Failed to get balance: {e}")))?;
 
         let balance = response.into_inner();
 

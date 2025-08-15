@@ -53,7 +53,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 .map_err(|_| "Malformed input hash".to_string())?;
             Ok(TransactionInput::new_with_output_hash(
                 input_hash,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{err:?}"))?,
                 script_signature,
             ))
         } else {
@@ -66,7 +66,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
 
             let sender_offset_public_key =
                 CompressedPublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
-                    .map_err(|err| format!("{:?}", err))?;
+                    .map_err(|err| format!("{err:?}"))?;
 
             let encrypted_data = EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?;
             let minimum_value_promise = input.minimum_value_promise.into();
@@ -85,8 +85,8 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 )?,
                 features,
                 commitment,
-                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{err:?}"))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{err:?}"))?,
                 script_signature,
                 sender_offset_public_key,
                 Covenant::borsh_from_bytes(&mut input.covenant.as_bytes()).map_err(|err| err.to_string())?,

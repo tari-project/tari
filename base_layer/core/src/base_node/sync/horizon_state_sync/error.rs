@@ -143,7 +143,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::MaxLatencyExceeded { .. } |
             err @ HorizonSyncError::RpcError { .. } |
             err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),
 
@@ -160,7 +160,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::TransactionError(_) |
             err @ HorizonSyncError::AggregatedBodyValidation(_) |
             err @ HorizonSyncError::ByteArrayError(_) => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Long,
             }),
 

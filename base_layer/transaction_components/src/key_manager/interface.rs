@@ -138,11 +138,13 @@ impl FromStr for TariKeyId {
                     if parts.len() != 3 {
                         return Err("Wrong managed format".to_string());
                     }
-                    let index = parts[2]
+                    let index = parts
+                        .get(2)
+                        .expect("Already checked")
                         .parse()
                         .map_err(|_| "Index for default, invalid u64".to_string())?;
                     Ok(TariKeyId::Managed {
-                        branch: parts[1].into(),
+                        branch: (*parts.get(1).expect("Already checked")).into(),
                         index,
                     })
                 },
@@ -150,7 +152,8 @@ impl FromStr for TariKeyId {
                     if parts.len() != 2 {
                         return Err("Wrong imported format".to_string());
                     }
-                    let key = CompressedPublicKey::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
+                    let key = CompressedPublicKey::from_hex(parts.get(1).expect("Already checked"))
+                        .map_err(|_| "Invalid public key".to_string())?;
                     Ok(TariKeyId::Imported { key })
                 },
                 ZERO_KEY_BRANCH => Ok(TariKeyId::Zero),
@@ -160,7 +163,7 @@ impl FromStr for TariKeyId {
                         _ => return Err("Wrong derived format".to_string()),
                     }
 
-                    let key = parts[1..].join(".");
+                    let key = parts.get(1..).expect("Already checked").join(".");
                     Ok(TariKeyId::Derived {
                         key: SerializedKeyString::from(key),
                     })
@@ -175,10 +178,10 @@ impl fmt::Display for TariKeyId {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TariKeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
-            TariKeyId::Derived { key: k } => write!(f, "{}.{}", DERIVED_KEY_BRANCH, k),
-            TariKeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
-            TariKeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
+            TariKeyId::Managed { branch, index } => write!(f, "{MANAGED_KEY_BRANCH}.{branch}.{index}"),
+            TariKeyId::Derived { key } => write!(f, "{DERIVED_KEY_BRANCH}.{key}"),
+            TariKeyId::Imported { key: public_key } => write!(f, "{IMPORTED_KEY_BRANCH}.{public_key}"),
+            TariKeyId::Zero => write!(f, "{ZERO_KEY_BRANCH}"),
         }
     }
 }

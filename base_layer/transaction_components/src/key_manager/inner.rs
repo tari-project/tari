@@ -552,7 +552,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             WalletType::Ledger(ledger) => ledger
                 .view_key
                 .clone()
-                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(format!("{}", ledger))),
+                .ok_or(KeyManagerServiceError::LedgerViewKeyInaccessible(format!("{ledger}"))),
             WalletType::ProvidedKeys(wallet) => Ok(wallet.view_key.clone()),
         }
     }
@@ -932,7 +932,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         };
 
         let proof_bytes = proof_bytes_result
-            .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {}", err)))?;
+            .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {err}")))?;
 
         RangeProof::from_canonical_bytes(&proof_bytes).map_err(|_| {
             TransactionError::RangeProofError("Rangeproof factory returned invalid range proof bytes".to_string())

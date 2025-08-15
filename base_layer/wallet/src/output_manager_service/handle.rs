@@ -189,8 +189,8 @@ impl fmt::Display for OutputManagerRequest {
             } => {
                 write!(
                     f,
-                    "ScrapeWallet (tx_id: {}, fee_per_gram: {}, recipient_address {})",
-                    tx_id, fee_per_gram, recipient_address
+                    "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram}, recipient_address \
+                     {recipient_address})"
                 )
             },
             EncumberAggregateUtxo {
@@ -226,10 +226,10 @@ impl fmt::Display for OutputManagerRequest {
                 output_hash
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
-            ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({})", v),
-            PrepareToSendTransaction { payment_id, .. } => write!(f, "PrepareToSendTransaction ({})", payment_id),
+            ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({v})"),
+            PrepareToSendTransaction { payment_id, .. } => write!(f, "PrepareToSendTransaction ({payment_id})"),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
-            CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
+            CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
@@ -237,13 +237,12 @@ impl fmt::Display for OutputManagerRequest {
             RevalidateTxos => write!(f, "RevalidateTxos"),
             PreviewCoinJoin((commitments, fee_per_gram)) => write!(
                 f,
-                "PreviewCoinJoin(commitments={:#?}, fee_per_gram={})",
-                commitments, fee_per_gram
+                "PreviewCoinJoin(commitments={commitments:#?}, fee_per_gram={fee_per_gram})"
             ),
             PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => write!(
                 f,
-                "PreviewCoinSplitEven(commitments={:#?}, number_of_splits={}, fee_per_gram={})",
-                commitments, number_of_splits, fee_per_gram
+                "PreviewCoinSplitEven(commitments={commitments:#?}, number_of_splits={number_of_splits}, \
+                 fee_per_gram={fee_per_gram})"
             ),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({:?})", v.0),
             CreateCoinSplitEven(v) => write!(f, "CreateCoinSplitEven ({:?})", v.0),
@@ -253,8 +252,7 @@ impl fmt::Display for OutputManagerRequest {
                 ..
             } => write!(
                 f,
-                "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
-                commitments, fee_per_gram,
+                "CreateCoinJoin: commitments={commitments:#?}, fee_per_gram={fee_per_gram}"
             ),
             FeeEstimate {
                 amount,
@@ -264,29 +262,27 @@ impl fmt::Display for OutputManagerRequest {
                 num_outputs,
             } => write!(
                 f,
-                "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {}, selection_criteria: {:?})",
-                amount, fee_per_gram, num_kernels, num_outputs, selection_criteria
+                "FeeEstimate(amount: {amount}, fee_per_gram: {fee_per_gram}, num_kernels: {num_kernels}, num_outputs: \
+                 {num_outputs}, selection_criteria: {selection_criteria:?})"
             ),
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             CreateOutputWithFeatures { value, features } => {
-                write!(f, "CreateOutputWithFeatures({}, {})", value, features,)
+                write!(f, "CreateOutputWithFeatures({value}, {features})")
             },
             CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
             CreateClaimShaAtomicSwapTransaction(output, pre_image, fee_per_gram) => write!(
                 f,
-                "ClaimShaAtomicSwap(output hash: {}, pre_image: {}, fee_per_gram: {} )",
-                output, pre_image, fee_per_gram,
+                "ClaimShaAtomicSwap(output hash: {output}, pre_image: {pre_image}, fee_per_gram: {fee_per_gram} )"
             ),
             CreateHtlcRefundTransaction(output, fee_per_gram) => write!(
                 f,
-                "CreateHtlcRefundTransaction(output hash: {}, , fee_per_gram: {} )",
-                output, fee_per_gram,
+                "CreateHtlcRefundTransaction(output hash: {output}, , fee_per_gram: {fee_per_gram} )"
             ),
 
-            GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
+            GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {t}"),
             ClearShortTermEncumberances => write!(f, "ClearShortTermEncumberances"),
         }
     }
@@ -360,16 +356,16 @@ impl fmt::Display for OutputManagerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             OutputManagerEvent::TxoValidationSuccess(tx) => {
-                write!(f, "TxoValidationSuccess for {}", tx)
+                write!(f, "TxoValidationSuccess for {tx}")
             },
             OutputManagerEvent::TxoValidationInternalFailure(tx) => {
-                write!(f, "TxoValidationInternalFailure for {}", tx)
+                write!(f, "TxoValidationInternalFailure for {tx}")
             },
             OutputManagerEvent::TxoValidationCommunicationFailure(tx) => {
-                write!(f, "TxoValidationCommunicationFailure for {}", tx)
+                write!(f, "TxoValidationCommunicationFailure for {tx}")
             },
             OutputManagerEvent::TxoValidationAlreadyBusy(tx) => {
-                write!(f, "Txo is already running, stopping {}", tx)
+                write!(f, "Txo is already running, stopping {tx}")
             },
         }
     }

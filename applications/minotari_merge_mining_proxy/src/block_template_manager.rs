@@ -126,7 +126,7 @@ impl BlockTemplateManager<'_> {
                         b
                     },
                     Err(err) => {
-                        error!(target: LOG_TARGET, "grpc get_new_block ({})", err);
+                        error!(target: LOG_TARGET, "grpc get_new_block ({err})");
                         return Err(err);
                     },
                 }
@@ -162,7 +162,7 @@ impl BlockTemplateManager<'_> {
                     val
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "grpc get_new_block_template ({})", err);
+                    error!(target: LOG_TARGET, "grpc get_new_block_template ({err})");
                     return Err(err);
                 },
             };
@@ -172,12 +172,12 @@ impl BlockTemplateManager<'_> {
                 .as_ref()
                 .map(|h| h.height)
                 .unwrap_or_default();
-            debug!(target: LOG_TARGET, "Requested new block template at height: #{} (try {})", height, loop_count);
+            debug!(target: LOG_TARGET, "Requested new block template at height: #{height} (try {loop_count})");
             let (coinbase_output, coinbase_kernel) = self.get_coinbase(&new_template).await?;
 
             let template_with_coinbase =
                 merge_mining::add_coinbase(&coinbase_output, &coinbase_kernel, new_template.template.clone())?;
-            debug!(target: LOG_TARGET, "Added coinbase to new block template (try {})", loop_count);
+            debug!(target: LOG_TARGET, "Added coinbase to new block template (try {loop_count})");
 
             return Ok((template_with_coinbase, height));
         }
@@ -258,15 +258,15 @@ use tari_transaction_components::transaction_components::memo_field::TxType;
 /// This is an interim solution to calculate the merkle root for the aux chains when multiple aux chains will be
 /// merge mined with Monero. It needs to be replaced with a more general solution in the future.
 pub fn calculate_aux_chain_merkle_root(hashes: AuxChainHashes) -> Result<(monero::Hash, u32), MmProxyError> {
-    if hashes.is_empty() {
-        Err(MmProxyError::MissingDataError(
-            "No aux chain hashes provided".to_string(),
-        ))
-    } else if hashes.len() == 1 {
-        Ok((hashes[0], 0))
-    } else {
+    if hashes.len() > 1 {
         unimplemented!("Multiple aux chains for Monero is not supported yet, only Tari.");
     }
+    Ok((
+        *hashes.first().ok_or(MmProxyError::MissingDataError(
+            "No aux chain hashes provided".to_string(),
+        ))?,
+        0,
+    ))
 }
 
 /// Build the [FinalBlockTemplateData] from [template](NewBlockTemplateData) and with

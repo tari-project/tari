@@ -54,7 +54,7 @@ type Error = anyhow::Error;
 async fn main() {
     env_logger::init();
     if let Err(err) = run().await {
-        eprintln!("{error:?}: {error}", error = err);
+        eprintln!("{err:?}: {err}");
         process::exit(1);
     }
 }
@@ -265,13 +265,13 @@ async fn start_ping_ponger(
                 println!("\n-----------------------------------");
                 let id = thread_rng().next_u64();
                 inflight_pings.insert(id, Utc::now().naive_utc());
-                let msg = make_msg(&dest_node_id, &format!("PING {}", id));
+                let msg = make_msg(&dest_node_id, &format!("PING {id}"));
                 outbound_tx.send(msg)?;
             },
             Some("PING") => {
                 let id = msg_parts.next().ok_or_else(|| anyhow!("Received PING without id"))?;
 
-                let msg_str = format!("PONG {}", id);
+                let msg_str = format!("PONG {id}");
                 let msg = make_msg(&dest_node_id, &msg_str);
 
                 outbound_tx.send(msg)?;
@@ -284,17 +284,17 @@ async fn start_ping_ponger(
                     .ok()
                     .and_then(|id_num| inflight_pings.remove(&id_num))
                     .inspect(|&latency| {
-                        println!("Latency: {}ms", latency);
+                        println!("Latency: {latency}ms");
                     });
 
                 println!("-----------------------------------");
                 let new_id = thread_rng().next_u64();
                 inflight_pings.insert(new_id, Utc::now().naive_utc());
-                let msg = make_msg(&dest_node_id, &format!("PING {}", new_id));
+                let msg = make_msg(&dest_node_id, &format!("PING {new_id}"));
                 outbound_tx.send(msg)?;
             },
             msg => {
-                return Err(anyhow!("Received invalid message '{:?}'", msg));
+                return Err(anyhow!("Received invalid message '{msg:?}'"));
             },
         }
     }

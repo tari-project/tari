@@ -131,7 +131,7 @@ where
                 // Tick events
                 Some(_) = ping_tick.next() => {
                     if let Err(err) = self.start_ping_round().await {
-                        warn!(target: LOG_TARGET, "Error when pinging peers: {}", err);
+                        warn!(target: LOG_TARGET, "Error when pinging peers: {err}");
                     }
                     if self.config.max_allowed_ping_failures > 0 {
                         self.disconnect_failed_peers().await;
@@ -141,7 +141,7 @@ where
                 // Incoming messages from the Comms layer
                 Some(msg) = ping_stream.next() => {
                     if let Err(err) = self.handle_incoming_message(msg).await {
-                        warn!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {}", err);
+                        warn!(target: LOG_TARGET, "Failed to handle incoming PingPong message: {err}");
                     }
                 },
 
@@ -170,10 +170,7 @@ where
             Ok(p) => p,
             Err(e) => {
                 self.connectivity
-                    .ban_peer(
-                        node_id.clone(),
-                        format!("Peer sent a badly formed PingPongMessage:{}", e),
-                    )
+                    .ban_peer(node_id.clone(), format!("Peer sent a badly formed PingPongMessage:{e}"))
                     .await?;
                 return Err(e.into());
             },
@@ -215,7 +212,7 @@ where
                     node_id.short_str(),
                     source_peer.user_agent,
                     maybe_latency
-                        .map(|latency| format!("Latency: {:.2?}", latency))
+                        .map(|latency| format!("Latency: {latency:.2?}"))
                         .unwrap_or_default(),
                     message_tag,
                 );
@@ -385,7 +382,7 @@ where
             if let Ok(Some(mut conn)) = self.connectivity.get_connection(node_id.clone()).await {
                 debug!(
                     target: LOG_TARGET,
-                    "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
+                    "Disconnecting peer {node_id} that failed {max_allowed_ping_failures} rounds of pings"
                 );
                 match conn
                     .disconnect(Minimized::No, "LivenessService disconnect failed peers")
@@ -395,7 +392,7 @@ where
                         node_ids.push(node_id.clone());
                     },
                     Err(err) => {
-                        warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", node_id, err);
+                        warn!(target: LOG_TARGET, "Failed to disconnect peer {node_id} ({err})");
                     },
                 }
             }

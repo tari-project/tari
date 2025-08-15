@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
@@ -563,7 +564,7 @@ pub async fn test_transaction_service_sqlite_db() {
     let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
+    let db_path = format!("{db_folder}/{db_name}");
     let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
     let mut key = [0u8; size_of::<Key>()];
@@ -579,7 +580,7 @@ async fn import_tx_and_read_it_from_db() {
     let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
+    let db_path = format!("{db_folder}/{db_name}");
     let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
 
     let mut key = [0u8; size_of::<Key>()];

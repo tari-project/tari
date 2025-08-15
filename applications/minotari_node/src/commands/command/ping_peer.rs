@@ -52,7 +52,7 @@ impl CommandContext {
         task::spawn(async move {
             match liveness.send_ping(dest_node_id.clone()).await {
                 Ok(nonce) => {
-                    println!("🏓 Pinging peer {} with nonce {} ...", dest_node_id, nonce);
+                    println!("🏓 Pinging peer {dest_node_id} with nonce {nonce} ...");
                     loop {
                         match liveness_events.recv().await {
                             Ok(event) => {
@@ -76,7 +76,7 @@ impl CommandContext {
                     }
                 },
                 Err(e) => {
-                    println!("🏓 Ping failed to send to {}: {}", dest_node_id, e);
+                    println!("🏓 Ping failed to send to {dest_node_id}: {e}");
                 },
             }
         });

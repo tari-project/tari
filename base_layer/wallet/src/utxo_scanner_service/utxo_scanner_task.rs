@@ -128,7 +128,7 @@ where
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to scan UTXO's from base node: {}", e
+                        "Failed to scan UTXO's from base node: {e}"
                     );
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
                         num_retries: self.num_retries,
@@ -509,7 +509,7 @@ where
                             if current_height % PROGRESS_REPORT_INTERVAL == 0 {
                                 debug!(
                                     target: LOG_TARGET,
-                                    "Scanned up to block {} with a current tip_height of {}", current_height, tip_height
+                                    "Scanned up to block {current_height} with a current tip_height of {tip_height}"
                                 );
 
                                 let latency = client.get_last_request_latency().await.unwrap_or_default();
@@ -788,9 +788,7 @@ where
         let epoch_time_birthday = get_birthday_from_unix_epoch_in_seconds(birthday, 0);
         debug!(
             target: LOG_TARGET,
-            "Wallet birthday is {} at epoch time {}",
-            birthday,
-            epoch_time_birthday
+            "Wallet birthday is {birthday} at epoch time {epoch_time_birthday}"
         );
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
         let block_height_scanning_start = client
@@ -805,9 +803,7 @@ where
             None => {
                 warn!(
                     target: LOG_TARGET,
-                    "No block header found at height {} for birthday {}",
-                    block_height_scanning_start,
-                    birthday
+                    "No block header found at height {block_height_scanning_start} for birthday {birthday}"
                 );
                 return Err(anyhow!("No block header found at scanning start height"));
             },

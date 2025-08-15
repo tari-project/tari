@@ -50,6 +50,7 @@ use crate::{
 
 const ANNUAL_BLOCKS: u64 = 30 /* blocks/hr */ * 24 /* hr /d */ * 366 /* days / yr */;
 
+
 /// This is the inner struct used to control all consensus values.
 #[derive(Debug, Clone)]
 pub struct ConsensusConstants {
@@ -58,7 +59,7 @@ pub struct ConsensusConstants {
     /// The minimum maturity a coinbase utxo must have, in number of blocks
     coinbase_min_maturity: u64,
     /// Current version of the blockchain
-    blockchain_version: u16,
+    blockchain_version: BlockVersion,
     /// The blockchain version that are accepted. Values outside of this range will be rejected.
     valid_blockchain_version_range: RangeInclusive<u16>,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is accepted.
@@ -128,6 +129,10 @@ pub struct ConsensusConstants {
     vn_registration_max_vns_per_epoch: u32,
     /// Maximum number of validator nodes that can exit per epoch
     vn_registration_max_exits_per_epoch: u32,
+    /// Cuckaroo cycle length
+    cuckaroo_cycle_length: u8,
+    /// Cuckaroo edge bits
+    cuckaroo_edge_bits: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -193,7 +198,7 @@ impl ConsensusConstants {
     }
 
     /// Current version of the blockchain.
-    pub fn blockchain_version(&self) -> u16 {
+    pub fn blockchain_version(&self) -> BlockVersion {
         self.blockchain_version
     }
 
@@ -385,6 +390,14 @@ impl ConsensusConstants {
         self.proof_of_work.keys().copied().collect()
     }
 
+    pub fn cuckaroo_cycle_length(&self) -> u8 {
+        self.cuckaroo_cycle_length
+    }
+
+    pub fn cuckaroo_edge_bits(&self) -> u8 {
+        self.cuckaroo_edge_bits
+    }
+
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -403,11 +416,16 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::min(),
             target_time: 360,
         });
+        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
+            target_time: 360,
+        });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 2,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
@@ -439,6 +457,8 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
             vn_registration_max_exits_per_epoch: 5,
+            cuckaroo_cycle_length: 42,
+            cuckaroo_edge_bits: 29,
         }];
         consensus_constants
     }
@@ -470,7 +490,7 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 6,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit,
             difficulty_block_window,
@@ -506,6 +526,8 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 50,
             vn_registration_max_vns_per_epoch: 10,
             vn_registration_max_exits_per_epoch: 5,
+            cuckaroo_cycle_length: 42,
+            cuckaroo_edge_bits: 29,
         }];
         consensus_constants
     }
@@ -528,11 +550,12 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 60,
         });
+
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 6,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -564,6 +587,8 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
+            cuckaroo_cycle_length: 0,
+            cuckaroo_edge_bits: 0,
         };
 
         let mut con2 = consensus_constants1.clone();
@@ -584,9 +609,36 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 60,
         });
+        con2.blockchain_version = BlockVersion::V0; // Historical error, should be V1
         con2.proof_of_work = algos;
 
-        let consensus_constants = vec![consensus_constants1, con2];
+        let mut con3 = con2.clone();
+        con3.effective_from_height = 82_000;
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::from_u64(60_000_000_000).expect("valid difficulty"),
+            target_time: 60,
+        });
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            target_time: 60,
+        });
+        algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(600).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 60,
+        });
+        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 60,
+        });
+        con3.blockchain_version = BlockVersion::V2;
+        con3.valid_blockchain_version_range = 2..=2;
+        con3.proof_of_work = algos;
+        let consensus_constants = vec![consensus_constants1, con2, con3];
         consensus_constants
     }
 
@@ -612,7 +664,7 @@ impl ConsensusConstants {
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -644,10 +696,13 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
+            cuckaroo_cycle_length: 42,
+            cuckaroo_edge_bits: 29,
         }];
         consensus_constants
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
@@ -664,7 +719,7 @@ impl ConsensusConstants {
         let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 360,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -696,6 +751,8 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
+            cuckaroo_cycle_length: 42,
+            cuckaroo_edge_bits: 29,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 120;
@@ -718,14 +775,41 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 360,
         });
-        con_3.blockchain_version = 1;
+        con_3.blockchain_version = BlockVersion::V1;
         con_3.valid_blockchain_version_range = 1..=1;
         con_3.proof_of_work = algos;
 
-        let consensus_constants = vec![con_1, con_2, con_3];
+        let mut con_4 = con_3.clone();
+        con_4.effective_from_height = 5_500;
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 360,
+        });
+        con_4.blockchain_version = BlockVersion::V2;
+        con_4.proof_of_work = algos;
+
+        let consensus_constants = vec![con_1, con_2, con_3, con_4];
         consensus_constants
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -743,7 +827,7 @@ impl ConsensusConstants {
         let con_1 = ConsensusConstants {
             effective_from_height: 0,
             coinbase_min_maturity: 720,
-            blockchain_version: 0,
+            blockchain_version: BlockVersion::V0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
@@ -775,6 +859,8 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
+            cuckaroo_cycle_length: 42,
+            cuckaroo_edge_bits: 29,
         };
         let mut con_2 = con_1.clone();
         con_2.coinbase_min_maturity = 540; // 18 hours
@@ -802,11 +888,38 @@ impl ConsensusConstants {
             max_difficulty: Difficulty::max(),
             target_time: 360,
         });
-        con_4.blockchain_version = 1;
+        con_4.blockchain_version = BlockVersion::V1;
         con_4.valid_blockchain_version_range = 1..=1;
         con_4.proof_of_work = algos;
 
-        let consensus_constants = vec![con_1, con_2, con_3, con_4];
+        let mut con_5 = con_4.clone();
+        con_5.effective_from_height = 85_000;
+        con_5.blockchain_version = BlockVersion::V2;
+        con_5.valid_blockchain_version_range = 2..=2;
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(150_000_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 480,
+        });
+        algos.insert(PowAlgorithm::RandomXM, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 480,
+        });
+        algos.insert(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 480,
+        });
+        algos.insert(PowAlgorithm::Cuckaroo, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(1).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: 480,
+        });
+        con_5.proof_of_work = algos;
+
+        let consensus_constants = vec![con_1, con_2, con_3, con_4, con_5];
         consensus_constants
     }
 
@@ -932,8 +1045,13 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_blockchain_version(mut self, version: u16) -> Self {
+    pub fn with_blockchain_version(mut self, version: BlockVersion) -> Self {
         self.consensus.blockchain_version = version;
+        self
+    }
+
+    pub fn with_valid_blockchain_version_range(mut self, range: RangeInclusive<u16>) -> Self {
+        self.consensus.valid_blockchain_version_range = range;
         self
     }
 
@@ -944,6 +1062,7 @@ impl ConsensusConstantsBuilder {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::convert::TryFrom;
 
     use crate::{

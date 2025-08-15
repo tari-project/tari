@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use blake2::Blake2b;
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use rand::rngs::OsRng;
@@ -117,8 +118,9 @@ impl Dh for CommsDiffieHellman {
     }
 
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), snow::Error> {
-        let pk = UncompressedCommsPublicKey::from_canonical_bytes(&public_key[..self.pub_len()])
-            .map_err(|_| snow::Error::Dh)?;
+        let pk =
+            UncompressedCommsPublicKey::from_canonical_bytes(public_key.get(..self.pub_len()).ok_or(snow::Error::Dh)?)
+                .map_err(|_| snow::Error::Dh)?;
         let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
         copy_slice!(hash.reveal(), out);

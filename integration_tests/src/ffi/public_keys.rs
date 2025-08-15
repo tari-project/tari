@@ -48,7 +48,7 @@ impl PublicKeys {
         unsafe {
             length = ffi_import::public_keys_get_length(self.ptr, &mut error);
             if error > 0 {
-                println!("public_keys_get_length error {}", error);
+                println!("public_keys_get_length error {error}");
                 panic!("public_keys_get_length error");
             }
         }
@@ -61,7 +61,7 @@ impl PublicKeys {
         unsafe {
             ptr = ffi_import::public_keys_get_at(self.ptr, position, &mut error);
             if error > 0 {
-                println!("public_keys_get_length error {}", error);
+                println!("public_keys_get_length error {error}");
                 panic!("public_keys_get_length error");
             }
         }

@@ -44,6 +44,7 @@ impl Filter for FieldsPreservedFilter {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
 
     use super::*;
     use crate::{

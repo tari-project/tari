@@ -365,8 +365,8 @@ where KM: TransactionKeyManagerInterface
         let change_amount = total_being_spent.checked_sub(total_input_value);
         match change_amount {
             None => Err(format!(
-                "You are spending more than you're providing: provided {}, required {}.",
-                total_being_spent, total_input_value
+                "You are spending more than you're providing: provided {total_being_spent}, required \
+                 {total_input_value}."
             )),
             Some(MicroMinotari(0)) => Ok((fee_without_change, MicroMinotari(0), None)),
             Some(v) => {
@@ -567,7 +567,7 @@ where KM: TransactionKeyManagerInterface
         };
         debug!(
             target: LOG_TARGET,
-            "Build transaction with Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
+            "Build transaction with Fee: {total_fee}. Change: {change}. Output: {change_output:?}"
         );
 
         let change_output_pair = match change_output {

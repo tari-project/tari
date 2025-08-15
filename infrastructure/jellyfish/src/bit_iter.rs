@@ -22,14 +22,14 @@ impl<'a> BitIterator<'a> {
     }
 
     /// Returns the `index`-th bit in the bytes.
-    fn get_bit(&self, index: usize) -> bool {
+    fn get_bit(&self, index: usize) -> Option<bool> {
         // MIRAI annotations - important?
         // assume!(index < self.pos.end); // assumed precondition
         // assume!(self.hash_bytes.len() == 32); // invariant
         // assume!(self.pos.end == self.hash_bytes.len() * 8); // invariant
         let pos = index / 8;
         let bit = 7 - index % 8;
-        (self.bytes[pos] >> bit) & 1 != 0
+        Some((self.bytes.get(pos)? >> bit) & 1 != 0)
     }
 }
 
@@ -37,7 +37,7 @@ impl Iterator for BitIterator<'_> {
     type Item = bool;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.pos.next().map(|x| self.get_bit(x))
+        self.pos.next().and_then(|x| self.get_bit(x))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -47,7 +47,7 @@ impl Iterator for BitIterator<'_> {
 
 impl DoubleEndedIterator for BitIterator<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.pos.next_back().map(|x| self.get_bit(x))
+        self.pos.next_back().and_then(|x| self.get_bit(x))
     }
 }
 

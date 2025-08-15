@@ -76,24 +76,24 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
     fn try_from(mut output: grpc::UnblindedOutput) -> Result<Self, Self::Error> {
         let spending_key = PrivateKey::from_canonical_bytes(output.spending_key.as_bytes())
-            .map_err(|e| format!("spending_key: {:?}", e))?;
+            .map_err(|e| format!("spending_key: {e:?}"))?;
 
         let features = output
             .features
             .map(TryInto::try_into)
             .ok_or_else(|| "output features not provided".to_string())??;
 
-        let script = TariScript::from_bytes(output.script.as_bytes()).map_err(|e| format!("script: {:?}", e))?;
+        let script = TariScript::from_bytes(output.script.as_bytes()).map_err(|e| format!("script: {e:?}"))?;
 
         let input_data =
-            ExecutionStack::from_bytes(output.input_data.as_bytes()).map_err(|e| format!("input_data: {:?}", e))?;
+            ExecutionStack::from_bytes(output.input_data.as_bytes()).map_err(|e| format!("input_data: {e:?}"))?;
 
         let script_private_key = PrivateKey::from_canonical_bytes(output.script_private_key.as_bytes())
-            .map_err(|e| format!("script_private_key: {:?}", e))?;
+            .map_err(|e| format!("script_private_key: {e:?}"))?;
 
         let sender_offset_public_key =
             CompressedPublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
-                .map_err(|err| format!("sender_offset_public_key {:?}", err))?;
+                .map_err(|err| format!("sender_offset_public_key {err:?}"))?;
 
         let metadata_signature = output
             .metadata_signature
@@ -113,7 +113,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
                 None
             } else {
                 let proof =
-                    RangeProof::from_vec(&proof.proof_bytes).map_err(|e| format!("Range proof is invalid: {}", e))?;
+                    RangeProof::from_vec(&proof.proof_bytes).map_err(|e| format!("Range proof is invalid: {e}"))?;
                 Some(proof)
             }
         } else {

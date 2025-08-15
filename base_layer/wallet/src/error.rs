@@ -117,7 +117,7 @@ impl From<ByteArrayError> for WalletError {
 
 impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
-        log::error!(target: LOG_TARGET, "{}", err);
+        log::error!(target: LOG_TARGET, "{err}");
         Self::new(ExitCode::WalletError, err.to_string())
     }
 }

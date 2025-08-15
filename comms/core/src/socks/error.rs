@@ -60,4 +60,6 @@ pub enum SocksError {
     InvalidAuthValues(String),
     #[error("Password auth failure (code={0})")]
     PasswordAuthFailure(u8),
+    #[error("Invalid amount of bytes read")]
+    InvalidAmountOfBytesRead,
 }

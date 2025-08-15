@@ -65,7 +65,7 @@ pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
     match &config.db_type {
         DatabaseType::Lmdb => {
             create_recovery_lmdb_database(config.lmdb_path.as_path()).map_err(|err| {
-                error!(target: LOG_TARGET, "{}", err);
+                error!(target: LOG_TARGET, "{err}");
                 ExitError::new(ExitCode::UnknownError, err)
             })?;
         },
@@ -81,8 +81,8 @@ pub async fn run_recovery(
     let rules = BaseConsensusManager::builder(node_config.network)
         .build()
         .map_err(|e| {
-            error!(target: LOG_TARGET, "Error configuring consensus manager: {}", e);
-            anyhow!("Could not configure consensus manager: {}", e)
+            error!(target: LOG_TARGET, "Error configuring consensus manager: {e}");
+            anyhow!("Could not configure consensus manager: {e}")
         })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
@@ -94,8 +94,8 @@ pub async fn run_recovery(
                 Some(readiness_handler.lmdb_migration_status_tx.clone()),
             )
             .map_err(|e| {
-                error!(target: LOG_TARGET, "Error opening db: {}", e);
-                anyhow!("Could not open DB: {}", e)
+                error!(target: LOG_TARGET, "Error opening db: {e}");
+                anyhow!("Could not open DB: {e}")
             })?;
             let temp_path = temp_dir().join("temp_recovery");
 
@@ -106,8 +106,8 @@ pub async fn run_recovery(
                 Some(readiness_handler.lmdb_migration_status_tx.clone()),
             )
             .map_err(|e| {
-                error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
-                anyhow!("Could not open recovery DB: {}", e)
+                error!(target: LOG_TARGET, "Error opening recovery db: {e}");
+                anyhow!("Could not open recovery DB: {e}")
             })?;
             (temp, backend, temp_path)
         },
@@ -141,8 +141,8 @@ pub async fn run_recovery(
         "Node has completed recovery mode, it will try to cleanup the db"
     );
     fs::remove_dir_all(&temp_path).map_err(|e| {
-        error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
-        anyhow!("Could not open recovery DB: {}", e)
+        error!(target: LOG_TARGET, "Error opening recovery db: {e}");
+        anyhow!("Could not open recovery DB: {e}")
     })
 }
 
@@ -154,8 +154,8 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
 ) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
     let rules = BaseConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
-        error!(target: LOG_TARGET, "Error creating consensus manager: {}", e);
-        anyhow!("Error creating consensus manager: {}", e)
+        error!(target: LOG_TARGET, "Error creating consensus manager: {e}");
+        anyhow!("Error creating consensus manager: {e}")
     })?;
     let validators = Validators::new(
         MockValidator::new(true),
@@ -172,28 +172,28 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
     source_database.start()?;
     let max_height = source_database
         .get_chain_metadata()
-        .map_err(|e| anyhow!("Could not get max chain height: {}", e))?
+        .map_err(|e| anyhow!("Could not get max chain height: {e}"))?
         .best_block_height();
     // we start at height 1
     let mut counter = 1;
     print!("Starting recovery at height: ");
     loop {
-        print!("{}", counter);
+        print!("{counter}");
         io::stdout().flush().unwrap();
-        trace!(target: LOG_TARGET, "Asking for block with height: {}", counter);
+        trace!(target: LOG_TARGET, "Asking for block with height: {counter}");
         let block = source_database
             .fetch_block(counter, true)
-            .map_err(|e| anyhow!("Could not get block from recovery db: {}", e))?
+            .map_err(|e| anyhow!("Could not get block from recovery db: {e}"))?
             .into_block();
-        trace!(target: LOG_TARGET, "Adding block: {}", block);
+        trace!(target: LOG_TARGET, "Adding block: {block}");
         db.add_block(Arc::new(block))
             .await
-            .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
+            .map_err(|e| anyhow!("Stopped recovery at height {counter}, reason: {e}"))?;
 
         readiness_status_handler.send_readiness_status(ReadinessState::RecoveringRebuildingDatabase);
 
         if counter >= max_height {
-            info!(target: LOG_TARGET, "Done with recovery, chain height {}", counter);
+            info!(target: LOG_TARGET, "Done with recovery, chain height {counter}");
             break;
         }
         print!("\x1B[{}D\x1B[K", counter.to_string().len());

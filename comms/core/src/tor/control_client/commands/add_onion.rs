@@ -103,11 +103,11 @@ impl TorCommand for AddOnion<'_> {
 
         if !self.flags.is_empty() {
             let flags = self.flags.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",");
-            s.push_str(&format!(" Flags={}", flags));
+            s.push_str(&format!(" Flags={flags}"));
         }
 
         if let Some(num_streams) = self.num_streams {
-            s.push_str(&format!(" NumStreams={}", num_streams));
+            s.push_str(&format!(" NumStreams={num_streams}"));
         }
 
         s.push_str(&format!(
@@ -154,7 +154,7 @@ impl TorCommand for AddOnion<'_> {
                         "RSA1024" => Some(PrivateKey::Rsa1024(value.into_owned())),
                         k => {
                             return Err(
-                                ParseError(format!("Server returned unrecognised private key type '{}'", k)).into(),
+                                ParseError(format!("Server returned unrecognised private key type '{k}'")).into(),
                             )
                         },
                     };
@@ -182,9 +182,7 @@ impl fmt::Display for AddOnion<'_> {
             "ADD_ONION (KeyType={} KeyBlob={} Flags={} PortMapping={})",
             self.key_type.as_tor_repr(),
             self.key_blob,
-            self.flags
-                .iter()
-                .fold(String::new(), |acc, f| format!("{}, {}", acc, f)),
+            self.flags.iter().fold(String::new(), |acc, f| format!("{acc}, {f}")),
             self.port_mapping
         )
     }
@@ -215,7 +213,7 @@ mod test {
         );
         assert_eq!(
             command.to_command_string().unwrap(),
-            format!("ADD_ONION NEW:{} Port=9090,127.0.0.1:9090", key)
+            format!("ADD_ONION NEW:{key} Port=9090,127.0.0.1:9090")
         );
     }
 }

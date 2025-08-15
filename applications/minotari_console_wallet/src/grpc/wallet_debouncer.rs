@@ -131,7 +131,7 @@ impl WalletDebouncer {
             let mut output_manager_service = self.output_manager_service.clone();
             let balance = match output_manager_service.get_balance().await {
                 Ok(b) => b,
-                Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
+                Err(e) => return Err(Status::not_found(format!("GetBalance error! {e}"))),
             };
             self.update_balance(balance.clone()).await;
             self.set_refresh_needed(false);
@@ -154,7 +154,7 @@ impl WalletDebouncer {
 
     fn is_refresh_needed(&self) -> bool {
         let refresh_needed = self.refresh_needed.load(Ordering::SeqCst);
-        trace!(target: LOG_TARGET, "is_refresh_needed '{}'", refresh_needed);
+        trace!(target: LOG_TARGET, "is_refresh_needed '{refresh_needed}'");
         refresh_needed
     }
 
@@ -165,14 +165,14 @@ impl WalletDebouncer {
     fn set_refresh_needed(&self, refresh_needed: bool) {
         let old_value = self.refresh_needed.swap(refresh_needed, Ordering::SeqCst);
         if old_value != refresh_needed {
-            trace!(target: LOG_TARGET, "set_refresh_needed '{}'", refresh_needed);
+            trace!(target: LOG_TARGET, "set_refresh_needed '{refresh_needed}'");
         }
     }
 
     async fn update_scanned_height(&self, scanned_height: u64) {
         let lock = self.scanned_height.load(Ordering::SeqCst);
         if lock != scanned_height {
-            trace!(target: LOG_TARGET, "set_scanned_height '{}'", scanned_height);
+            trace!(target: LOG_TARGET, "set_scanned_height '{scanned_height}'");
             self.scanned_height.store(scanned_height, Ordering::SeqCst);
         }
     }
@@ -230,7 +230,7 @@ impl WalletDebouncer {
                             }
                         },
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "transaction_service_events '{}'", e);
+                            warn!(target: LOG_TARGET, "transaction_service_events '{e}'");
                         },
                     }
                 },
@@ -242,14 +242,14 @@ impl WalletDebouncer {
                             }
                         },
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "output_manager_service_events '{}'", e);
+                            warn!(target: LOG_TARGET, "output_manager_service_events '{e}'");
                         },
                     }
                 },
                 result = utxo_scanner_events.recv() => {
                     match result {
                         Ok(event) => {
-                            trace!(target: LOG_TARGET, "utxo_scanner_events '{:?}'", event);
+                            trace!(target: LOG_TARGET, "utxo_scanner_events '{event:?}'");
                             match event {
                                 UtxoScannerEvent::Progress {
                                     current_height,..
@@ -269,7 +269,7 @@ impl WalletDebouncer {
                             }
                         },
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
+                            warn!(target: LOG_TARGET, "Problem with utxo scanner: {e}");
                         },
                     }
                 },

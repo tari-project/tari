@@ -59,18 +59,18 @@ pub enum Error {
 
 impl<T> From<std::sync::PoisonError<T>> for Error {
     fn from(error: std::sync::PoisonError<T>) -> Self {
-        Error::General(format!("Failed to get lock: {:?}", error))
+        Error::General(format!("Failed to get lock: {error:?}"))
     }
 }
 
 impl<T> From<std::sync::mpsc::SendError<T>> for Error {
     fn from(error: std::sync::mpsc::SendError<T>) -> Self {
-        Error::General(format!("Failed to send to a channel: {:?}", error))
+        Error::General(format!("Failed to send to a channel: {error:?}"))
     }
 }
 
 impl From<native_tls::HandshakeError<std::net::TcpStream>> for Error {
     fn from(error: native_tls::HandshakeError<std::net::TcpStream>) -> Self {
-        Error::General(format!("TLS handshake error: {:?}", error))
+        Error::General(format!("TLS handshake error: {error:?}"))
     }
 }

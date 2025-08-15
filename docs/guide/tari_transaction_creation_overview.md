@@ -102,7 +102,7 @@ We'll explain the transaction creation process using this unit test as an exampl
         assert!(alice.is_finalizing());
         match alice.finalize(&key_manager_alice).await {
             Ok(_) => (),
-            Err(e) => panic!("{:?}", e),
+            Err(e) => panic!("{e:?}"),
         };
 
         assert!(alice.is_finalized());

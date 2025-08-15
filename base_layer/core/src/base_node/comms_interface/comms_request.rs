@@ -102,22 +102,22 @@ impl Display for NodeCommsRequest {
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),
-            GetTargetDifficultyNextBlock(algo) => write!(f, "GetTargetDifficultyNextBlock ({:?})", algo),
+            GetTargetDifficultyNextBlock(algo) => write!(f, "GetTargetDifficultyNextBlock ({algo:?})"),
             FetchHeaders(range) => {
-                write!(f, "FetchHeaders ({:?})", range)
+                write!(f, "FetchHeaders ({range:?})")
             },
             FetchHeadersByHashes(v) => write!(f, "FetchHeadersByHashes (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingBlocks { range, compact } => {
-                write!(f, "FetchMatchingBlocks ({:?}, {})", range, compact)
+                write!(f, "FetchMatchingBlocks ({range:?}, {compact})")
             },
             FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksByKernelExcessSigs (n={})", v.len()),
             FetchBlocksByUtxos(v) => write!(f, "FetchBlocksByUtxos (n={})", v.len()),
-            GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v),
-            GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v),
+            GetHeaderByHash(v) => write!(f, "GetHeaderByHash({v})"),
+            GetBlockByHash(v) => write!(f, "GetBlockByHash({v})"),
             GetNewBlockTemplate(v) => write!(f, "GetNewBlockTemplate ({}) with weight {}", v.algo, v.max_weight),
             GetNewBlock(b) => write!(f, "GetNewBlock (Block Height={})", b.header.height),
-            GetBlockFromAllChains(v) => write!(f, "GetBlockFromAllChains({})", v),
+            GetBlockFromAllChains(v) => write!(f, "GetBlockFromAllChains({v})"),
             FetchKernelByExcessSig(s) => write!(
                 f,
                 "FetchKernelByExcessSig (signature=({}, {}))",
@@ -145,38 +145,33 @@ impl Display for NodeCommsRequest {
                 sidechain_id,
                 public_key,
             } => {
-                write!(
-                    f,
-                    "GetValidatorNode ({:?}), public key ({:?})",
-                    sidechain_id, public_key
-                )
+                write!(f, "GetValidatorNode ({sidechain_id:?}), public key ({public_key:?})")
             },
             FetchTemplateRegistrations {
                 start_height: start,
                 end_height: end,
             } => {
-                write!(f, "FetchTemplateRegistrations ({}..={})", start, end)
+                write!(f, "FetchTemplateRegistrations ({start}..={end})")
             },
             FetchUnspentUtxosInBlock { block_hash } => {
-                write!(f, "FetchUnspentUtxosInBlock ({})", block_hash)
+                write!(f, "FetchUnspentUtxosInBlock ({block_hash})")
             },
             FetchMinedInfoByPayRef(payref) => {
-                write!(f, "FetchMinedInfoByPayRef ({})", payref)
+                write!(f, "FetchMinedInfoByPayRef ({payref})")
             },
             FetchMinedInfoByOutputHash(payref) => {
-                write!(f, "FetchMinedInfoByOutputHash ({})", payref)
+                write!(f, "FetchMinedInfoByOutputHash ({payref})")
             },
             FetchOutputMinedInfo(output_hash) => {
-                write!(f, "FetchOutputMinedInfo ({})", output_hash)
+                write!(f, "FetchOutputMinedInfo ({output_hash})")
             },
             CheckOutputSpentStatus(output_hash) => {
-                write!(f, "CheckOutputSpentStatus ({})", output_hash)
+                write!(f, "CheckOutputSpentStatus ({output_hash})")
             },
             FetchValidatorNodeChanges { epoch, sidechain_id } => {
                 write!(
                     f,
-                    "FetchValidatorNodeChanges (Side chain ID:{:?}), Epoch: {}",
-                    sidechain_id, epoch
+                    "FetchValidatorNodeChanges (Side chain ID:{sidechain_id:?}), Epoch: {epoch}"
                 )
             },
         }

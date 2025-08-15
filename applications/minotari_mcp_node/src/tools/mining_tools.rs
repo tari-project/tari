@@ -110,7 +110,7 @@ impl McpTool for GetNewBlockTemplateTool {
             .clone()
             .get_new_block_template(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template: {e}")))?
             .into_inner();
 
         let template = response
@@ -361,9 +361,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             .clone()
             .get_new_block_template_with_coinbases(request)
             .await
-            .map_err(|e| {
-                McpError::tool_execution_failed(format!("Failed to get block template with coinbases: {}", e))
-            })?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get block template with coinbases: {e}")))?
             .into_inner();
 
         Ok(json!({

@@ -104,8 +104,8 @@ impl McpTool for SubmitTransactionTool {
 
         // For simplicity, we'll create a minimal transaction structure
         // In a real implementation, you'd properly decode the hex into a Transaction
-        let _tx_bytes = hex::decode(&tx_hex)
-            .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {}", e)))?;
+        let _tx_bytes =
+            hex::decode(&tx_hex).map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {e}")))?;
 
         // Create a minimal transaction - this is a placeholder
         // In practice, you'd need to properly deserialize the transaction from bytes
@@ -126,7 +126,7 @@ impl McpTool for SubmitTransactionTool {
             .clone()
             .submit_transaction(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit transaction: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit transaction: {e}")))?;
 
         let response = response.into_inner();
 

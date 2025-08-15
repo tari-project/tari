@@ -63,7 +63,7 @@ impl McpResource for ConnectedPeersResource {
         let response = client
             .get_connected_peers(GetConnectedPeersRequest {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get connected peers: {}", e)))?;
+            .map_err(|e| McpError::resource_access_failed(format!("Failed to get connected peers: {e}")))?;
 
         let peers_response = response.into_inner();
         

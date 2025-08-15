@@ -83,8 +83,7 @@ impl WalletEventMonitor {
                         Ok(msg) => {
                             trace!(
                                 target: LOG_TARGET,
-                                "Wallet Event Monitor received wallet transaction service event {:?}",
-                                msg
+                                "Wallet Event Monitor received wallet transaction service event {msg:?}"
                             );
                             self.app_state_inner.write().await.add_event(EventListItem{
                                 event_type: "TransactionEvent".to_string(),
@@ -96,7 +95,7 @@ impl WalletEventMonitor {
                                     self.trigger_balance_refresh();
                                     notifier.transaction_received(tx_id);
                                     self.add_notification(
-                                        format!("Finalized Transaction Received - TxId: {}", tx_id)
+                                        format!("Finalized Transaction Received - TxId: {tx_id}")
                                     ).await;
                                 },
                                 TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _}  |
@@ -107,9 +106,7 @@ impl WalletEventMonitor {
                                     notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
                                     self.add_notification(
                                         format!(
-                                            "Transaction Mined Unconfirmed with {} confirmations - TxId: {}",
-                                            num_confirmations,
-                                            tx_id
+                                            "Transaction Mined Unconfirmed with {num_confirmations} confirmations - TxId: {tx_id}"
                                         )
                                     ).await;
                                 },
@@ -119,7 +116,7 @@ impl WalletEventMonitor {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     notifier.transaction_mined(tx_id);
-                                    self.add_notification(format!("Transaction Confirmed - TxId: {}", tx_id)).await;
+                                    self.add_notification(format!("Transaction Confirmed - TxId: {tx_id}")).await;
                                 },
                                 TransactionEvent::TransactionCancelled(tx_id, _) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
@@ -129,20 +126,20 @@ impl WalletEventMonitor {
                                 TransactionEvent::ReceivedTransaction(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
-                                    self.add_notification(format!("Transaction Received - TxId: {}", tx_id)).await;
+                                    self.add_notification(format!("Transaction Received - TxId: {tx_id}")).await;
                                 },
                                 TransactionEvent::ReceivedTransactionReply(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     self.add_notification(
-                                        format!("Transaction Reply Received - TxId: {}", tx_id)
+                                        format!("Transaction Reply Received - TxId: {tx_id}")
                                     ).await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     self.add_notification(
-                                        format!("Transaction Broadcast to Mempool - TxId: {}", tx_id)
+                                        format!("Transaction Broadcast to Mempool - TxId: {tx_id}")
                                     ).await;
                                 },
                                 TransactionEvent::TransactionCompletedImmediately(tx_id) => {
@@ -163,7 +160,7 @@ impl WalletEventMonitor {
                                     self.trigger_tx_state_refresh(tx_id).await;
                                     self.trigger_balance_refresh();
                                     self.add_notification(
-                                        format!("Transaction Imported - TxId: {}", tx_id)
+                                        format!("Transaction Imported - TxId: {tx_id}")
                                     ).await;
                                 },
                                 // Only the above variants trigger state refresh
@@ -171,7 +168,7 @@ impl WalletEventMonitor {
                             }
                         },
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "Missed {} from Transaction events", n);
+                            warn!(target: LOG_TARGET, "Missed {n} from Transaction events");
                         }
                         Err(broadcast::error::RecvError::Closed) => {}
                     }
@@ -200,13 +197,13 @@ impl WalletEventMonitor {
                             }
                         },
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Problem with utxo scanner: {}",e);
+                            warn!(target: LOG_TARGET, "Problem with utxo scanner: {e}");
                         },
                 },
                 result = base_node_events.recv() => {
                     match result {
                         Ok(msg) => {
-                            trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
+                            trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {msg:?}");
                             let BaseNodeEvent::BaseNodeStateChanged(state) = (*msg).clone();
                                 self.trigger_base_node_state_refresh(state).await;
                                 if self.should_we_trigger_tx_update_for_payref().await{
@@ -215,7 +212,7 @@ impl WalletEventMonitor {
 
                         },
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "Missed {} from Base node Service events", n);
+                            warn!(target: LOG_TARGET, "Missed {n} from Base node Service events");
                         }
                         Err(broadcast::error::RecvError::Closed) => {}
                     }
@@ -223,13 +220,13 @@ impl WalletEventMonitor {
                 result = output_manager_service_events.recv() => {
                     match result {
                         Ok(msg) => {
-                            trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                            trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {msg:?}");
                             if let OutputManagerEvent::TxoValidationSuccess(_) = &*msg {
                                 self.trigger_balance_refresh();
                             }
                         },
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                            warn!(target: LOG_TARGET, "Missed {n} from Output Manager Service events");
                         }
                         Err(broadcast::error::RecvError::Closed) => {}
                     }
@@ -249,7 +246,7 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_single_transaction_state(tx_id).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 
@@ -257,7 +254,7 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_single_confirmation_state(tx_id, confirmations).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 
@@ -265,7 +262,7 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.cleanup_single_confirmation_state(tx_id).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 
@@ -278,7 +275,7 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_full_transaction_state().await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 
@@ -286,12 +283,12 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_base_node_state(state).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
 
         if inner.has_time_locked_balance() {
             if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
-                warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+                warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
             }
         }
     }
@@ -300,7 +297,7 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.trigger_wallet_scanned_height_update(height, tip_height).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 
@@ -308,13 +305,13 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.trigger_wallet_latency_node_update(latency, name).await {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 
     fn trigger_balance_refresh(&mut self) {
         if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
-            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
         }
     }
 

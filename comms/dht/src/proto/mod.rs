@@ -117,7 +117,7 @@ impl TryFrom<rpc::PeerInfo> for UnvalidatedPeerInfo {
 
     fn try_from(value: rpc::PeerInfo) -> Result<UnvalidatedPeerInfo, Self::Error> {
         let public_key = CommsPublicKey::from_canonical_bytes(&value.public_key)
-            .map_err(|e| anyhow!("PeerInfo invalid public key: {}", e))?;
+            .map_err(|e| anyhow!("PeerInfo invalid public key: {e}"))?;
         let claims = value
             .claims
             .into_iter()
@@ -158,9 +158,9 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
         let version = u8::try_from(value.version)
             .map_err(|_| anyhow::anyhow!("Invalid peer identity signature version {}", value.version))?;
         let public_nonce = CommsPublicKey::from_canonical_bytes(&value.public_nonce)
-            .map_err(|e| anyhow!("Invalid public nonce: {}", e))?;
+            .map_err(|e| anyhow!("Invalid public nonce: {e}"))?;
         let signature =
-            CommsSecretKey::from_canonical_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {}", e))?;
+            CommsSecretKey::from_canonical_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {e}"))?;
         let updated_at = DateTime::<Utc>::from_timestamp(value.updated_at, 0)
             .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
 

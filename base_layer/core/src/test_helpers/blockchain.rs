@@ -58,6 +58,7 @@ use crate::{
     blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
         create_lmdb_database,
+        AccumulatedDataRebuildStatus,
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
@@ -364,6 +365,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_payref_rebuild_status()
     }
 
+    fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_accumulated_data_rebuild_status()
+    }
+
     fn build_payref_indexes_for_height(
         &self,
         height: u64,
@@ -375,6 +380,18 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .build_payref_indexes_for_height(height, metadata_at_start, initialize_stats, finalize)
+    }
+
+    fn update_accumulated_difficulty(
+        &self,
+        height: u64,
+        header_accum_data: BlockHeaderAccumulatedData,
+        last_chain_header: ChainHeader,
+    ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .update_accumulated_difficulty(height, header_accum_data, last_chain_header)
     }
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {

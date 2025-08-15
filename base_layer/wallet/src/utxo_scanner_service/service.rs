@@ -75,7 +75,7 @@ where
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         key_manager: TKeyManagerInterface,
     ) -> Self {
-        debug!(target: LOG_TARGET, "{:?}: New scanning service created", mode);
+        debug!(target: LOG_TARGET, "{mode:?}: New scanning service created");
         Self {
             resources,
             retry_limit,
@@ -137,7 +137,7 @@ where
                 let task = self.create_task(local_shutdown);
                 let task_join_handle = task::spawn(async move {
                     if let Err(err) = task.run().await {
-                        error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
+                        error!(target: LOG_TARGET, "Error scanning UTXOs: {err}");
                     }
                 });
 
@@ -148,7 +148,7 @@ where
                         debug!(target: LOG_TARGET, "UTXO scanning round completed successfully");
                     },
                     Err(e) => {
-                        error!(target: LOG_TARGET, "UTXO scanning round failed: {}", e);
+                        error!(target: LOG_TARGET, "UTXO scanning round failed: {e}");
                     },
                 }
             }

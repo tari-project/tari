@@ -107,7 +107,7 @@ impl WalletMcpServer {
         if let Some(ref process_launcher) = self.launched_process {
             log::info!("Stopping launched wallet process...");
             if let Err(e) = process_launcher.stop().await {
-                log::warn!("Failed to stop launched wallet: {}", e);
+                log::warn!("Failed to stop launched wallet: {e}");
             }
         }
 
@@ -119,12 +119,12 @@ impl WalletMcpServer {
     async fn create_grpc_client(config: &WalletMcpConfig) -> McpResult<WalletGrpcClient<Channel>> {
         let wallet_grpc_url = config.wallet_grpc_url();
 
-        log::info!("Connecting to wallet at: {}", wallet_grpc_url);
+        log::info!("Connecting to wallet at: {wallet_grpc_url}");
 
         // Use the wallet client's connect method
         let client = WalletGrpcClient::connect(&wallet_grpc_url)
             .await
-            .map_err(|e| McpError::config_error(format!("Failed to connect to wallet: {}", e)))?;
+            .map_err(|e| McpError::config_error(format!("Failed to connect to wallet: {e}")))?;
 
         log::info!("Successfully connected to wallet");
         Ok(client)
@@ -138,7 +138,7 @@ impl WalletMcpServer {
         // Check if already running using proper health monitor
         let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
         if health_monitor.is_service_ready().await {
-            log::info!("Wallet already running and healthy on port {}", port);
+            log::info!("Wallet already running and healthy on port {port}");
             return Ok(None); // No process launched by us
         }
 
@@ -147,18 +147,18 @@ impl WalletMcpServer {
         // Find an available port if the default is in use
         let available_port = CliIntegrationUtils::find_available_port(port).unwrap_or(port);
         if available_port != port {
-            log::info!("Port {} in use, using port {} instead", port, available_port);
+            log::info!("Port {port} in use, using port {available_port} instead");
         }
 
         // Extract proper CLI configuration and arguments
         let launch_config = cli.extract_launch_config();
         let wallet_args = cli.extract_wallet_args();
 
-        log::debug!("Launching wallet with config: {:?}", launch_config);
-        log::debug!("Wallet arguments: {:?}", wallet_args);
+        log::debug!("Launching wallet with config: {launch_config:?}");
+        log::debug!("Wallet arguments: {wallet_args:?}");
 
         // Create process launcher using TariProcessLauncher
-        let grpc_address = format!("127.0.0.1:{}", available_port);
+        let grpc_address = format!("127.0.0.1:{available_port}");
         let (launcher, mut status_rx) = TariProcessLauncher::launch_wallet(
             launch_config.base_path,
             launch_config.config_path,
@@ -175,7 +175,7 @@ impl WalletMcpServer {
         let launcher_handle = tokio::spawn(async move {
             match launcher_for_background.launch().await {
                 Ok(result) => {
-                    log::info!("Wallet launched successfully: {:?}", result);
+                    log::info!("Wallet launched successfully: {result:?}");
                     // Keep the launcher alive to maintain the process
                     loop {
                         if !launcher_for_background.is_running().await {
@@ -186,7 +186,7 @@ impl WalletMcpServer {
                     }
                 },
                 Err(e) => {
-                    log::error!("Failed to launch wallet: {}", e);
+                    log::error!("Failed to launch wallet: {e}");
                 },
             }
         });
@@ -196,22 +196,22 @@ impl WalletMcpServer {
         const MAX_ATTEMPTS: u32 = 120; // 10 minutes with 5-second intervals (wallets take longer)
 
         // Create health monitor for the actual launched port
-        let launched_health_monitor = ServiceHealthMonitors::wallet(&format!("127.0.0.1:{}", available_port));
+        let launched_health_monitor = ServiceHealthMonitors::wallet(&format!("127.0.0.1:{available_port}"));
 
         while attempts < MAX_ATTEMPTS {
             // Check if the service is ready using proper health check
             if launched_health_monitor.is_service_ready().await {
-                log::info!("Wallet is now running and healthy on port {}", available_port);
+                log::info!("Wallet is now running and healthy on port {available_port}");
                 return Ok(Some(launcher));
             }
 
             // Check launcher status
             if let Ok(status) = status_rx.try_recv() {
-                log::debug!("Launcher status: {:?}", status);
+                log::debug!("Launcher status: {status:?}");
                 match status {
                     ProcessLaunchStatus::Failed(err) => {
                         launcher_handle.abort();
-                        return Err(McpError::server_error(format!("Failed to start wallet: {}", err)));
+                        return Err(McpError::server_error(format!("Failed to start wallet: {err}")));
                     },
                     ProcessLaunchStatus::Running => {
                         log::info!("Wallet process is running, waiting for health checks...");

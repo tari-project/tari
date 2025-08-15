@@ -93,7 +93,7 @@ where
         );
         // Fetch completed but unconfirmed transactions that were not imported
         let (state_changed, tip) = self.check_unconfirmed(base_node_wallet_client).await?;
-        debug!(target: LOG_TARGET, "Using tip height {} for validation", tip);
+        debug!(target: LOG_TARGET, "Using tip height {tip} for validation");
         check_detected_transactions(
             self.output_manager.clone(),
             self.db.clone(),
@@ -175,7 +175,7 @@ where
         if let Err(e) = self.event_publisher.send(Arc::new(event)) {
             debug!(
                 target: LOG_TARGET,
-                "Error sending event because there are no subscribers: {:?}", e
+                "Error sending event because there are no subscribers: {e:?}"
             );
         }
     }
@@ -318,7 +318,7 @@ where
                         (
                             height,
                             hash.try_into().map_err(|e| {
-                                TransactionServiceError::Other(format!("Could not convert best block hash: {}", e))
+                                TransactionServiceError::Other(format!("Could not convert best block hash: {e}"))
                             })?,
                             timestamp,
                         )
@@ -361,8 +361,7 @@ where
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );
                 return Err(TransactionServiceError::Other(format!(
-                    "Error asking base node for header at height {}: {}",
-                    height, rpc_error
+                    "Error asking base node for header at height {height}: {rpc_error}"
                 )));
             },
         };

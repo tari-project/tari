@@ -72,12 +72,8 @@ impl<T: Clone + PartialEq> ArrayLike for MemBackendVec<T> {
         Ok(self.len()? - 1)
     }
 
-    fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
-        self.db
-            .read()
-            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?
-            .get(index)
-            .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
+    fn get(&self, index: usize) -> Option<Self::Value> {
+        self.db.read().expect("Poisoned lock").get(index)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
@@ -90,7 +86,7 @@ impl<T: Clone + PartialEq> ArrayLike for MemBackendVec<T> {
 
     fn position(&self, item: &Self::Value) -> Result<Option<usize>, Self::Error> {
         for index in 0..self.len()? {
-            if let Some(stored_item) = self.get(index)? {
+            if let Some(stored_item) = self.get(index) {
                 if stored_item == *item {
                     return Ok(Some(index));
                 }

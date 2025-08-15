@@ -257,7 +257,7 @@ mod test {
     use std::str::FromStr;
 
     use super::*;
-    use crate::{ consensus::consensus_constants::MAINNET_PRE_MINE_VALUE};
+    use crate::consensus::consensus_constants::MAINNET_PRE_MINE_VALUE;
 
     #[test]
     fn test_supply_at_block() {

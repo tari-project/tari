@@ -251,7 +251,7 @@ impl CommandContext {
             };
             let fut = self.handle_command(args.command);
             if let Err(e) = time::timeout(Duration::from_secs(time_out), fut).await? {
-                return Err(Error::msg(format!("{} ({} s)", e, time_out)));
+                return Err(Error::msg(format!("{e} ({time_out} s)")));
             };
             Ok(None)
         }

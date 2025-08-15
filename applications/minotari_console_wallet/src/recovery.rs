@@ -54,7 +54,7 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
         match CipherSeed::from_mnemonic(&seed_words, None) {
             Ok(seed) => break Ok(seed),
             Err(e) => {
-                debug!(target: LOG_TARGET, "MnemonicError parsing seed words: {}", e);
+                debug!(target: LOG_TARGET, "MnemonicError parsing seed words: {e}");
                 println!("Failed to parse seed words! Did you type them correctly?");
                 continue;
             },
@@ -71,8 +71,8 @@ pub fn get_seed_from_seed_words(
     match CipherSeed::from_mnemonic(seed_words, passphrase) {
         Ok(seed) => Ok(seed),
         Err(e) => {
-            let err_msg = format!("MnemonicError parsing seed words: {}", e);
-            warn!(target: LOG_TARGET, "{}", err_msg);
+            let err_msg = format!("MnemonicError parsing seed words: {e}");
+            warn!(target: LOG_TARGET, "{err_msg}");
             Err(ExitError::new(ExitCode::RecoveryError, err_msg))
         },
     }
@@ -91,8 +91,8 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
     let mut failed_events = 0;
     loop {
         if failed_events > retry_limit {
-            let err_msg = format!("Recovery process failed after {} attempts. Exiting.", retry_limit);
-            error!(target: LOG_TARGET, "{}", err_msg);
+            let err_msg = format!("Recovery process failed after {retry_limit} attempts. Exiting.");
+            error!(target: LOG_TARGET, "{err_msg}");
             return Err(ExitError::new(ExitCode::RecoveryError, err_msg));
         }
         match event_stream.recv().await {
@@ -110,20 +110,17 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
                     current_height,
                     tip_height
                 );
-                println!("{}", msg);
-                debug!(target: LOG_TARGET, "{}", msg);
+                println!("{msg}");
+                debug!(target: LOG_TARGET, "{msg}");
             },
             Ok(UtxoScannerEvent::ScanningRoundFailed {
                 num_retries,
                 retry_limit,
                 error,
             }) => {
-                let s = format!(
-                    "Attempt {}/{}: Failed to complete wallet recovery {}.",
-                    num_retries, retry_limit, error
-                );
-                println!("{}", s);
-                warn!(target: LOG_TARGET, "{}", s);
+                let s = format!("Attempt {num_retries}/{retry_limit}: Failed to complete wallet recovery {error}.");
+                println!("{s}");
+                warn!(target: LOG_TARGET, "{s}");
                 failed_events += 1;
             },
             Ok(UtxoScannerEvent::Completed {
@@ -133,15 +130,14 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
             }) => {
                 let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
                 let stats = format!(
-                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s)",
-                    final_height, time_taken, rate
+                    "Recovery complete! Scanned {final_height} blocks in {time_taken:.2?} ({rate:.2?} blocks/s)",
                 );
-                info!(target: LOG_TARGET, "{}", stats);
-                println!("{}", stats);
+                info!(target: LOG_TARGET, "{stats}");
+                println!("{stats}");
                 break;
             },
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {}", e);
+                debug!(target: LOG_TARGET, "Error receiving Wallet recovery events: {e}");
                 continue;
             },
             Err(broadcast::error::RecvError::Closed) => {

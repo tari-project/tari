@@ -367,7 +367,7 @@ impl Display for Peer {
             match self.features {
                 PeerFeatures::COMMUNICATION_NODE => "BASE_NODE".to_string(),
                 PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),
-                f => format!("{:?}", f),
+                f => format!("{f:?}"),
             },
             user_agent,
         ))
@@ -388,6 +388,7 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use serde_json::Value;
     use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat};
 

@@ -307,8 +307,7 @@ impl CompletedTransaction {
 
         let total_features_and_scripts_size = total_features_and_scripts_size.map_err(|e| {
             TransactionStorageError::FailedToCalculateTransactionFee(format!(
-                "Failed to calculate features and scripts size from original transaction: {}",
-                e
+                "Failed to calculate features and scripts size from original transaction: {e}"
             ))
         })?;
 
@@ -844,9 +843,7 @@ mod test {
         let overpayment = calculated_fee - total_fee.0;
         assert!(
             overpayment < weight,
-            "Overpayment {} should be less than weight {} for efficiency",
-            overpayment,
-            weight
+            "Overpayment {overpayment} should be less than weight {weight} for efficiency"
         );
     }
 
@@ -961,10 +958,7 @@ mod test {
             let overpayment = calculated_fee - total_fee.0;
             assert!(
                 overpayment < weight,
-                "Overpayment {} should be less than weight {} for fee amount {}",
-                overpayment,
-                weight,
-                fee_amount
+                "Overpayment {overpayment} should be less than weight {weight} for fee amount {fee_amount}"
             );
         }
     }

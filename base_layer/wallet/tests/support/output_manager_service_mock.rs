@@ -95,7 +95,7 @@ impl OutputManagerServiceMock {
         request: OutputManagerRequest,
         reply_tx: oneshot::Sender<Result<OutputManagerResponse, OutputManagerError>>,
     ) {
-        info!(target: LOG_TARGET, "Handling Request: {}", request);
+        info!(target: LOG_TARGET, "Handling Request: {request}");
         match request {
             OutputManagerRequest::ScanForRecoverableOutputs(requested_outputs) => {
                 let lock = acquire_lock!(self.state.recoverable_outputs);

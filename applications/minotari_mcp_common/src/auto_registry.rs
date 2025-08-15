@@ -304,7 +304,7 @@ impl AutoDiscoveryRegistry {
 
         let mut tags = vec![
             category.display_name().to_lowercase().replace(' ', "_"),
-            format!("{:?}", risk_level).to_lowercase(),
+            format!("{risk_level:?}").to_lowercase(),
             if method.is_control_operation {
                 "control"
             } else {

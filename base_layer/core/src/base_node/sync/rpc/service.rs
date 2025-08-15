@@ -161,14 +161,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let end_height = end_header.height;
         if start_height > end_height {
             return Err(RpcStatus::bad_request(&format!(
-                "Start block #{} is higher than end block #{}",
-                start_height, end_height
+                "Start block #{start_height} is higher than end block #{end_height}"
             )));
         }
 
         debug!(
             target: LOG_TARGET,
-            "Initiating block sync with peer `{}` from height {} to {}", peer_node_id, start_height, end_height,
+            "Initiating block sync with peer `{peer_node_id}` from height {start_height} to {end_height}"
         );
 
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
@@ -216,7 +215,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                     debug!(
                         target: LOG_TARGET,
-                        "Sending blocks #{} - #{} to '{}'", start, end, peer_node_id
+                        "Sending blocks #{start} - #{end} to '{peer_node_id}'"
                     );
                     let blocks = db
                         .fetch_blocks(start..=end, true)
@@ -226,7 +225,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     if tx.is_closed() {
                         debug!(
                             target: LOG_TARGET,
-                            "Block sync session for peer '{}' terminated early", peer_node_id
+                            "Block sync session for peer '{peer_node_id}' terminated early"
                         );
                         break;
                     }
@@ -239,7 +238,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             let blocks = blocks.into_iter().map(|hb| {
                                 let block = hb.into_block();
                                 proto::base_node::BlockBodyResponse::try_from(block).map_err(|e| {
-                                    log::error!(target: LOG_TARGET, "Internal error: {}", e);
+                                    log::error!(target: LOG_TARGET, "Internal error: {e}");
                                     RpcStatus::general_default()
                                 })
                             });
@@ -248,7 +247,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             if utils::mpsc::send_all(&tx, blocks).await.is_err() {
                                 debug!(
                                     target: LOG_TARGET,
-                                    "Block sync session for peer '{}' terminated early", peer_node_id
+                                    "Block sync session for peer '{peer_node_id}' terminated early"
                                 );
                                 break;
                             }
@@ -264,7 +263,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 metrics::active_sync_peers().dec();
                 debug!(
                     target: LOG_TARGET,
-                    "Block sync round complete for peer `{}`.", peer_node_id,
+                    "Block sync round complete for peer `{peer_node_id}`."
                 );
             }
             .instrument(span),
@@ -330,7 +329,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     if tx.is_closed() {
                         break;
                     }
-                    debug!(target: LOG_TARGET, "Sending headers #{} - #{}", start, end);
+                    debug!(target: LOG_TARGET, "Sending headers #{start} - #{end}");
                     let headers = db
                         .fetch_headers(start..=end)
                         .await
@@ -339,7 +338,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     if tx.is_closed() {
                         debug!(
                             target: LOG_TARGET,
-                            "Header sync session for peer '{}' terminated early", peer_node_id
+                            "Header sync session for peer '{peer_node_id}' terminated early"
                         );
                         break;
                     }
@@ -365,7 +364,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 metrics::active_sync_peers().dec();
                 debug!(
                     target: LOG_TARGET,
-                    "Header sync round complete for peer `{}`.", peer_node_id,
+                    "Header sync round complete for peer `{peer_node_id}`."
                 );
             }
             .instrument(span),
@@ -386,7 +385,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {height}")))?;
 
         Ok(Response::new(header.into()))
     }
@@ -408,14 +407,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         }
         if message.block_hashes.len() > MAX_ALLOWED_BLOCK_HASHES {
             return Err(RpcStatus::bad_request(&format!(
-                "Cannot query more than {} block hashes",
-                MAX_ALLOWED_BLOCK_HASHES,
+                "Cannot query more than {MAX_ALLOWED_BLOCK_HASHES} block hashes"
             )));
         }
         if message.header_count > (HEADER_SYNC_INITIAL_MAX_HEADERS as u64) {
             return Err(RpcStatus::bad_request(&format!(
-                "Cannot ask for more than {} headers",
-                HEADER_SYNC_INITIAL_MAX_HEADERS,
+                "Cannot ask for more than {HEADER_SYNC_INITIAL_MAX_HEADERS} headers"
             )));
         }
 
@@ -448,7 +445,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             None => {
                 debug!(
                     target: LOG_TARGET,
-                    "Unable to find link to main chain from peer `{}`", peer
+                    "Unable to find link to main chain from peer `{peer}`"
                 );
                 Err(RpcStatus::not_found("No link found to main chain"))
             },
@@ -517,7 +514,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 if tx.is_closed() {
                     debug!(
                         target: LOG_TARGET,
-                        "Kernel sync session for peer '{}' terminated early", peer_node_id
+                        "Kernel sync session for peer '{peer_node_id}' terminated early",
                     );
                     break;
                 }
@@ -566,14 +563,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(None) => {
                             let _result = tx
                                 .send(Err(RpcStatus::not_found(&format!(
-                                    "Could not find header #{} while streaming UTXOs after position {}",
-                                    current_height, current_mmr_position
+                                    "Could not find header #{current_height} while streaming UTXOs after position \
+                                     {current_mmr_position}"
                                 ))))
                                 .await;
                             break;
                         },
                         Err(err) => {
-                            error!(target: LOG_TARGET, "DB error while streaming kernels: {}", err);
+                            error!(target: LOG_TARGET, "DB error while streaming kernels: {err}");
                             let _result = tx
                                 .send(Err(RpcStatus::general("DB error while streaming kernels")))
                                 .await;
@@ -587,7 +584,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             metrics::active_sync_peers().dec();
             debug!(
                 target: LOG_TARGET,
-                "Kernel sync round complete for peer `{}`.", peer_node_id,
+                "Kernel sync round complete for peer `{peer_node_id}`.",
             );
         });
         Ok(Streaming::new(rx))

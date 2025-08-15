@@ -31,8 +31,8 @@ use tari_common_types::{
     types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
 use tari_transaction_components::{
-    tari_proof_of_work::Difficulty,
     tari_amount::MicroMinotari,
+    tari_proof_of_work::Difficulty,
     transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
 };
 

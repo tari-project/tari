@@ -46,6 +46,7 @@ impl Filter for AndFilter {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
 
     use tari_script::script;
 

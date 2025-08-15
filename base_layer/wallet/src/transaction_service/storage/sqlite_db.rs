@@ -978,7 +978,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
             ))
             .execute(&mut conn)?;
-        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        trace!(target: LOG_TARGET, "rows updated: {result:?}");
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -1005,7 +1005,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
             ))
             .execute(&mut conn)?;
-        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        trace!(target: LOG_TARGET, "rows updated: {result:?}");
         // we want to double check unmined coinbases again, so lets set those
         let result = diesel::update(completed_transactions::table)
             .filter(completed_transactions::status.eq(TransactionStatus::CoinbaseNotInBlockChain as i32))
@@ -1015,7 +1015,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 completed_transactions::status.eq(TransactionStatus::CoinbaseUnconfirmed as i32),
             ))
             .execute(&mut conn)?;
-        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        trace!(target: LOG_TARGET, "rows updated: {result:?}");
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -2145,8 +2145,7 @@ impl CompletedTransactionSql {
 
         let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
             TransactionStorageError::UnexpectedResult(format!(
-                "Could not create timestamp mined_timestamp: {}",
-                mined_timestamp
+                "Could not create timestamp mined_timestamp: {mined_timestamp}"
             ))
         })?;
         trace!(
@@ -2647,12 +2646,12 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
+        let db_path = format!("{db_folder}{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
         let mut conn =
-            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
@@ -2663,10 +2662,7 @@ mod test {
             .map(|v| {
                 v.into_iter()
                     .map(|b| {
-                        let m = format!("Running migration {}", b);
-                        // std::io::stdout()
-                        //     .write_all(m.as_ref())
-                        //     .expect("Couldn't write migration number to stdout");
+                        let m = format!("Running migration {b}");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -3068,21 +3064,18 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
+        let db_path = format!("{db_folder}{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
         let mut conn =
-            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         conn.run_pending_migrations(MIGRATIONS)
             .map(|v| {
                 v.into_iter()
                     .map(|b| {
-                        let m = format!("Running migration {}", b);
-                        // std::io::stdout()
-                        //     .write_all(m.as_ref())
-                        //     .expect("Couldn't write migration number to stdout");
+                        let m = format!("Running migration {b}");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -3213,13 +3206,13 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
+        let db_path = format!("{db_folder}{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
         let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, Duration::from_secs(60));
         pool.create_pool()
-            .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         let mut key = [0u8; size_of::<Key>()];
         OsRng.fill_bytes(&mut key);
@@ -3231,16 +3224,13 @@ mod test {
         {
             let mut conn = pool
                 .get_pooled_connection()
-                .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+                .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
             conn.run_pending_migrations(MIGRATIONS)
                 .map(|v| {
                     v.into_iter()
                         .map(|b| {
-                            let m = format!("Running migration {}", b);
-                            // std::io::stdout()
-                            //     .write_all(m.as_ref())
-                            //     .expect("Couldn't write migration number to stdout");
+                            let m = format!("Running migration {b}");
                             m
                         })
                         .collect::<Vec<String>>()
@@ -3368,26 +3358,23 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
+        let db_path = format!("{db_folder}{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
         // Note: For this test the connection pool is setup with a pool size of 2; a pooled connection must go out
         // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
         let mut pool = SqliteConnectionPool::new(db_path.clone(), 2, true, true, Duration::from_secs(60));
         pool.create_pool()
-            .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
         let mut conn = pool
             .get_pooled_connection()
-            .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         conn.run_pending_migrations(MIGRATIONS)
             .map(|v| {
                 v.into_iter()
                     .map(|b| {
-                        let m = format!("Running migration {}", b);
-                        // std::io::stdout()
-                        //     .write_all(m.as_ref())
-                        //     .expect("Couldn't write migration number to stdout");
+                        let m = format!("Running migration {b}");
                         m
                     })
                     .collect::<Vec<String>>()

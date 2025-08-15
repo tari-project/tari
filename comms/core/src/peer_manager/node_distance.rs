@@ -96,7 +96,9 @@ impl TryFrom<&[u8]> for XorDistance {
         // Big endian has the MSB at index 0, if size of `bytes` is less than byte_size it must be offset to have
         // leading 0 bytes
         let offset = Self::byte_size() - bytes.len();
-        buf[offset..].copy_from_slice(bytes);
+        buf.get_mut(offset..)
+            .ok_or(NodeIdError::IncorrectByteCount)?
+            .copy_from_slice(bytes);
         Ok(XorDistance(u128::from_be_bytes(buf)))
     }
 }
@@ -172,8 +174,7 @@ mod test {
                         .unwrap()
                         .get_bucket_index(),
                     expected,
-                    "Failed for dist = {}",
-                    lsb_dist
+                    "Failed for dist = {lsb_dist}"
                 );
             }
 
@@ -215,8 +216,8 @@ mod test {
                 let dist = NodeDistance::from_node_ids(&a, &b);
                 let i = u32::from(dist.get_bucket_index());
                 let dist = dist.as_u128();
-                assert!(2u128.pow(i) <= dist, "Failed for {}, i = {}", dist, i);
-                assert!(dist < 2u128.pow(i + 1), "Failed for {}, i = {}", dist, i,);
+                assert!(2u128.pow(i) <= dist, "Failed for {dist}, i = {i}");
+                assert!(dist < 2u128.pow(i + 1), "Failed for {dist}, i = {i}");
             }
         }
     }

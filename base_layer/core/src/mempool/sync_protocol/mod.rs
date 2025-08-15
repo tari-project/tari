@@ -225,7 +225,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Mempool sync could not get a peer to sync to: {}", e
+                    "Mempool sync could not get a peer to sync to: {e}"
                 );
                 return;
             },
@@ -349,10 +349,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             },
             Err(err) => {
                 if let Err(err) = self.framed.flush().await {
-                    debug!(target: LOG_TARGET, "IO error when flushing stream: {}", err);
+                    debug!(target: LOG_TARGET, "IO error when flushing stream: {err}");
                 }
                 if let Err(err) = self.framed.close().await {
-                    debug!(target: LOG_TARGET, "IO error when closing stream: {}", err);
+                    debug!(target: LOG_TARGET, "IO error when closing stream: {err}");
                 }
                 Err(err)
             },
@@ -426,10 +426,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             },
             Err(err) => {
                 if let Err(err) = self.framed.flush().await {
-                    debug!(target: LOG_TARGET, "IO error when flushing stream: {}", err);
+                    debug!(target: LOG_TARGET, "IO error when flushing stream: {err}");
                 }
                 if let Err(err) = self.framed.close().await {
-                    debug!(target: LOG_TARGET, "IO error when closing stream: {}", err);
+                    debug!(target: LOG_TARGET, "IO error when closing stream: {err}");
                 }
                 Err(err)
             },
@@ -596,7 +596,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             metrics::rejected_inbound_transactions().inc();
             debug!(
                 target: LOG_TARGET,
-                "Did not store new transaction `{}` in mempool: {}", excess_sig_hex, stored_result
+                "Did not store new transaction `{excess_sig_hex}` in mempool: {stored_result}"
             )
         }
 
@@ -611,7 +611,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                         transaction: Some(txn),
                     }),
                     Err(e) => {
-                        warn!(target: LOG_TARGET, "Could not convert transaction: {}", e);
+                        warn!(target: LOG_TARGET, "Could not convert transaction: {e}");
                         None
                     }
                 }

@@ -20,6 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_core::transactions::test_helpers::{create_transaction_with, TestParams};
 use tari_script::{inputs, script, TariScript};
 use tari_transaction_components::{
     helpers::borsh::SerializedSize,
@@ -36,7 +37,6 @@ use tari_transaction_components::{
     },
     weight::TransactionWeight,
 };
-use tari_core::transactions::test_helpers::{create_transaction_with, TestParams};
 use tari_transaction_key_manager::MemoryDbKeyManager;
 
 #[derive(Clone)]

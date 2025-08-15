@@ -36,8 +36,9 @@ use crate::{
     blocks::{BlockError, BlockHeaderValidationError},
     chain_storage::ChainStorageError,
     mempool::MempoolError,
-    proof_of_work::monero_rx::MergeMineError,
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
 };
+
 #[derive(Debug, Error)]
 pub enum CommsInterfaceError {
     #[error("Received an unexpected response from a remote peer")]
@@ -80,6 +81,8 @@ pub enum CommsInterfaceError {
     DifficultyError(#[from] DifficultyError),
     #[error("Transaction error: {0}")]
     TransactionError(#[from] TransactionError),
+    #[error("Cuckaroo verification error: {0}")]
+    CuckarooVerificationError(#[from] CuckarooVerificationError),
 }
 
 impl CommsInterfaceError {
@@ -94,6 +97,7 @@ impl CommsInterfaceError {
             err @ CommsInterfaceError::InvalidPeerResponse(_) |
             err @ CommsInterfaceError::InvalidBlockHeader(_) |
             err @ CommsInterfaceError::TransactionError(_) |
+            err @ CommsInterfaceError::CuckarooVerificationError(_) |
             err @ CommsInterfaceError::InvalidFullBlock { .. } |
             err @ CommsInterfaceError::InvalidRequest { .. } => Some(BanReason {
                 reason: err.to_string(),
@@ -110,6 +114,7 @@ impl CommsInterfaceError {
             CommsInterfaceError::InternalError(_) |
             CommsInterfaceError::ApiError(_) |
             CommsInterfaceError::BlockError(_) |
+            // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }
     }

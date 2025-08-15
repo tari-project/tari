@@ -117,10 +117,7 @@ impl<R: io::Read> CovenantReadExt for R {
         if len > max_size {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!(
-                    "Received variable length bytes that exceed {} bytes (max: {})",
-                    len, max_size
-                ),
+                format!("Received variable length bytes that exceed {len} bytes (max: {max_size})"),
             ));
         }
         let mut buf = vec![0u8; len];
@@ -136,14 +133,12 @@ mod test {
     use tari_utilities::hex::{to_hex, Hex};
 
     use super::*;
-    use crate::transaction_components::{
-        covenants::{
-    covenant,
-            arguments::CovenantArg,
-            byte_codes::ARG_OUTPUT_FIELD,
-            fields::OutputField,
-            filters::CovenantFilter,
-        },
+    use crate::transaction_components::covenants::{
+        arguments::CovenantArg,
+        byte_codes::ARG_OUTPUT_FIELD,
+        covenant,
+        fields::OutputField,
+        filters::CovenantFilter,
     };
 
     #[test]

@@ -1,6 +1,7 @@
 // Copyright 2023. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use blake2::Blake2b;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use digest::consts::U32;

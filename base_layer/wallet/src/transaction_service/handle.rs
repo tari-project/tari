@@ -274,19 +274,18 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCompletedTransactions { .. } => write!(f, "GetCompletedTransactions"),
             Self::GetCompletedTransactionsByAddresses { .. } => write!(f, "GetCompletedTransactionsByAddresses"),
             Self::GetCompletedTransactionsPaginated { .. } => write!(f, "GetCompletedTransactionsPaginated"),
-            Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {:?}", tx),
+            Self::ImportTransaction(tx) => write!(f, "ImportTransaction: {tx:?}"),
             Self::GetCancelledPendingInboundTransactions => write!(f, "GetCancelledPendingInboundTransactions"),
             Self::GetCancelledPendingOutboundTransactions => write!(f, "GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions(_) => write!(f, "GetCancelledCompletedTransactions"),
-            Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({})", t),
+            Self::GetCompletedTransaction(t) => write!(f, "GetCompletedTransaction({t})"),
             Self::ScrapeWallet {
                 destination,
                 fee_per_gram,
             } => {
                 write!(
                     f,
-                    "ScrapeWallet (destination: {}, fee_per_gram: {})",
-                    destination, fee_per_gram
+                    "ScrapeWallet (destination: {destination}, fee_per_gram: {fee_per_gram})"
                 )
             },
             Self::SendTransaction {
@@ -296,10 +295,9 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(
                 f,
-                "SendTransaction (amount: {}, to: {}, payment_id: {})",
-                amount, destination, payment_id
+                "SendTransaction (amount: {amount}, to: {destination}, payment_id: {payment_id})"
             ),
-            Self::BurnTari { amount, payment_id, .. } => write!(f, "Burning Tari ({}, {})", amount, payment_id),
+            Self::BurnTari { amount, payment_id, .. } => write!(f, "Burning Tari ({amount}, {payment_id})"),
             Self::SpendBackupPreMineUtxo {
                 fee_per_gram,
                 output_hash,
@@ -307,13 +305,9 @@ impl fmt::Display for TransactionServiceRequest {
                 recipient_address,
                 payment_id,
             } => f.write_str(&format!(
-                "Spending backup pre-mine utxo with: fee_per_gram = {}, output_hash = {}, commitment = {}, recipient \
-                 = {}, payment_id = {}",
-                fee_per_gram,
-                output_hash,
-                expected_commitment.to_hex(),
-                recipient_address,
-                payment_id,
+                "Spending backup pre-mine utxo with: fee_per_gram = {fee_per_gram}, output_hash = {output_hash}, \
+                 commitment = {}, recipient = {recipient_address}, payment_id = {payment_id}",
+                expected_commitment.to_hex()
             )),
             Self::EncumberAggregateUtxo {
                 fee_per_gram,
@@ -400,8 +394,7 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(
                 f,
-                "Registering VN ({}, {}, {})",
-                validator_node_public_key, payment_id, max_epoch
+                "Registering VN ({validator_node_public_key}, {payment_id}, {max_epoch})"
             ),
             Self::SubmitValidatorNodeExit {
                 validator_node_public_key,
@@ -410,8 +403,7 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(
                 f,
-                "Submit VN Exit ({}, {}, {})",
-                validator_node_public_key, payment_id, max_epoch
+                "Submit VN Exit ({validator_node_public_key}, {payment_id}, {max_epoch})"
             ),
             Self::PrepareOneSidedTransactionForSigning {
                 destination,
@@ -420,23 +412,18 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(
                 f,
-                "PrepareOneSidedTransactionForSigning (to {}, {}, {})",
-                destination, amount, payment_id
+                "PrepareOneSidedTransactionForSigning (to {destination}, {amount}, {payment_id})"
             ),
-            Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {:?})", request,),
+            Self::SignOneSidedTransaction { request } => write!(f, "SignOneSidedTransaction (request {request:?})"),
             Self::BroadcastSignedOneSidedTransaction { request } => {
-                write!(f, "BroadcastSignedOneSidedTransaction (request {:?})", request,)
+                write!(f, "BroadcastSignedOneSidedTransaction (request {request:?})",)
             },
             Self::SendOneSidedTransaction {
                 destination,
                 amount,
                 payment_id,
                 ..
-            } => write!(
-                f,
-                "SendOneSidedTransaction (to {}, {}, {})",
-                destination, amount, payment_id
-            ),
+            } => write!(f, "SendOneSidedTransaction (to {destination}, {amount}, {payment_id})"),
             Self::SendOneSidedToStealthAddressTransaction {
                 destination,
                 amount,
@@ -444,13 +431,12 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(
                 f,
-                "SendOneSidedToStealthAddressTransaction (to {}, {}, {})",
-                destination, amount, payment_id
+                "SendOneSidedToStealthAddressTransaction (to {destination}, {amount}, {payment_id})"
             ),
             Self::SendShaAtomicSwapTransaction(k, _, v, _, id) => {
-                write!(f, "SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, id)
+                write!(f, "SendShaAtomicSwapTransaction (to {k}, {v}, {id})")
             },
-            Self::CancelTransaction(t) => write!(f, "CancelTransaction ({})", t),
+            Self::CancelTransaction(t) => write!(f, "CancelTransaction ({t})"),
             Self::ImportUtxoWithStatus {
                 amount,
                 source_address,
@@ -462,22 +448,21 @@ impl fmt::Display for TransactionServiceRequest {
                 ..
             } => write!(
                 f,
-                "ImportUtxoWithStatus (amount: {}, from: {}, payment_id: {}, import status: {:?}, TxId: {:?}, height: \
-                 {:?}, mined at: {:?}",
-                amount, source_address, payment_id, import_status, tx_id, current_height, mined_timestamp
+                "ImportUtxoWithStatus (amount: {amount}, from: {source_address}, payment_id: {payment_id}, import \
+                 status: {import_status:?}, TxId: {tx_id:?}, height: {current_height:?}, mined at: {mined_timestamp:?}"
             ),
-            Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({})", tx_id),
+            Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({tx_id})"),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
             Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
             Self::RestartTransactionProtocols => write!(f, "RestartTransactionProtocols"),
             Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
             Self::GetNumConfirmationsRequired => write!(f, "GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
-            Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({})", t),
+            Self::GetAnyTransaction(t) => write!(f, "GetAnyTransaction({t})"),
             Self::ValidateTransactions => write!(f, "ValidateTransactions"),
             Self::ReValidateRejectedTransactions => write!(f, "ReValidateRejectedTransactions"),
             Self::ReplaceByFee { tx_id, fee_increase } => {
-                write!(f, "ReplaceByFee(tx_id: {}, fee_increase: {})", tx_id, fee_increase)
+                write!(f, "ReplaceByFee(tx_id: {tx_id}, fee_increase: {fee_increase})")
             },
             Self::UserPayForFee {
                 tx_id,
@@ -486,21 +471,20 @@ impl fmt::Display for TransactionServiceRequest {
             } => {
                 write!(
                     f,
-                    "UserPayForFee(tx_id: {}, destination: {}, fee: {})",
-                    tx_id, destination, fee
+                    "UserPayForFee(tx_id: {tx_id}, destination: {destination}, fee: {fee})"
                 )
             },
             Self::GetFeePerGramStatsPerBlock { count } => {
-                write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
+                write!(f, "GetFeePerGramEstimatesPerBlock(count: {count})")
             },
             Self::RegisterCodeTemplate { template_name, .. } => {
-                write!(f, "RegisterCodeTemplate: {}", template_name)
+                write!(f, "RegisterCodeTemplate: {template_name}")
             },
             Self::GetPaymentByReference { payref } => {
-                write!(f, "GetPaymentByReference({})", payref)
+                write!(f, "GetPaymentByReference({payref})")
             },
             Self::GetTransactionByPaymentReference(payref) => {
-                write!(f, "GetTransactionByPaymentReference({})", payref)
+                write!(f, "GetTransactionByPaymentReference({payref})")
             },
             Self::SubmitValidatorEvictionProof {
                 amount,
@@ -657,7 +641,7 @@ impl fmt::Display for TransactionEvent {
                 write!(f, "TransactionCompletedImmediately for {tx}")
             },
             TransactionEvent::TransactionCancelled(tx, rejection) => {
-                write!(f, "TransactionCancelled for {tx}:{:?}", rejection)
+                write!(f, "TransactionCancelled for {tx}:{rejection:?}")
             },
             TransactionEvent::TransactionBroadcast(tx) => {
                 write!(f, "TransactionBroadcast for {tx}")

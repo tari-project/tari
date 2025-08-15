@@ -31,7 +31,7 @@ pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::
     if home.exists() {
         Ok(())
     } else {
-        println!("Creating {:?}", home);
+        println!("Creating {home:?}");
         std::fs::create_dir_all(home)
     }
 }

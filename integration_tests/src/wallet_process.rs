@@ -82,7 +82,7 @@ pub async fn spawn_wallet(
 
     if let Some(wallet_ps) = world.wallets.get(&wallet_name) {
         if wallet_ps.is_running() {
-            panic!("Wallet {} is already running", wallet_name);
+            panic!("Wallet {wallet_name} is already running");
         }
         port = wallet_ps.port;
         grpc_port = wallet_ps.grpc_port;
@@ -139,7 +139,7 @@ pub async fn spawn_wallet(
         wallet_app_config.wallet.password = Some("test".into());
         wallet_app_config.wallet.grpc_enabled = true;
         wallet_app_config.wallet.grpc_address =
-            Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", grpc_port)).unwrap());
+            Some(Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{grpc_port}")).unwrap());
         wallet_app_config.wallet.db_file = PathBuf::from("console_wallet.db");
         wallet_app_config.wallet.contacts_auto_ping_interval = Duration::from_secs(2);
         wallet_app_config
@@ -148,9 +148,9 @@ pub async fn spawn_wallet(
             .base_node_monitor_max_refresh_interval = Duration::from_secs(15);
         wallet_app_config.wallet.p2p.transport.transport_type = TransportType::Tcp;
         wallet_app_config.wallet.p2p.transport.tcp.listener_address =
-            Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{}", port)).unwrap();
-        wallet_app_config.wallet.http_server_url = format!("http://127.0.0.1:{}", http_port);
-        wallet_app_config.wallet.fallback_http_server_url = format!("http://127.0.0.1:{}", http_port);
+            Multiaddr::from_str(&format!("/ip4/127.0.0.1/tcp/{port}")).unwrap();
+        wallet_app_config.wallet.http_server_url = format!("http://127.0.0.1:{http_port}");
+        wallet_app_config.wallet.fallback_http_server_url = format!("http://127.0.0.1:{http_port}");
         wallet_app_config.wallet.p2p.public_addresses = MultiaddrList::from(vec![wallet_app_config
             .wallet
             .p2p
@@ -159,7 +159,7 @@ pub async fn spawn_wallet(
             .listener_address
             .clone()]);
         wallet_app_config.wallet.p2p.dht = DhtConfig::default_local_test();
-        wallet_app_config.wallet.p2p.dht.database_url = DbConnectionUrl::file(format!("{}-dht.sqlite", port));
+        wallet_app_config.wallet.p2p.dht.database_url = DbConnectionUrl::file(format!("{port}-dht.sqlite"));
         wallet_app_config.wallet.p2p.allow_test_addresses = true;
         if let Some(mech) = routing_mechanism {
             wallet_app_config
@@ -183,14 +183,14 @@ pub async fn spawn_wallet(
         }
 
         if let Err(e) = run_wallet_with_cli(&mut send_to_thread_shutdown, rt, &mut wallet_app_config, cli) {
-            panic!("{:?}", e);
+            panic!("{e:?}");
         }
     });
 
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 
-    let wallet_addr = format!("http://127.0.0.1:{}", grpc_port);
+    let wallet_addr = format!("http://127.0.0.1:{grpc_port}");
     let tari_address = {
         let mut wallet_client = WalletGrpcClient::connect(wallet_addr.as_str()).await.unwrap();
         let wallet_address_bytes = wallet_client
@@ -255,9 +255,9 @@ pub fn get_default_cli() -> Cli {
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
     let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
-    let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
+    let wallet_addr = format!("http://127.0.0.1:{wallet_grpc_port}");
 
-    eprintln!("Wallet GRPC at {}", wallet_addr);
+    eprintln!("Wallet GRPC at {wallet_addr}");
 
     Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
 }

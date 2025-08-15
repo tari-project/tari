@@ -586,8 +586,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                     ReleaseStrategy::Proportional(upfront_release) => {
                         if upfront_release.percentage > 100 {
                             return Err(format!(
-                                "Upfront percentage must be less than or equal to 100 in {:?}",
-                                apportionment
+                                "Upfront percentage must be less than or equal to 100 in {apportionment:?}"
                             ));
                         }
                         if apportionment
@@ -597,7 +596,7 @@ pub fn create_pre_mine_output_values(schedule: UnlockSchedule) -> Result<Vec<Pre
                             .checked_mul(upfront_release.percentage)
                             .is_none()
                         {
-                            return Err(format!("Minotari calculation overflow in {:?}", apportionment));
+                            return Err(format!("Minotari calculation overflow in {apportionment:?}"));
                         }
                         if upfront_release.percentage > 0 {
                             let upfront_tokens = tokens_value * upfront_release.percentage / 100;
@@ -783,13 +782,12 @@ pub fn verify_script_keys_for_index(
     }
     all_script_keys.dedup();
     if all_expected_keys.len() != all_script_keys.len() {
-        return Err(format!("Output at index {} script keys not unique", index));
+        return Err(format!("Output at index {index} script keys not unique"));
     }
     for (index, (script_key, party_key)) in all_script_keys.iter().zip(all_expected_keys).enumerate() {
         if script_key != &party_key {
             return Err(format!(
-                "\nError: Output {} script key mismatch ({} != {})\n",
-                index, script_key, party_key
+                "\nError: Output {index} script key mismatch ({script_key} != {party_key})\n"
             ));
         }
     }
@@ -913,6 +911,7 @@ pub async fn create_pre_mine_genesis_block_info(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{fs, fs::File, io::Write, ops::Deref};
 
     use tari_common::configuration::Network;
@@ -1009,11 +1008,11 @@ mod test {
 
         for output in outputs {
             let utxo_s = serde_json::to_string(&output).unwrap();
-            utxo_file.write_all(format!("{}\n", utxo_s).as_bytes()).unwrap();
+            utxo_file.write_all(format!("{utxo_s}\n").as_bytes()).unwrap();
         }
 
         let kernel = serde_json::to_string(&kernel).unwrap();
-        let _result = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
+        let _result = utxo_file.write_all(format!("{kernel}\n").as_bytes());
         println!(
             "\nOutputs written to: '{}'\n",
             fs::canonicalize(&file_path).unwrap().display()
@@ -1405,7 +1404,7 @@ mod test {
                 let script_height = if let Some(CheckHeight(height)) = output.script.as_slice().first() {
                     *height
                 } else {
-                    panic!("Expected CheckHeight opcode in script at index {}", index);
+                    panic!("Expected CheckHeight opcode in script at index {index}");
                 };
                 let script_threshold_keys =
                     if let Some(Opcode::CheckMultiSigVerifyAggregatePubKey(_n, _m, keys, _msg)) =
@@ -1413,15 +1412,12 @@ mod test {
                     {
                         keys.clone()
                     } else {
-                        panic!(
-                            "Expected CheckMultiSigVerifyAggregatePubKey opcode in script at index {}",
-                            index
-                        );
+                        panic!("Expected CheckMultiSigVerifyAggregatePubKey opcode in script at index {index}");
                     };
                 let script_backup_key = if let Some(Opcode::PushPubKey(key)) = output.script.as_slice().get(5) {
                     key.deref().clone()
                 } else {
-                    panic!("Expected PushPubKey opcode in script at index {}", index);
+                    panic!("Expected PushPubKey opcode in script at index {index}");
                 };
                 assert_eq!(script_height, pre_mine_item.original_maturity + grace_period);
                 assert_eq!(output.features.maturity, pre_mine_item.maturity);

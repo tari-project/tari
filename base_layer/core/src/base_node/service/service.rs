@@ -234,7 +234,7 @@ where B: BlockchainBackend + 'static
             .await;
 
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", e);
+                error!(target: LOG_TARGET, "Failed to handle outbound request message: {e:?}");
             }
         });
     }
@@ -245,7 +245,7 @@ where B: BlockchainBackend + 'static
             let result = handle_outbound_block(outbound_message_service, new_block, excluded_peers).await;
 
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle outbound block message {:?}", e);
+                error!(target: LOG_TARGET, "Failed to handle outbound block message {e:?}");
             }
         });
     }
@@ -277,9 +277,9 @@ where B: BlockchainBackend + 'static
                     let _drop = connectivity
                         .ban_peer_until(domain_msg.source_peer.node_id.clone(), duration, ban_reason.reason)
                         .await
-                        .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
+                        .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {e:?}"));
                 }
-                error!(target: LOG_TARGET, "Failed to handle incoming request message: {:?}", e);
+                error!(target: LOG_TARGET, "Failed to handle incoming request message: {e:?}");
             }
         });
     }
@@ -306,11 +306,11 @@ where B: BlockchainBackend + 'static
                     let _drop = connectivity_requester
                         .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
                         .await
-                        .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
+                        .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {e:?}"));
                 }
                 error!(
                     target: LOG_TARGET,
-                    "Failed to handle incoming response message: {:?}", e
+                    "Failed to handle incoming response message: {e:?}"
                 );
             }
         });
@@ -322,7 +322,7 @@ where B: BlockchainBackend + 'static
             let result = handle_request_timeout(waiting_requests, timeout_request_key).await;
 
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle request timeout event: {:?}", e);
+                error!(target: LOG_TARGET, "Failed to handle request timeout event: {e:?}");
             }
         });
     }
@@ -363,9 +363,9 @@ where B: BlockchainBackend + 'static
                         let _drop = connectivity_requester
                             .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
                             .await
-                            .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
+                            .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {e:?}"));
                     }
-                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e)
+                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {e}")
                 },
             }
         });
@@ -382,7 +382,7 @@ where B: BlockchainBackend + 'static
             if let Err(ref e) = res {
                 warn!(
                     target: LOG_TARGET,
-                    "BaseNodeService failed to handle local request {:?}", e
+                    "BaseNodeService failed to handle local request {e:?}"
                 );
             }
             let result = reply_tx.send(res);
@@ -426,8 +426,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         Ok(i) => i,
         Err(e) => {
             return Err(BaseNodeServiceError::InvalidRequest(format!(
-                "Received invalid base node request: {}",
-                e
+                "Received invalid base node request: {e}"
             )));
         },
     };
@@ -445,8 +444,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         Ok(r) => r,
         Err(e) => {
             return Err(BaseNodeServiceError::InvalidRequest(format!(
-                "Received invalid base node request. It could not be converted:  {}",
-                e
+                "Received invalid base node request. It could not be converted:  {e}"
             )));
         },
     };
@@ -486,7 +484,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         Err(err) => {
             error!(
                 target: LOG_TARGET,
-                "Incoming request ({}) response failed to send: {}", request_key, err
+                "Incoming request ({request_key}) response failed to send: {err}"
             );
         },
         Ok(send_states) => {
@@ -495,9 +493,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
             } else {
                 error!(
                     target: LOG_TARGET,
-                    "Incoming request ({}) response Direct Send was unsuccessful and no message was sent {}",
-                    request_key,
-                    msg_tag
+                    "Incoming request ({request_key}) response Direct Send was unsuccessful and no message was sent {msg_tag}"
                 );
             }
         },
@@ -513,7 +509,7 @@ async fn handle_incoming_response(
     let incoming_response = domain_msg
         .inner()
         .clone()
-        .map_err(|e| BaseNodeServiceError::InvalidResponse(format!("Received invalid base node response: {}", e)))?;
+        .map_err(|e| BaseNodeServiceError::InvalidResponse(format!("Received invalid base node response: {e}")))?;
     let proto::BaseNodeServiceResponse {
         request_key,
         response,
@@ -574,7 +570,7 @@ async fn handle_outbound_request(
         None => send_msg_params.random(1),
     };
 
-    trace!(target: LOG_TARGET, "Attempting outbound request ({})", request_key);
+    trace!(target: LOG_TARGET, "Attempting outbound request ({request_key})");
     let send_result = outbound_message_service
         .send_message(
             send_msg_params.finish(),
@@ -600,9 +596,7 @@ async fn handle_outbound_request(
             if service_request.request.is_some() {
                 trace!(
                     target: LOG_TARGET,
-                    "Timeout for service request ... ({}) set at {:?}",
-                    request_key,
-                    service_request_timeout
+                    "Timeout for service request ... ({request_key}) set at {service_request_timeout:?}"
                 );
                 spawn_request_timeout(timeout_sender, request_key, service_request_timeout)
             };
@@ -610,29 +604,29 @@ async fn handle_outbound_request(
             let msg_tag = send_states[0].tag;
             debug!(
                 target: LOG_TARGET,
-                "Outbound request ({}) response queued with {}", request_key, &msg_tag,
+                "Outbound request ({request_key}) response queued with {msg_tag}"
             );
 
             if send_states.wait_single().await {
                 debug!(
                     target: LOG_TARGET,
-                    "Outbound request ({}) response Direct Send was successful {}", request_key, msg_tag
+                    "Outbound request ({request_key}) response Direct Send was successful {msg_tag}"
                 );
             } else {
                 error!(
                     target: LOG_TARGET,
-                    "Outbound request ({}) response Direct Send was unsuccessful and no message was sent", request_key
+                    "Outbound request ({request_key}) response Direct Send was unsuccessful and no message was sent"
                 );
             };
         },
         Err(err) => {
-            debug!(target: LOG_TARGET, "Failed to send outbound request: {}", err);
+            debug!(target: LOG_TARGET, "Failed to send outbound request: {err}");
             let result = reply_tx.send(Err(CommsInterfaceError::BroadcastFailed));
 
             if let Err(_e) = result {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to send outbound request ({}) because DHT outbound broadcast failed", request_key
+                    "Failed to send outbound request ({request_key}) because DHT outbound broadcast failed"
                 );
             }
         },
@@ -681,7 +675,7 @@ async fn handle_request_timeout(
         let _result = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Failed to process outbound request (request key: {}): {:?}", &request_key, e
+                "Failed to process outbound request (request key: {request_key}): {e:?}"
             );
             e
         }));

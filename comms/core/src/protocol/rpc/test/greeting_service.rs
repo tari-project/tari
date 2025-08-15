@@ -353,8 +353,7 @@ impl<T: GreetingRpc> __rpc_deps::Service<Request<__rpc_deps::Bytes>> for Greetin
             },
 
             id => Box::pin(__rpc_deps::future::ready(Err(RpcStatus::unsupported_method(&format!(
-                "Method identifier `{}` is not recognised or supported",
-                id
+                "Method identifier `{id}` is not recognised or supported"
             ))))),
         }
     }

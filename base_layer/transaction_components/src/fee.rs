@@ -115,7 +115,7 @@ mod test {
         let fee = Fee::new(TransactionWeight::latest());
         assert_eq!(
             fee.calculate_body(100.into(), &aggregate_body)
-                .unwrap_or_else(|e| panic!("Failed with error: {}", e)),
+                .unwrap_or_else(|e| panic!("Failed with error: {e}")),
             fee.calculate(100.into(), 0, 1, 0, 0)
         )
     }

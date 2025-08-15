@@ -30,7 +30,7 @@ permissions: {}
 
 env:
   toolchain: stable
-  nightly_toolchain: nightly-2025-01-01
+  nightly_toolchain: nightly-2025-06-01
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

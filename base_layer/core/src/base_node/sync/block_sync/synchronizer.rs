@@ -101,7 +101,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             match self.attempt_block_sync(max_latency).await {
                 Ok(_) => return Ok(()),
                 Err(err @ BlockSyncError::AllSyncPeersExceedLatency) => {
-                    warn!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{err}");
                     max_latency += self.config.max_latency_increase;
                     warn!(
                         target: LOG_TARGET,
@@ -122,7 +122,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 },
                 Err(err @ BlockSyncError::SyncRoundFailed) => {
                     sync_round += 1;
-                    warn!(target: LOG_TARGET, "{} ({})", err, sync_round);
+                    warn!(target: LOG_TARGET, "{err} ({sync_round})");
                     continue;
                 },
                 Err(err) => {
@@ -142,14 +142,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         let mut latency_counter = 0usize;
         for node_id in sync_peer_node_ids {
             let peer_index = self.get_sync_peer_index(&node_id).ok_or(BlockSyncError::PeerNotFound)?;
-            let sync_peer = &self.sync_peers[peer_index];
+            let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
             self.hooks.call_on_starting_hook(sync_peer);
             let mut conn = match self.connect_to_sync_peer(node_id.clone()).await {
                 Ok(val) => val,
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to connect to sync peer `{}`: {}", node_id, e
+                        "Failed to connect to sync peer `{node_id}`: {e}"
                     );
                     self.remove_sync_peer(&node_id);
                     continue;
@@ -166,7 +166,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to obtain RPC connection from sync peer `{}`: {}", node_id, e
+                        "Failed to obtain RPC connection from sync peer `{node_id}`: {e}"
                     );
                     self.remove_sync_peer(&node_id);
                     continue;
@@ -175,16 +175,19 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let latency = client
                 .get_last_request_latency()
                 .expect("unreachable panic: last request latency must be set after connect");
-            self.sync_peers[peer_index].set_latency(latency);
-            let sync_peer = self.sync_peers[peer_index].clone();
+            self.sync_peers
+                .get_mut(peer_index)
+                .expect("Already checked")
+                .set_latency(latency);
+            let sync_peer = self.sync_peers.get(peer_index).expect("Already checked").clone();
             info!(
                 target: LOG_TARGET,
-                "Attempting to synchronize blocks with `{}` latency: {:.2?}", node_id, latency
+                "Attempting to synchronize blocks with `{node_id}` latency: {latency:.2?}"
             );
             match self.synchronize_blocks(sync_peer, client, max_latency).await {
                 Ok(_) => return Ok(()),
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "{}", err);
+                    warn!(target: LOG_TARGET, "{err}");
                     let ban_reason = BlockSyncError::get_ban_reason(&err);
                     if let Some(reason) = ban_reason {
                         let duration = match reason.ban_duration {
@@ -336,7 +339,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         .commit()
                         .await
                     {
-                        error!(target: LOG_TARGET, "Failed to insert bad block: {}", err);
+                        error!(target: LOG_TARGET, "Failed to insert bad block: {err}");
                     }
                     return Err(err.into());
                 },
@@ -356,10 +359,9 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             );
             trace!(
                 target: LOG_TARGET,
-                "{}",block
+                "{block}"
             );
 
-            let timer = Instant::now();
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
@@ -384,19 +386,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.hooks
                 .call_on_progress_block_hooks(block.clone(), tip_height, &sync_peer);
 
-            debug!(
-                target: LOG_TARGET,
-                "Block body #{} added in {:.0?}, Tot_acc_diff {}, MoneroRX {}, TariRx {}, SHA3 {}, latency: {:.2?}",
-                block.height(),
-                timer.elapsed(),
-                block
-                    .accumulated_data()
-                    .total_accumulated_difficulty,
-                block.accumulated_data().accumulated_monero_randomx_difficulty,
-                block.accumulated_data().accumulated_tari_randomx_difficulty,
-                block.accumulated_data().accumulated_sha3x_difficulty,
-                latency
-            );
             if let Some(avg_latency) = last_avg_latency {
                 if avg_latency > max_latency {
                     return Err(BlockSyncError::MaxLatencyExceeded {
@@ -442,7 +431,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.hooks.call_on_complete_hooks(block, best_height);
         }
 
-        debug!(target: LOG_TARGET, "Completed block sync with peer `{}`", sync_peer);
+        debug!(target: LOG_TARGET, "Completed block sync with peer `{sync_peer}`");
 
         Ok(())
     }

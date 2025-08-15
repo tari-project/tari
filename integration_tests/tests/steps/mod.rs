@@ -71,16 +71,16 @@ pub fn cucumber_steps_log<S: AsRef<str>>(log_message: S) {
 pub fn get_saved_seed_words(world: &mut TariWorld, wallet_name: &str) -> Vec<String> {
     let source_wallet = world
         .get_wallet(&wallet_name)
-        .unwrap_or_else(|e| panic!("Wallet process '{}' does not exist in world: {}", wallet_name, e));
+        .unwrap_or_else(|e| panic!("Wallet process '{wallet_name}' does not exist in world: {e}"));
     let seed_words_path = source_wallet.temp_dir_path.clone().join("seed_words.txt");
     let seed_words_file = std::fs::File::open(&seed_words_path)
-        .unwrap_or_else(|e| panic!("Failed to open seed words file at {:?}: {}", seed_words_path, e));
+        .unwrap_or_else(|e| panic!("Failed to open seed words file at {seed_words_path:?}: {e}"));
     let reader = std::io::BufReader::new(seed_words_file);
     let line = reader
         .lines()
         .next()
-        .unwrap_or_else(|| panic!("Seed words file at {:?} is empty", seed_words_path))
-        .unwrap_or_else(|e| panic!("Failed to read seed words from file: {}", e));
+        .unwrap_or_else(|| panic!("Seed words file at {seed_words_path:?} is empty"))
+        .unwrap_or_else(|e| panic!("Failed to read seed words from file: {e}"));
     line.split_whitespace()
         .collect::<Vec<_>>()
         .into_iter()

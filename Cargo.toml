@@ -1,5 +1,5 @@
 [workspace.package]
-version = "5.0.0-pre.0"
+version = "5.0.0-pre.3"
 edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
@@ -51,7 +51,6 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = { version = "1.0" }
 tari_jellyfish = { path = "infrastructure/jellyfish" }
-tari_chat_client = { path = "base_layer/contacts/src/chat_client" }
 tari_common = { path = "common" }
 tari_common_sqlite = { path = "common_sqlite" }
 tari_common_types = { path = "base_layer/common_types" }

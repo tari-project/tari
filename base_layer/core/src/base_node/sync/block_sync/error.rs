@@ -118,7 +118,7 @@ impl BlockSyncError {
             err @ BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) |
             err @ BlockSyncError::RpcError(_) |
             err @ BlockSyncError::RpcRequestError(_) => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),
 
@@ -127,7 +127,7 @@ impl BlockSyncError {
             err @ BlockSyncError::UnknownHeaderHash(_) |
             err @ BlockSyncError::InvalidBlockBody(_) |
             err @ BlockSyncError::FixedHashSizeError(_) => Some(BanReason {
-                reason: format!("{}", err),
+                reason: format!("{err}"),
                 ban_duration: BanPeriod::Long,
             }),
 

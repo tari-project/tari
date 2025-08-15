@@ -111,7 +111,7 @@ impl Transport for SocksTransport {
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
         // Bypass the SOCKS proxy and connect to the address directly
         if self.socks_config.proxy_bypass_predicate.check(addr) {
-            debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{}'. Using TCP.", addr);
+            debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{addr}'. Using TCP.");
             return self.tcp_transport.dial(addr).await;
         }
 

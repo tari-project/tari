@@ -133,9 +133,9 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
 
     fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
         let public_key =
-            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
+            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {e}"))?;
         let claim_public_key = CompressedPublicKey::from_canonical_bytes(&value.claim_public_key)
-            .map_err(|e| format!("claim_public_key: {}", e))?;
+            .map_err(|e| format!("claim_public_key: {e}"))?;
 
         Ok(Self::new(
             ValidatorNodeSignature::new(
@@ -168,7 +168,7 @@ impl TryFrom<proto::types::ValidatorNodeExit> for ValidatorNodeExit {
 
     fn try_from(value: proto::types::ValidatorNodeExit) -> Result<Self, Self::Error> {
         let public_key =
-            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
+            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {e}"))?;
 
         Ok(Self::new(
             ValidatorNodeSignature::new(
@@ -447,7 +447,7 @@ impl TryFrom<proto::types::SidechainBlockHeader> for SidechainBlockHeader {
 
     fn try_from(value: proto::types::SidechainBlockHeader) -> Result<Self, Self::Error> {
         let network_byte = u8::try_from(value.network).map_err(|_| "Invalid network byte: overflows u8".to_string())?;
-        Network::try_from(network_byte).map_err(|err| format!("Invalid network byte: {}", err))?;
+        Network::try_from(network_byte).map_err(|err| format!("Invalid network byte: {err}"))?;
         Ok(Self {
             network: network_byte,
             parent_id: value.parent_id.try_into().map_err(|_| "Invalid parent id")?,

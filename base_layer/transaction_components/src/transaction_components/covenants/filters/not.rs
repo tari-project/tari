@@ -44,6 +44,7 @@ impl Filter for NotFilter {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_script::script;
 
     use super::*;

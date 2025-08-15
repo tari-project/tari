@@ -86,7 +86,7 @@ where
         fee_per_gram: MicroMinotari,
         mut payment_id: MemoField,
     ) -> Result<PrepareOneSidedTransactionForSigningResult, TransactionServiceError> {
-        debug!(target: LOG_TARGET, "Locking one sided transaction to {} with {}", dest_address, amount);
+        debug!(target: LOG_TARGET, "Locking one sided transaction to {dest_address} with {amount}");
         let tx_id = TxId::new_random();
 
         // let override the payment_id if the address says we should

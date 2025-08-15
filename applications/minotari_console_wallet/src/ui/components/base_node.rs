@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -56,7 +57,7 @@ impl<B: Backend> Component<B> for BaseNode {
             Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
             Span::styled(
-                format!("#{}({})", tip_height, scanned_height),
+                format!("#{tip_height}({scanned_height})"),
                 Style::default().fg(Color::Green),
             ),
             Span::raw("   "),

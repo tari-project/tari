@@ -189,16 +189,17 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use borsh::{BorshDeserialize, BorshSerialize};
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use crate::transaction_components::{
         covenants::{
             test::{create_input, create_outputs},
             Covenant,
         },
-        transactions::{test_helpers::UtxoTestParams},
+        transactions::test_helpers::UtxoTestParams,
     };
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_succeeds_when_empty() {

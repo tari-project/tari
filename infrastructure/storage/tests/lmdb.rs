@@ -48,6 +48,7 @@ struct User {
 }
 
 impl User {
+    #[allow(clippy::indexing_slicing)]
     fn new(csv: &str) -> Result<User, String> {
         let vals: Vec<&str> = csv.split(',').collect();
         if vals.len() != 6 {
@@ -134,7 +135,7 @@ fn test_single_thread() {
     }
     clean_up("single_thread"); // In Windows file handles must be released before files can be deleted
 }
-
+#[allow(clippy::indexing_slicing)]
 #[test]
 fn test_multi_thread() {
     {
@@ -240,6 +241,7 @@ fn test_multi_writes() {
     clean_up("multi-writes"); // In Windows file handles must be released before files can be deleted
 }
 
+#[allow(clippy::indexing_slicing)]
 #[test]
 fn test_pair_iterator() {
     {

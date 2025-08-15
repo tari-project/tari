@@ -185,7 +185,7 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), AggregatedBodyVa
     trace!(target: LOG_TARGET, "Checking kernel signatures",);
     for kernel in body.kernels() {
         kernel.verify_signature().map_err(|e| {
-            warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
+            warn!(target: LOG_TARGET, "Kernel ({kernel}) signature failed {e:?}.");
             e
         })?;
     }
@@ -197,7 +197,7 @@ fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Resu
     check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
-            "output ({}) script size exceeded max size {:?}.", output, e
+            "output ({output}) script size exceeded max size {e:?}."
         );
         e
     })
@@ -211,7 +211,7 @@ fn check_encrypted_data_byte_size(
     check_tari_encrypted_data_byte_size(output.encrypted_data(), max_encrypted_data_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
-            "output ({}) script size exceeded max size {:?}.", output, e
+            "output ({output}) script size exceeded max size {e:?}."
         );
         e
     })
@@ -391,7 +391,7 @@ fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Transa
         if !input.is_mature_at(height)? {
             debug!(
                 target: LOG_TARGET,
-                "Input found that has not yet matured to spending height: {}", input
+                "Input found that has not yet matured to spending height: {input}"
             );
             return Err(TransactionError::InputMaturity);
         }
@@ -517,6 +517,7 @@ fn validate_versions(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::iter;
 
     use futures::StreamExt;
@@ -576,16 +577,16 @@ mod test {
             );
 
             assert!(matches!(
-                check_maturity(1, &[input.clone()]),
+                check_maturity(1, std::slice::from_ref(&input)),
                 Err(TransactionError::InputMaturity)
             ));
 
             assert!(matches!(
-                check_maturity(4, &[input.clone()]),
+                check_maturity(4, std::slice::from_ref(&input)),
                 Err(TransactionError::InputMaturity)
             ));
 
-            check_maturity(5, &[input.clone()]).unwrap();
+            check_maturity(5, std::slice::from_ref(&input)).unwrap();
             check_maturity(6, &[input]).unwrap();
         }
     }

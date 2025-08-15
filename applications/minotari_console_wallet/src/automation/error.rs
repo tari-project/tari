@@ -127,7 +127,7 @@ impl From<ByteArrayError> for CommandError {
 
 impl From<CommandError> for ExitError {
     fn from(err: CommandError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
+        error!(target: LOG_TARGET, "{err}");
         Self::new(ExitCode::CommandError, err.to_string())
     }
 }
@@ -160,8 +160,8 @@ pub enum ParseError {
 
 impl From<ParseError> for ExitError {
     fn from(err: ParseError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        let msg = format!("Failed to parse input file commands! {}", err);
+        error!(target: LOG_TARGET, "{err}");
+        let msg = format!("Failed to parse input file commands! {err}");
         Self::new(ExitCode::InputError, msg)
     }
 }

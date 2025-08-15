@@ -295,15 +295,17 @@ impl TariAddress {
     /// Gets the checksum from the Tari Address
     pub fn calculate_checksum(&self) -> u8 {
         let bytes = self.to_vec();
-        // -1 is safe as this the len will always be greater than 0
-        bytes[bytes.len() - 1]
+        *bytes.last().expect("Index should exist")
     }
 
     /// Convert Tari Address to an emoji string
     pub fn to_emoji_string(&self) -> String {
         // Convert the public key to bytes and compute the checksum
         let bytes = self.to_vec();
-        bytes.iter().map(|b| EMOJI[*b as usize]).collect::<String>()
+        bytes
+            .iter()
+            .map(|b| EMOJI.get(*b as usize).expect("Index should exist"))
+            .collect::<String>()
     }
 
     /// Return the public view key of an Tari Address
@@ -382,9 +384,9 @@ impl TariAddress {
     /// Convert Tari Address to bytes
     pub fn to_base58(&self) -> String {
         let bytes = self.to_vec();
-        let mut network = bs58::encode(&bytes[0..1]).into_string();
-        let features = bs58::encode(&bytes[1..2].to_vec()).into_string();
-        let rest = bs58::encode(&bytes[2..]).into_string();
+        let mut network = bs58::encode(bytes.get(0..1).expect("Index should exist")).into_string();
+        let features = bs58::encode(bytes.get(1..2).expect("Index should exist").to_vec()).into_string();
+        let rest = bs58::encode(bytes.get(2..).expect("Index should exist")).into_string();
         network.push_str(&features);
         network.push_str(&rest);
         network
@@ -497,6 +499,7 @@ pub mod tari_address_json_bs58 {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_crypto::keys::SecretKey;
 
     use super::*;

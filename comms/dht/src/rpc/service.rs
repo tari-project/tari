@@ -133,8 +133,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
 
         if message.excluded.len() > MAX_EXCLUDED_PEERS {
             return Err(RpcStatus::bad_request(&format!(
-                "Sending more than {} to the exclude list is not supported",
-                MAX_EXCLUDED_PEERS
+                "Sending more than {MAX_EXCLUDED_PEERS} to the exclude list is not supported"
             )));
         }
 

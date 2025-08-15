@@ -115,6 +115,7 @@ impl ConnectivityManager {
             uptime: Some(Instant::now()),
             allow_list: vec![],
             proactive_dialer,
+            seeds: vec![],
         }
         .spawn()
     }
@@ -154,7 +155,7 @@ impl ConnectivityStatus {
 
 impl fmt::Display for ConnectivityStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -173,6 +174,7 @@ struct ConnectivityManagerActor {
     uptime: Option<Instant>,
     allow_list: Vec<NodeId>,
     proactive_dialer: ProactiveDialer,
+    seeds: Vec<NodeId>,
 }
 
 impl ConnectivityManagerActor {
@@ -197,12 +199,24 @@ impl ConnectivityManagerActor {
 
         self.publish_event(ConnectivityEvent::ConnectivityStateInitialized);
 
+        self.seeds = self
+            .peer_manager
+            .get_seed_peers()
+            .await
+            .unwrap_or({
+                warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
+                vec![]
+            })
+            .iter()
+            .map(|s| s.node_id.clone())
+            .collect();
+
         loop {
             tokio::select! {
                 Some(req) = self.request_rx.recv() => {
                     let timer = Instant::now();
                     let task_id = rand::random::<u64>();
-                    trace!(target: LOG_TARGET, "Request ({}): {:?}", task_id, req);
+                    trace!(target: LOG_TARGET, "Request ({task_id}): {req:?}");
                     self.handle_request(req).await;
                     if timer.elapsed() > ACCEPTABLE_CONNECTIVITY_REQUEST_PROCESSING_TIME {
                         warn!(
@@ -212,15 +226,15 @@ impl ConnectivityManagerActor {
                             format_duration(timer.elapsed())
                         );
                     }
-                    trace!(target: LOG_TARGET, "Request ({}) done", task_id);
+                    trace!(target: LOG_TARGET, "Request ({task_id}) done");
                 },
 
                 Ok(event) = connection_manager_events.recv() => {
                     let timer = Instant::now();
                     let task_id = rand::random::<u64>();
-                    trace!(target: LOG_TARGET, "Event ({}): {:?}", task_id, event);
+                    trace!(target: LOG_TARGET, "Event ({task_id}): {event:?}");
                     if let Err(err) = self.handle_connection_manager_event(&event).await {
-                        error!(target:LOG_TARGET, "Error handling connection manager event ({}): {:?}", task_id, err);
+                        error!(target:LOG_TARGET, "Error handling connection manager event ({task_id}): {err:?}");
                     }
                     if timer.elapsed() > ACCEPTABLE_EVENT_PROCESSING_TIME {
                         warn!(
@@ -230,28 +244,27 @@ impl ConnectivityManagerActor {
                             format_duration(timer.elapsed())
                         );
                     }
-                    trace!(target: LOG_TARGET, "Event ({}) done", task_id);
+                    trace!(target: LOG_TARGET, "Event ({task_id}) done");
                 },
 
                 _ = connection_pool_timer.tick() => {
                     let task_id = rand::random::<u64>();
-                    trace!(target: LOG_TARGET, "Pool refresh peers task ({})", task_id);
+                    trace!(target: LOG_TARGET, "Pool refresh peers task ({task_id})");
                     self.cleanup_connection_stats();
                     match tokio::time::timeout(POOL_REFRESH_TIMEOUT, self.refresh_connection_pool(task_id)).await {
                         Ok(res) => {
                             if let Err(err) = res {
-                                error!(target: LOG_TARGET, "Error refreshing connection pools ({}): {:?}", task_id, err);
+                                error!(target: LOG_TARGET, "Error refreshing connection pools ({task_id}): {err:?}");
                             }
                         },
                         Err(_) => {
                             warn!(
                                 target: LOG_TARGET,
-                                "Pool refresh task ({}) timeout",
-                                task_id,
+                                "Pool refresh task ({task_id}) timeout",
                             );
                         },
                     }
-                    trace!(target: LOG_TARGET, "Pool refresh task ({}) done", task_id);
+                    trace!(target: LOG_TARGET, "Pool refresh task ({task_id}) done" );
                 },
 
                 _ = self.shutdown_signal.wait() => {
@@ -299,7 +312,7 @@ impl ConnectivityManagerActor {
                 let peer = match self.peer_manager.find_by_node_id(&node_id).await {
                     Ok(v) => v,
                     Err(e) => {
-                        error!(target: LOG_TARGET, "Error when retrieving peer: {:?}", e);
+                        error!(target: LOG_TARGET, "Error when retrieving peer: {e:?}");
                         None
                     },
                 };
@@ -317,10 +330,10 @@ impl ConnectivityManagerActor {
                 if self.allow_list.contains(&node_id) {
                     info!(
                         target: LOG_TARGET,
-                        "Peer is excluded from being banned as it was found in the AllowList, NodeId: {:?}", node_id
+                        "Peer is excluded from being banned as it was found in the AllowList, NodeId: {node_id:?}"
                     );
                 } else if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
-                    error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
+                    error!(target: LOG_TARGET, "Error when banning peer: {err:?}");
                 } else {
                     // we banned the peer
                 }
@@ -341,7 +354,7 @@ impl ConnectivityManagerActor {
             },
             GetSeeds(reply) => {
                 let seeds = self.peer_manager.get_seed_peers().await.unwrap_or_else(|e| {
-                    error!(target: LOG_TARGET, "Error when retrieving seed peers: {:?}", e);
+                    error!(target: LOG_TARGET, "Error when retrieving seed peers: {e:?}");
                     vec![]
                 });
                 let _result = reply.send(seeds);
@@ -411,7 +424,7 @@ impl ConnectivityManagerActor {
                 if let Err(err) = self.connection_manager.send_dial_peer(node_id, reply_tx).await {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to send dial request to connection manager: {:?}", err
+                        "Failed to send dial request to connection manager: {err:?}"
                     );
                 }
             },
@@ -486,22 +499,19 @@ impl ConnectivityManagerActor {
         if self.config.proactive_dialing_enabled {
             debug!(
                 target: LOG_TARGET,
-                "({}) Executing proactive dialing logic",
-                task_id
+                "({task_id}) Executing proactive dialing logic"
             );
             if let Err(err) = self.execute_proactive_dialing(task_id).await {
                 warn!(
                     target: LOG_TARGET,
-                    "({}) Proactive dialing failed: {:?}",
-                    task_id,
-                    err
+                    "({task_id}) Proactive dialing failed: {err:?}"
                 );
             }
         } else {
             debug!(
                 target: LOG_TARGET,
-                "({}) Proactive dialing disabled in configuration",
-                task_id
+                "({task_id}) Proactive dialing disabled in configuration"
+
             );
         }
 
@@ -523,10 +533,7 @@ impl ConnectivityManagerActor {
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Connectivity error trying to maintain {} closest peers ({}) ({:?})",
-                    threshold,
-                    task_id,
-                    e
+                    "Connectivity error trying to maintain {threshold} closest peers ({task_id}) ({e:?})",
                 );
                 return;
             },
@@ -670,7 +677,7 @@ impl ConnectivityManagerActor {
     }
 
     fn select_connections(&self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, ConnectivityError> {
-        trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
+        trace!(target: LOG_TARGET, "Selection query: {selection:?}");
         trace!(
             target: LOG_TARGET,
             "Selecting from {} connected node peers",
@@ -687,7 +694,7 @@ impl ConnectivityManagerActor {
         &self,
         selection: ConnectivitySelection,
     ) -> Result<Vec<PeerConnection>, ConnectivityError> {
-        trace!(target: LOG_TARGET, "Health-aware selection query: {:?}", selection);
+        trace!(target: LOG_TARGET, "Health-aware selection query: {selection:?}");
         trace!(
             target: LOG_TARGET,
             "Selecting from {} connected node peers with health metrics",
@@ -730,7 +737,7 @@ impl ConnectivityManagerActor {
         if self.status.is_offline() {
             info!(
                 target: LOG_TARGET,
-                "Node is offline. Ignoring connection failure event for peer '{}'.", node_id
+                "Node is offline. Ignoring connection failure event for peer '{node_id}'."
             );
             self.publish_event(ConnectivityEvent::ConnectivityStateOffline);
             return Ok(());
@@ -808,9 +815,8 @@ impl ConnectivityManagerActor {
                     if conn.id() != *id {
                         debug!(
                             target: LOG_TARGET,
-                            "Ignoring peer disconnected event for stale peer connection (id: {}) for peer '{}'",
-                            id,
-                            node_id
+                            "Ignoring peer disconnected event for stale peer connection (id: {id}) for peer '{node_id}'"
+
                         );
                         return Ok(());
                     }
@@ -834,9 +840,8 @@ impl ConnectivityManagerActor {
             PeerConnectFailed(node_id, ConnectionManagerError::AllPeerAddressesAreExcluded(msg)) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Peer '{}' contains only excluded addresses ({})",
-                    node_id,
-                    msg
+                    "Peer '{node_id}' contains only excluded addresses ({msg})"
+
                 );
                 (node_id, ConnectionStatus::Failed, None)
             },
@@ -844,9 +849,7 @@ impl ConnectivityManagerActor {
                 if let Some(conn) = self.pool.get_connection(node_id) {
                     debug!(
                         target: LOG_TARGET,
-                        "Handshake error to peer '{}', disconnecting for a fresh retry ({})",
-                        node_id,
-                        msg
+                        "Handshake error to peer '{node_id}', disconnecting for a fresh retry ({msg})"
                     );
                     let mut conn = conn.clone();
                     disconnect_with_timeout(
@@ -864,7 +867,7 @@ impl ConnectivityManagerActor {
                     if conn.is_connected() && conn.direction().is_inbound() {
                         debug!(
                             target: LOG_TARGET,
-                            "Ignoring DialCancelled({}) event because an inbound connection already exists", node_id
+                            "Ignoring DialCancelled({node_id}) event because an inbound connection already exists"
                         );
 
                         return Ok(());
@@ -872,14 +875,14 @@ impl ConnectivityManagerActor {
                 }
                 debug!(
                     target: LOG_TARGET,
-                    "Dial was cancelled before connection completed to peer '{}'", node_id
+                    "Dial was cancelled before connection completed to peer '{node_id}'"
                 );
                 (node_id, ConnectionStatus::Failed, None)
             },
             PeerConnectFailed(node_id, err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Connection to peer '{}' failed because '{:?}'", node_id, err
+                    "Connection to peer '{node_id}' failed because '{err:?}'"
                 );
                 self.on_peer_connection_failure(node_id).await?;
                 (node_id, ConnectionStatus::Failed, None)
@@ -894,7 +897,7 @@ impl ConnectivityManagerActor {
         if old_status != new_status {
             debug!(
                 target: LOG_TARGET,
-                "Peer connection for node '{}' transitioned from {} to {}", node_id, old_status, new_status
+                "Peer connection for node '{node_id}' transitioned from {old_status} to {new_status}"
             );
         }
 
@@ -926,7 +929,7 @@ impl ConnectivityManagerActor {
             _ => {
                 error!(
                     target: LOG_TARGET,
-                    "Unexpected connection status transition ({} to {}) for peer '{}'", old_status, new_status, node_id
+                    "Unexpected connection status transition ({old_status} to {new_status}) for peer '{node_id}'"
                 );
             },
         }
@@ -1056,7 +1059,7 @@ impl ConnectivityManagerActor {
         let num_connected_clients = self.pool.count_connected_clients();
         debug!(
             target: LOG_TARGET,
-            "#min_peers = {}, #nodes = {}, #clients = {}", min_peers, num_connected_nodes, num_connected_clients
+            "#min_peers = {min_peers}, #nodes = {num_connected_nodes}, #clients = {num_connected_clients}"
         );
 
         match num_connected_nodes {
@@ -1117,7 +1120,7 @@ impl ConnectivityManagerActor {
             (_, Online(n)) => {
                 info!(
                     target: LOG_TARGET,
-                    "Connectivity is ONLINE ({}/{} connections)", n, required_num_peers
+                    "Connectivity is ONLINE ({n}/{required_num_peers} connections)"
                 );
 
                 #[cfg(feature = "metrics")]
@@ -1129,7 +1132,7 @@ impl ConnectivityManagerActor {
             (Degraded(m), Degraded(n)) => {
                 info!(
                     target: LOG_TARGET,
-                    "Connectivity is DEGRADED ({}/{} connections)", n, required_num_peers
+                    "Connectivity is DEGRADED ({n}/{required_num_peers} connections)"
                 );
                 if m != n {
                     self.publish_event(ConnectivityEvent::ConnectivityStateDegraded(n));
@@ -1138,7 +1141,7 @@ impl ConnectivityManagerActor {
             (_, Degraded(n)) => {
                 info!(
                     target: LOG_TARGET,
-                    "Connectivity is DEGRADED ({}/{} connections)", n, required_num_peers
+                    "Connectivity is DEGRADED ({n}/{required_num_peers} connections)"
                 );
                 self.publish_event(ConnectivityEvent::ConnectivityStateDegraded(n));
             },
@@ -1146,7 +1149,7 @@ impl ConnectivityManagerActor {
             (_, Offline) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Connectivity is OFFLINE (0/{} connections)", required_num_peers
+                    "Connectivity is OFFLINE (0/{required_num_peers} connections)"
                 );
                 #[cfg(feature = "metrics")]
                 {
@@ -1154,7 +1157,7 @@ impl ConnectivityManagerActor {
                 }
                 self.publish_event(ConnectivityEvent::ConnectivityStateOffline);
             },
-            (status, next_status) => unreachable!("Unexpected status transition ({} to {})", status, next_status),
+            (status, next_status) => unreachable!("Unexpected status transition ({status} to {next_status})"),
         }
         self.status = next_status;
     }
@@ -1189,7 +1192,7 @@ impl ConnectivityManagerActor {
             let status = self.pool.get_connection_status(node_id);
             debug!(
                 target: LOG_TARGET,
-                "Disconnected banned peer {}. The peer connection status is {}", node_id, status
+                "Disconnected banned peer {node_id}. The peer connection status is {status}"
             );
         }
         ban_result?;
@@ -1216,16 +1219,14 @@ impl ConnectivityManagerActor {
         // Execute proactive dialing logic
         match self
             .proactive_dialer
-            .execute_proactive_dialing(&self.pool, &self.connection_stats, task_id)
+            .execute_proactive_dialing(&self.pool, &self.connection_stats, &self.seeds, task_id)
             .await
         {
             Ok(dialed_count) => {
                 if dialed_count > 0 {
                     debug!(
                         target: LOG_TARGET,
-                        "({}) Proactive dialing initiated {} peer connections",
-                        task_id,
-                        dialed_count
+                        "({task_id}) Proactive dialing initiated {dialed_count} peer connections"
                     );
                 }
                 Ok(())
@@ -1233,9 +1234,8 @@ impl ConnectivityManagerActor {
             Err(err) => {
                 error!(
                     target: LOG_TARGET,
-                    "({}) Proactive dialing failed: {:?}",
-                    task_id,
-                    err
+                    "({task_id}) Proactive dialing failed: {err:?}"
+
                 );
                 Err(err)
             },

@@ -19,10 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     cmp,
-    cmp::Ordering,
+    cmp::{min, Ordering},
     collections::VecDeque,
     convert::TryFrom,
     mem,
@@ -75,6 +74,7 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::{
     smt_hasher::SmtHasher,
+    AccumulatedDataRebuildStatus,
     MinedInfo,
     PayrefRebuildStatus,
     TemplateRegistrationEntry,
@@ -121,7 +121,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparer, BaseConsensusManager},
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
-    proof_of_work::TargetDifficultyWindow,
+    proof_of_work::{randomx_factory::RandomXFactory, TargetDifficultyWindow},
     validation::{
         helpers::calc_median_timestamp,
         tari_rx_vm_key_height,
@@ -253,7 +253,7 @@ where B: BlockchainBackend
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
     ) -> Result<Self, ChainStorageError> {
-        trace!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
+        trace!(target: LOG_TARGET, "BlockchainDatabase config: {config:?}");
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
@@ -349,7 +349,7 @@ where B: BlockchainBackend
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(
                     target: LOG_TARGET,
-                    "Orphan database could not be cleaned out at startup: ({:?}).", e
+                    "Orphan database could not be cleaned out at startup: ({e:?})."
                 ),
             }
         }
@@ -368,6 +368,80 @@ where B: BlockchainBackend
         }
 
         self.rebuild_payref_indexes_background_task()?;
+        self.rebuild_accumulated_data_background_task()?;
+
+        Ok(())
+    }
+
+    /// This function will rebuild the accumulated data in the background if they are corrupt, up to the last stored
+    /// chain header.
+    pub fn rebuild_accumulated_data_background_task(&self) -> Result<(), ChainStorageError> {
+        let initial_status = {
+            let db = self.db_read_access()?;
+            db.fetch_accumulated_data_rebuild_status()?
+        };
+        debug!(target: LOG_TARGET, "[AccData] Rebuilding accumulated data status: {initial_status:?}");
+        if initial_status.is_rebuilt {
+            debug!(target: LOG_TARGET, "[AccData] Accumulated data has already been rebuilt.");
+            return Ok(());
+        }
+
+        let db_rw_lock = self.db.clone();
+        let rules = self.consensus_manager.clone();
+
+        tokio::task::spawn(async move {
+            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
+            // The genesis block will not be at fault - start at height 1 if no data exists.
+            let start_height = initial_status.last_rebuild_height.unwrap_or(1);
+            let mut last_status = initial_status.clone();
+            debug!(
+                target: LOG_TARGET,
+                "[AccData] Start rebuilding accumulated data from height {start_height}"
+
+            );
+
+            let mut height = start_height;
+            loop {
+                let db = db_rw_lock.clone();
+                let difficulty_calculator = difficulty_calculator.clone();
+                // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
+                // shut down when base node shutdown is triggered
+                let res = tokio::task::spawn_blocking(move || {
+                    process_accumulated_data_for_height(db, difficulty_calculator, height)
+                })
+                .await;
+                match res {
+                    Ok(Ok(current_status)) => {
+                        last_status = current_status;
+                    },
+                    Ok(Err(e)) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})"
+                        );
+                        break;
+                    },
+                    Err(e) => {
+                        error!(
+                            target: LOG_TARGET,
+                            "[AccData] Rebuilding accumulated data failed. Initial status: {initial_status:?}. \
+                            Last updated status: {last_status:?} ({e})",
+                        );
+                        break;
+                    },
+                }
+
+                if last_status.is_rebuilt {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[AccData] Rebuilding accumulated data from height {start_height} completed, Final status: {last_status:?}"
+                    );
+                    break;
+                }
+                height = height.saturating_add(1);
+            }
+        });
 
         Ok(())
     }
@@ -421,16 +495,14 @@ where B: BlockchainBackend
                     Ok(Err(e)) => {
                         error!(
                             target: LOG_TARGET,
-                            "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
-                            initial_status, last_status, e
+                            "[PayRef] Index rebuilding failed. Initial status: {initial_status:?}. Last updated status: {last_status:?} ({e})"
                         );
                         break;
                     },
                     Err(e) => {
                         error!(
                             target: LOG_TARGET,
-                            "[PayRef] Index rebuilding failed. Initial status: {:?}. Last updated status: {:?} ({})",
-                            initial_status, last_status, e
+                            "[PayRef] Index rebuilding failed. Initial status: {initial_status:?}. Last updated status: {last_status:?} ({e})"
                         );
                         break;
                     },
@@ -441,8 +513,7 @@ where B: BlockchainBackend
                 if finalize || last_status.is_rebuilt {
                     debug!(
                         target: LOG_TARGET,
-                        "[PayRef] Starting index rebuilding completed, Final status: {:?}",
-                        last_status
+                        "[PayRef] Starting index rebuilding completed, Final status: {last_status:?}",
                     );
                     break;
                 }
@@ -474,7 +545,7 @@ where B: BlockchainBackend
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a read lock on the blockchain backend failed. {:?}", e
+                "An attempt to get a read lock on the blockchain backend failed. {e:?}"
             );
             ChainStorageError::AccessError("Read lock on blockchain backend failed".into())
         })
@@ -485,7 +556,7 @@ where B: BlockchainBackend
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a write lock on the blockchain backend failed. {:?}", e
+                "An attempt to get a write lock on the blockchain backend failed. {e:?}"
             );
             ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
         })
@@ -495,7 +566,7 @@ where B: BlockchainBackend
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "An attempt to get a write lock on the blockchain backend failed. {:?}", e
+                "An attempt to get a write lock on the blockchain backend failed. {e:?}"
             );
             ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
         })
@@ -609,9 +680,7 @@ where B: BlockchainBackend
                     .is_none();
                 trace!(
                     target: LOG_TARGET,
-                    "fetch_outputs_with_spend_status_at_tip: smt_key: {:?}, spent: {}",
-                    smt_key,
-                    spent
+                    "fetch_outputs_with_spend_status_at_tip: smt_key: {smt_key:?}, spent: {spent}"
                 );
                 result.push(Some((mined_info.output, spent)));
             } else {
@@ -852,9 +921,8 @@ where B: BlockchainBackend
                 ChainStorageError::DataInconsistencyDetected {
                     function: "fetch_chain_header_by_block_hash",
                     details: format!(
-                        "Mismatch between header and accumulated data for header {} ({}). This indicates an \
-                         inconsistency in the blockchain database",
-                        hash, height
+                        "Mismatch between header and accumulated data for header {hash} ({height}). This indicates an \
+                         inconsistency in the blockchain database"
                     ),
                 }
             })?;
@@ -1225,7 +1293,7 @@ where B: BlockchainBackend
 
         // Clean up orphan pool
         if let Err(e) = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity) {
-            warn!(target: LOG_TARGET, "Failed to clean up orphans: {}", e);
+            warn!(target: LOG_TARGET, "Failed to clean up orphans: {e}");
         }
 
         debug!(
@@ -1321,7 +1389,7 @@ where B: BlockchainBackend
             });
         }
 
-        trace!(target: LOG_TARGET, "Fetching blocks {}-{}", start, end);
+        trace!(target: LOG_TARGET, "Fetching blocks {start}-{end}");
         let blocks = fetch_blocks(&*db, start, end, compact)?;
         trace!(target: LOG_TARGET, "Fetched {} block(s)", blocks.len());
 
@@ -1496,11 +1564,8 @@ where B: BlockchainBackend
 }
 
 fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {
-    let msg = format!(
-        "Unexpected result for database query {}. Response: {}",
-        request, response
-    );
-    error!(target: LOG_TARGET, "{}", msg);
+    let msg = format!("Unexpected result for database query {request}. Response: {response}");
+    error!(target: LOG_TARGET, "{msg}");
     Err(ChainStorageError::UnexpectedResult(msg))
 }
 
@@ -1983,8 +2048,7 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
     let tip_height = metadata.best_block_height();
     if height > tip_height {
         return Err(ChainStorageError::InvalidQuery(format!(
-            "Cannot get block at height {}. Chain tip is at {}",
-            height, tip_height
+            "Cannot get block at height {height}. Chain tip is at {tip_height}"
         )));
     }
     let pruned_height = metadata.pruned_height();
@@ -2044,9 +2108,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     let mut removed_blocks = Vec::with_capacity(usize::try_from(steps_back).unwrap_or(usize::MAX));
     info!(
         target: LOG_TARGET,
-        "Rewinding blocks from height {} to {}",
-        last_block_height,
-        target_height
+        "Rewinding blocks from height {last_block_height} to {target_height}"
     );
 
     let effective_pruning_horizon = metadata.best_block_height().saturating_sub(metadata.pruned_height());
@@ -2054,8 +2116,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     if prune_past_horizon {
         warn!(
             target: LOG_TARGET,
-            "WARNING, reorg past pruning horizon (more than {} blocks back), rewinding back to 0",
-            effective_pruning_horizon
+            "WARNING, reorg past pruning horizon (more than {effective_pruning_horizon} blocks back), rewinding back to 0"
         );
         steps_back = effective_pruning_horizon;
     }
@@ -2098,7 +2159,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         );
         if h == 0 {
             // insert the new orphan chain tip
-            debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {}", block_hash,);
+            debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {block_hash}");
             txn.insert_orphan_chain_tip(block_hash, chain_header.accumulated_data().total_accumulated_difficulty);
         }
         // Update metadata
@@ -2233,7 +2294,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         if let Err(e) = backend.write(txn) {
             warn!(
                 target: LOG_TARGET,
-                "Failed to commit reorg chain: {:?}. Restoring last chain.", e
+                "Failed to commit reorg chain: {e:?}. Restoring last chain."
             );
 
             restore_reorged_chain(backend, fork_hash, removed_blocks)?;
@@ -2316,7 +2377,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
             let mut txn = DbTransaction::new();
             txn.insert_reorg(Reorg::from_reorged_blocks(&reorg_chain, &removed_blocks));
             if let Err(e) = db.write(txn) {
-                error!(target: LOG_TARGET, "Failed to track reorg: {}", e);
+                error!(target: LOG_TARGET, "Failed to track reorg: {e}");
             }
         }
 
@@ -2345,9 +2406,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     } else {
         trace!(
             target: LOG_TARGET,
-            "No reorg required. Number of blocks to remove: {}, to add: {}.",
-            num_removed_blocks,
-            num_added_blocks,
+            "No reorg required. Number of blocks to remove: {num_removed_blocks}, to add: {num_added_blocks}."
         );
         // NOTE: panic is not possible because get_orphan_link_main_chain cannot return an empty Vec (reorg_chain)
         Ok(BlockAddResult::Ok(reorg_chain.front().unwrap().clone()))
@@ -2379,14 +2438,23 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     Ok(())
 }
 
-// this si tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
+// this is tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
 // so we need to search for it.
 fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
     db: &mut T,
     candidate_block: Arc<Block>,
 ) -> Result<FixedHash, ChainStorageError> {
-    let vm_height = tari_rx_vm_key_height(candidate_block.header.height);
-    let mut current_header = candidate_block.header.clone();
+    get_vm_key_for_candidate_header(db, candidate_block.header.clone())
+}
+
+// this is tricky as we need to find the vm_key hash for the candidate block, but it might not be in the current chain
+// so we need to search for it.
+fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
+    db: &mut T,
+    header: BlockHeader,
+) -> Result<FixedHash, ChainStorageError> {
+    let vm_height = tari_rx_vm_key_height(header.height);
+    let mut current_header = header.clone();
     while current_header.height != vm_height {
         let h = db.fetch_chain_header_in_all_chains(&current_header.prev_hash)?;
         let chain_header = db.fetch_chain_header_by_height(h.height())?;
@@ -2420,8 +2488,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             txn.remove_orphan_chain_tip(candidate_block.header.prev_hash);
             info!(
                 target: LOG_TARGET,
-                "New orphan ({}) extends a chain in the current candidate tip set",
-                hash
+                "New orphan ({hash}) extends a chain in the current candidate tip set"
             );
             curr_parent
         },
@@ -2512,7 +2579,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     txn.insert_orphan(chain_block.to_arc_block());
 
-    txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
+    txn.set_accumulated_data_for_orphan(chain_block.header().version, chain_block.accumulated_data().clone());
     db.write(txn)?;
     let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
     let mut txn = DbTransaction::new();
@@ -2592,14 +2659,16 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 
                 let chain_header = ChainHeader::try_construct(child.header, accum_data).ok_or_else(|| {
                     ChainStorageError::InvalidOperation(format!(
-                        "Attempt to create mismatched ChainHeader with hash {}",
-                        child_hash,
+                        "Attempt to create mismatched ChainHeader with hash {child_hash}"
                     ))
                 })?;
 
                 // Set/overwrite accumulated data for this orphan block
                 let mut txn = DbTransaction::new();
-                txn.set_accumulated_data_for_orphan(chain_header.accumulated_data().clone());
+                txn.set_accumulated_data_for_orphan(
+                    chain_header.header().version,
+                    chain_header.accumulated_data().clone(),
+                );
                 db.write(txn)?;
                 let children =
                     find_orphan_descendant_tips_of(db, chain_header, prev_timestamps_for_children, validator)?;
@@ -2657,8 +2726,7 @@ fn get_orphan_link_main_chain<T: BlockchainBackend>(
     loop {
         let curr_block = db.fetch_orphan_chain_block(curr_hash)?.ok_or_else(|| {
             ChainStorageError::InvalidOperation(format!(
-                "get_orphan_link_main_chain: Failed to fetch orphan chain block by hash {}",
-                curr_hash,
+                "get_orphan_link_main_chain: Failed to fetch orphan chain block by hash {curr_hash}"
             ))
         })?;
         curr_hash = curr_block.header().prev_hash;
@@ -2737,8 +2805,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
             func: "prune_to_height",
             arg: "target_horizon_height",
             message: format!(
-                "Target pruning horizon {} is less than current pruning horizon {}",
-                target_horizon_height, last_pruned
+                "Target pruning horizon {target_horizon_height} is less than current pruning horizon {last_pruned}"
             ),
         });
     }
@@ -2746,7 +2813,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
     if target_horizon_height == last_pruned {
         info!(
             target: LOG_TARGET,
-            "Blockchain already pruned to height {}", target_horizon_height
+            "Blockchain already pruned to height {target_horizon_height}"
         );
         return Ok(());
     }
@@ -2765,7 +2832,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 
     info!(
         target: LOG_TARGET,
-        "Pruning blockchain database at height {} (was={})", target_horizon_height, last_pruned,
+        "Pruning blockchain database at height {target_horizon_height} (was={last_pruned})"
     );
 
     let mut txn = DbTransaction::new();
@@ -2792,9 +2859,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageError> {
     error!(
         target: LOG_TARGET,
-        "Database access error on request: {}: {}",
-        req,
-        err
+        "Database access error on request: {req}: {err}"
     );
     Err(err)
 }
@@ -2831,7 +2896,7 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
     (start, end)
 }
 
-/// Process a batch of outputs in one block for PayRef migration
+// Process a batch of outputs in one block for PayRef migration
 fn process_payref_for_height<B: BlockchainBackend>(
     db: Arc<RwLock<B>>,
     height: u64,
@@ -2839,14 +2904,14 @@ fn process_payref_for_height<B: BlockchainBackend>(
     initialize_stats: Option<u64>,
     finalize: bool,
 ) -> Result<PayrefRebuildStatus, ChainStorageError> {
-    debug!(target: LOG_TARGET, "[PayRef] Processing index rebuilding for height {}", height);
+    debug!(target: LOG_TARGET, "[PayRef] Processing index rebuilding for height {height}");
 
-    let write_txn = db
+    let write_lock = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
 
     let status =
-        write_txn.build_payref_indexes_for_height(height, metadata_at_start.clone(), initialize_stats, finalize)?;
+        write_lock.build_payref_indexes_for_height(height, metadata_at_start.clone(), initialize_stats, finalize)?;
 
     if finalize || status.is_rebuilt {
         debug!(
@@ -2859,8 +2924,42 @@ fn process_payref_for_height<B: BlockchainBackend>(
     Ok(status)
 }
 
+// Process accumulated data rebuild for the given height
+fn process_accumulated_data_for_height<B: BlockchainBackend>(
+    db: Arc<RwLock<B>>,
+    difficulty_calculator: DifficultyCalculator,
+    height: u64,
+) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+    debug!(target: LOG_TARGET, "[AccData] Processing accumulated data rebuilding for height {height}");
+
+    let write_lock = db
+        .write()
+        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+    let last_chain_header = write_lock.fetch_last_chain_header()?;
+    // Safety check to ensure we do not rebuild accumulated data for a height that has been reorged out.
+    let height = min(height, last_chain_header.height());
+
+    // Rebuild the accumulated data for the given height
+    let chain_header = write_lock.fetch_chain_header_by_height(height)?;
+    let header = chain_header.header().clone();
+    let prev_chain_header = write_lock.fetch_chain_header_by_height(height.saturating_sub(1))?;
+
+    let achieved_difficulty = difficulty_calculator.check_achieved_and_target_difficulty(&*write_lock, &header)?;
+
+    let accumulated_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
+        .with_hash(header.hash())
+        .with_achieved_target_difficulty(achieved_difficulty)
+        .with_total_kernel_offset(header.total_kernel_offset.clone())
+        .build()?;
+
+    let status = write_lock.update_accumulated_difficulty(height, accumulated_data, last_chain_header)?;
+
+    Ok(status)
+}
+
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{collections::HashMap, sync};
 
     use rand::seq::SliceRandom;

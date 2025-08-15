@@ -453,7 +453,7 @@ pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInter
             wallet_payment_address.get_memo_field_payment_id_bytes(),
             TxType::Coinbase,
         )
-        .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {}, size too large", e)))?
+        .map_err(|e| CoinbaseBuildError::BuildError(format!("Invalid payment ID: {e}, size too large")))?
     };
 
     let sender_offset = key_manager
@@ -512,6 +512,7 @@ pub async fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInter
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
@@ -783,10 +784,12 @@ mod test {
             .is_ok());
     }
     use tari_script::push_pubkey_script;
+    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 
     use crate::{
         aggregated_body::AggregateBody,
         generate_coinbase_with_wallet_output,
+        key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
@@ -795,13 +798,7 @@ mod test {
             RangeProofType,
             TransactionKernelVersion,
         },
-        key_manager::{
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TxoStage,
-        },
     };
-    use tari_transaction_key_manager::{create_memory_db_key_manager,MemoryDbKeyManager};
 
     #[tokio::test]
     #[allow(clippy::too_many_lines)]

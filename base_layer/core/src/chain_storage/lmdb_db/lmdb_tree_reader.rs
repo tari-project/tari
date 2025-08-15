@@ -71,9 +71,9 @@ impl TreeReader for LmdbTreeReader<'_> {
             lmdb_fetch_matching_after(self.txn, &self.unique_key_db, &key_hash.0)?;
         let mut existing_history = vec![];
         for (key, x) in existing_values {
-            let version = u64::from_be_bytes(key[32..].try_into().unwrap());
+            let version = u64::from_be_bytes(key.get(32..).ok_or(anyhow::anyhow!("invalid bytes"))?.try_into()?);
             existing_history.push((version, x));
-            warn!(target: LOG_TARGET, "found version {} for key {:?}", version, key);
+            warn!(target: LOG_TARGET, "found version {version} for key {key:?}");
         }
         // sort by version
         existing_history.sort_by(|a, b| a.0.cmp(&b.0));

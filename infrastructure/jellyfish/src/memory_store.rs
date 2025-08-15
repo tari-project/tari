@@ -55,7 +55,7 @@ impl<P: Debug> fmt::Display for MemoryTreeStore<P> {
         let mut store = self.nodes.iter().collect::<Vec<_>>();
         store.sort_by_key(|(key, _)| *key);
         for (key, node) in store {
-            writeln!(f, "    {}: {:?}", key, node)?;
+            writeln!(f, "    {key}: {node:?}")?;
         }
         writeln!(f, "  Stale Nodes:")?;
         for stale in &self.stale_nodes {

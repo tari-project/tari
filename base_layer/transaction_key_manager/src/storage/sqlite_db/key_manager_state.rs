@@ -65,7 +65,7 @@ impl TryFrom<KeyManagerStateSql> for KeyManagerState {
 
     fn try_from(km: KeyManagerStateSql) -> Result<Self, Self::Error> {
         let mut bytes: [u8; 8] = [0u8; 8];
-        bytes.copy_from_slice(&km.primary_key_index[..8]);
+        bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Cannot fail"));
         Ok(Self {
             branch_seed: km.branch_seed,
             primary_key_index: u64::from_le_bytes(bytes),

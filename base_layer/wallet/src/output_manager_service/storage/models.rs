@@ -130,7 +130,7 @@ impl TryFrom<u32> for SpendingPriority {
         match value {
             0 => Ok(SpendingPriority::Normal),
             1 => Ok(SpendingPriority::HtlcSpendAsap),
-            _ => Err(format!("Invalid spending priority value: {}", value)),
+            _ => Err(format!("Invalid spending priority value: {value}")),
         }
     }
 }

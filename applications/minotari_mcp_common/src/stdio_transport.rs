@@ -81,7 +81,7 @@ impl StdioTransport {
         {
             tokio::spawn(async move {
                 if let Err(e) = tokio::signal::ctrl_c().await {
-                    log::error!("Failed to install Ctrl+C handler: {}", e);
+                    log::error!("Failed to install Ctrl+C handler: {e}");
                     return;
                 }
                 log::info!("Received Ctrl+C, shutting down gracefully");
@@ -132,7 +132,7 @@ impl StdioTransport {
                                 continue;
                             }
 
-                            log::debug!("Received message: {}", line_content);
+                            log::debug!("Received message: {line_content}");
 
                             // Parse and handle the message
                             let response = self.handle_json_message(line_content).await;
@@ -140,24 +140,24 @@ impl StdioTransport {
                             // Send response if there is one
                             if let Some(response_json) = response {
                                 if let Err(e) = writer.write_all(response_json.as_bytes()).await {
-                                    log::error!("Failed to write response: {}", e);
+                                    log::error!("Failed to write response: {e}");
                                     break;
                                 }
                                 if let Err(e) = writer.write_all(b"\n").await {
-                                    log::error!("Failed to write newline: {}", e);
+                                    log::error!("Failed to write newline: {e}");
                                     break;
                                 }
                                 if let Err(e) = writer.flush().await {
-                                    log::error!("Failed to flush output: {}", e);
+                                    log::error!("Failed to flush output: {e}");
                                     break;
                                 }
 
-                                log::debug!("Sent response: {}", response_json);
+                                log::debug!("Sent response: {response_json}");
                                  log::info!("Response sent successfully to client");
                             }
                         }
                         Err(e) => {
-                            log::error!("Failed to read from stdin: {}", e);
+                            log::error!("Failed to read from stdin: {e}");
                             break;
                         }
                     }
@@ -232,9 +232,9 @@ impl StdioTransport {
                 log::debug!("Initial JSON parse failed, attempting repair");
                 match self.repair_and_parse_json(line) {
                     Some(repaired) => {
-                        log::debug!("JSON repair successful: {}", repaired);
+                        log::debug!("JSON repair successful: {repaired}");
                         serde_json::from_str::<McpMessage>(&repaired)
-                            .map_err(|e| McpError::invalid_request(format!("JSON repair failed: {}", e)))
+                            .map_err(|e| McpError::invalid_request(format!("JSON repair failed: {e}")))
                     },
                     None => Err(McpError::invalid_request("Unable to repair malformed JSON")),
                 }
@@ -245,7 +245,7 @@ impl StdioTransport {
         let response = match message_result {
             Ok(message) => self.message_handler.handle_message(message).await,
             Err(e) => {
-                log::warn!("Message parsing failed: {}", e);
+                log::warn!("Message parsing failed: {e}");
                 Err(e)
             },
         };
@@ -255,7 +255,7 @@ impl StdioTransport {
             Ok(resp) => match serde_json::to_string(&resp) {
                 Ok(json) => json,
                 Err(e) => {
-                    log::error!("Failed to serialize response: {}", e);
+                    log::error!("Failed to serialize response: {e}");
                     self.create_error_response(Value::Null, -32603, "Internal error: serialization failed")
                 },
             },
@@ -264,7 +264,7 @@ impl StdioTransport {
                 match serde_json::to_string(&e.to_json_rpc_error(request_id.clone())) {
                     Ok(json) => json,
                     Err(ser_err) => {
-                        log::error!("Failed to serialize error response: {}", ser_err);
+                        log::error!("Failed to serialize error response: {ser_err}");
                         self.create_error_response(
                             request_id.unwrap_or(Value::Null),
                             -32603,

@@ -82,17 +82,17 @@ impl MempoolStorage {
             .map(|k| k.excess_sig.get_signature().to_hex())
             .unwrap_or_else(|| "None?!".into());
         let timer = Instant::now();
-        debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
+        debug!(target: LOG_TARGET, "Inserting tx into mempool: {tx_id}");
         let tx_fee = match tx.body.get_total_fee() {
             Ok(fee) => fee,
             Err(e) => {
-                warn!(target: LOG_TARGET, "Invalid transaction: {}", e);
+                warn!(target: LOG_TARGET, "Invalid transaction: {e}");
                 return Ok(TxStorageResponse::NotStoredConsensus);
             },
         };
         // This check is almost free, so lets check this before we do any expensive validation.
         if tx_fee.as_u64() < self.unconfirmed_pool.config.min_fee {
-            debug!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
+            debug!(target: LOG_TARGET, "Tx: ({tx_id}) fee too low, rejecting");
             return Ok(TxStorageResponse::NotStoredFeeTooLow);
         }
         match self.validator.validate(&tx) {
@@ -131,18 +131,18 @@ impl MempoolStorage {
             },
             Err(ValidationError::MaturityError) => Ok(TxStorageResponse::NotStoredTimeLocked),
             Err(ValidationError::ConsensusError(msg)) => {
-                warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
+                warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {msg}");
                 Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Validation failed due to already mined kernel: {}", msg
+                    "Validation failed due to already mined kernel: {msg}"
                 );
                 Ok(TxStorageResponse::NotStoredAlreadyMined)
             },
             Err(e) => {
-                info!(target: LOG_TARGET, "Validation failed due to error: {}", e);
+                info!(target: LOG_TARGET, "Validation failed due to error: {e}");
                 Ok(TxStorageResponse::NotStored)
             },
         }
@@ -222,8 +222,8 @@ impl MempoolStorage {
         self.last_seen_hash = published_block.header.hash();
         debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         match self.stats() {
-            Ok(stats) => debug!(target: LOG_TARGET, "{}", stats),
-            Err(e) => warn!(target: LOG_TARGET, "error to obtain stats: {}", e),
+            Ok(stats) => debug!(target: LOG_TARGET, "{stats}"),
+            Err(e) => warn!(target: LOG_TARGET, "error to obtain stats: {e}"),
         }
         Ok(())
     }

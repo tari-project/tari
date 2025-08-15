@@ -186,23 +186,34 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn read_frame(&mut self) -> Result<(Bytes, Flags), ProtocolError> {
-        self.socket.read_exact(&mut self.buf[..2]).await?;
+        self.socket
+            .read_exact(self.buf.get_mut(..2).ok_or(ProtocolError::ExpectedReadyBytes)?)
+            .await?;
         // Len can never overflow the buffer because the buffer len is u8::MAX and the length delimiter
         // is a u8. If that changes, then len should be checked for overflow
-        let len = u8::from_be_bytes([self.buf[0]]) as usize;
-        let flags = Flags::from_bits(u8::from_be_bytes([self.buf[1]])).ok_or(ProtocolError::InvalidFlag(format!(
+        let len = u8::from_be_bytes([*self.buf.first().ok_or(ProtocolError::ExpectedReadyBytes)?]) as usize;
+        let flags = Flags::from_bits(u8::from_be_bytes([*self
+            .buf
+            .get(1)
+            .ok_or(ProtocolError::ExpectedReadyBytes)?]))
+        .ok_or(ProtocolError::InvalidFlag(format!(
             "Does not match any flags ({})",
-            self.buf[1]
+            self.buf.get(1).expect("Already checked")
         )))?;
-        self.socket.read_exact(&mut self.buf[0..len]).await?;
+        self.socket
+            .read_exact(self.buf.get_mut(0..len).ok_or(ProtocolError::ExpectedReadyBytes)?)
+            .await?;
         trace!(
             target: LOG_TARGET,
             "Read frame '{}' ({} byte(s) Flags={:?})",
-            String::from_utf8_lossy(&self.buf[0..len]),
+            String::from_utf8_lossy(self.buf.get(0..len).ok_or(ProtocolError::ExpectedReadyBytes)?),
             len,
             flags,
         );
-        Ok((Bytes::copy_from_slice(&self.buf[0..len]), flags))
+        Ok((
+            Bytes::copy_from_slice(self.buf.get(0..len).ok_or(ProtocolError::ExpectedReadyBytes)?),
+            flags,
+        ))
     }
 
     async fn write_frame_flush(&mut self, protocol: &[u8], flags: Flags) -> Result<(), ProtocolError> {
@@ -219,7 +230,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             target: LOG_TARGET,
             "Wrote frame '{}' ({} byte(s) Flags={:?})",
             String::from_utf8_lossy(protocol),
-            len_byte[0],
+            len_byte.first().expect("Already checked"),
             flags
         );
         Ok(())

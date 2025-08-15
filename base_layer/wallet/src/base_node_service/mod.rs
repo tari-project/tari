@@ -94,7 +94,7 @@ where T: HttpClientFactory + Send + Sync + 'static
 
             info!(
                 target: LOG_TARGET,
-                "Wallet Base Node Service shutdown with result {:?}", result
+                "Wallet Base Node Service shutdown with result {result:?}"
             );
         });
 

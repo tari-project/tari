@@ -219,7 +219,7 @@ impl GrpcConfigParser {
             let full_name = if spec.starts_with("tari.rpc.") {
                 spec.to_string()
             } else {
-                format!("tari.rpc.{}", spec)
+                format!("tari.rpc.{spec}")
             };
 
             self.allowed_methods_set.insert(full_name);
@@ -234,9 +234,8 @@ impl GrpcConfigParser {
         }
 
         Err(GrpcConfigError::InvalidMethodName(format!(
-            "Invalid method specification format: {}. Expected formats: 'Service/*', 'Service/Method', or \
-             'tari.rpc.Service/Method'",
-            spec
+            "Invalid method specification format: {spec}. Expected formats: 'Service/*', 'Service/Method', or \
+             'tari.rpc.Service/Method'"
         )))
     }
 
@@ -270,7 +269,10 @@ impl GrpcConfigParser {
             ));
         }
 
-        let (service_part, method_part) = (parts[0], parts[1]);
+        let (service_part, method_part) = (
+            *parts.first().expect("Already checked"),
+            *parts.get(1).expect("Already checked"),
+        );
 
         // Extract service name from full qualified name if present
         let service_name = if service_part.starts_with("tari.rpc.") {

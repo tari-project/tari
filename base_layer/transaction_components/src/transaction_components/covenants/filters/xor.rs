@@ -51,6 +51,7 @@ impl Filter for XorFilter {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
 
     use tari_script::script;
 

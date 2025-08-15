@@ -22,14 +22,13 @@
 
 use std::{fmt, fmt::Display, sync::Arc};
 
-use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 
 use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
 
 /// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
 /// block but contains some extra metadata that clients such as Block Explorers will find interesting.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HistoricalBlock {
     /// The number of blocks that have been mined since this block, including this one. The current tip will have one
     /// confirmation.

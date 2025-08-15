@@ -390,6 +390,7 @@ impl Into<CommsDatabase> for PeerStorageSql {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::{borrow::BorrowMut, iter::repeat_with};
 
     use chrono::{DateTime, Utc};
@@ -798,18 +799,32 @@ mod test {
         let good_address = good_addresses.addresses()[0].address().clone();
         good_addresses.mark_last_seen_now(&good_address);
 
+        let mut good_seed = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        good_seed.flags = PeerFlags::SEED;
+        let good_addresses = good_seed.addresses.borrow_mut();
+        let good_address = good_addresses.addresses()[0].address().clone();
+        good_addresses.mark_last_seen_now(&good_address);
+
         assert!(peer_storage.add_or_update_peer(never_seen_peer).is_ok());
         assert!(peer_storage.add_or_update_peer(not_active_peer).is_ok());
         assert!(peer_storage.add_or_update_peer(banned_peer).is_ok());
         assert!(peer_storage.add_or_update_peer(good_peer).is_ok());
+        assert!(peer_storage.add_or_update_peer(good_seed.clone()).is_ok());
 
-        assert_eq!(peer_storage.all(None).unwrap().len(), 4);
+        assert_eq!(peer_storage.all(None).unwrap().len(), 5);
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
+                .discovery_syncing(100, &[good_seed.node_id], Some(PeerFeatures::COMMUNICATION_NODE), false)
                 .unwrap()
                 .len(),
             1
+        );
+        assert_eq!(
+            peer_storage
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
+                .unwrap()
+                .len(),
+            2
         );
     }
 

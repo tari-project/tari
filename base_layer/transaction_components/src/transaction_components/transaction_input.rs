@@ -343,8 +343,7 @@ impl TransactionInput {
                     StackItem::PublicKey(pubkey) => Ok(pubkey),
                     item => Err(TransactionError::ScriptExecutionError(format!(
                         "The script executed successfully but it did not leave a public key on the stack. Remaining \
-                         stack item was {:?}",
-                        item
+                         stack item was {item:?}"
                     ))),
                 }
             },
@@ -515,7 +514,7 @@ impl TransactionInput {
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self.spent_output {
-            SpentOutput::OutputHash(ref h) => write!(fmt, "Input spending Output hash: {}", h),
+            SpentOutput::OutputHash(ref h) => write!(fmt, "Input spending Output hash: {h}"),
             SpentOutput::OutputData {
                 ref commitment,
                 ref script,

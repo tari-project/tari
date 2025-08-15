@@ -32,45 +32,42 @@ use tari_common_types::{
 };
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
-
-use tari_transaction_components::transaction_components::{CoinBaseExtra, TransactionInputVersion, TransactionOutputVersion};
 use tari_transaction_components::{
-    helpers::borsh::SerializedSize,
     consensus::ConsensusManager,
-        crypto_factories::CryptoFactories,
-        fee::Fee,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            covenants::Covenant,
-            memo_field::MemoField,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            WalletOutput,
-            WalletOutputBuilder,
-            transaction_metadata::TransactionMetadata
-        },
-    weight::TransactionWeight,
-        key_manager::{
-            TariKeyId,
-            TransactionKeyManagerInterface,
-            TransactionKeyManagerWrapper,
-            TxoStage,
+    crypto_factories::CryptoFactories,
+    fee::Fee,
+    helpers::borsh::SerializedSize,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerWrapper, TxoStage},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::MemoField,
+        transaction_metadata::TransactionMetadata,
+        CoinBaseExtra,
+        KernelBuilder,
+        KernelFeatures,
+        OutputFeatures,
+        RangeProofType,
+        Transaction,
+        TransactionInputVersion,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
+        WalletOutputBuilder,
     },
-};
-use crate::transactions::{
-    transaction_protocol::{transaction_initializer::SenderTransactionInitializer},
-    SenderTransactionProtocol,
+    weight::TransactionWeight,
 };
 use tari_transaction_key_manager::{
-    MemoryDbKeyManager,
     create_memory_db_key_manager,
     storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+    MemoryDbKeyManager,
+};
+
+use crate::transactions::{
+    transaction_protocol::transaction_initializer::SenderTransactionInitializer,
+    SenderTransactionProtocol,
 };
 
 pub async fn create_test_input<

@@ -53,6 +53,7 @@ use crate::{
     consensus::BaseConsensusManager,
     mempool::Mempool,
     proof_of_work::{
+        cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -123,7 +124,7 @@ where B: BlockchainBackend + 'static
     /// Handle inbound node comms requests from remote nodes and local services.
     #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&self, request: NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
-        trace!(target: LOG_TARGET, "Handling remote request {}", request);
+        trace!(target: LOG_TARGET, "Handling remote request {request}");
         match request {
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 self.blockchain_db.get_chain_metadata().await?,
@@ -159,10 +160,9 @@ where B: BlockchainBackend + 'static
                             block_headers.push(block_header);
                         },
                         None => {
-                            error!(target: LOG_TARGET, "Could not fetch headers with hashes:{}", block_hex);
+                            error!(target: LOG_TARGET, "Could not fetch headers with hashes:{block_hex}");
                             return Err(CommsInterfaceError::InternalError(format!(
-                                "Could not fetch headers with hashes:{}",
-                                block_hex
+                                "Could not fetch headers with hashes:{block_hex}"
                             )));
                         },
                     }
@@ -204,21 +204,18 @@ where B: BlockchainBackend + 'static
                     let sig_hex = sig.get_signature().to_hex();
                     debug!(
                         target: LOG_TARGET,
-                        "A peer has requested a block with kernel with sig {}", sig_hex
+                        "A peer has requested a block with kernel with sig {sig_hex}"
                     );
                     match self.blockchain_db.fetch_block_with_kernel(sig).await {
                         Ok(Some(block)) => blocks.push(block),
                         Ok(None) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block containing kernel with sig {} to peer because not \
-                             stored",
-                            sig_hex
+                            "Could not provide requested block containing kernel with sig {sig_hex} to peer because not \
+                             stored"
                         ),
                         Err(e) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block containing kernel with sig {} to peer because: {}",
-                            sig_hex,
-                            e
+                            "Could not provide requested block containing kernel with sig {sig_hex} to peer because: {e}"
                         ),
                     }
                 }
@@ -240,20 +237,17 @@ where B: BlockchainBackend + 'static
                     let commitment_hex = commitment.to_hex();
                     debug!(
                         target: LOG_TARGET,
-                        "A peer has requested a block with commitment {}", commitment_hex,
+                        "A peer has requested a block with commitment {commitment_hex}",
                     );
                     match self.blockchain_db.fetch_block_with_utxo(commitment).await {
                         Ok(Some(block)) => blocks.push(block),
                         Ok(None) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block with commitment {} to peer because not stored",
-                            commitment_hex,
+                            "Could not provide requested block with commitment {commitment_hex} to peer because not stored"
                         ),
                         Err(e) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block with commitment {} to peer because: {}",
-                            commitment_hex,
-                            e
+                            "Could not provide requested block with commitment {commitment_hex} to peer because: {e}"
                         ),
                     }
                 }
@@ -294,7 +288,7 @@ where B: BlockchainBackend + 'static
                 }
                 let mut header = BlockHeader::from_previous(best_block_header.header());
                 let constants = self.consensus_manager.consensus_constants(header.height);
-                header.version = constants.blockchain_version();
+                header.version = constants.blockchain_version().into();
                 header.pow.pow_algo = request.algo;
 
                 let constants_weight = constants.max_block_transaction_weight();
@@ -306,7 +300,7 @@ where B: BlockchainBackend + 'static
 
                 debug!(
                     target: LOG_TARGET,
-                    "Fetching transactions with a maximum weight of {} for the template", asking_weight
+                    "Fetching transactions with a maximum weight of {asking_weight} for the template"
                 );
                 let transactions = self
                     .mempool
@@ -375,7 +369,7 @@ where B: BlockchainBackend + 'static
                 let block_hex = hash.to_hex();
                 debug!(
                     target: LOG_TARGET,
-                    "A peer has requested a block with hash {}", block_hex
+                    "A peer has requested a block with hash {block_hex}"
                 );
 
                 #[allow(clippy::blocks_in_conditions)]
@@ -386,9 +380,7 @@ where B: BlockchainBackend + 'static
                     .unwrap_or_else(|e| {
                         warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            block_hex,
-                            e
+                            "Could not provide requested block {block_hex} to peer because: {e}",
                         );
 
                         None
@@ -397,7 +389,7 @@ where B: BlockchainBackend + 'static
                         |e| {
                             warn!(
                                 target: LOG_TARGET,
-                                "Could not provide requested block {} to peer because: {}", block_hex, e,
+                                "Could not provide requested block {block_hex} to peer because: {e}"
                             );
 
                             None
@@ -414,7 +406,7 @@ where B: BlockchainBackend + 'static
                     Ok(Some((kernel, _))) => vec![kernel],
                     Ok(None) => vec![],
                     Err(err) => {
-                        error!(target: LOG_TARGET, "Could not fetch kernel {}", err);
+                        error!(target: LOG_TARGET, "Could not fetch kernel {err}");
                         return Err(err.into());
                     },
                 };
@@ -640,6 +632,12 @@ where B: BlockchainBackend + 'static
                     .hash();
                 tari_randomx_difficulty(&new_block.header, &self.randomx_factory, &vm_key)?
             },
+            PowAlgorithm::Cuckaroo => {
+                let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+                let cuckaroo_cycle = constants.cuckaroo_cycle_length();
+                let edge_bits = constants.cuckaroo_edge_bits();
+                cuckaroo_difficulty(&new_block.header, cuckaroo_cycle, edge_bits)?
+            },
         };
         if achieved < min_difficulty {
             return Err(CommsInterfaceError::InvalidBlockHeader(
@@ -845,17 +843,16 @@ where B: BlockchainBackend + 'static
             Ok(None) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Peer `{}` failed to return the block that was requested.", source_peer
+                    "Peer `{source_peer}` failed to return the block that was requested."
                 );
                 Err(CommsInterfaceError::InvalidPeerResponse(format!(
-                    "Invalid response from peer `{}`: Peer failed to provide the block that was propagated",
-                    source_peer
+                    "Invalid response from peer `{source_peer}`: Peer failed to provide the block that was propagated"
                 )))
             },
             Err(CommsInterfaceError::UnexpectedApiResponse) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Peer `{}` sent unexpected API response.", source_peer
+                    "Peer `{source_peer}` sent unexpected API response."
                 );
                 Err(CommsInterfaceError::UnexpectedApiResponse)
             },
@@ -884,10 +881,10 @@ where B: BlockchainBackend + 'static
             block_hash.to_hex(),
             source_peer
                 .as_ref()
-                .map(|p| format!("remote peer: {}", p))
+                .map(|p| format!("remote peer: {p}"))
                 .unwrap_or_else(|| "local services".to_string())
         );
-        debug!(target: LOG_TARGET, "Incoming block: {}", block);
+        debug!(target: LOG_TARGET, "Incoming block: {block}");
         let timer = Instant::now();
         let block = self.hydrate_block(block).await?;
 
@@ -1029,6 +1026,10 @@ where B: BlockchainBackend + 'static
                     metrics::target_difficulty_tari_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
+                PowAlgorithm::Cuckaroo => {
+                    metrics::target_difficulty_cuckaroo()
+                        .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+                },
             }
         }
 
@@ -1076,7 +1077,7 @@ where B: BlockchainBackend + 'static
             constants.min_pow_difficulty(pow_algo),
             constants.max_pow_difficulty(pow_algo),
         );
-        trace!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
+        trace!(target: LOG_TARGET, "Target difficulty {target} for PoW {pow_algo}");
         Ok(target)
     }
 

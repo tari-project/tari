@@ -923,15 +923,13 @@ impl Display for DbValue {
 fn log_error<T>(req: DbKey, err: TransactionStorageError) -> Result<T, TransactionStorageError> {
     error!(
         target: LOG_TARGET,
-        "Database access error on request: {}: {}",
-        req,
-        err
+        "Database access error on request: {req}: {err}"
     );
     Err(err)
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, TransactionStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
-    error!(target: LOG_TARGET, "{}", msg);
+    let msg = format!("Unexpected result for database query {req}. Respreqonse: {res}");
+    error!(target: LOG_TARGET, "{msg}");
     Err(TransactionStorageError::UnexpectedResult(msg))
 }

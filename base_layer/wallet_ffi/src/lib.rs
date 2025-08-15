@@ -46,6 +46,7 @@
 //!    to the `AvailableBalance`.
 
 #![recursion_limit = "1024"]
+#![allow(clippy::indexing_slicing)]
 use core::ptr;
 use std::{
     convert::{TryFrom, TryInto},
@@ -487,7 +488,7 @@ impl TariVector {
             .into_iter()
             .map(|x| {
                 CompressedCommitment::from_hex(x.as_str())
-                    .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {:?}", e)))
+                    .map_err(|e| InterfaceError::PointerError(format!("failed to convert hex to commitment: {e:?}")))
             })
             .try_collect::<CompressedCommitment, Vec<CompressedCommitment>, InterfaceError>()
     }
@@ -564,7 +565,7 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
     let mut v = match (*tv).to_string_vec() {
         Ok(v) => v,
         Err(e) => {
-            error!(target: LOG_TARGET, "{:#?}", e);
+            error!(target: LOG_TARGET, "{e:#?}");
             *error_ptr = LibWalletError::from(e).code;
             return;
         },
@@ -573,7 +574,7 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
     let s = match CStr::from_ptr(s).to_str() {
         Ok(cs) => cs.to_string(),
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to convert `s` into native string {:#?}", e);
+            error!(target: LOG_TARGET, "failed to convert `s` into native string {e:#?}");
             *error_ptr = LibWalletError::from(InterfaceError::PointerError("invalid string".to_string())).code;
             return;
         },
@@ -1433,7 +1434,7 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
     match public_key {
         Ok(public_key) => Box::into_raw(Box::new(public_key)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {e:?}");
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
         },
@@ -1669,7 +1670,7 @@ pub unsafe extern "C" fn tari_address_from_base58(
     match address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Tari Address from Base58 string: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Tari Address from Base58 string: {e:?}");
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
         },
@@ -2128,7 +2129,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "Error creating a ephemeral commitment from bytes: {:?}", e
+                    "Error creating a ephemeral commitment from bytes: {e:?}"
                 );
                 *error_out = LibWalletError::from(e).code;
                 return ptr::null_mut();
@@ -2139,7 +2140,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a ephemeral pubkey from bytes: {:?}", e
+                "Error creating a ephemeral pubkey from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -2151,7 +2152,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Private Key (u_a) from bytes: {:?}", e
+                "Error creating a Private Key (u_a) from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -2162,7 +2163,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Private Key (u_x) from bytes: {:?}", e
+                "Error creating a Private Key (u_x) from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -2173,7 +2174,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Private Key (u_y) from bytes: {:?}", e
+                "Error creating a Private Key (u_y) from bytes: {e:?}"
             );
             *error_out = LibWalletError::from(e).code;
             return ptr::null_mut();
@@ -2464,7 +2465,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
     match output {
         Ok(output) => Box::into_raw(Box::new(output)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a output from json: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a output from json: {e:?}");
 
             *error_out = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::null_mut()
@@ -2845,7 +2846,7 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
     match secret_key {
         Ok(secret_key) => Box::into_raw(Box::new(secret_key)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {e:?}");
 
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
@@ -2981,7 +2982,7 @@ pub unsafe extern "C" fn range_proof_from_hex(char_ptr: *const c_char, error_out
     match range_proof {
         Ok(proof) => Box::into_raw(Box::new(proof)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a range proof from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a range proof from Hex: {e:?}");
 
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
@@ -3073,7 +3074,7 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
     match TariCovenant::borsh_from_bytes(&mut decoded_covenant_bytes) {
         Ok(covenant) => Box::into_raw(Box::new(covenant)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Covenant: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Covenant: {e:?}");
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("covenant_bytes".to_string())).code;
             ptr::null_mut()
         },
@@ -3132,7 +3133,7 @@ pub unsafe extern "C" fn encrypted_data_create_from_bytes(
     match TariEncryptedOpenings::from_bytes(&decoded_encrypted_data_bytes) {
         Ok(encrypted_data) => Box::into_raw(Box::new(encrypted_data)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating an encrypted_data: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating an encrypted_data: {e:?}");
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("encrypted_data_bytes".to_string())).code;
             ptr::null_mut()
         },
@@ -3196,7 +3197,7 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
                         }
                     },
                     Err(e) => {
-                        error!(target: LOG_TARGET, "Error extracting payment id from encrypted data: {:?}", e);
+                        error!(target: LOG_TARGET, "Error extracting payment id from encrypted data: {e:?}");
                         *error_out = LibWalletError::from(WalletError::TransactionServiceError(
                             TransactionServiceError::TransactionError(e),
                         ))
@@ -3205,7 +3206,7 @@ pub unsafe extern "C" fn transaction_type_from_encrypted_data(
                 }
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "Error creating a commitment from bytes: {:?}", e);
+                error!(target: LOG_TARGET, "Error creating a commitment from bytes: {e:?}");
                 *error_out = LibWalletError::from(e).code;
             },
         }
@@ -3310,7 +3311,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
         Err(message) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a OutputFeaturesVersion: {:?}", message
+                "Error creating a OutputFeaturesVersion: {message:?}"
             );
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("version".to_string())).code;
             return ptr::null_mut();
@@ -3338,7 +3339,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     let decoded_metadata = match CoinBaseExtra::try_from((*metadata).0.clone()) {
         Ok(v) => v,
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a metadata: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a metadata: {e:?}");
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("metadata".to_string())).code;
             return ptr::null_mut();
         },
@@ -3514,11 +3515,10 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
             Err(_) => {
                 error!(
                     target: LOG_TARGET,
-                    "Mnemonic wordlist - '{}' language not supported", language_string
+                    "Mnemonic wordlist - '{language_string}' language not supported"
                 );
                 *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!(
-                    "mnemonic wordlist - '{}' language not supported",
-                    language_string
+                    "mnemonic wordlist - '{language_string}' language not supported"
                 )))
                 .code;
                 [""; 2048]
@@ -3526,7 +3526,7 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
         };
         info!(
             target: LOG_TARGET,
-            "Retrieved mnemonic wordlist for'{}'", language_string
+            "Retrieved mnemonic wordlist for'{language_string}'"
         );
         let mnemonic_word_list_vec =
             SeedWords::new(mnemonic_word_list.iter().map(|s| Hidden::hide(s.to_string())).collect());
@@ -3684,7 +3684,7 @@ pub unsafe extern "C" fn seed_words_push_word(
         Ok(language) => {
             if (*seed_words).0.len() >= MnemonicLanguage::word_count(&language) {
                 let error_msg = "Invalid seed words object, i.e. the entire mnemonic word list, is being used";
-                log::error!(target: LOG_TARGET, "{}", error_msg);
+                log::error!(target: LOG_TARGET, "{error_msg}");
                 *error_out = LibWalletError::from(InterfaceError::InvalidArgument(error_msg.to_string())).code;
                 return SeedWordPushResult::InvalidObject as u8;
             }
@@ -3692,9 +3692,7 @@ pub unsafe extern "C" fn seed_words_push_word(
         Err(e) => {
             log::error!(
                 target: LOG_TARGET,
-                "{} is not a valid mnemonic seed word ({:?})",
-                word_string,
-                e
+                "{word_string} is not a valid mnemonic seed word ({e:?})",
             );
             return SeedWordPushResult::InvalidSeedWord as u8;
         },
@@ -3715,8 +3713,7 @@ pub unsafe extern "C" fn seed_words_push_word(
                 if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, passphrase) {
                     log::error!(
                         target: LOG_TARGET,
-                        "Problem building valid private seed from seed phrase: {:?}",
-                        e
+                        "Problem building valid private seed from seed phrase: {e:?}"
                     );
                     *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                     return SeedWordPushResult::InvalidSeedPhrase as u8;
@@ -3734,10 +3731,8 @@ pub unsafe extern "C" fn seed_words_push_word(
         } else {
             log::error!(
                 target: LOG_TARGET,
-                "Words in seed phrase do not match any language after trying to add word: `{:?}`, previously words \
-                 were detected to be in: `{:?}`",
-                word_string,
-                language
+                "Words in seed phrase do not match any language after trying to add word: `{word_string:?}`, previously words \
+                 were detected to be in: `{language:?}`"
             );
             SeedWordPushResult::NoLanguageMatch as u8
         }
@@ -3745,11 +3740,10 @@ pub unsafe extern "C" fn seed_words_push_word(
         // Seed words are invalid, shouldn't normally be reachable
         log::error!(
             target: LOG_TARGET,
-            "Words in seed phrase do not match any language prior to adding word: `{:?}`",
-            word_string
+            "Words in seed phrase do not match any language prior to adding word: `{word_string:?}`"
         );
         let error_msg = "Invalid seed words object, no language can be detected.";
-        log::error!(target: LOG_TARGET, "{}", error_msg);
+        log::error!(target: LOG_TARGET, "{error_msg}");
         *error_out = LibWalletError::from(InterfaceError::InvalidArgument(error_msg.to_string())).code;
         SeedWordPushResult::InvalidObject as u8
     }
@@ -5205,7 +5199,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
     match tx {
         Ok(tx) => Box::into_raw(Box::new(tx)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a transaction from json: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a transaction from json: {e:?}");
 
             *error_out = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::null_mut()
@@ -6190,7 +6184,7 @@ unsafe fn init_logging(
         } else {
             pattern = split_str[0].to_string();
             for part in split_str.iter().take(split_str.len() - 1).skip(1) {
-                pattern = format!("{}.{}", pattern, part);
+                pattern = format!("{pattern}.{part}");
             }
 
             pattern = format!("{}{}", pattern, ".{}.");
@@ -6500,7 +6494,7 @@ pub unsafe extern "C" fn wallet_create(
         let peer_seed = CStr::from_ptr(dns_seeds_str)
             .to_str()
             .expect("A non-null peer seed should be able to be converted to string");
-        info!(target: LOG_TARGET, "peer seed dns '{}'", peer_seed);
+        info!(target: LOG_TARGET, "peer seed dns '{peer_seed}'");
         peer_seed
     };
 
@@ -6513,7 +6507,7 @@ pub unsafe extern "C" fn wallet_create(
         match DnsNameServerList::from_str(list) {
             Ok(dns) => dns,
             Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!("dns_list_str: {}", e))).code;
+                *error_out = LibWalletError::from(InterfaceError::InvalidArgument(format!("dns_list_str: {e}"))).code;
                 return ptr::null_mut();
             },
         }
@@ -6549,7 +6543,7 @@ pub unsafe extern "C" fn wallet_create(
         let network = CStr::from_ptr(network_str)
             .to_str()
             .expect("A non-null network should be able to be converted to string");
-        info!(target: LOG_TARGET, "network set to {}", network);
+        info!(target: LOG_TARGET, "network set to {network}");
 
         match Network::from_str(network) {
             Ok(n) => n,
@@ -6629,7 +6623,7 @@ pub unsafe extern "C" fn wallet_create(
         };
         debug!(target: LOG_TARGET, "We have the following addresses");
         for address in &node_addresses {
-            debug!(target: LOG_TARGET, "Address: {}", address);
+            debug!(target: LOG_TARGET, "Address: {address}");
         }
         let identity_sig = wallet_database.get_comms_identity_signature()?;
 
@@ -7071,7 +7065,7 @@ pub unsafe extern "C" fn wallet_get_utxos(
         },
 
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to obtain outputs: {e:#?}");
             ptr::replace(
                 error_ptr,
                 LibWalletError::from(WalletError::OutputManagerError(
@@ -7141,7 +7135,7 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
         },
 
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to obtain outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to obtain outputs: {e:#?}");
             ptr::replace(
                 error_ptr,
                 LibWalletError::from(WalletError::OutputManagerError(
@@ -7199,7 +7193,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -7211,7 +7205,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         number_of_splits,
         MicroMinotari(fee_per_gram),
         MemoField::open_from_string(
-            &format!("{} even coin splits", number_of_splits),
+            &format!("{number_of_splits} even coin splits"),
             if number_of_splits > 1 {
                 TxType::CoinSplit
             } else {
@@ -7224,7 +7218,7 @@ pub unsafe extern "C" fn wallet_coin_split(
             tx_id.as_u64()
         },
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to join outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to join outputs: {e:#?}");
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             0
         },
@@ -7275,7 +7269,7 @@ pub unsafe extern "C" fn wallet_coin_join(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -7287,7 +7281,7 @@ pub unsafe extern "C" fn wallet_coin_join(
         commitments,
         fee_per_gram.into(),
         Some(MemoField::open_from_string(
-            &format!("Coin join {} outputs", commitments_len),
+            &format!("Coin join {commitments_len} outputs"),
             TxType::CoinJoin,
         )),
     )) {
@@ -7297,7 +7291,7 @@ pub unsafe extern "C" fn wallet_coin_join(
         },
 
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to join outputs: {:#?}", e);
+            error!(target: LOG_TARGET, "failed to join outputs: {e:#?}");
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             0
         },
@@ -7347,7 +7341,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return ptr::null_mut();
             },
@@ -7376,7 +7370,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "failed to preview coin join with commitments: {:#?}", e
+                "failed to preview coin join with commitments: {e:#?}"
             );
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             ptr::null_mut()
@@ -7429,7 +7423,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return ptr::null_mut();
             },
@@ -7460,7 +7454,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "failed to preview split with commitments outputs (no amount): {:#?}", e
+                "failed to preview split with commitments outputs (no amount): {e:#?}"
             );
             ptr::replace(error_ptr, LibWalletError::from(e).code);
             ptr::null_mut()
@@ -7515,7 +7509,7 @@ pub unsafe extern "C" fn wallet_sign_message(
         Ok(s) => {
             let hex_sig = s.get_signature().to_hex();
             let hex_nonce = s.get_public_nonce().to_hex();
-            let hex_return = format!("{}|{}", hex_sig, hex_nonce);
+            let hex_return = format!("{hex_sig}|{hex_nonce}");
             result = CString::new(hex_return).expect("CString should not fail here.");
         },
         Err(e) => {
@@ -8015,7 +8009,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => UtxoSelectionCriteria::specific(cs),
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_out, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -8166,7 +8160,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => UtxoSelectionCriteria::specific(cs),
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from tari vector: {e:?}");
                 ptr::replace(error_out, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -9966,7 +9960,7 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
                 return;
             },
         }
-        debug!(target: LOG_TARGET, "{}", message);
+        debug!(target: LOG_TARGET, "{message}");
     }
 }
 
@@ -10010,7 +10004,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
     ) {
         Ok(estimates) => Box::into_raw(Box::new(estimates)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error getting the fee estimates: {:?}", e);
+            error!(target: LOG_TARGET, "Error getting the fee estimates: {e:?}");
             *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::null_mut()
         },
@@ -13057,7 +13051,7 @@ mod test {
 
     fn get_next_memory_address() -> Multiaddr {
         let port = MemoryTransport::acquire_next_memsocket_port();
-        format!("/memory/{}", port).parse().unwrap()
+        format!("/memory/{port}").parse().unwrap()
     }
 
     #[test]

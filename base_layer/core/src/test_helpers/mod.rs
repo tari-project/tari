@@ -52,8 +52,8 @@ use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_proof_of_work::Difficulty,
     tari_amount::MicroMinotari,
+    tari_proof_of_work::Difficulty,
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,
@@ -90,7 +90,7 @@ pub fn create_orphan_block(
     transactions: Vec<Transaction>,
     consensus: &BaseConsensusManager,
 ) -> Block {
-    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
+    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version().into());
     header.height = block_height;
     header.into_builder().with_transactions(transactions).build()
 }
@@ -120,7 +120,7 @@ pub async fn create_block<TDB: BlockchainBackend>(
     range_proof_type: Option<RangeProofType>,
 ) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
-    header.version = rules.consensus_constants(header.height).blockchain_version();
+    header.version = rules.consensus_constants(header.height).blockchain_version().into();
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
     let reward = spec.reward_override.unwrap_or_else(|| {

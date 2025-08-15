@@ -176,6 +176,7 @@ macro_rules! __covenant_inner {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_types::types::CompressedPublicKey;
     use tari_script::script;
     use tari_test_utils::unpack_enum;

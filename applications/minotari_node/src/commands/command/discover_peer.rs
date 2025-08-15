@@ -60,10 +60,10 @@ impl CommandContext {
                 Ok(peer) => {
                     println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
                     println!("This peer was found:");
-                    println!("{}", peer);
+                    println!("{peer}");
                 },
                 Err(err) => {
-                    println!("☠️ {}", err);
+                    println!("☠️ {err}");
                 },
             }
         });

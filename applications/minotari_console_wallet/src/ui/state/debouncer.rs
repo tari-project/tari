@@ -80,7 +80,7 @@ impl BalanceEnquiryDebouncer {
             );
             let mut inner = self.app_state_inner.write().await;
             if let Err(e) = inner.refresh_balance(balance).await {
-                warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+                warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
             }
         }
         loop {
@@ -91,7 +91,7 @@ impl BalanceEnquiryDebouncer {
                         balance_enquiry_events.recv()
                     ).await {
                         if let Err(broadcast::error::RecvError::Lagged(n)) = result {
-                            trace!(target: LOG_TARGET, "Balance enquiry debouncer lagged {} update requests", n);
+                            trace!(target: LOG_TARGET, "Balance enquiry debouncer lagged {n} update requests");
                         }
                         match result {
                             Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {
@@ -108,11 +108,11 @@ impl BalanceEnquiryDebouncer {
                                         );
                                         let mut inner = self.app_state_inner.write().await;
                                         if let Err(e) = inner.refresh_balance(balance).await {
-                                            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+                                            warn!(target: LOG_TARGET, "Error refresh app_state: {e}");
                                         }
                                     }
                                     Err(e) => {
-                                        warn!(target: LOG_TARGET, "Could not obtain balance ({})", e);
+                                        warn!(target: LOG_TARGET, "Could not obtain balance ({e})");
                                     }
                                 }
                             }

@@ -101,7 +101,7 @@ impl TariPulseService {
         shutdown_signal: ShutdownSignal,
     ) -> Result<Self, anyhow::Error> {
         let dns_name = get_network_dns_name(config.clone().network);
-        info!(target: LOG_TARGET, "Tari Pulse Service initialized with DNS name: {}", dns_name);
+        info!(target: LOG_TARGET, "Tari Pulse Service initialized with DNS name: {dns_name}");
         Ok(Self {
             dns_name,
             config,
@@ -159,14 +159,14 @@ impl TariPulseService {
                 }
                 _ = dns_check_interval.tick() => {
                     count += 1;
-                    trace!(target: LOG_TARGET, "DNS Checkpoint interval tick: {}", count);
+                    trace!(target: LOG_TARGET, "DNS Checkpoint interval tick: {count}");
                     let passed_checkpoints = {
                         match self.passed_checkpoints(&mut base_node_service).await {
                             Ok(passed) => {
                                 passed
                             },
                             Err(err) => {
-                                warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {}", err);
+                                warn!(target: LOG_TARGET, "Failed to check if node has passed checkpoints: {err}");
                                 continue;
                             },
                         }
@@ -174,7 +174,7 @@ impl TariPulseService {
 
                     let _unused = notify_passed_checkpoints
                         .send(!passed_checkpoints).inspect_err(|e| {
-                            warn!(target: LOG_TARGET, "Failed to send passed checkpoints notification: {}", e);
+                            warn!(target: LOG_TARGET, "Failed to send passed checkpoints notification: {e}");
                         });
                 },
                 _ = shutdown_signal.wait() => {
@@ -195,7 +195,7 @@ impl TariPulseService {
         let dns_checkpoints = match timeout(Duration::from_secs(1), self.fetch_checkpoints()).await {
             Ok(Ok(checkpoints)) => checkpoints,
             Ok(Err(err)) => {
-                warn!(target: LOG_TARGET, "Failed to fetch DNS checkpoints: {}", err);
+                warn!(target: LOG_TARGET, "Failed to fetch DNS checkpoints: {err}");
                 return Err(err);
             },
             Err(_) => {
@@ -229,8 +229,7 @@ impl TariPulseService {
             .and_then(|header| match header {
                 Some(header) => Ok((header.height(), header.hash().to_hex())),
                 None => Err(CommsInterfaceError::InternalError(format!(
-                    "Header not found for block height {}",
-                    block_height
+                    "Header not found for block height {block_height}"
                 ))),
             })?;
 

@@ -66,13 +66,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
 
         debug!(
             target: LOG_TARGET,
-            "Emission:{:?}. Offset:{:?}, total kernel: {:?}, height: {}, total_utxo: {:?}, total_burned: {:?}",
-            emission_h,
-            total_offset,
-            total_kernel_sum,
-            height,
-            total_utxo_sum,
-            total_burned_sum,
+            "Emission:{emission_h:?}. Offset:{total_offset:?}, total kernel: {total_kernel_sum:?}, height: {height}, total_utxo: {total_utxo_sum:?}, total_burned: {total_burned_sum:?}"
         );
         let input =
             &(&emission_h.to_commitment()? + &total_kernel_sum.to_commitment()?) + &total_offset.to_commitment()?;
@@ -100,7 +94,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
         let total_supply = self.rules.get_total_emission_at(height);
         debug!(
             target: LOG_TARGET,
-            "Expected emission at height {} is {}", height, total_supply
+            "Expected emission at height {height} is {total_supply}"
         );
         self.commit_value(total_supply)
     }

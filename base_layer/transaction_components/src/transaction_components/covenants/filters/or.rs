@@ -50,6 +50,7 @@ impl Filter for OrFilter {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_script::script;
 
     use super::*;

@@ -346,97 +346,98 @@ impl Opcode {
         let code = bytes.first().ok_or(ScriptError::InvalidOpcode)?;
         #[allow(clippy::enum_glob_use)]
         use Opcode::*;
+        let scrubbed_bytes = bytes.get(1..).ok_or(ScriptError::InvalidData)?;
         match *code {
             OP_CHECK_HEIGHT_VERIFY => {
-                let (height, size) = u64::decode_var(&bytes[1..]).ok_or(ScriptError::InvalidData)?;
-                Ok((CheckHeightVerify(height), &bytes[size + 1..]))
+                let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
+                Ok((
+                    CheckHeightVerify(height),
+                    bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?,
+                ))
             },
             OP_CHECK_HEIGHT => {
-                let (height, size) = u64::decode_var(&bytes[1..]).ok_or(ScriptError::InvalidData)?;
-                Ok((CheckHeight(height), &bytes[size + 1..]))
+                let (height, size) = u64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
+                Ok((
+                    CheckHeight(height),
+                    bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?,
+                ))
             },
-            OP_COMPARE_HEIGHT_VERIFY => Ok((CompareHeightVerify, &bytes[1..])),
-            OP_COMPARE_HEIGHT => Ok((CompareHeight, &bytes[1..])),
-            OP_NOP => Ok((Nop, &bytes[1..])),
-            OP_PUSH_ZERO => Ok((PushZero, &bytes[1..])),
-            OP_PUSH_ONE => Ok((PushOne, &bytes[1..])),
+            OP_COMPARE_HEIGHT_VERIFY => Ok((CompareHeightVerify, scrubbed_bytes)),
+            OP_COMPARE_HEIGHT => Ok((CompareHeight, scrubbed_bytes)),
+            OP_NOP => Ok((Nop, scrubbed_bytes)),
+            OP_PUSH_ZERO => Ok((PushZero, scrubbed_bytes)),
+            OP_PUSH_ONE => Ok((PushOne, scrubbed_bytes)),
             OP_PUSH_HASH => {
-                if bytes.len() < 33 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let hash = slice_to_boxed_hash(&bytes[1..33]);
-                Ok((PushHash(hash), &bytes[33..]))
+                let hash = slice_to_boxed_hash(bytes.get(1..33).ok_or(ScriptError::InvalidData)?);
+                Ok((PushHash(hash), bytes.get(33..).ok_or(ScriptError::InvalidData)?))
             },
             OP_PUSH_INT => {
-                let (n, size) = i64::decode_var(&bytes[1..]).ok_or(ScriptError::InvalidData)?;
-                Ok((PushInt(n), &bytes[size + 1..]))
+                let (n, size) = i64::decode_var(scrubbed_bytes).ok_or(ScriptError::InvalidData)?;
+                Ok((PushInt(n), bytes.get(size + 1..).ok_or(ScriptError::InvalidData)?))
             },
             OP_PUSH_PUBKEY => {
-                if bytes.len() < 33 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let p = CompressedKey::from_canonical_bytes(&bytes[1..33])?;
-                Ok((PushPubKey(Box::new(p)), &bytes[33..]))
+                let p = CompressedKey::from_canonical_bytes(bytes.get(1..33).ok_or(ScriptError::InvalidData)?)?;
+                Ok((
+                    PushPubKey(Box::new(p)),
+                    bytes.get(33..).ok_or(ScriptError::InvalidData)?,
+                ))
             },
-            OP_DROP => Ok((Drop, &bytes[1..])),
-            OP_DUP => Ok((Dup, &bytes[1..])),
-            OP_REV_ROT => Ok((RevRot, &bytes[1..])),
-            OP_GE_ZERO => Ok((GeZero, &bytes[1..])),
-            OP_GT_ZERO => Ok((GtZero, &bytes[1..])),
-            OP_LE_ZERO => Ok((LeZero, &bytes[1..])),
-            OP_LT_ZERO => Ok((LtZero, &bytes[1..])),
-            OP_ADD => Ok((Add, &bytes[1..])),
-            OP_SUB => Ok((Sub, &bytes[1..])),
-            OP_EQUAL => Ok((Equal, &bytes[1..])),
-            OP_EQUAL_VERIFY => Ok((EqualVerify, &bytes[1..])),
+            OP_DROP => Ok((Drop, scrubbed_bytes)),
+            OP_DUP => Ok((Dup, scrubbed_bytes)),
+            OP_REV_ROT => Ok((RevRot, scrubbed_bytes)),
+            OP_GE_ZERO => Ok((GeZero, scrubbed_bytes)),
+            OP_GT_ZERO => Ok((GtZero, scrubbed_bytes)),
+            OP_LE_ZERO => Ok((LeZero, scrubbed_bytes)),
+            OP_LT_ZERO => Ok((LtZero, scrubbed_bytes)),
+            OP_ADD => Ok((Add, scrubbed_bytes)),
+            OP_SUB => Ok((Sub, scrubbed_bytes)),
+            OP_EQUAL => Ok((Equal, scrubbed_bytes)),
+            OP_EQUAL_VERIFY => Ok((EqualVerify, scrubbed_bytes)),
             OP_OR => {
-                if bytes.len() < 2 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let n = &bytes[1];
-                Ok((Or(*n), &bytes[2..]))
+                let n = bytes.get(1).ok_or(ScriptError::InvalidData)?;
+                Ok((Or(*n), bytes.get(2..).ok_or(ScriptError::InvalidData)?))
             },
             OP_OR_VERIFY => {
-                if bytes.len() < 2 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let n = &bytes[1];
-                Ok((OrVerify(*n), &bytes[2..]))
+                let n = bytes.get(1).ok_or(ScriptError::InvalidData)?;
+                Ok((OrVerify(*n), bytes.get(2..).ok_or(ScriptError::InvalidData)?))
             },
-            OP_HASH_BLAKE256 => Ok((HashBlake256, &bytes[1..])),
-            OP_HASH_SHA256 => Ok((HashSha256, &bytes[1..])),
-            OP_HASH_SHA3 => Ok((HashSha3, &bytes[1..])),
+            OP_HASH_BLAKE256 => Ok((HashBlake256, scrubbed_bytes)),
+            OP_HASH_SHA256 => Ok((HashSha256, scrubbed_bytes)),
+            OP_HASH_SHA3 => Ok((HashSha3, scrubbed_bytes)),
             OP_CHECK_SIG => {
-                if bytes.len() < 33 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let msg = slice_to_boxed_message(&bytes[1..33]);
-                Ok((CheckSig(msg), &bytes[33..]))
+                let msg = slice_to_boxed_message(bytes.get(1..33).ok_or(ScriptError::InvalidData)?);
+                Ok((CheckSig(msg), bytes.get(33..).ok_or(ScriptError::InvalidData)?))
             },
             OP_CHECK_SIG_VERIFY => {
-                if bytes.len() < 33 {
-                    return Err(ScriptError::InvalidData);
-                }
-                let msg = slice_to_boxed_message(&bytes[1..33]);
-                Ok((CheckSigVerify(msg), &bytes[33..]))
+                let msg = slice_to_boxed_message(bytes.get(1..33).ok_or(ScriptError::InvalidData)?);
+                Ok((CheckSigVerify(msg), bytes.get(33..).ok_or(ScriptError::InvalidData)?))
             },
             OP_CHECK_MULTI_SIG => {
                 let (m, n, keys, msg, end) = Opcode::read_multisig_args(bytes)?;
-                Ok((CheckMultiSig(m, n, keys, msg), &bytes[end..]))
+                Ok((
+                    CheckMultiSig(m, n, keys, msg),
+                    bytes.get(end..).ok_or(ScriptError::InvalidData)?,
+                ))
             },
             OP_CHECK_MULTI_SIG_VERIFY => {
                 let (m, n, keys, msg, end) = Opcode::read_multisig_args(bytes)?;
-                Ok((CheckMultiSigVerify(m, n, keys, msg), &bytes[end..]))
+                Ok((
+                    CheckMultiSigVerify(m, n, keys, msg),
+                    bytes.get(end..).ok_or(ScriptError::InvalidData)?,
+                ))
             },
             OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY => {
                 let (m, n, keys, msg, end) = Opcode::read_multisig_args(bytes)?;
-                Ok((CheckMultiSigVerifyAggregatePubKey(m, n, keys, msg), &bytes[end..]))
+                Ok((
+                    CheckMultiSigVerifyAggregatePubKey(m, n, keys, msg),
+                    bytes.get(end..).ok_or(ScriptError::InvalidData)?,
+                ))
             },
-            OP_TO_RISTRETTO_POINT => Ok((ToRistrettoPoint, &bytes[1..])),
-            OP_RETURN => Ok((Return, &bytes[1..])),
-            OP_IF_THEN => Ok((IfThen, &bytes[1..])),
-            OP_ELSE => Ok((Else, &bytes[1..])),
-            OP_END_IF => Ok((EndIf, &bytes[1..])),
+            OP_TO_RISTRETTO_POINT => Ok((ToRistrettoPoint, scrubbed_bytes)),
+            OP_RETURN => Ok((Return, scrubbed_bytes)),
+            OP_IF_THEN => Ok((IfThen, scrubbed_bytes)),
+            OP_ELSE => Ok((Else, scrubbed_bytes)),
+            OP_END_IF => Ok((EndIf, scrubbed_bytes)),
             _ => Err(ScriptError::InvalidOpcode),
         }
     }
@@ -445,16 +446,13 @@ impl Opcode {
         if bytes.len() < 3 {
             return Err(ScriptError::InvalidData);
         }
-        let m = &bytes[1];
-        let n = &bytes[2];
+        let m = bytes.get(1).ok_or(ScriptError::InvalidData)?;
+        let n = bytes.get(2).ok_or(ScriptError::InvalidData)?;
         let num = *n as usize;
         let len = 3 + num * PUBLIC_KEY_LENGTH;
         let end = len + MESSAGE_LENGTH;
-        if bytes.len() < end {
-            return Err(ScriptError::InvalidData);
-        }
-        let keys = slice_to_vec_pubkeys(&bytes[3..len], num)?;
-        let msg = slice_to_boxed_message(&bytes[len..end]);
+        let keys = slice_to_vec_pubkeys(bytes.get(3..len).ok_or(ScriptError::InvalidData)?, num)?;
+        let msg = slice_to_boxed_message(bytes.get(len..end).ok_or(ScriptError::InvalidData)?);
 
         Ok((*m, *n, keys, msg, end))
     }
@@ -470,13 +468,13 @@ impl Opcode {
                 array.push(OP_CHECK_HEIGHT_VERIFY);
                 let mut buf = [0u8; 10];
                 let used = height.encode_var(&mut buf[..]);
-                array.extend_from_slice(&buf[0..used]);
+                array.extend_from_slice(buf.get(0..used).expect("Length is always valid"));
             },
             CheckHeight(height) => {
                 array.push(OP_CHECK_HEIGHT);
                 let mut buf = [0u8; 10];
                 let used = height.encode_var(&mut buf[..]);
-                array.extend_from_slice(&buf[0..used]);
+                array.extend_from_slice(buf.get(0..used).expect("Length is always valid"));
             },
             CompareHeightVerify => array.push(OP_COMPARE_HEIGHT_VERIFY),
             CompareHeight => array.push(OP_COMPARE_HEIGHT),
@@ -491,7 +489,7 @@ impl Opcode {
                 array.push(OP_PUSH_INT);
                 let mut buf = [0u8; 10];
                 let used = n.encode_var(&mut buf[..]);
-                array.extend_from_slice(&buf[0..used]);
+                array.extend_from_slice(buf.get(0..used).expect("Length is always valid"));
             },
             PushPubKey(p) => {
                 array.push(OP_PUSH_PUBKEY);
@@ -555,7 +553,7 @@ impl Opcode {
             EndIf => array.push(OP_END_IF),
         };
 
-        &array[n..]
+        array.get(n..).expect("Length is always valid")
     }
 }
 
@@ -687,7 +685,7 @@ mod test {
             op.to_bytes(&mut arr);
             assert_eq!(&arr, &[1, 2, 3, val, 63]);
             // Format
-            assert_eq!(format!("{}", op).as_str(), display);
+            assert_eq!(format!("{op}").as_str(), display);
         }
         test_check_height(&Opcode::CheckHeight(63), 0x67, "CheckHeight(63)");
         test_check_height(&Opcode::CheckHeightVerify(63), 0x66, "CheckHeightVerify(63)");
@@ -709,7 +707,7 @@ mod test {
         op.to_bytes(&mut arr);
         assert_eq!(&arr, &[OP_PUSH_INT, 130, 4]);
         // Format
-        assert_eq!(format!("{}", op).as_str(), "PushInt(257)");
+        assert_eq!(format!("{op}").as_str(), "PushInt(257)");
     }
 
     #[test]
@@ -768,7 +766,7 @@ mod test {
         assert_eq!(&arr, s);
         // Format
         assert_eq!(
-            format!("{}", op).as_str(),
+            format!("{op}").as_str(),
             "PushPubKey(6c9cb4d3e57351462122310fa22c90b1e6dfb528d64615363d1261a75da3e401)"
         );
     }
@@ -787,7 +785,7 @@ mod test {
             op.to_bytes(&mut arr);
             assert_eq!(&arr, &[val, 5]);
             // Format
-            assert_eq!(format!("{}", op).as_str(), display);
+            assert_eq!(format!("{op}").as_str(), display);
         }
         test_or(&Opcode::Or(5), OP_OR, "Or(5)");
         test_or(&Opcode::OrVerify(5), OP_OR_VERIFY, "OrVerify(5)");
@@ -810,7 +808,7 @@ mod test {
             op.to_bytes(&mut arr);
             assert_eq!(arr, msg);
             // Format
-            assert_eq!(format!("{}", op).as_str(), display);
+            assert_eq!(format!("{op}").as_str(), display);
         }
         let msg = &[
             108, 156, 180, 211, 229, 115, 81, 70, 33, 34, 49, 15, 162, 44, 144, 177, 230, 223, 181, 40, 214, 70, 21,
@@ -848,7 +846,7 @@ mod test {
             op.to_bytes(&mut arr);
             assert_eq!(arr, bytes);
             // Format
-            assert_eq!(format!("{}", op).as_str(), display);
+            assert_eq!(format!("{op}").as_str(), display);
         }
         let msg = &[
             108, 156, 180, 211, 229, 115, 81, 70, 33, 34, 49, 15, 162, 44, 144, 177, 230, 223, 181, 40, 214, 70, 21,
@@ -954,7 +952,7 @@ mod test {
     #[test]
     fn display() {
         fn test_opcode(opcode: &Opcode, expected: &str) {
-            let s = format!("{}", opcode);
+            let s = format!("{opcode}");
             assert_eq!(s.as_str(), expected);
         }
         test_opcode(&Opcode::CompareHeightVerify, "CompareHeightVerify");

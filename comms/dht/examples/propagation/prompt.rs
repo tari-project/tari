@@ -70,7 +70,7 @@ pub fn user_prompt(node_identity: &Arc<NodeIdentity>) -> anyhow::Result<Propagat
 
     loop {
         println!("{}::{:?}", node_identity.public_key(), node_identity.public_addresses());
-        println!("{}", node_identity);
+        println!("{node_identity}");
         prompt!("Enter the peer:");
         let peer = or_continue!(read_line(String::new()));
         let peer = or_continue!(parse_from_short_str(&peer, Default::default()));
