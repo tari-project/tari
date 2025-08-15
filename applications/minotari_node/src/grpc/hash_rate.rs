@@ -96,6 +96,7 @@ impl HashRateMovingAverage {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_core::{
         consensus::{ConsensusConstants, ConsensusManagerBuilder},
         proof_of_work::{Difficulty, PowAlgorithm},

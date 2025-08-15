@@ -55,7 +55,7 @@ fn main() {
         match get_transport() {
             Ok(_) => {},
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         };
@@ -70,7 +70,7 @@ fn main() {
         match verify_ledger_application() {
             Ok(_) => {},
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         }
@@ -82,9 +82,9 @@ fn main() {
     // GetAppName
     println!("\ntest: GetAppName");
     match ledger_get_app_name() {
-        Ok(name) => println!("app name:       {}", name),
+        Ok(name) => println!("app name:       {name}"),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -92,9 +92,9 @@ fn main() {
     // GetVersion
     println!("\ntest: GetVersion");
     match ledger_get_version() {
-        Ok(name) => println!("version:        {}", name),
+        Ok(name) => println!("version:        {name}"),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -105,7 +105,7 @@ fn main() {
     match ledger_get_public_spend_key(account) {
         Ok(public_alpha) => println!("public_alpha:   {}", public_alpha.to_hex()),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -123,7 +123,7 @@ fn main() {
         match ledger_get_public_key(account, index, *branch) {
             Ok(public_key) => println!("public_key:     {}", public_key.to_hex()),
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         }
@@ -132,12 +132,12 @@ fn main() {
     let branch = TransactionKeyManagerBranch::CommitmentMask;
     match ledger_get_public_key(account, index, branch) {
         Ok(_public_key) => {
-            println!("\nError: Should not have returned a public key for '{:?}'\n", branch);
+            println!("\nError: Should not have returned a public key for '{branch:?}'\n");
             return;
         },
         Err(e) => {
             if e != LedgerDeviceError::Processing("GetPublicKey: expected 33 bytes, got 0 (BadBranchKey)".to_string()) {
-                println!("\nError: Unexpected response ({})\n", e);
+                println!("\nError: Unexpected response ({e})\n");
                 return;
             }
         },
@@ -182,7 +182,7 @@ fn main() {
                 signature.u_y().to_hex()
             ),
             Err(e) => {
-                println!("\nError: {}\n", e);
+                println!("\nError: {e}\n");
                 return;
             },
         }
@@ -212,7 +212,7 @@ fn main() {
     ) {
         Ok(script_offset) => println!("script_offset:  {}", script_offset.to_hex()),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -223,7 +223,7 @@ fn main() {
     let view_key_1 = match ledger_get_view_key(account) {
         Ok(val) => val,
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     };
@@ -238,7 +238,7 @@ fn main() {
     match ledger_get_dh_shared_secret(account, index, branch, &public_key) {
         Ok(shared_secret) => println!("shared_secret:  {}", shared_secret.as_bytes().to_vec().to_hex()),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -266,7 +266,7 @@ fn main() {
             signature.get_compressed_public_nonce().to_hex()
         ),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -285,7 +285,7 @@ fn main() {
             signature.get_compressed_public_nonce().to_hex()
         ),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -320,7 +320,7 @@ fn main() {
             signature.u_y().to_hex()
         ),
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
             return;
         },
     }
@@ -334,10 +334,10 @@ fn main() {
             return;
         },
         Err(LedgerDeviceError::Processing(e)) => {
-            println!("\nLedger comms responded with: '{}'\n", e);
+            println!("\nLedger comms responded with: '{e}'\n");
         },
         Err(e) => {
-            println!("\nError: Unexpected response ({})\n", e);
+            println!("\nError: Unexpected response ({e})\n");
             return;
         },
     }
@@ -351,10 +351,10 @@ fn main() {
             return;
         },
         Err(LedgerDeviceError::Processing(e)) => {
-            println!("\nLedger comms responded with: '{}'\n", e);
+            println!("\nLedger comms responded with: '{e}'\n");
         },
         Err(e) => {
-            println!("\nError: Unexpected response ({})\n", e);
+            println!("\nError: Unexpected response ({e})\n");
             return;
         },
     }
@@ -368,10 +368,10 @@ fn main() {
             return;
         },
         Err(LedgerDeviceError::Processing(e)) => {
-            println!("\nLedger comms responded with: '{}'\n", e);
+            println!("\nLedger comms responded with: '{e}'\n");
         },
         Err(e) => {
-            println!("\nError: Unexpected response ({})\n", e);
+            println!("\nError: Unexpected response ({e})\n");
             return;
         },
     }
@@ -384,7 +384,7 @@ fn main() {
             println!("view_key:       {}\n", view_key_2.to_hex());
         },
         Err(e) => {
-            println!("\nError: {}\n", e);
+            println!("\nError: {e}\n");
         },
     }
 }

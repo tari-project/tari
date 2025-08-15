@@ -40,7 +40,7 @@ pub const LOG_TARGET: &str = "minotari::application";
 pub fn setup_runtime() -> Result<Runtime, ExitError> {
     let mut builder = runtime::Builder::new_multi_thread();
     builder.enable_all().build().map_err(|e| {
-        let msg = format!("There was an error while building the node runtime. {}", e);
+        let msg = format!("There was an error while building the node runtime. {e}");
         ExitError::new(ExitCode::UnknownError, msg)
     })
 }
@@ -148,8 +148,8 @@ impl FromStr for UniSignature {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let data = s.split(',').collect::<Vec<_>>();
-        let signature = PrivateKey::from_hex(data[0])?;
-        let public_nonce = CompressedPublicKey::from_hex(data[1])?;
+        let signature = PrivateKey::from_hex(data.first().ok_or(HexError::LengthError {})?)?;
+        let public_nonce = CompressedPublicKey::from_hex(data.get(1).ok_or(HexError::LengthError {})?)?;
 
         let signature = Signature::new(public_nonce, signature);
         Ok(Self(signature))

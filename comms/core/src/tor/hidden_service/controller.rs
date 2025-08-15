@@ -170,13 +170,13 @@ impl HiddenServiceController {
                             if let Err(err) = self.reestablish_hidden_service(event_tx, shutdown_signal).await {
                                 error!(
                                     target: LOG_TARGET,
-                                    "Failed to reestablish connection to tor control server because '{:?}'", err
+                                    "Failed to reestablish connection to tor control server because '{err:?}'"
                                 );
                                 break;
                             }
                         },
                         Either::Right((Some(Ok(evt)), _)) => {
-                            trace!(target: LOG_TARGET, "Tor control event: {:?}", evt);
+                            trace!(target: LOG_TARGET, "Tor control event: {evt:?}");
                         },
                         _ => {},
                     }
@@ -222,7 +222,7 @@ impl HiddenServiceController {
                     signal = Some(shutdown_signal);
                     warn!(
                         target: LOG_TARGET,
-                        "Failed to reestablish connection with tor control server because '{:?}'", err
+                        "Failed to reestablish connection with tor control server because '{err:?}'"
                     );
                     warn!(target: LOG_TARGET, "Will attempt again in 5 seconds...");
                     time::sleep(Duration::from_secs(5)).await;
@@ -251,7 +251,7 @@ impl HiddenServiceController {
         let client = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx)
             .await
             .map_err(|err| {
-                error!(target: LOG_TARGET, "Tor client error: {:?}", err);
+                error!(target: LOG_TARGET, "Tor client error: {err:?}");
                 HiddenServiceControllerError::TorControlPortOffline
             })?;
 
@@ -315,7 +315,7 @@ impl HiddenServiceController {
             Some(ref addr) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Using SOCKS override '{}' for tor SOCKS proxy", addr
+                    "Using SOCKS override '{addr}' for tor SOCKS proxy"
                 );
                 Ok(addr.clone())
             },
@@ -338,7 +338,7 @@ impl HiddenServiceController {
 
     async fn create_hidden_service_from_identity(&mut self) -> Result<HiddenService, HiddenServiceControllerError> {
         let socks_addr = self.get_socks_address().await?;
-        debug!(target: LOG_TARGET, "Tor SOCKS address is '{}'", socks_addr);
+        debug!(target: LOG_TARGET, "Tor SOCKS address is '{socks_addr}'" );
 
         // Initialize a onion hidden service - either from the given private key or by creating a new one
         match self.identity.take() {

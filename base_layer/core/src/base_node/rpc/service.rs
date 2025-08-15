@@ -367,8 +367,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         const MAX_ALLOWED_QUERY_SIZE: usize = 512;
         if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
             return Err(RpcStatus::bad_request(&format!(
-                "Exceeded maximum allowed query hashes. Max: {}",
-                MAX_ALLOWED_QUERY_SIZE
+                "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
             )));
         }
 
@@ -542,7 +541,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {height}")))?;
 
         Ok(Response::new(header.into()))
     }
@@ -557,14 +556,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {height}")))?;
 
         Ok(Response::new(header.into()))
     }
 
     async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus> {
         let requested_epoch_time: u64 = request.into_message();
-        trace!(target: LOG_TARGET, "requested_epoch_time: {}", requested_epoch_time);
+        trace!(target: LOG_TARGET, "requested_epoch_time: {requested_epoch_time}");
         let tip_header = self
             .db()
             .fetch_tip_header()
@@ -598,7 +597,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height))
+                    RpcStatus::not_found(&format!("Header not found during search at height {mid_height}"))
                 })?;
             let before_mid_header = self
                 .db()
@@ -631,8 +630,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             } else if mid_height == right_height {
                 trace!(
                     target: LOG_TARGET,
-                    "requested_epoch_time: {}, selected height: {}",
-                    requested_epoch_time, right_height
+                    "requested_epoch_time: {requested_epoch_time}, selected height: {right_height}"
                 );
                 return Ok(Response::new(right_height));
             } else if requested_epoch_time <= mid_header.timestamp.as_u64() {

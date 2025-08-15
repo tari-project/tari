@@ -106,7 +106,7 @@ impl NodeGrpcClient for NodeGrpcClientImpl {
                     "count": 0
                 }))
             },
-            _ => Err(McpError::invalid_request(format!("Unknown method: {}", method_name))),
+            _ => Err(McpError::invalid_request(format!("Unknown method: {method_name}"))),
         }
     }
 
@@ -252,8 +252,7 @@ impl WalletGrpcClient for WalletGrpcClientImpl {
             "GetBalance" => self.get_balance().await,
             // TODO: Add more wallet method implementations as needed
             _ => Err(McpError::invalid_request(format!(
-                "Unknown wallet method: {}",
-                method_name
+                "Unknown wallet method: {method_name}"
             ))),
         }
     }

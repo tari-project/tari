@@ -116,7 +116,7 @@ impl McpTool for CoinSplitTool {
         let response = client
             .coin_split(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to split coins: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to split coins: {e}")))?;
 
         let response = response.into_inner();
 

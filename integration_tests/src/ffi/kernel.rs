@@ -47,7 +47,7 @@ impl Kernel {
         unsafe {
             ptr = ffi_import::transaction_kernel_get_excess_hex(self.ptr, &mut error);
             if error > 0 {
-                println!("transaction_kernel_get_excess_hex error {}", error);
+                println!("transaction_kernel_get_excess_hex error {error}");
                 panic!("transaction_kernel_get_excess_hex error");
             }
         }
@@ -60,7 +60,7 @@ impl Kernel {
         unsafe {
             ptr = ffi_import::transaction_kernel_get_excess_public_nonce_hex(self.ptr, &mut error);
             if error > 0 {
-                println!("transaction_kernel_get_excess_public_nonce_hex error {}", error);
+                println!("transaction_kernel_get_excess_public_nonce_hex error {error}");
                 panic!("transaction_kernel_get_excess_public_nonce_hex error");
             }
         }
@@ -73,7 +73,7 @@ impl Kernel {
         unsafe {
             ptr = ffi_import::transaction_kernel_get_excess_signature_hex(self.ptr, &mut error);
             if error > 0 {
-                println!("transaction_kernel_get_excess_signature_hex error {}", error);
+                println!("transaction_kernel_get_excess_signature_hex error {error}");
                 panic!("transaction_kernel_get_excess_signature_hex error");
             }
         }

@@ -60,7 +60,7 @@ impl SeedWords {
                 &mut error,
             );
             if error > 0 {
-                println!("seed_words_get_mnemonic_word_list_for_language error {}", error);
+                println!("seed_words_get_mnemonic_word_list_for_language error {error}");
                 panic!("seed_words_get_mnemonic_word_list_for_language error");
             }
         }
@@ -73,7 +73,7 @@ impl SeedWords {
         unsafe {
             length = ffi_import::seed_words_get_length(self.ptr, &mut error);
             if error > 0 {
-                println!("seed_words_get_length error {}", error);
+                println!("seed_words_get_length error {error}");
                 panic!("seed_words_get_length error");
             }
         }
@@ -86,7 +86,7 @@ impl SeedWords {
         unsafe {
             ptr = ffi_import::seed_words_get_at(self.ptr, position, &mut error);
             if error > 0 {
-                println!("seed_words_get_at error {}", error);
+                println!("seed_words_get_at error {error}");
                 panic!("seed_words_get_at error");
             }
         }
@@ -101,7 +101,7 @@ impl SeedWords {
             let w_str: *const c_char = CString::into_raw(w) as *const c_char;
             result = ffi_import::seed_words_push_word(self.ptr, w_str, ptr::null(), &mut error);
             if error > 0 {
-                println!("seed_words_push_word error {}", error);
+                println!("seed_words_push_word error {error}");
                 panic!("seed_words_push_word error");
             }
         }

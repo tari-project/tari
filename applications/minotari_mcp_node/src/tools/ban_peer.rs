@@ -119,7 +119,7 @@ impl McpTool for BanPeerTool {
         let response = client
             .ban_peer(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to ban peer: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to ban peer: {e}")))?;
 
         let _response = response.into_inner();
 
@@ -192,7 +192,7 @@ impl McpTool for UnbanPeerTool {
         let response = client
             .unban_peer(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to unban peer: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to unban peer: {e}")))?;
 
         let _response = response.into_inner();
 

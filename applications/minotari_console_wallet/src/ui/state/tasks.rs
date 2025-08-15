@@ -86,7 +86,7 @@ pub async fn send_one_sided_to_stealth_address_transaction(
                         }
                     },
                     Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                        log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {e:?}");
                         continue;
                     },
                     Err(broadcast::error::RecvError::Closed) => {
@@ -139,9 +139,9 @@ pub async fn send_burn_transaction_task(
     {
         Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to burn minotari: {:?}", e);
+            error!(target: LOG_TARGET, "failed to burn minotari: {e:?}");
             result_tx
-                .send(UiTransactionBurnStatus::Error(format!("burn error: {}", e)))
+                .send(UiTransactionBurnStatus::Error(format!("burn error: {e}")))
                 .unwrap();
             return;
         },
@@ -172,12 +172,9 @@ pub async fn send_burn_transaction_task(
                         let serialized_proof = match serde_json::to_string_pretty(&wrapped_proof) {
                             Ok(proof) => proof,
                             Err(e) => {
-                                error!(target: LOG_TARGET, "failed to serialize burn proof: {:?}", e);
+                                error!(target: LOG_TARGET, "failed to serialize burn proof: {e:?}");
                                 result_tx
-                                    .send(UiTransactionBurnStatus::Error(format!(
-                                        "failure to create proof {:?}",
-                                        e
-                                    )))
+                                    .send(UiTransactionBurnStatus::Error(format!("failure to create proof {e:?}")))
                                     .unwrap();
                                 return;
                             },
@@ -185,18 +182,14 @@ pub async fn send_burn_transaction_task(
 
                         let proof_id = random::<u32>();
 
-                        let filepath =
-                            burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{}.json", proof_id)));
+                        let filepath = burn_proof_filepath.unwrap_or_else(|| PathBuf::from(format!("{proof_id}.json")));
 
                         match std::fs::write(filepath, serialized_proof.as_bytes()) {
                             Ok(()) => {},
                             Err(e) => {
-                                error!(target: LOG_TARGET, "failed to write burn proof: {:?}", e);
+                                error!(target: LOG_TARGET, "failed to write burn proof: {e:?}");
                                 result_tx
-                                    .send(UiTransactionBurnStatus::Error(format!(
-                                        "failure to write proof {:?}",
-                                        e
-                                    )))
+                                    .send(UiTransactionBurnStatus::Error(format!("failure to write proof {e:?}")))
                                     .unwrap();
                                 return;
                             },
@@ -209,7 +202,7 @@ pub async fn send_burn_transaction_task(
                         );
 
                         if let Err(err) = result {
-                            log::error!("failed to create database entry for the burnt proof: {:?}", err);
+                            log::error!("failed to create database entry for the burnt proof: {err:?}");
                         }
 
                         result_tx
@@ -228,7 +221,7 @@ pub async fn send_burn_transaction_task(
             },
 
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {e:?}");
                 continue;
             },
 
@@ -264,9 +257,9 @@ pub async fn send_register_template_transaction_task(
 
     let template_name = match MaxSizeString::<32>::try_from(template_name) {
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `template_name`: {}", e);
+            error!(target: LOG_TARGET, "failed to process `template_name`: {e}");
             result_tx
-                .send(UiTransactionSendStatus::Error(format!("Template name error: {}", e)))
+                .send(UiTransactionSendStatus::Error(format!("Template name error: {e}")))
                 .unwrap();
             return;
         },
@@ -276,9 +269,9 @@ pub async fn send_register_template_transaction_task(
     let binary_url = match MaxSizeString::<255>::try_from(binary_url) {
         Ok(binary_url) => binary_url,
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `binary_url`: {}", e);
+            error!(target: LOG_TARGET, "failed to process `binary_url`: {e}");
             result_tx
-                .send(UiTransactionSendStatus::Error(format!("Binary url error: {}", e)))
+                .send(UiTransactionSendStatus::Error(format!("Binary url error: {e}")))
                 .unwrap();
             return;
         },
@@ -286,9 +279,9 @@ pub async fn send_register_template_transaction_task(
     let binary_sha = match FixedHash::from_hex(&binary_sha) {
         Ok(binary_sha) => binary_sha,
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `binary_sha`: {}", e);
+            error!(target: LOG_TARGET, "failed to process `binary_sha`: {e}");
             result_tx
-                .send(UiTransactionSendStatus::Error(format!("Binary checksum error: {}", e)))
+                .send(UiTransactionSendStatus::Error(format!("Binary checksum error: {e}")))
                 .unwrap();
             return;
         },
@@ -297,9 +290,9 @@ pub async fn send_register_template_transaction_task(
     let repository_url = match MaxSizeString::<255>::try_from(repository_url) {
         Ok(repository_url) => repository_url,
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `repository_url`: {}", e);
+            error!(target: LOG_TARGET, "failed to process `repository_url`: {e}");
             result_tx
-                .send(UiTransactionSendStatus::Error(format!("Repository url error: {}", e)))
+                .send(UiTransactionSendStatus::Error(format!("Repository url error: {e}")))
                 .unwrap();
             return;
         },
@@ -308,11 +301,10 @@ pub async fn send_register_template_transaction_task(
     let repository_commit_hash = match MaxSizeBytes::<32>::try_from(repository_commit_hash) {
         Ok(repository_commit_hash) => repository_commit_hash,
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to process `repository_commit_hash`: {}", e);
+            error!(target: LOG_TARGET, "failed to process `repository_commit_hash`: {e}");
             result_tx
                 .send(UiTransactionSendStatus::Error(format!(
-                    "Repository commit hash error: {}",
-                    e
+                    "Repository commit hash error: {e}"
                 )))
                 .unwrap();
             return;
@@ -338,7 +330,7 @@ pub async fn send_register_template_transaction_task(
     let (sent_tx_id, _template_addr) = match result {
         Ok(tx_id) => tx_id,
         Err(e) => {
-            error!(target: LOG_TARGET, "failed to register code template: {:?}", e);
+            error!(target: LOG_TARGET, "failed to register code template: {e:?}");
 
             result_tx
                 .send(UiTransactionSendStatus::Error(UiError::from(e).to_string()))
@@ -365,7 +357,7 @@ pub async fn send_register_template_transaction_task(
             },
 
             Err(e @ broadcast::error::RecvError::Lagged(_)) => {
-                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
+                warn!(target: LOG_TARGET, "Error reading from event broadcast channel {e:?}");
                 continue;
             },
 

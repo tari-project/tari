@@ -108,7 +108,7 @@ pub async fn create(
 
     let mut protocols = Protocols::new();
     let (proto_notif_tx, proto_notif_rx) = mpsc::channel(1);
-    protocols.add(&[STRESS_PROTOCOL_NAME.clone()], &proto_notif_tx);
+    protocols.add([STRESS_PROTOCOL_NAME.clone()], &proto_notif_tx);
 
     let public_addr = format!(
         "/ip4/{}/tcp/{}",
@@ -125,7 +125,7 @@ pub async fn create(
         })
         .unwrap_or_else(|| Arc::new(NodeIdentity::random(&mut OsRng, public_addr, Default::default())));
 
-    let listener_addr = format!("/ip4/0.0.0.0/tcp/{}", port).parse().unwrap();
+    let listener_addr = format!("/ip4/0.0.0.0/tcp/{port}").parse().unwrap();
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()

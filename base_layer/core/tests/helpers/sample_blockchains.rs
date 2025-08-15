@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+#![allow(clippy::indexing_slicing)]
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::ChainBlock,

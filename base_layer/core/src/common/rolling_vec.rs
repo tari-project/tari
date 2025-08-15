@@ -131,6 +131,7 @@ impl<T: Clone> Clone for RollingVec<T> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[test]

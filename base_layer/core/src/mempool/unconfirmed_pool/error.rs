@@ -47,7 +47,7 @@ impl UnconfirmedPoolError {
                 ban_duration: BanPeriod::Long,
             }),
             err @ UnconfirmedPoolError::TransactionError(_) => Some(BanReason {
-                reason: format!("Invalid transaction: {}", err),
+                reason: format!("Invalid transaction: {err}"),
                 ban_duration: BanPeriod::Long,
             }),
         }

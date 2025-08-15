@@ -266,10 +266,10 @@ impl Display for SelectionMode {
         use SelectionMode::{AllNodes, ClosestTo, HealthyClosestTo, HealthyNodes, RandomNodes};
         match self {
             AllNodes => write!(f, "AllNodes"),
-            RandomNodes(n) => write!(f, "RandomNodes({})", n),
-            ClosestTo(node_id, n) => write!(f, "ClosestTo({}, {})", node_id, n),
-            HealthyNodes(n) => write!(f, "HealthyNodes({})", n),
-            HealthyClosestTo(node_id, n) => write!(f, "HealthyClosestTo({}, {})", node_id, n),
+            RandomNodes(n) => write!(f, "RandomNodes({n})"),
+            ClosestTo(node_id, n) => write!(f, "ClosestTo({node_id}, {n})"),
+            HealthyNodes(n) => write!(f, "HealthyNodes({n})"),
+            HealthyClosestTo(node_id, n) => write!(f, "HealthyClosestTo({node_id}, {n})"),
         }
     }
 }
@@ -307,7 +307,7 @@ mod test {
         assert_eq!(conns.len(), 10);
 
         let first_node = conns.first().unwrap().peer_node_id().clone();
-        let conns = select_random_nodes(&pool, 10, &[first_node.clone()]);
+        let conns = select_random_nodes(&pool, 10, std::slice::from_ref(&first_node));
         assert_eq!(conns.len(), 9);
         assert!(conns.iter().all(|c| c.peer_node_id() != &first_node));
     }
@@ -322,7 +322,7 @@ mod test {
         let mut last_dist = NodeDistance::zero();
         for (i, conn) in conns.into_iter().enumerate() {
             let dist = conn.peer_node_id().distance(subject_node_identity.node_id());
-            assert!(dist > last_dist, "Ordering was incorrect on connection {}", i);
+            assert!(dist > last_dist, "Ordering was incorrect on connection {i}");
             last_dist = dist;
         }
     }

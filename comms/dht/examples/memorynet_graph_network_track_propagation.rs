@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 //! # MemoryNet
 //!
 //! This example runs a small in-memory network.
@@ -198,9 +199,9 @@ async fn main() {
         DEFAULT_GRAPH_OUTPUT_DIR,
         &PythonRenderType::Propagation,
     ) {
-        println!("Error rendering graphs: {}", e);
+        println!("Error rendering graphs: {e}");
     }
-    println!("Wrote graph output to {}/join_propagation", DEFAULT_GRAPH_OUTPUT_DIR);
+    println!("Wrote graph output to {DEFAULT_GRAPH_OUTPUT_DIR}/join_propagation");
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");
     shutdown_all(nodes).await;

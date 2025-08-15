@@ -121,7 +121,7 @@ impl McpTool for BurnTransactionTool {
         let response = client
             .create_burn_transaction(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to create burn transaction: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to create burn transaction: {e}")))?;
 
         let response = response.into_inner();
 

@@ -64,7 +64,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
     let mut all_detected_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions() {
         Ok(txs) => txs,
         Err(e) => {
-            error!(target: LOG_TARGET, "Problem retrieving imported transactions: {}", e);
+            error!(target: LOG_TARGET, "Problem retrieving imported transactions: {e}");
             return;
         },
     };
@@ -78,7 +78,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Problem retrieving unconfirmed detected transactions: {}", e
+                "Problem retrieving unconfirmed detected transactions: {e}"
             );
             return;
         },
@@ -95,7 +95,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Problem retrieving unmined coinbase transactions: {}", e
+                "Problem retrieving unmined coinbase transactions: {e}"
             );
             return;
         },
@@ -112,7 +112,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Problem retrieving confirmed detected transactions: {}", e
+                "Problem retrieving confirmed detected transactions: {e}"
             );
             return;
         },
@@ -129,7 +129,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
-                error!(target: LOG_TARGET, "Problem retrieving output statuses: {}", e);
+                error!(target: LOG_TARGET, "Problem retrieving output statuses: {e}");
                 return;
             },
         };
@@ -144,13 +144,13 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
         );
         // Its safe to assume that statuses should be the same as they are all in the same transaction and they cannot
         // be different.
-        let output_status = output_info_for_tx_id.statuses[0];
+        let output_status = output_info_for_tx_id.statuses.first().expect("Cannot be empty");
         if output_info_for_tx_id.mined_height.is_none() || output_info_for_tx_id.block_hash.is_none() {
             // this means the transaction is not detected as mined
             if let Err(e) = db.set_transaction_as_unmined(tx.tx_id) {
                 error!(
                     target: LOG_TARGET,
-                    "Error setting faux transaction to unmined: {}", e
+                    "Error setting faux transaction to unmined: {e}"
                 );
             }
             continue;
@@ -164,14 +164,14 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
 
         if !(previously_confirmed && must_be_confirmed) {
             let log_msg = format!(
-                "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), output_status({}), \
-                 is_valid({})",
-                tx.tx_id, mined_height, must_be_confirmed, output_status, is_valid
+                "Updating faux transaction: TxId({}), mined_height({mined_height}), \
+                 must_be_confirmed({must_be_confirmed}), output_status({output_status}), is_valid({is_valid})",
+                tx.tx_id
             );
             if must_be_confirmed {
-                debug!(target: LOG_TARGET, "{}", log_msg);
+                debug!(target: LOG_TARGET, "{log_msg}");
             } else {
-                trace!(target: LOG_TARGET, "{}", log_msg);
+                trace!(target: LOG_TARGET, "{log_msg}");
             }
 
             let result = db.set_transaction_mined_height(
@@ -186,7 +186,7 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
             if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,
-                    "Error setting faux transaction to mined confirmed: {}", e
+                    "Error setting faux transaction to mined confirmed: {e}"
                 );
                 continue;
             }
@@ -202,13 +202,11 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
                     is_valid,
                 }
             };
-            let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+            let _size = event_publisher.send(Arc::new(transaction_event)).inspect_err(|e| {
                 trace!(
                     target: LOG_TARGET,
-                    "Error sending event, usually because there are no subscribers: {:?}",
-                    e
+                    "Error sending event, usually because there are no subscribers: {e:?}"
                 );
-                e
             });
         }
     }
@@ -218,13 +216,11 @@ pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>
                 faux: true,
                 id: OperationId::new_random(),
             }))
-            .map_err(|e| {
+            .inspect_err(|e| {
                 trace!(
                     target: LOG_TARGET,
-                    "Error sending event, usually because there are no subscribers: {:?}",
-                    e
+                    "Error sending event, usually because there are no subscribers: {e:?}",
                 );
-                e
             });
     }
 }

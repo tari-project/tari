@@ -80,7 +80,7 @@ impl Controller {
         loop {
             // lets see if we need to change the state of the miner.
             while let Some(message) = self.rx.try_iter().next() {
-                debug!(target: LOG_TARGET_FILE, "Miner received message: {:?}", message);
+                debug!(target: LOG_TARGET_FILE, "Miner received message: {message:?}");
                 match message {
                     types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) => {
                         match self.should_we_update_job(height, job_id, diff, CurrentBlob::try_from(blob)?) {
@@ -108,7 +108,7 @@ impl Controller {
                             Err(e) => {
                                 debug!(
                                     target: LOG_TARGET_FILE,
-                                    "Miner could not decipher miner message: {:?}", e
+                                    "Miner could not decipher miner message: {e:?}"
                                 );
                                 // lets wait a second before we try again
                                 thread::sleep(std::time::Duration::from_millis(1000));

@@ -66,11 +66,11 @@ fn main() {
             process::exit(0)
         },
         Err(err) => {
-            eprintln!("{}", err);
+            eprintln!("{err}");
             let exit_code = err.exit_code;
             if let Some(hint) = exit_code.hint() {
                 eprintln!();
-                eprintln!("{}", hint);
+                eprintln!("{hint}");
                 eprintln!();
             }
 

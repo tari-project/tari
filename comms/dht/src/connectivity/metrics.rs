@@ -283,7 +283,7 @@ impl MetricsCollectorHandle {
         match self.inner.try_send(MetricOp::Write(write)) {
             Ok(_) => true,
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to write metric: {:?}", err);
+                warn!(target: LOG_TARGET, "Failed to write metric: {err:?}");
                 false
             },
         }

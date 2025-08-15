@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
         match prompt(&node, &dht).await {
             Ok(()) => {},
             Err(err) => {
-                log::warn!("{}", err);
+                log::warn!("{err}");
                 continue;
             },
         }

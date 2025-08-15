@@ -48,9 +48,9 @@ impl Display for DhtDiscoveryRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         use DhtDiscoveryRequest::{DiscoverPeer, NotifyDiscoveryResponseReceived};
         match self {
-            DiscoverPeer(public_key, dest, _) => write!(f, "DiscoverPeer({}, {})", public_key, dest),
+            DiscoverPeer(public_key, dest, _) => write!(f, "DiscoverPeer({public_key}, {dest})"),
             NotifyDiscoveryResponseReceived(discovery_resp) => {
-                write!(f, "NotifyDiscoveryResponseReceived({:#?})", discovery_resp)
+                write!(f, "NotifyDiscoveryResponseReceived({discovery_resp:#?})")
             },
         }
     }

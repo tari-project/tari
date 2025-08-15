@@ -100,7 +100,7 @@ pub mod test {
     fn validate_max_target() {
         let mut header = get_header();
         header.nonce = 4;
-        println!("{:?}", header);
+        println!("{header:?}");
         assert_eq!(sha3x_difficulty(&header).unwrap(), Difficulty::from_u64(2366).unwrap());
     }
 }

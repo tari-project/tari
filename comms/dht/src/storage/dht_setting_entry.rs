@@ -33,7 +33,7 @@ pub enum DhtMetadataKey {
 
 impl fmt::Display for DhtMetadataKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

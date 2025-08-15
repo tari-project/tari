@@ -28,11 +28,11 @@ async fn it_works() {
         Ok(mut client) => {
             let _tip_info = client.get_tip_info(grpc::Empty {}).await;
             #[cfg(debug_assertions)]
-            eprintln!("Tip info: {:?}", _tip_info);
+            eprintln!("Tip info: {_tip_info:?}");
         },
         Err(_err) => {
             #[cfg(debug_assertions)]
-            eprintln!("Could not connect: {:?}", _err);
+            eprintln!("Could not connect: {_err:?}");
         },
     }
 }

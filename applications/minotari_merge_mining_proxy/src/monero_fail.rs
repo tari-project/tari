@@ -72,8 +72,7 @@ pub async fn get_monerod_info(
     let expected_structure = get_expected_table_structure();
     if table_structure != expected_structure {
         return Err(MmProxyError::HtmlParseError(format!(
-            "Unexpected table structure: {:?}, expected: {:?}",
-            table_structure, expected_structure
+            "Unexpected table structure: {table_structure:?}, expected: {expected_structure:?}"
         )));
     }
 
@@ -121,24 +120,22 @@ pub async fn get_monerod_info(
     //           </tr>
 
     // Define selectors for table elements
-    let row_selector =
-        Selector::parse("tr.js-sort-table").map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
-    let type_selector =
-        Selector::parse("td:nth-child(1)").map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+    let row_selector = Selector::parse("tr.js-sort-table").map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
+    let type_selector = Selector::parse("td:nth-child(1)").map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
     let url_selector =
-        Selector::parse("td:nth-child(2) .nodeURL").map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+        Selector::parse("td:nth-child(2) .nodeURL").map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
     let height_selector =
-        Selector::parse("td:nth-child(3)").map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+        Selector::parse("td:nth-child(3)").map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
     let up_selector = Selector::parse("td:nth-child(4) .dot.glowing-green, td:nth-child(4) .dot.glowing-red")
-        .map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+        .map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
     let web_compatible_selector = Selector::parse("td:nth-child(5) img.filter-green, td:nth-child(5) img.filter-red")
-        .map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+        .map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
     let network_selector =
-        Selector::parse("td:nth-child(6)").map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+        Selector::parse("td:nth-child(6)").map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
     let last_checked_selector =
-        Selector::parse("td:nth-child(7)").map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+        Selector::parse("td:nth-child(7)").map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
     let history_selector = Selector::parse("td:nth-child(8) .dot.glowing-green, td:nth-child(8) .dot.glowing-red")
-        .map_err(|e| MmProxyError::HtmlParseError(format!("{}", e)))?;
+        .map_err(|e| MmProxyError::HtmlParseError(format!("{e}")))?;
 
     let mut entries = Vec::new();
 
@@ -283,12 +280,12 @@ async fn get_monerod_html(url: &str) -> Result<Html, MmProxyError> {
         Ok(resp) => match resp.text().await {
             Ok(html) => html,
             Err(e) => {
-                error!("Failed to fetch monerod info: {}", e);
+                error!("Failed to fetch monerod info: {e}");
                 return Err(MmProxyError::MonerodRequestFailed(e));
             },
         },
         Err(e) => {
-            error!("Failed to fetch monerod info: {}", e);
+            error!("Failed to fetch monerod info: {e}");
             return Err(MmProxyError::MonerodRequestFailed(e));
         },
     };
@@ -343,6 +340,7 @@ fn get_expected_table_structure<'a>() -> Vec<&'a str> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::time::Duration;
 
     use crate::{
@@ -375,18 +373,18 @@ mod test {
             Ok(val) => val,
             Err(HtmlParseError(val)) => {
                 if val.contains("No public monero servers available") {
-                    println!("Cannot complete test: {}", val);
+                    println!("Cannot complete test: {val}");
                     vec![]
                 } else {
-                    panic!("Unexpected error: {}", val);
+                    panic!("Unexpected error: {val}");
                 }
             },
             Err(err) => {
                 if err.to_string().contains("Failed to send request to monerod") {
-                    println!("Cannot complete test: {}", err);
+                    println!("Cannot complete test: {err}");
                     vec![]
                 } else {
-                    panic!("Unexpected error: {}", err);
+                    panic!("Unexpected error: {err}");
                 }
             },
         }
@@ -406,7 +404,7 @@ mod test {
                 );
             }
             assert_eq!(entry.network, "mainnet");
-            println!("{}: {:?}", i, entry);
+            println!("{i}: {entry:?}");
         }
 
         // Monero stagenet
@@ -420,7 +418,7 @@ mod test {
                         entries[i - 1].response_time.unwrap_or_else(|| Duration::from_secs(100))
                 );
             }
-            println!("{}: {:?}", i, entry);
+            println!("{i}: {entry:?}");
         }
 
         // Monero testnet
@@ -434,7 +432,7 @@ mod test {
                         entries[i - 1].response_time.unwrap_or_else(|| Duration::from_secs(100))
                 );
             }
-            println!("{}: {:?}", i, entry);
+            println!("{i}: {entry:?}");
         }
     }
 
@@ -463,7 +461,7 @@ mod test {
                             .unwrap_or_else(|| Duration::from_secs(100))
                 );
             }
-            println!("{}: {:?}", i, entry);
+            println!("{i}: {entry:?}");
         }
 
         // Use the previously qualified monerod list, but invalidate some URLs
@@ -495,7 +493,7 @@ mod test {
                             .unwrap_or_else(|| Duration::from_secs(100))
                 );
             }
-            println!("{}: {:?}", i, entry);
+            println!("{i}: {entry:?}");
         }
         assert!(ordered_entries.len() <= 2);
     }
@@ -507,10 +505,10 @@ mod test {
             Ok(val) => val,
             Err(err) => {
                 if err.to_string().contains("Failed to send request to monerod") {
-                    println!("Cannot complete test: {}", err);
+                    println!("Cannot complete test: {err}");
                     return;
                 }
-                panic!("Unexpected error: {}", err);
+                panic!("Unexpected error: {err}");
             },
         };
 

@@ -270,15 +270,13 @@ impl InputSanitizer {
     pub fn validate_number_range(&self, value: f64, min: f64, max: f64, name: &str) -> McpResult<f64> {
         if value < min || value > max {
             return Err(McpError::invalid_request(format!(
-                "{} must be between {} and {} (got {})",
-                name, min, max, value
+                "{name} must be between {min} and {max} (got {value})"
             )));
         }
 
         if !value.is_finite() {
             return Err(McpError::invalid_request(format!(
-                "{} must be a finite number (got {})",
-                name, value
+                "{name} must be a finite number (got {value})"
             )));
         }
 
@@ -289,8 +287,7 @@ impl InputSanitizer {
     pub fn validate_integer_range(&self, value: i64, min: i64, max: i64, name: &str) -> McpResult<i64> {
         if value < min || value > max {
             return Err(McpError::invalid_request(format!(
-                "{} must be between {} and {} (got {})",
-                name, min, max, value
+                "{name} must be between {min} and {max} (got {value})"
             )));
         }
 
@@ -301,13 +298,12 @@ impl InputSanitizer {
     pub fn validate_string_pattern(&self, value: &str, pattern: &regex::Regex, name: &str) -> McpResult<String> {
         let sanitized = match self.sanitize_string(value)? {
             Value::String(s) => s,
-            _ => return Err(McpError::invalid_request(format!("{} must be a string", name))),
+            _ => return Err(McpError::invalid_request(format!("{name} must be a string"))),
         };
 
         if !pattern.is_match(&sanitized) {
             return Err(McpError::invalid_request(format!(
-                "{} does not match required pattern",
-                name
+                "{name} does not match required pattern"
             )));
         }
 

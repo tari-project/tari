@@ -108,15 +108,15 @@ impl TryFrom<proto::Message> for Message {
         }
 
         Ok(Self {
-            body: ChatBody::try_from(message.body).map_err(|e| format!("body: ({})", e))?,
+            body: ChatBody::try_from(message.body).map_err(|e| format!("body: ({e})"))?,
             metadata,
             receiver_address: TariAddress::from_bytes(&message.receiver_address)
-                .map_err(|e| format!("receiver_address: ({})", e))?,
+                .map_err(|e| format!("receiver_address: ({e})"))?,
             sender_address: TariAddress::from_bytes(&message.sender_address)
-                .map_err(|e| format!("sender_address: ({})", e))?,
+                .map_err(|e| format!("sender_address: ({e})"))?,
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
-            message_id: MessageId::try_from(message.message_id).map_err(|e| format!("message_id: ({})", e))?,
+            message_id: MessageId::try_from(message.message_id).map_err(|e| format!("message_id: ({e})"))?,
             ..Message::default()
         })
     }
@@ -150,8 +150,8 @@ impl TryFrom<proto::MessageMetadata> for MessageMetadata {
 
     fn try_from(md: proto::MessageMetadata) -> Result<Self, Self::Error> {
         Ok(Self {
-            data: MetadataData::try_from(md.data).map_err(|e| format!("metadata data: ({})", e))?,
-            key: MetadataKey::try_from(md.key).map_err(|e| format!("metadata key: ({})", e))?,
+            data: MetadataData::try_from(md.data).map_err(|e| format!("metadata data: ({e})"))?,
+            key: MetadataKey::try_from(md.key).map_err(|e| format!("metadata key: ({e})"))?,
         })
     }
 }

@@ -178,7 +178,7 @@ where
 
     fn handle_request(&mut self, pending_dials: &mut DialFuturesUnordered, request: DialerRequest) {
         use DialerRequest::{CancelPendingDial, Dial, NotifyNewInboundConnection};
-        debug!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
+        debug!(target: LOG_TARGET, "Connection dialer got request: {request:?}");
 
         match request {
             Dial(peer, reply_tx) => {
@@ -242,14 +242,14 @@ where
                 peer.supported_protocols = peer_identity.metadata.supported_protocols;
                 peer.user_agent = peer_identity.metadata.user_agent;
 
-                debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", node_id);
+                debug!(target: LOG_TARGET, "Successfully dialed peer '{node_id}'");
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone().into()))
                     .await;
 
                 if dial_state.send_reply(Ok(conn.clone())).is_err() {
                     warn!(
                         target: LOG_TARGET,
-                        "Reply oneshot was closed before dial response for peer '{}' was sent", node_id
+                        "Reply oneshot was closed before dial response for peer '{node_id}' was sent"
                     );
                 }
 
@@ -258,7 +258,7 @@ where
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Failed to dial peer '{}' because '{:?}'", node_id, err
+                    "Failed to dial peer '{node_id}' because '{err:?}'"
                 );
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(node_id.clone(), err.clone()))
                     .await;
@@ -266,7 +266,7 @@ where
                 if dial_state.send_reply(Err(err.clone())).is_err() {
                     warn!(
                         target: LOG_TARGET,
-                        "Reply oneshot was closed before dial response for peer '{}' was sent", node_id
+                        "Reply oneshot was closed before dial response for peer '{node_id}' was sent"
                     );
                 }
                 self.reply_to_pending_requests(&node_id, Err(err));
@@ -278,10 +278,10 @@ where
             .add_or_update_peer(dial_state.peer().clone())
             .await
             .map_err(|e| {
-                error!(target: LOG_TARGET, "Could not update peer data: {}", e);
+                error!(target: LOG_TARGET, "Could not update peer data: {e}");
                 let _ = dial_state
                     .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
-                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
+                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {e:?}"));
             });
 
         #[cfg(feature = "metrics")]
@@ -437,7 +437,7 @@ where
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
         debug!(
             target: LOG_TARGET,
-            "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
+            "Starting peer identity exchange for peer with public key '{authenticated_public_key}'"
         );
 
         let peer_identity_result = common::perform_identity_exchange(
@@ -616,8 +616,8 @@ where
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
             trace!(
                 target: LOG_TARGET,
-                "Dial - No more contactable addresses for peer '{}'",
-                node_id_hex
+                "Dial - No more contactable addresses for peer '{node_id_hex}'"
+
             );
             return if dial_state.peer().addresses.is_empty() {
                 (
@@ -686,15 +686,11 @@ where
                 let noise_socket = noise_config
                     .upgrade_socket(socket, ConnectionDirection::Outbound)
                     .await
-                    .map_err(|err| {
+                    .inspect_err(|err| {
                         debug!(
                             target: LOG_TARGET,
-                            "Dial - failed to upgrade noise: {} on address: {} ({})",
-                            node_id,
-                            moved_address,
-                            err
+                            "Dial - failed to upgrade noise: {node_id} on address: {moved_address} ({err})"
                         );
-                        err
                     })?;
 
                 let noise_upgrade_time = timer.elapsed();

@@ -171,14 +171,14 @@ impl ProcessLauncher {
         }
 
         // Launch the process
-        log::debug!("About to spawn process: {:?}", command);
+        log::debug!("About to spawn process: {command:?}");
         let mut child = command.spawn().map_err(|e| {
             log::error!(
                 "Failed to spawn process: {} (executable: {})",
                 e,
                 executable_path.display()
             );
-            McpError::server_error(format!("Failed to launch process: {}", e))
+            McpError::server_error(format!("Failed to launch process: {e}"))
         })?;
 
         let pid = child.id();
@@ -190,7 +190,7 @@ impl ProcessLauncher {
         // Store the process
         *self.process.write().await = Some(child);
 
-        log::info!("Process launched with PID: {:?}", pid);
+        log::info!("Process launched with PID: {pid:?}");
 
         // Start output capture tasks
         if let Some(stdout) = stdout {
@@ -199,8 +199,8 @@ impl ProcessLauncher {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    log::debug!("STDOUT: {}", line);
-                    output_buffer.write().await.push(format!("STDOUT: {}", line));
+                    log::debug!("STDOUT: {line}");
+                    output_buffer.write().await.push(format!("STDOUT: {line}"));
                 }
                 log::debug!("STDOUT capture ended");
             });
@@ -212,8 +212,8 @@ impl ProcessLauncher {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    log::debug!("STDERR: {}", line);
-                    output_buffer.write().await.push(format!("STDERR: {}", line));
+                    log::debug!("STDERR: {line}");
+                    output_buffer.write().await.push(format!("STDERR: {line}"));
                 }
                 log::debug!("STDERR capture ended");
             });
@@ -230,10 +230,10 @@ impl ProcessLauncher {
                 output.join("\n")
             };
 
-            log::error!("Process crashed immediately after launch. PID was: {:?}", pid);
-            log::error!("Process output: {}", output_summary);
+            log::error!("Process crashed immediately after launch. PID was: {pid:?}");
+            log::error!("Process output: {output_summary}");
 
-            let error_msg = format!("Process crashed immediately after launch. Output:\n{}", output_summary);
+            let error_msg = format!("Process crashed immediately after launch. Output:\n{output_summary}");
             drop(self.status_tx.send(ProcessLaunchStatus::Failed(error_msg.clone())));
             return Err(McpError::server_error(error_msg));
         }
@@ -247,7 +247,7 @@ impl ProcessLauncher {
                 ProcessLaunchStatus::Running
             },
             Err(e) => {
-                log::error!("Process failed health checks: {}", e);
+                log::error!("Process failed health checks: {e}");
 
                 // Get captured output for error reporting
                 let output = self.get_captured_output().await;
@@ -257,7 +257,7 @@ impl ProcessLauncher {
                     output.join("\n")
                 };
 
-                let error_msg = format!("Health check failed: {}\nProcess output:\n{}", e, output_summary);
+                let error_msg = format!("Health check failed: {e}\nProcess output:\n{output_summary}");
                 drop(self.status_tx.send(ProcessLaunchStatus::Failed(error_msg.clone())));
                 return Err(McpError::server_error(error_msg));
             },
@@ -315,7 +315,7 @@ impl ProcessLauncher {
             // Try graceful shutdown first (SIGTERM)
             match child.kill().await {
                 Ok(_) => log::info!("Sent SIGTERM to process"),
-                Err(e) => log::warn!("Failed to send SIGTERM: {}", e),
+                Err(e) => log::warn!("Failed to send SIGTERM: {e}"),
             }
 
             // Wait for graceful shutdown with periodic checks
@@ -324,7 +324,7 @@ impl ProcessLauncher {
                 // 5 seconds total
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        log::info!("Process exited with status: {:?}", status);
+                        log::info!("Process exited with status: {status:?}");
                         break;
                     },
                     Ok(None) => {
@@ -333,7 +333,7 @@ impl ProcessLauncher {
                         attempts += 1;
                     },
                     Err(e) => {
-                        log::warn!("Error checking process status: {}", e);
+                        log::warn!("Error checking process status: {e}");
                         break;
                     },
                 }
@@ -352,7 +352,7 @@ impl ProcessLauncher {
                     // Process has already exited
                 },
                 Err(e) => {
-                    log::warn!("Error checking process status for force kill: {}", e);
+                    log::warn!("Error checking process status for force kill: {e}");
                 },
             }
 
@@ -466,10 +466,10 @@ impl TariProcessLauncher {
             address.to_string()
         } else if let Some((ip, port)) = address.split_once(':') {
             // Convert IP:PORT to /ip4/IP/tcp/PORT
-            format!("/ip4/{}/tcp/{}", ip, port)
+            format!("/ip4/{ip}/tcp/{port}")
         } else {
             // Assume it's just a port, use localhost
-            format!("/ip4/127.0.0.1/tcp/{}", address)
+            format!("/ip4/127.0.0.1/tcp/{address}")
         }
     }
 
@@ -492,7 +492,7 @@ impl TariProcessLauncher {
             "-p".to_string(),
             "base_node.grpc_enabled=true".to_string(),
             "-p".to_string(),
-            format!("base_node.grpc_address={}", multiaddr_format),
+            format!("base_node.grpc_address={multiaddr_format}"),
             "-p".to_string(),
             "base_node.grpc_server_allow_methods=get_version,get_tip_info,get_sync_info,get_network_status,get_peers,\
              get_header_by_hash,get_blocks,get_network_difficulty,get_tokens_in_circulation,get_mempool_stats,\
@@ -510,7 +510,7 @@ impl TariProcessLauncher {
         args.extend(additional_args);
 
         let health_config = HealthCheckConfig {
-            grpc_endpoint: format!("http://{}", grpc_address),
+            grpc_endpoint: format!("http://{grpc_address}"),
             initial_delay: Duration::from_secs(5),
             check_interval: Duration::from_secs(2),
             max_wait_time: Duration::from_secs(90),
@@ -556,7 +556,7 @@ impl TariProcessLauncher {
         args.extend(additional_args);
 
         let health_config = HealthCheckConfig {
-            grpc_endpoint: format!("http://{}", grpc_address),
+            grpc_endpoint: format!("http://{grpc_address}"),
             initial_delay: Duration::from_secs(10), // Wallet takes longer to start
             check_interval: Duration::from_secs(3),
             max_wait_time: Duration::from_secs(180), // Wallet can take up to 3 minutes

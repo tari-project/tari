@@ -130,7 +130,7 @@ impl CliLoop {
                 .map(Duration::from_secs)
                 .unwrap_or(config.base_node.status_line_interval);
             if let Err(err) = self.context.handle_command_str(line).await {
-                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+                println!("Wrong command to watch `{line}`. Failed with: {err}");
             } else {
                 let mut events = EventStream::new();
                 while !self.done {
@@ -138,7 +138,7 @@ impl CliLoop {
                     tokio::select! {
                         _ = interval => {
                             if let Err(err) = self.context.handle_command_str(line).await {
-                                println!("Watched command `{}` failed: {}", line, err);
+                                println!("Watched command `{line}` failed: {err}");
                             } else {
                                 let args: Result<Args, _> = line.parse();
                                 if let Ok(command) = args {
@@ -188,14 +188,14 @@ impl CliLoop {
                 .map(Duration::from_secs)
                 .unwrap_or(config.base_node.status_line_interval);
             if let Err(err) = self.context.handle_command_str(line).await {
-                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+                println!("Wrong command to watch `{line}`. Failed with: {err}");
             } else {
                 while !self.done {
                     let interval = time::sleep(interval);
                     tokio::select! {
                         _ = interval => {
                             if let Err(err) = self.context.handle_command_str(line).await {
-                                println!("Watched command `{}` failed: {}", line, err);
+                                println!("Watched command `{line}` failed: {err}");
                             } else {
                                 let args: Result<Args, _> = line.parse();
                                 if let Ok(command) = args {
@@ -224,7 +224,7 @@ impl CliLoop {
         if !line.is_empty() {
             match self.context.handle_command_str(&line).await {
                 Err(err) => {
-                    println!("Command `{}` failed: {}", line, err);
+                    println!("Command `{line}` failed: {err}");
                 },
                 Ok(command) => {
                     self.watch_task = command;
@@ -255,7 +255,7 @@ impl CliLoop {
                             self.done = true;
                         }
                         Err(err) => {
-                            log::debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                            log::debug!(target:  LOG_TARGET, "Could not read line from rustyline:{err}");
                             self.done = true;
                         }
                     }

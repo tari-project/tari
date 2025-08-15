@@ -63,7 +63,7 @@ impl CommandContext {
         let peers = match peer_manager.get_peers_by_node_ids(&node_ids).await {
             Ok(val) => val,
             Err(e) => {
-                println!("Error: Unexpected peer database error: {}", e);
+                println!("Error: Unexpected peer database error: {e}");
                 return;
             },
         };
@@ -104,7 +104,7 @@ impl CommandContext {
                 if is_seed { "SEED" } else { "    " },
                 format!(
                     "{}hnd: {}, ss: {}, rpc: {}",
-                    chain_height.map(|s| format!("{}, ", s)).unwrap_or_default(),
+                    chain_height.map(|s| format!("{s}, ")).unwrap_or_default(),
                     // Exclude the handle held by list-connections
                     conn.handle_count().saturating_sub(1),
                     conn.substream_count(),
@@ -115,7 +115,7 @@ impl CommandContext {
 
         table.print_stdout();
 
-        println!("{} active connection(s)", num_connections);
+        println!("{num_connections} active connection(s)");
     }
 }
 

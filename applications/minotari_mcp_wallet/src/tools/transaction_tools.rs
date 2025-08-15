@@ -103,7 +103,7 @@ impl McpTool for GetTransactionInfoTool {
         let response = client
             .get_transaction_info(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction info: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transaction info: {e}")))?
             .into_inner();
         #[allow(clippy::cast_possible_wrap)]
         let transactions: Vec<Value> = response
@@ -269,7 +269,7 @@ impl McpTool for GetCompletedTransactionsTool {
         let mut response_stream = client
             .get_completed_transactions(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get completed transactions: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get completed transactions: {e}")))?
             .into_inner();
 
         let mut transactions = Vec::new();
@@ -278,7 +278,7 @@ impl McpTool for GetCompletedTransactionsTool {
         while let Some(tx_response) = response_stream
             .message()
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction stream: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction stream: {e}")))?
         {
             if count >= limit {
                 break;
@@ -474,24 +474,23 @@ impl McpTool for TransferTool {
             let address = recipient_data
                 .get("address")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| McpError::invalid_request(format!("address is required for recipient {}", i)))?;
+                .ok_or_else(|| McpError::invalid_request(format!("address is required for recipient {i}")))?;
 
             let amount = recipient_data
                 .get("amount")
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| McpError::invalid_request(format!("amount is required for recipient {}", i)))?;
+                .ok_or_else(|| McpError::invalid_request(format!("amount is required for recipient {i}")))?;
 
             if amount == 0 {
                 return Err(McpError::invalid_request(format!(
-                    "amount must be greater than 0 for recipient {}",
-                    i
+                    "amount must be greater than 0 for recipient {i}"
                 )));
             }
 
             let fee_per_gram = recipient_data
                 .get("fee_per_gram")
                 .and_then(|v| v.as_u64())
-                .ok_or_else(|| McpError::invalid_request(format!("fee_per_gram is required for recipient {}", i)))?;
+                .ok_or_else(|| McpError::invalid_request(format!("fee_per_gram is required for recipient {i}")))?;
 
             let payment_type = recipient_data.get("payment_type").and_then(|v| v.as_u64()).unwrap_or(0); // Default to standard payment
 
@@ -534,7 +533,7 @@ impl McpTool for TransferTool {
         let response = client
             .transfer(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to execute transfer: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to execute transfer: {e}")))?
             .into_inner();
 
         let results: Vec<Value> = response
@@ -674,7 +673,7 @@ impl McpTool for CoinSplitTool {
         let response = client
             .coin_split(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to execute coin split: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to execute coin split: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -749,7 +748,7 @@ impl McpTool for CancelTransactionTool {
         let response = client
             .cancel_transaction(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to cancel transaction: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to cancel transaction: {e}")))?
             .into_inner();
 
         let message = if response.is_success {
@@ -840,7 +839,7 @@ impl McpTool for TransactionAnalysisTool {
         let mut response_stream = client
             .get_completed_transactions(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transactions: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get transactions: {e}")))?
             .into_inner();
 
         let mut transactions = Vec::new();
@@ -854,7 +853,7 @@ impl McpTool for TransactionAnalysisTool {
         while let Some(tx_response) = response_stream
             .message()
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read transaction: {e}")))?
         {
             if count >= limit {
                 break;

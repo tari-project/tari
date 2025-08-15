@@ -155,7 +155,7 @@ pub async fn run_base_node_with_cli(
             .await?;
 
     ctx.start()
-        .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{:?}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::DatabaseError, format!("Could not start database.{e:?}")))?;
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown.clone());
@@ -166,7 +166,7 @@ pub async fn run_base_node_with_cli(
 
     readiness_grpc_shutdown.trigger();
     if let Err(e) = timeout(std::time::Duration::from_millis(500), readiness_task).await {
-        error!("Readiness task failed to shutdown: {}", e);
+        error!("Readiness task failed to shutdown: {e}");
     }
     task::spawn(run_grpc(grpc, grpc_address, auth, tls_identity, shutdown.to_signal()));
 
@@ -202,7 +202,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     tls_identity: Option<Identity>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
-    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
+    info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
     let auth = ServerAuthenticationInterceptor::new(auth_config)
@@ -224,7 +224,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an error: {:?}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {err:?}");
             err
         })?;
 
@@ -238,7 +238,7 @@ async fn prepare_grpc_params(
 ) -> Result<(Multiaddr, GrpcAuthentication, Option<Identity>), ExitError> {
     let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
         let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
-        format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
+        format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap()
     });
 
     let auth = config.base_node.grpc_authentication.clone();

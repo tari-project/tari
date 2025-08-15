@@ -282,7 +282,7 @@ impl RpcResponse {
             rpc::max_response_payload_size() as f32,
             self.payload.len() as f32,
         );
-        warn!(target: LOG_TARGET, "{}", msg);
+        warn!(target: LOG_TARGET, "{msg}");
         RpcResponse {
             request_id: self.request_id,
             status: RpcStatusCode::MalformedResponse,

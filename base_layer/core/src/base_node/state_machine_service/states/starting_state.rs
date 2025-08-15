@@ -71,8 +71,8 @@ impl Starting {
                             let event = event_arc.deref();
                             match event {
                                 DhtEvent::BootstrapMethodDetermined(method) => {
-                                    let method_str = format!("{}", method);
-                                    info!(target: LOG_TARGET, "[BN STARTING] Found DHT BootstrapMethodDetermined event: {}", method_str);
+                                    let method_str = format!("{method}");
+                                    info!(target: LOG_TARGET, "[BN STARTING] Found DHT BootstrapMethodDetermined event: {method_str}");
                                     if method_str == "ExistingPeers" {
                                         info!(target: LOG_TARGET, "[BN STARTING] DHT bootstrap completed via ExistingPeers - marking primary bootstrap complete");
                                         shared.set_primary_bootstrap_complete(true);
@@ -88,7 +88,7 @@ impl Starting {
                             }
                         },
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream lagged by {} events during startup", n);
+                            warn!(target: LOG_TARGET, "[BN STARTING] DHT event stream lagged by {n} events during startup");
                             // Continue processing in case there are still events available
                         },
                         Err(broadcast::error::RecvError::Closed) => {
@@ -113,7 +113,7 @@ impl Starting {
                     match metadata_result.as_ref().map(|v| v.deref()) {
                         Ok(ChainMetadataEvent::NetworkSilence) => {
                             network_silence_count += 1;
-                            debug!(target: LOG_TARGET, "NetworkSilence event received ({})", network_silence_count);
+                            debug!(target: LOG_TARGET, "NetworkSilence event received ({network_silence_count})");
                             if network_silence_count >= 3 {
                                 return StateEvent::Initialized(true);
                             }
@@ -122,7 +122,7 @@ impl Starting {
                             return StateEvent::Initialized(false);
                         },
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
+                            debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {n} item(s)");
                         },
                         Err(broadcast::error::RecvError::Closed) => {
                             debug!(target: LOG_TARGET, "Metadata event subscriber closed");
@@ -136,8 +136,8 @@ impl Starting {
                             let event = event_arc.deref();
                             match event {
                                 DhtEvent::BootstrapMethodDetermined(method) => {
-                                    let method_str = format!("{}", method);
-                                    info!(target: LOG_TARGET, "[BN STARTING] Received live DHT BootstrapMethodDetermined event: {}", method_str);
+                                    let method_str = format!("{method}");
+                                    info!(target: LOG_TARGET, "[BN STARTING] Received live DHT BootstrapMethodDetermined event: {method_str}");
                                     if method_str == "ExistingPeers" {
                                         info!(target: LOG_TARGET, "[BN STARTING] DHT bootstrap completed via ExistingPeers - marking primary bootstrap complete");
                                         shared.set_primary_bootstrap_complete(true);
@@ -151,7 +151,7 @@ impl Starting {
                             }
                         },
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "[BN STARTING] DHT event subscriber lagged by {} item(s)", n);
+                            warn!(target: LOG_TARGET, "[BN STARTING] DHT event subscriber lagged by {n} item(s)");
                         },
                         Err(broadcast::error::RecvError::Closed) => {
                             debug!(target: LOG_TARGET, "DHT event subscriber closed");

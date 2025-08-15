@@ -45,6 +45,8 @@ pub enum ProtocolError {
     ProtocolNotRegistered,
     #[error("Failed to send notification because notification sender disconnected")]
     NotificationSenderDisconnected,
+    #[error("Expected to ready bytes, that are not in the buffer")]
+    ExpectedReadyBytes,
 }
 
 impl ProtocolError {
@@ -56,6 +58,7 @@ impl ProtocolError {
             ProtocolError::ProtocolNotRegistered |
             ProtocolError::ProtocolInboundNegotiationFailed |
             ProtocolError::ProtocolOptimisticNegotiationFailed |
+            ProtocolError::ExpectedReadyBytes |
             ProtocolError::NotificationSenderDisconnected => false,
 
             ProtocolError::ProtocolIdTooLong | ProtocolError::InvalidFlag(_) => true,

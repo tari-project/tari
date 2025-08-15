@@ -52,7 +52,7 @@ pub fn write_cert_to_disk(dir: PathBuf, filename: &str, data: &String) -> Result
     let mut file = File::create(&path)?;
     file.write_all(data.as_ref())?;
 
-    println!("{:?} written to disk.", path);
+    println!("{path:?} written to disk.");
 
     Ok(())
 }

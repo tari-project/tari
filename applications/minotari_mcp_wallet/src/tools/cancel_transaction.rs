@@ -102,7 +102,7 @@ impl McpTool for CancelTransactionTool {
         let response = client
             .cancel_transaction(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to cancel transaction: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to cancel transaction: {e}")))?;
 
         let response = response.into_inner();
 

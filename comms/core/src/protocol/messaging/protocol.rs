@@ -90,11 +90,11 @@ impl fmt::Display for MessagingEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use MessagingEvent::*;
         match self {
-            MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id, tag),
-            OutboundProtocolExited(node_id) => write!(f, "OutboundProtocolExited({})", node_id),
-            InboundProtocolExited(node_id) => write!(f, "InboundProtocolExited({})", node_id),
+            MessageReceived(node_id, tag) => write!(f, "MessageReceived({node_id}, {tag})"),
+            OutboundProtocolExited(node_id) => write!(f, "OutboundProtocolExited({node_id})"),
+            InboundProtocolExited(node_id) => write!(f, "InboundProtocolExited({node_id})"),
             ProtocolViolation { peer_node_id, details } => {
-                write!(f, "ProtocolViolation({}, {})", peer_node_id, details)
+                write!(f, "ProtocolViolation({peer_node_id}, {details})")
             },
         }
     }
@@ -187,8 +187,8 @@ impl MessagingProtocol {
                     if let Err(err) = self.handle_retry_queue_messages(msg) {
                         error!(
                             target: LOG_TARGET,
-                            "Failed to retry outbound message because '{}'",
-                            err
+                            "Failed to retry outbound message because '{err}'"
+
                         );
                     }
                 },
@@ -197,8 +197,7 @@ impl MessagingProtocol {
                     if let Err(err) = self.send_message(msg) {
                         error!(
                             target: LOG_TARGET,
-                            "Failed to handle request because '{}'",
-                            err
+                            "Failed to handle request because '{err}'"
                         );
                     }
                 },
@@ -225,7 +224,7 @@ impl MessagingProtocol {
 
     async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
         use MessagingEvent::*;
-        trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
+        trace!(target: LOG_TARGET, "Internal messaging event '{event}'" );
         match &event {
             OutboundProtocolExited(node_id) => {
                 debug!(
@@ -268,13 +267,13 @@ impl MessagingProtocol {
     }
 
     fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
-        debug!(target: LOG_TARGET, "Retrying outbound message ({})", msg);
+        debug!(target: LOG_TARGET, "Retrying outbound message ({msg})");
         self.send_message(msg)?;
         Ok(())
     }
 
     fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
-        trace!(target: LOG_TARGET, "Received request to send message ({})", out_msg);
+        trace!(target: LOG_TARGET, "Received request to send message ({out_msg})");
         let peer_node_id = out_msg.peer_node_id.clone();
         let sender = loop {
             match self.active_queues.entry(peer_node_id.clone()) {
@@ -298,17 +297,17 @@ impl MessagingProtocol {
             }
         };
 
-        trace!(target: LOG_TARGET, "Sending message {}", out_msg);
+        trace!(target: LOG_TARGET, "Sending message {out_msg}");
         let tag = out_msg.tag;
         match sender.send(out_msg) {
             Ok(_) => {
-                trace!(target: LOG_TARGET, "Message ({}) dispatched to outbound handler", tag,);
+                trace!(target: LOG_TARGET, "Message ({tag}) dispatched to outbound handler");
                 Ok(())
             },
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Failed to send message on channel because '{:?}'", err
+                    "Failed to send message on channel because '{err:?}'"
                 );
                 Err(MessagingProtocolError::MessageSendFailed)
             },

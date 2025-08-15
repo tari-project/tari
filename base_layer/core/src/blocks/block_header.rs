@@ -196,17 +196,25 @@ impl BlockHeader {
             let mut headers = headers.to_vec();
 
             // ensure the slice is in reverse order
-            let ordering = headers[0].timestamp.cmp(&headers[headers.len() - 1].timestamp);
+            let ordering = headers
+                .first()
+                .expect("Already checked")
+                .timestamp
+                .cmp(&headers.last().expect("Already checked").timestamp);
             if ordering == Ordering::Less {
                 headers.reverse();
             }
 
-            // unwraps: length already checked
-            let last_ts = headers.first().unwrap().timestamp;
-            let first_ts = headers.last().unwrap().timestamp;
+            let last_ts = headers.first().expect("Already checked").timestamp;
+            let first_ts = headers.last().expect("Already checked").timestamp;
 
             let (max, min) = headers.windows(2).fold((0u64, u64::MAX), |(max, min), next| {
-                let dt = match next[0].timestamp.checked_sub(next[1].timestamp) {
+                let dt = match next
+                    .first()
+                    .expect("Cannot fail")
+                    .timestamp
+                    .checked_sub(next.get(1).expect("Cannot fail").timestamp)
+                {
                     Some(delta) => delta.as_u64(),
                     None => 0u64,
                 };

@@ -180,10 +180,9 @@ impl LivenessState {
         } else {
             warn!(
                 target: LOG_TARGET,
-                "Peer {} sent an nonce for another peer {}. This could indicate malicious behaviour or a bug. \
-                 Ignoring.",
-                sent_by,
-                node_id
+                "Peer {sent_by} sent an nonce for another peer {node_id}. This could indicate malicious behaviour or a bug. \
+                 Ignoring."
+
             );
             None
         }

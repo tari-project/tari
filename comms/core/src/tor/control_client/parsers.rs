@@ -62,8 +62,7 @@ pub fn response_line(line: &str) -> Result<ResponseLine, ParseError> {
     let (rest, ch) = anychar(rest)?;
     if ![' ', '-', '+'].contains(&ch) {
         return Err(ParseError(format!(
-            "Unexpected response character '{}'. Expected ' ', '-' or '+'.",
-            ch
+            "Unexpected response character '{ch}'. Expected ' ', '-' or '+'."
         )));
     }
 

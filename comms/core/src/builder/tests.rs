@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
 
 use bytes::Bytes;
@@ -136,14 +137,14 @@ async fn peer_to_peer_custom_protocols() {
     let (another_test_sender, mut another_test_protocol_rx1) = mpsc::channel(10);
     let mut protocols1 = Protocols::new();
     protocols1
-        .add(&[TEST_PROTOCOL.clone()], &test_sender)
-        .add(&[ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
+        .add([TEST_PROTOCOL.clone()], &test_sender)
+        .add([ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
     let (test_sender, mut test_protocol_rx2) = mpsc::channel(10);
     let (another_test_sender, _another_test_protocol_rx2) = mpsc::channel(10);
     let mut protocols2 = Protocols::new();
     protocols2
-        .add(&[TEST_PROTOCOL.clone()], &test_sender)
-        .add(&[ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
+        .add([TEST_PROTOCOL.clone()], &test_sender)
+        .add([ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
 
     let mut shutdown = Shutdown::new();
     let (comms_node1, _, _, _) = spawn_node(protocols1, shutdown.to_signal()).await;
@@ -255,7 +256,7 @@ async fn peer_to_peer_messaging() {
         replies.push(reply_rx);
         let outbound_msg = OutboundMessage::with_reply(
             node_identity2.node_id().clone(),
-            format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+            format!("#{i:0>3} - comms messaging is so hot right now!").into(),
             reply_tx.into(),
         );
         outbound_tx1.send(outbound_msg).unwrap();
@@ -276,7 +277,7 @@ async fn peer_to_peer_messaging() {
     for i in 0..NUM_MSGS {
         let outbound_msg = OutboundMessage::new(
             node_identity1.node_id().clone(),
-            format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+            format!("#{i:0>3} - comms messaging is so hot right now!").into(),
         );
         outbound_tx2.send(outbound_msg).unwrap();
     }
@@ -286,7 +287,7 @@ async fn peer_to_peer_messaging() {
     // Check that we got all the messages
     let check_messages = |msgs: Vec<InboundMessage>| {
         for (i, msg) in msgs.iter().enumerate() {
-            let expected_msg_prefix = format!("#{:0>3}", i);
+            let expected_msg_prefix = format!("#{i:0>3}");
             // 0..4 zero padded prefix bytes e.g. #003, #023, #100
             assert_eq!(&msg.body[0..4], expected_msg_prefix.as_bytes());
         }
@@ -364,7 +365,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity2.node_id().clone(),
-                format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+                format!("#{i:0>3} - comms messaging is so hot right now!").into(),
             );
             outbound_tx1.send(outbound_msg).unwrap();
         }
@@ -374,7 +375,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity1.node_id().clone(),
-                format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+                format!("#{i:0>3} - comms messaging is so hot right now!").into(),
             );
             outbound_tx2.send(outbound_msg).unwrap();
         }

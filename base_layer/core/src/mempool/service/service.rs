@@ -100,7 +100,7 @@ impl MempoolService {
                 // Outbound tx messages from the OutboundMempoolServiceInterface
                 Some((txn, excluded_peers)) = outbound_tx_stream.recv() => {
                     let _res = self.handle_outbound_tx(txn, excluded_peers).await.map_err(|e|
-                        error!(target: LOG_TARGET, "Error sending outbound tx message: {}", e)
+                        error!(target: LOG_TARGET, "Error sending outbound tx message: {e}")
                     );
                 },
 
@@ -158,7 +158,7 @@ impl MempoolService {
         task::spawn(async move {
             let result = inbound_handlers.handle_block_event(&block_event).await;
             if let Err(e) = result {
-                error!(target: LOG_TARGET, "Failed to handle base node block event: {}", e);
+                error!(target: LOG_TARGET, "Failed to handle base node block event: {e}");
             }
         });
     }
@@ -188,7 +188,7 @@ impl MempoolService {
             if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", e
+                    "Failed to handle incoming transaction message: {e:?}"
                 );
             }
         });
@@ -222,7 +222,7 @@ impl MempoolService {
             Ok(_) => Ok(()),
             Err(DhtOutboundError::NoMessagesQueued) => Ok(()),
             Err(e) => {
-                error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
+                error!(target: LOG_TARGET, "Handle outbound tx failure. {e:?}");
                 Err(MempoolServiceError::OutboundMessageService(e.to_string()))
             },
         }

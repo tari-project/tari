@@ -73,7 +73,7 @@ impl Default for RangeProofType {
 impl Display for RangeProofType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // Debug "shortcut" works because variants do not have fields
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

@@ -216,7 +216,7 @@ impl NodeArgumentBuilder {
         if self.include_base_args {
             for (key, value) in self.config.property_overrides {
                 args.push("-p".to_string());
-                args.push(format!("{}={}", key, value));
+                args.push(format!("{key}={value}"));
             }
         }
 
@@ -317,7 +317,7 @@ impl WalletArgumentBuilder {
         if self.include_base_args {
             for (key, value) in self.config.property_overrides {
                 args.push("-p".to_string());
-                args.push(format!("{}={}", key, value));
+                args.push(format!("{key}={value}"));
             }
         }
 
@@ -331,7 +331,10 @@ pub struct CliIntegrationUtils;
 impl CliIntegrationUtils {
     /// Extract port from gRPC address string
     pub fn extract_port_from_address(address: &str) -> Option<u16> {
-        address.split(':').last().and_then(|port_str| port_str.parse().ok())
+        address
+            .split(':')
+            .next_back()
+            .and_then(|port_str| port_str.parse().ok())
     }
 
     /// Build gRPC endpoint URL from address
@@ -339,7 +342,7 @@ impl CliIntegrationUtils {
         if address.starts_with("http://") || address.starts_with("https://") {
             address.to_string()
         } else {
-            format!("http://{}", address)
+            format!("http://{address}")
         }
     }
 

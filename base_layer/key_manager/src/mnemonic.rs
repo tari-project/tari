@@ -166,20 +166,51 @@ fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Resu
 
 /// Finds and returns the word for a specific index in a mnemonic word list defined by the specified language
 fn find_mnemonic_word_from_index(index: usize, language: MnemonicLanguage) -> Result<Hidden<String>, MnemonicError> {
-    if index < MNEMONIC_ENGLISH_WORDS.len() {
-        Ok(match language {
-            // Select word according to specified language
-            MnemonicLanguage::ChineseSimplified => Hidden::hide(MNEMONIC_CHINESE_SIMPLIFIED_WORDS[index].to_string()),
-            MnemonicLanguage::English => Hidden::hide(MNEMONIC_ENGLISH_WORDS[index].to_string()),
-            MnemonicLanguage::French => Hidden::hide(MNEMONIC_FRENCH_WORDS[index].to_string()),
-            MnemonicLanguage::Italian => Hidden::hide(MNEMONIC_ITALIAN_WORDS[index].to_string()),
-            MnemonicLanguage::Japanese => Hidden::hide(MNEMONIC_JAPANESE_WORDS[index].to_string()),
-            MnemonicLanguage::Korean => Hidden::hide(MNEMONIC_KOREAN_WORDS[index].to_string()),
-            MnemonicLanguage::Spanish => Hidden::hide(MNEMONIC_SPANISH_WORDS[index].to_string()),
-        })
-    } else {
-        Err(MnemonicError::IndexOutOfBounds)
-    }
+    Ok(match language {
+        // Select word according to specified language
+        MnemonicLanguage::ChineseSimplified => Hidden::hide(
+            MNEMONIC_CHINESE_SIMPLIFIED_WORDS
+                .get(index)
+                .ok_or(MnemonicError::IndexOutOfBounds)?
+                .to_string(),
+        ),
+        MnemonicLanguage::English => Hidden::hide(
+            MNEMONIC_ENGLISH_WORDS
+                .get(index)
+                .ok_or(MnemonicError::IndexOutOfBounds)?
+                .to_string(),
+        ),
+        MnemonicLanguage::French => Hidden::hide(
+            MNEMONIC_FRENCH_WORDS
+                .get(index)
+                .ok_or(MnemonicError::IndexOutOfBounds)?
+                .to_string(),
+        ),
+        MnemonicLanguage::Italian => Hidden::hide(
+            MNEMONIC_ITALIAN_WORDS
+                .get(index)
+                .ok_or(MnemonicError::IndexOutOfBounds)?
+                .to_string(),
+        ),
+        MnemonicLanguage::Japanese => Hidden::hide(
+            MNEMONIC_JAPANESE_WORDS
+                .get(index)
+                .ok_or(MnemonicError::IndexOutOfBounds)?
+                .to_string(),
+        ),
+        MnemonicLanguage::Korean => Hidden::hide(
+            MNEMONIC_KOREAN_WORDS
+                .get(index)
+                .ok_or(MnemonicError::IndexOutOfBounds)?
+                .to_string(),
+        ),
+        MnemonicLanguage::Spanish => Hidden::hide(
+            MNEMONIC_SPANISH_WORDS
+                .get(index)
+                .ok_or(MnemonicError::IndexOutOfBounds)?
+                .to_string(),
+        ),
+    })
 }
 
 /// Converts a vector of bytes to a sequence of mnemonic words using the specified language
@@ -200,7 +231,7 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<SeedWords,
     for i in 0..bits.reveal().len() / group_bit_count {
         let start_index = i * group_bit_count;
         let stop_index = start_index + group_bit_count;
-        let sub_v = &bits.reveal()[start_index..stop_index];
+        let sub_v = bits.reveal().get(start_index..stop_index).expect("Slice should exist");
         let word_index = checked_bits_to_uint(sub_v).ok_or(MnemonicError::BitsToIntConversion)?;
         let mnemonic_word = find_mnemonic_word_from_index(word_index, language)?;
         mnemonic_sequence.push(mnemonic_word);
@@ -280,6 +311,7 @@ pub trait Mnemonic<T> {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::str::FromStr;
 
     use rand::rngs::OsRng;
@@ -322,7 +354,7 @@ mod test {
         assert_eq!(my_enum, MnemonicLanguage::Spanish);
         let my_language = "TariVerse";
         match MnemonicLanguage::from_str(my_language) {
-            Ok(_) => panic!("Language '{}' is not a member of 'MnemonicLanguage'!", my_language),
+            Ok(_) => panic!("Language '{my_language}' is not a member of 'MnemonicLanguage'!"),
             Err(e) => assert_eq!(e, strum::ParseError::VariantNotFound),
         }
     }
@@ -487,7 +519,7 @@ mod test {
             OsRng.fill_bytes(&mut secretkey_bytes);
             let mnemonic_seq = mnemonic::from_bytes(&secretkey_bytes, MnemonicLanguage::English).unwrap();
             let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).unwrap();
-            assert_eq!(&secretkey_bytes, mnemonic_bytes.reveal(), "failed len = {}", len);
+            assert_eq!(&secretkey_bytes, mnemonic_bytes.reveal(), "failed len = {len}");
         }
     }
 }

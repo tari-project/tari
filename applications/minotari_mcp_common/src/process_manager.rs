@@ -145,7 +145,7 @@ impl ProcessSupervisor {
                                     break;
                                 }
                                 Err(e) => {
-                                    log::error!("Process failed: {}", e);
+                                    log::error!("Process failed: {e}");
                                     drop(self.status_tx.send(ProcessStatus::Failed(e.to_string())));
                                 }
                             }
@@ -158,7 +158,7 @@ impl ProcessSupervisor {
                     }
                 },
                 Err(e) => {
-                    log::error!("Failed to launch process: {}", e);
+                    log::error!("Failed to launch process: {e}");
                     drop(self.status_tx.send(ProcessStatus::Failed(e.to_string())));
                 },
             }
@@ -199,7 +199,7 @@ impl ProcessSupervisor {
 
         let child = cmd
             .spawn()
-            .map_err(|e| McpError::server_error(format!("Failed to spawn process: {}", e)))?;
+            .map_err(|e| McpError::server_error(format!("Failed to spawn process: {e}")))?;
 
         *self.child.write().await = Some(child);
 
@@ -219,8 +219,7 @@ impl ProcessSupervisor {
             if let Some(child) = self.child.write().await.as_mut() {
                 if let Ok(Some(status)) = child.try_wait() {
                     return Err(McpError::server_error(format!(
-                        "Process exited during startup with status: {:?}",
-                        status
+                        "Process exited during startup with status: {status:?}"
                     )));
                 }
             }
@@ -246,14 +245,13 @@ impl ProcessSupervisor {
             let status = child
                 .wait()
                 .await
-                .map_err(|e| McpError::server_error(format!("Failed to wait for process: {}", e)))?;
+                .map_err(|e| McpError::server_error(format!("Failed to wait for process: {e}")))?;
 
             if status.success() {
                 Ok(())
             } else {
                 Err(McpError::server_error(format!(
-                    "Process exited with non-zero status: {:?}",
-                    status
+                    "Process exited with non-zero status: {status:?}"
                 )))
             }
         } else {
@@ -270,7 +268,7 @@ impl ProcessSupervisor {
             child
                 .kill()
                 .await
-                .map_err(|e| McpError::server_error(format!("Failed to kill process: {}", e)))?;
+                .map_err(|e| McpError::server_error(format!("Failed to kill process: {e}")))?;
 
             // Wait a bit for graceful shutdown
             tokio::time::sleep(Duration::from_secs(2)).await;
@@ -295,11 +293,11 @@ impl ProcessUtils {
     /// Get a random available port
     pub fn get_random_port() -> McpResult<u16> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-            .map_err(|e| McpError::server_error(format!("Failed to bind to random port: {}", e)))?;
+            .map_err(|e| McpError::server_error(format!("Failed to bind to random port: {e}")))?;
 
         let port = listener
             .local_addr()
-            .map_err(|e| McpError::server_error(format!("Failed to get local address: {}", e)))?
+            .map_err(|e| McpError::server_error(format!("Failed to get local address: {e}")))?
             .port();
 
         Ok(port)
@@ -312,7 +310,7 @@ impl ProcessUtils {
 
     /// Check if a process is running on a specific port
     pub async fn is_service_running(port: u16) -> bool {
-        std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok()
+        std::net::TcpStream::connect(format!("127.0.0.1:{port}")).is_ok()
     }
 
     /// Generate command arguments for launching Tari applications

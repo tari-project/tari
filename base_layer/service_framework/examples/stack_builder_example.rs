@@ -46,10 +46,10 @@ async fn main() {
     sleep(Duration::from_secs(1)).await;
     println!("----------------------------------------------------");
     let response_b = service_b_handle.send_msg("Hello B".to_string()).await;
-    println!("Response from Service B: {}", response_b);
+    println!("Response from Service B: {response_b}");
     println!("----------------------------------------------------");
     let response_a = service_a_handle.send_msg("Hello A".to_string()).await;
-    println!("Response from Service A: {}", response_a);
+    println!("Response from Service A: {response_a}");
     println!("----------------------------------------------------");
 
     shutdown.trigger();
