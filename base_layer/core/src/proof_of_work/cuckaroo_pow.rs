@@ -493,7 +493,17 @@ mod test {
 
     #[test]
     fn test_solution() {
-        let blob = hex::decode("935ea63832b08fe75ce3ee7801e800139957e709f38b0ba513d4231e00ca4d6c").unwrap();
+        let header = hex::decode("935ea63832b08fe75ce3ee7801e800139957e709f38b0ba513d4231e00ca4d6c").unwrap();
+
+        let nonce_bytes = hex::decode("000001c3").unwrap();
+        let nonce = u32::from_le_bytes(nonce_bytes.as_slice().try_into().unwrap()) as u64;
+        let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
+        hasher.update(&nonce.to_le_bytes());
+        hasher.update(header.as_slice());
+        let mut blob = vec![0u8; hasher.output_size()];
+        hasher
+            .finalize_variable(&mut blob)
+            .expect("Infallible because we've set the output size");
         let siphash_keys = [
             u64::from_le_bytes(blob[0..8].try_into().unwrap()),
             u64::from_le_bytes(blob[8..16].try_into().unwrap()),
@@ -510,13 +520,13 @@ mod test {
         ];
         let nonces = nonces
             .iter()
-            .map(|s| u64::from_str_radix(s, 16).unwrap())
+            .map(|s| u32::from_le_bytes(hex::decode(s).unwrap().try_into().unwrap()))
             .collect::<Vec<_>>();
         let edge_bits = 29;
         let node_mask = (1u64 << edge_bits) - 1;
         let mut uvs = vec![];
         for (i, nonce) in nonces.iter().enumerate() {
-            let edge = siphash_block(&siphash_keys, *nonce, 21, true);
+            let edge = siphash_block(&siphash_keys, *nonce as u64, 21, true);
             let u = edge & node_mask;
             let v = (edge >> 32) & node_mask;
             uvs.push((u, v));

@@ -7677,6 +7677,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "lazy_static",
+ "libsqlite3-sys",
  "log",
  "rand 0.8.5",
  "serde",
