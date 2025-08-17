@@ -2,8 +2,8 @@
 #
 # prep json build matrix from args
 #
-# ./build-matrix.sh all "4.4.1" "linux/amd64,linux/arm64"
-# ./build-matrix.sh minotari_sha3_miner "4.4.1" "linux/arm64"
+# ./build-matrix.sh all "4.4.1" "linux/amd64,linux/arm64" mainnet
+# ./build-matrix.sh minotari_sha3_miner "4.4.1" "linux/arm64" igor
 # ./build-matrix.sh tor "4.4.1" "linux/arm64"
 #
 
@@ -114,7 +114,26 @@ matrix_platforms=$(jq --argjson platforms "$platforms_json" '
   ]
 ' <<< "${matrix_details}")
 
-matrix=$(echo "${matrix_platforms}" | jq -s -c '{"builds": .[]}')
+# Prep multTest setups
+build_networks=${4:-"esme, mainnet"}
+mapfile -t networks_list < <(echo "${build_networks}" | tr ',' '\n'| awk '{$1=$1; print}')
+# Convert platform list to JSON array
+networks_json=$(jq -n --argjson p "$(printf '%s\n' "${networks_list[@]}" | jq -R . | jq -s .)" '$p')
+# Final merged matrix
+matrix_final="[]"
+
+for net in "${networks_list[@]}"; do
+  source ../multinet_envs.sh ${net}
+  # Add tari_network and tari_target_network for this network
+  matrix_network=$(echo "${matrix_platforms}" | \
+    jq --arg tn "${net}" --arg ttn "${TARI_TARGET_NETWORK}" 'map(. + {"tari_network": $tn, "tari_target_network": $ttn})')
+
+  # Merge into final matrix
+  matrix_final=$(echo "${matrix_final} ${matrix_network}" | jq -s 'add')
+done
+
+#matrix=$(echo "${matrix_platforms}" | jq -s -c '{"builds": .[]}')
+matrix=$(echo "${matrix_final}" | jq -s -c '{"builds": .[]}')
 
 echo "${matrix}"
 echo "${matrix}" | jq .

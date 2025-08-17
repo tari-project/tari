@@ -48,8 +48,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      TARI_NETWORK: ${{ steps.set-tari-network.outputs.TARI_NETWORK }}
-      TARI_TARGET_NETWORK: ${{ steps.set-tari-network.outputs.TARI_TARGET_NETWORK }}
 
     steps:
       - name: checkout tari
@@ -75,29 +73,11 @@ jobs:
           fi
 
           cd buildtools/docker_rig
-          source ./build-matrix.sh "${{ inputs.build_items }}" "${VERSION}" "${{ inputs.platforms }}"
+          source ./build-matrix.sh "${{ inputs.build_items }}" "${VERSION}" "${{ inputs.platforms }}" "${{ inputs.tari_network }}"
 
           echo "${matrix}"
           echo "${matrix}" | jq .
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT
-
-      - name: Declare TestNet for tags/branches
-        id: set-tari-network
-        shell: bash
-        run: |
-          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] && [ -z "${{ inputs.tari_network }}" ]; then
-            # Case: A version tag push (e.g., v1.0.0), not manually triggered
-            echo "Using $GITHUB_REF_NAME for multinet_envs.sh"
-            source ./buildtools/multinet_envs.sh "$GITHUB_REF_NAME"
-          else
-            # Case: Manually triggered workflow, or non-tag
-            echo "Using ${{ inputs.tari_network }} for multinet_envs.sh"
-            source ./buildtools/multinet_envs.sh "${{ inputs.tari_network }}"
-          fi
-          echo "${TARI_NETWORK}"
-          echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_OUTPUT
-          echo "${TARI_TARGET_NETWORK}"
-          echo "TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}" >> $GITHUB_OUTPUT
 
   docker_builds:
     name: Docker ${{ matrix.builds.arch }} ${{ matrix.builds.image_name }} build
@@ -114,10 +94,6 @@ jobs:
       packages: write
 
     runs-on: ${{ matrix.builds.runner }}
-
-    env:
-      TARI_NETWORK: ${{ needs.builds_envs_setup.outputs.TARI_NETWORK }}
-      TARI_TARGET_NETWORK: ${{ needs.builds_envs_setup.outputs.TARI_TARGET_NETWORK }}
 
     steps:
       - name: checkout tari
@@ -144,10 +120,10 @@ jobs:
 
             if [ ! -z "${{ inputs.tag_alias }}" ] ; then
               echo "Setup tag_alias with network"
-              echo "TAG_ALIASQ=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ env.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
-              echo "TAG_ALIASG=ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ env.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+              echo "TAG_ALIASQ=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ matrix.builds.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+              echo "TAG_ALIASG=ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ matrix.builds.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
             fi
-            echo "DSuffix=-${{ env.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+            echo "DSuffix=-${{ matrix.builds.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
           else
             echo "3rd Party builds - ${IMAGE_NAME}"
             echo "DOCKER_SUBTAG=${{ matrix.builds.build_args }}" >> $GITHUB_ENV
@@ -228,8 +204,8 @@ jobs:
             FEATURES=${{ inputs.features }}
             APP_NAME=${{ matrix.builds.app_name }}
             APP_EXEC=${{ matrix.builds.app_exec }}
-            TARI_NETWORK=${{ env.TARI_NETWORK }}
-            TARI_TARGET_NETWORK=${{ env.TARI_TARGET_NETWORK }}
+            TARI_NETWORK=${{ matrix.builds.TARI_NETWORK }}
+            TARI_TARGET_NETWORK=${{ matrix.builds.TARI_TARGET_NETWORK }}
             ${{ env.DOCKER_SUBTAG }}
           tags: |
             ${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ matrix.builds.version }}${{ env.DSuffix }}
@@ -262,20 +238,19 @@ jobs:
       - name: Pre for multi-arch image merge
         env:
           BMATRIX: ${{ needs.builds_envs_setup.outputs.matrix }}
-          TARI_NETWORK: ${{ needs.builds_envs_setup.outputs.TARI_NETWORK }}
         run: |
-          # set -xuo pipefail
+          set -xuo pipefail
           echo '${{ env.BMATRIX }}' | jq -r
 
           # Get all multi-arch image_names (have both amd64 and arm64), with version
           mapfile -t multiarch_images < <(
             echo '${{ env.BMATRIX }}' | jq -r '
               .builds
-                | group_by(.image_name)
+                | group_by([.image_name, .tari_network])
                 | map(select((map(.arch) | index("amd64")) and (map(.arch) | index("arm64"))))
-                | map({image_name: .[0].image_name, version: .[0].version})
+                | map({image_name: .[0].image_name, version: .[0].version, tari_network: .[0].tari_network})
                 | unique
-                | map("\(.image_name):\(.version)")
+                | map("\(.image_name):\(.version):\(.tari_network)")
                 | .[]
               '
             )
@@ -293,10 +268,13 @@ jobs:
             echo "Found ${#multiarch_images[@]} multi-arch Docker images."
             echo "${multiarch_images[*]}"
             for DENTRY in "${multiarch_images[@]}"; do
-              DNAME="${DENTRY%%:*}"
-              DVERSION="${DENTRY##*:}"
+              DNAME="${DENTRY%%:*}"             # before first :
+              REST="${DENTRY#*:}"               # drop first :
+              DVERSION="${REST%%:*}"            # version
+              DNETWORK="${REST##*:}"            # tari_network
+
               if [ "${DNAME:0:9}" = "minotari_" ] ; then
-                DSUFFIX=-${{ env.TARI_NETWORK }}
+                DSUFFIX=-${DNETWORK}
               else
                 DSUFFIX=
               fi
