@@ -100,10 +100,10 @@ pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
 use tari_common_types::types::CompressedCommitment;
+pub use transaction_builder::TransactionBuilder;
 
 use crate::transactions::{
-    transaction_components::KernelFeatures,
-    transaction_key_manager::error::KeyManagerServiceError,
+    transaction_components::KernelFeatures, transaction_key_manager::error::KeyManagerServiceError,
 };
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
