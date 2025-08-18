@@ -43,15 +43,25 @@ use crate::{
         tari_amount::*,
         transaction_components::{
             memo_field::{MemoField, TxType},
-            KernelBuilder, OutputFeatures, Transaction, TransactionBuilder, TransactionKernel,
-            TransactionKernelVersion, TransactionOutput, TransactionOutputVersion, WalletOutput, WalletOutputBuilder,
-            MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS,
+            KernelBuilder,
+            OutputFeatures,
+            Transaction,
+            TransactionBuilder,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+            WalletOutputBuilder,
+            MAX_TRANSACTION_INPUTS,
+            MAX_TRANSACTION_OUTPUTS,
         },
         transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface, TxoStage},
         transaction_protocol::{
             proto::recipient_signed_message,
             sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
-            KernelFeatures, TransactionMetadata,
+            KernelFeatures,
+            TransactionMetadata,
         },
     },
 };
@@ -163,8 +173,7 @@ impl<KM> Debug for BuildError<KM> {
 }
 
 impl<KM> SenderTransactionInitializer<KM>
-where
-    KM: TransactionKeyManagerInterface,
+where KM: TransactionKeyManagerInterface
 {
     pub fn new(consensus_constants: &ConsensusConstants, key_manager: KM) -> Self {
         Self {
@@ -333,8 +342,8 @@ where
             .sum::<usize>();
         if let Some(recipient_data) = &self.recipient {
             size += self.fee.weighting().round_up_features_and_scripts_size(
-                self.get_recipient_output_features().get_serialized_size()?
-                    + recipient_data.recipient_script.get_serialized_size()?,
+                self.get_recipient_output_features().get_serialized_size()? +
+                    recipient_data.recipient_script.get_serialized_size()?,
             )
         }
 
@@ -389,8 +398,8 @@ where
         let output_features = OutputFeatures::default();
         let change_features_and_scripts_size = match &self.change {
             Some(data) => {
-                data.change_script.get_serialized_size().map_err(|e| e.to_string())?
-                    + OutputFeatures::default()
+                data.change_script.get_serialized_size().map_err(|e| e.to_string())? +
+                    OutputFeatures::default()
                         .get_serialized_size()
                         .map_err(|e| e.to_string())?
             },
@@ -483,15 +492,13 @@ where
                                 TxType::PaymentToOther => {
                                     payment_id.transaction_info_set_address(recipient.recipient_address)?
                                 },
-                                TxType::PaymentToSelf
-                                | TxType::CoinSplit
-                                | TxType::CoinJoin
-                                | TxType::ValidatorNodeRegistration
-                                | TxType::CodeTemplateRegistration
-                                | TxType::ClaimAtomicSwap
-                                | TxType::HtlcAtomicSwapRefund => {
-                                    payment_id.transaction_info_set_address(own_address)?
-                                },
+                                TxType::PaymentToSelf |
+                                TxType::CoinSplit |
+                                TxType::CoinJoin |
+                                TxType::ValidatorNodeRegistration |
+                                TxType::CodeTemplateRegistration |
+                                TxType::ClaimAtomicSwap |
+                                TxType::HtlcAtomicSwapRefund => payment_id.transaction_info_set_address(own_address)?,
                                 _ => {},
                             }
                         } else {
@@ -768,6 +775,7 @@ where
             MicroMinotari::zero(),
         ))
     }
+
     async fn calculate_total_nonce_and_total_public_excess(
         &self,
         info: &RawTransactionInfo,
@@ -778,15 +786,15 @@ where
         // lets calculate the total sender kernel exess
         let mut public_excess = UncompressedPublicKey::default();
         for input in &info.inputs {
-            public_nonce = public_nonce
-                + key_manager
+            public_nonce = public_nonce +
+                key_manager
                     .get_public_key_at_key_id(&input.kernel_nonce)
                     .await
                     .map_err(|e| format!("Failed to get public key: {}", e))?
                     .to_public_key()
                     .map_err(|e| e.to_string())?;
-            public_excess = public_excess
-                - key_manager
+            public_excess = public_excess -
+                key_manager
                     .get_txo_kernel_signature_excess_with_offset(&input.output.spending_key_id, &input.kernel_nonce)
                     .await
                     .map_err(|e| format!("Failed to get kernel signature excess: {}", e))?
@@ -794,15 +802,15 @@ where
                     .map_err(|e| e.to_string())?;
         }
         for output in &info.outputs {
-            public_nonce = public_nonce
-                + key_manager
+            public_nonce = public_nonce +
+                key_manager
                     .get_public_key_at_key_id(&output.kernel_nonce)
                     .await
                     .map_err(|e| format!("Failed to get public key: {}", e))?
                     .to_public_key()
                     .map_err(|e| e.to_string())?;
-            public_excess = public_excess
-                + key_manager
+            public_excess = public_excess +
+                key_manager
                     .get_txo_kernel_signature_excess_with_offset(&output.output.spending_key_id, &output.kernel_nonce)
                     .await
                     .map_err(|e| format!("Failed to get kernel signature excess: {}", e))?
@@ -811,15 +819,15 @@ where
         }
 
         if let Some(change) = &info.change_output {
-            public_nonce = public_nonce
-                + key_manager
+            public_nonce = public_nonce +
+                key_manager
                     .get_public_key_at_key_id(&change.kernel_nonce)
                     .await
                     .map_err(|e| format!("Failed to get public key: {}", e))?
                     .to_public_key()
                     .map_err(|e| e.to_string())?;
-            public_excess = public_excess
-                + key_manager
+            public_excess = public_excess +
+                key_manager
                     .get_txo_kernel_signature_excess_with_offset(&change.output.spending_key_id, &change.kernel_nonce)
                     .await
                     .map_err(|e| format!("Failed to get kernel signature excess: {}", e))?
@@ -884,6 +892,7 @@ where
             sender_address: info.sender_address.clone(),
         })
     }
+
     pub async fn get_recipient_signed_message(
         &self,
         sender_info: &SingleRoundSenderData,
@@ -922,16 +931,16 @@ where
         let total_nonce = &sender_info
             .public_nonce
             .to_public_key()
-            .map_err(|e| self.get_build_err(&e.to_string()))?
-            + &public_nonce
+            .map_err(|e| self.get_build_err(&e.to_string()))? +
+            &public_nonce
                 .pub_key
                 .to_public_key()
                 .map_err(|e| self.get_build_err(&e.to_string()))?;
         let total_excess = &sender_info
             .public_excess
             .to_public_key()
-            .map_err(|e| self.get_build_err(&e.to_string()))?
-            + &public_excess
+            .map_err(|e| self.get_build_err(&e.to_string()))? +
+            &public_excess
                 .to_public_key()
                 .map_err(|e| self.get_build_err(&e.to_string()))?;
         let signature = &self
@@ -979,17 +988,16 @@ where
             let total_public_nonce = &info
                 .total_sender_nonce
                 .to_public_key()
-                .map_err(|e| self.get_build_err(&e.to_string()))?
-                + info
-                    .recipient_partial_kernel_signature
+                .map_err(|e| self.get_build_err(&e.to_string()))? +
+                info.recipient_partial_kernel_signature
                     .get_compressed_public_nonce()
                     .to_public_key()
                     .map_err(|e| self.get_build_err(&e.to_string()))?;
             let total_public_excess = &info
                 .total_sender_excess
                 .to_public_key()
-                .map_err(|e| self.get_build_err(&e.to_string()))?
-                + &info
+                .map_err(|e| self.get_build_err(&e.to_string()))? +
+                &info
                     .recipient_partial_kernel_excess
                     .to_public_key()
                     .map_err(|e| self.get_build_err(&e.to_string()))?;
@@ -1067,8 +1075,8 @@ where
                     .await
                     .map_err(|e| self.get_build_err(&e.to_string()))?,
             );
-            signature = &signature
-                + &self
+            signature = &signature +
+                &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
                         &input.output.spending_key_id,
@@ -1084,8 +1092,8 @@ where
                     .map_err(|e| self.get_build_err(&e.to_string()))?
                     .to_schnorr_signature()
                     .map_err(|e| self.get_build_err(&e.to_string()))?;
-            offset = offset
-                - &self
+            offset = offset -
+                &self
                     .key_manager
                     .get_txo_private_kernel_offset(&input.output.spending_key_id, &input.kernel_nonce)
                     .await
@@ -1101,8 +1109,8 @@ where
                     .await
                     .map_err(|e| self.get_build_err(&e.to_string()))?,
             );
-            signature = &signature
-                + &self
+            signature = &signature +
+                &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
                         &output.output.spending_key_id,
@@ -1118,8 +1126,8 @@ where
                     .map_err(|e| self.get_build_err(&e.to_string()))?
                     .to_schnorr_signature()
                     .map_err(|e| self.get_build_err(&e.to_string()))?;
-            offset = offset
-                + &self
+            offset = offset +
+                &self
                     .key_manager
                     .get_txo_private_kernel_offset(&output.output.spending_key_id, &output.kernel_nonce)
                     .await
@@ -1142,8 +1150,8 @@ where
                     .await
                     .map_err(|e| self.get_build_err(&e.to_string()))?,
             );
-            signature = &signature
-                + &self
+            signature = &signature +
+                &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
                         &change.output.spending_key_id,
@@ -1159,8 +1167,8 @@ where
                     .map_err(|e| self.get_build_err(&e.to_string()))?
                     .to_schnorr_signature()
                     .map_err(|e| self.get_build_err(&e.to_string()))?;
-            offset = offset
-                + &self
+            offset = offset +
+                &self
                     .key_manager
                     .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
                     .await

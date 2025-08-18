@@ -39,9 +39,19 @@ use crate::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{
-            KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionBuilder as CoreTransactionBuilder,
-            TransactionKernel, TransactionKernelVersion, TransactionOutput, TransactionOutputVersion, WalletOutput,
-            WalletOutputBuilder, MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS,
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionBuilder as CoreTransactionBuilder,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+            WalletOutputBuilder,
+            MAX_TRANSACTION_INPUTS,
+            MAX_TRANSACTION_OUTPUTS,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
         transaction_protocol::{
@@ -96,8 +106,7 @@ pub struct OneSidedTransactionBuilder<KM> {
 }
 
 impl<KM> OneSidedTransactionBuilder<KM>
-where
-    KM: TransactionKeyManagerInterface,
+where KM: TransactionKeyManagerInterface
 {
     /// Create a new OneSidedTransactionBuilder
     pub fn new(consensus_constants: ConsensusConstants, key_manager: KM, sender_address: TariAddress) -> Self {
@@ -281,48 +290,42 @@ where
         let mut total_public_excess = CompressedPublicKey::default();
 
         for input in &info.inputs {
-            total_public_nonce = total_public_nonce
-                + self
-                    .key_manager
+            total_public_nonce = total_public_nonce +
+                self.key_manager
                     .get_public_key_at_key_id(&input.kernel_nonce)
                     .await
                     .map_err(|e| e.to_string())?;
 
-            total_public_excess = total_public_excess
-                - self
-                    .key_manager
+            total_public_excess = total_public_excess -
+                self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(&input.output.spending_key_id, &input.kernel_nonce)
                     .await
                     .map_err(|e| e.to_string())?;
         }
 
         for output in &info.outputs {
-            total_public_nonce = total_public_nonce
-                + self
-                    .key_manager
+            total_public_nonce = total_public_nonce +
+                self.key_manager
                     .get_public_key_at_key_id(&output.kernel_nonce)
                     .await
                     .map_err(|e| e.to_string())?;
 
-            total_public_excess = total_public_excess
-                + self
-                    .key_manager
+            total_public_excess = total_public_excess +
+                self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(&output.output.spending_key_id, &output.kernel_nonce)
                     .await
                     .map_err(|e| e.to_string())?;
         }
 
         if let Some(change) = &info.change_output {
-            total_public_nonce = total_public_nonce
-                + self
-                    .key_manager
+            total_public_nonce = total_public_nonce +
+                self.key_manager
                     .get_public_key_at_key_id(&change.kernel_nonce)
                     .await
                     .map_err(|e| e.to_string())?;
 
-            total_public_excess = total_public_excess
-                + self
-                    .key_manager
+            total_public_excess = total_public_excess +
+                self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(&change.output.spending_key_id, &change.kernel_nonce)
                     .await
                     .map_err(|e| e.to_string())?;
@@ -588,8 +591,8 @@ where
 
             signature = &signature + &partial_sig.to_schnorr_signature().map_err(|e| e.to_string())?;
 
-            offset = offset
-                - &self
+            offset = offset -
+                &self
                     .key_manager
                     .get_txo_private_kernel_offset(&input.output.spending_key_id, &input.kernel_nonce)
                     .await
@@ -625,8 +628,8 @@ where
 
             signature = &signature + &partial_sig.to_schnorr_signature().map_err(|e| e.to_string())?;
 
-            offset = offset
-                + &self
+            offset = offset +
+                &self
                     .key_manager
                     .get_txo_private_kernel_offset(&output.output.spending_key_id, &output.kernel_nonce)
                     .await
@@ -674,8 +677,8 @@ where
 
             signature = &signature + &partial_sig.to_schnorr_signature().map_err(|e| e.to_string())?;
 
-            offset = offset
-                + &self
+            offset = offset +
+                &self
                     .key_manager
                     .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
                     .await

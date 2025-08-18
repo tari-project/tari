@@ -35,7 +35,8 @@ use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::transactions::{
-    transaction_components::EncryptedDataError, transaction_key_manager::error::KeyManagerServiceError,
+    transaction_components::EncryptedDataError,
+    transaction_key_manager::error::KeyManagerServiceError,
 };
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//

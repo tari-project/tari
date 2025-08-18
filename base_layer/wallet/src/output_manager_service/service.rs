@@ -32,7 +32,12 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::TxId,
     types::{
-        BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput, PrivateKey, UncompressedCommitment,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        HashOutput,
+        PrivateKey,
+        UncompressedCommitment,
         UncompressedPublicKey,
     },
 };
@@ -42,7 +47,8 @@ use tari_core::{
     consensus::ConsensusConstants,
     covenants::Covenant,
     one_sided::{
-        public_key_to_output_encryption_key, shared_secret_to_output_encryption_key,
+        public_key_to_output_encryption_key,
+        shared_secret_to_output_encryption_key,
         shared_secret_to_output_spending_key,
     },
     transactions::{
@@ -50,17 +56,33 @@ use tari_core::{
         tari_amount::MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
-            EncryptedData, KernelFeatures, OutputFeatures, RangeProofType, Transaction, TransactionError,
-            TransactionOutput, TransactionOutputVersion, WalletOutput, WalletOutputBuilder,
+            EncryptedData,
+            KernelFeatures,
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionError,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+            WalletOutputBuilder,
         },
         transaction_key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
-        CryptoFactories, ReceiverTransactionProtocol, SenderTransactionProtocol,
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{
-    inputs, push_pubkey_script, script, CompressedCheckSigSchnorrSignature, ExecutionStack, Opcode, StackItem,
+    inputs,
+    push_pubkey_script,
+    script,
+    CompressedCheckSigSchnorrSignature,
+    ExecutionStack,
+    Opcode,
+    StackItem,
     TariScript,
 };
 use tari_service_framework::reply_channel;
@@ -75,7 +97,11 @@ use crate::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
         handle::{
-            OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse, RecoveredOutput,
+            OutputManagerEvent,
+            OutputManagerEventSender,
+            OutputManagerRequest,
+            OutputManagerResponse,
+            RecoveredOutput,
         },
         input_selection::UtxoSelectionCriteria,
         recovery::StandardUtxoRecoverer,
@@ -83,7 +109,8 @@ use crate::{
         storage::{
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
             models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
-            OutputSource, OutputStatus,
+            OutputSource,
+            OutputStatus,
         },
         tasks::TxoValidationTask,
         TRANSACTION_INPUTS_LIMIT,
@@ -943,11 +970,11 @@ where
             .round_up_features_and_scripts_size(
                 OutputFeatures::default()
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    + TariScript::default()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    TariScript::default()
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    + Covenant::new()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    Covenant::new()
                         .get_serialized_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             );
@@ -974,11 +1001,11 @@ where
                 let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
                     output_features_estimate
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                        + TariScript::default()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                        TariScript::default()
                             .get_serialized_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                        + Covenant::new()
+                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                        Covenant::new()
                             .get_serialized_size()
                             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
                 );
@@ -1024,11 +1051,11 @@ where
             .round_up_features_and_scripts_size(
                 recipient_output_features
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    + recipient_script
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_script
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    + recipient_covenant
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_covenant
                         .get_serialized_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             );
@@ -1428,9 +1455,9 @@ where
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                output_features.get_serialized_size()?
-                    + temp_script.get_serialized_size()?
-                    + Covenant::default().get_serialized_size()?,
+                output_features.get_serialized_size()? +
+                    temp_script.get_serialized_size()? +
+                    Covenant::default().get_serialized_size()?,
             );
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
@@ -1592,8 +1619,8 @@ where
             .try_build(&self.resources.key_manager)
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
-        let total_metadata_ephemeral_public_key = aggregated_metadata_ephemeral_public_key_shares
-            + &output.metadata_signature.ephemeral_pubkey().to_public_key()?;
+        let total_metadata_ephemeral_public_key = aggregated_metadata_ephemeral_public_key_shares +
+            &output.metadata_signature.ephemeral_pubkey().to_public_key()?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created output with partial metadata signature");
 
         // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
@@ -1629,8 +1656,8 @@ where
             .await?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: updated script input signature");
 
-        let total_script_nonce = aggregated_script_signature_public_nonces
-            + &updated_input.script_signature.ephemeral_pubkey().to_public_key()?;
+        let total_script_nonce = aggregated_script_signature_public_nonces +
+            &updated_input.script_signature.ephemeral_pubkey().to_public_key()?;
         let mut tx = stp.get_transaction()?.clone();
         let mut tx_body = tx.body;
         tx_body.update_script_signature(updated_input.commitment()?, updated_input.script_signature.clone())?;
@@ -1768,9 +1795,9 @@ where
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                output_features.get_serialized_size()?
-                    + temp_script.get_serialized_size()?
-                    + Covenant::default().get_serialized_size()?,
+                output_features.get_serialized_size()? +
+                    temp_script.get_serialized_size()? +
+                    Covenant::default().get_serialized_size()?,
             );
         let fee = self.get_fee_calc();
         let fee = fee.calculate(fee_per_gram, 1, 1, 1, metadata_byte_size);
@@ -1957,11 +1984,11 @@ where
             .round_up_features_and_scripts_size(
                 output_features
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    + TariScript::default()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    TariScript::default()
                         .get_serialized_size()
-                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    + covenant
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    covenant
                         .get_serialized_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             );
@@ -2176,11 +2203,11 @@ where
         let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
             output_features_estimate
                 .get_serialized_size()
-                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                + Covenant::new()
+                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                Covenant::new()
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                + TariScript::default()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                TariScript::default()
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
         );
@@ -2283,8 +2310,8 @@ where
             .round_up_features_and_scripts_size(
                 TariScript::default()
                     .get_serialized_size()
-                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                    + OutputFeatures::default()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    OutputFeatures::default()
                         .get_serialized_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             ))
@@ -2345,8 +2372,8 @@ where
             src_outputs.len(),
             number_of_splits,
             self.default_features_and_scripts_size()
-                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                * number_of_splits,
+                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
+                number_of_splits,
         );
 
         let accumulated_amount = src_outputs
@@ -2416,8 +2443,8 @@ where
                         fee_per_gram,
                         number_of_splits,
                         self.default_features_and_scripts_size()
-                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                            * number_of_splits,
+                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
+                            number_of_splits,
                     )
                     .await?;
 
@@ -2453,8 +2480,8 @@ where
             1,
             src_outputs.len(),
             number_of_splits,
-            default_features_and_scripts_size.map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
-                * number_of_splits,
+            default_features_and_scripts_size.map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
+                number_of_splits,
         );
 
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
