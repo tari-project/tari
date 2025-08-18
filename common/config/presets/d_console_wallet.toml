@@ -27,12 +27,6 @@
 # (default = )
 #password = "secret"
 
-# The auto ping interval to use for contacts liveness data (default = 30 s)
-#contacts_auto_ping_interval = 30
-
-# How long a contact may be not seen before being determined to be offline (default = 30 s)
-#contacts_online_ping_window = 30
-
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.
 # The stages are:

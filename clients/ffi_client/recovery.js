@@ -108,10 +108,6 @@ try {
   const txoValidation = ffi.Callback("void", [u64, u64], function (i, j) {
     console.log("txoValidation: ", i, j);
   });
-  // callback_contacts_liveness_data_updated:  unsafe extern "C" fn(*mut ContactsLivenessData),
-  const contactsLivenessDataUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
-    console.log("contactsLivenessDataUpdated: ", ptr);
-  });
   // callback_balance_updated: unsafe extern "C" fn(*mut Balance),
   const balanceUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("balanceUpdated: ", ptr);
