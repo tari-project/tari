@@ -41,7 +41,7 @@ impl CommandContext {
     /// Function to process the get-mempool-stats command
     pub async fn get_mempool_stats(&mut self) -> Result<(), Error> {
         let stats = self.mempool_service.get_mempool_stats().await?;
-        println!("{}", stats);
+        println!("{stats}");
         Ok(())
     }
 }

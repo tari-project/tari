@@ -97,7 +97,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 
     info!(target: LOG_TARGET, "Configuration file loaded.");
     let overrides = overrides.get_config_property_overrides(&network);
-    trace!(target: LOG_TARGET, "Config property overrides: {:?}", overrides);
+    trace!(target: LOG_TARGET, "Config property overrides: {overrides:?}" );
 
     // Set the static network variable according to the user chosen network (for use with
     // `get_current_or_user_setting_or_default()`) -
@@ -109,7 +109,7 @@ pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverri
 
     let mut cfg = Config::builder().add_source(cfg);
     for (key, value) in overrides {
-        trace!(target: LOG_TARGET, "Set override: ({}, {})", key, value);
+        trace!(target: LOG_TARGET, "Set override: ({key}, {value})");
         cfg = cfg
             .set_override(key.as_str(), value.as_str())
             .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;

@@ -13,7 +13,7 @@ use super::error::ConfigError;
 use crate::configuration::Network;
 
 pub fn prompt(question: &str) -> bool {
-    println!("{}", question);
+    println!("{question}");
     let mut input = "".to_string();
     io::stdin().read_line(&mut input).unwrap();
     let input = input.trim().to_lowercase();

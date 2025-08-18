@@ -583,7 +583,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             ))
             .execute(&mut conn)?;
 
-        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        trace!(target: LOG_TARGET, "rows updated: {result:?}");
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -837,7 +837,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     count,
                     outputs_to_send.len()
                 );
-                error!(target: LOG_TARGET, "{}", msg,);
+                error!(target: LOG_TARGET, "{msg}");
                 return Err(OutputManagerStorageError::UnexpectedResult(msg));
             }
 
@@ -1273,12 +1273,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .into_iter()
             .filter_map(|x| {
                 x.to_db_wallet_output()
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         error!(
                             target: LOG_TARGET,
-                            "failed to convert `OutputSql` to `DbWalletOutput`: {:#?}", e
+                            "failed to convert `OutputSql` to `DbWalletOutput`: {e:#?}"
                         );
-                        e
                     })
                     .ok()
             })
@@ -1521,6 +1520,7 @@ impl KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
 
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
@@ -1564,21 +1564,18 @@ mod test {
         let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
+        let db_path = format!("{db_folder}{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
         let mut conn =
-            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+            SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
         conn.run_pending_migrations(MIGRATIONS)
             .map(|v| {
                 v.into_iter()
                     .map(|b| {
-                        let m = format!("Running migration {}", b);
-                        // std::io::stdout()
-                        //     .write_all(m.as_ref())
-                        //     .expect("Couldn't write migration number to stdout");
+                        let m = format!("Running migration {b}");
                         m
                     })
                     .collect::<Vec<String>>()

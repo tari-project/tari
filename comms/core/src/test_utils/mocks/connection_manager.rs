@@ -129,7 +129,7 @@ impl ConnectionManagerMock {
     async fn handle_request(&self, req: ConnectionManagerRequest) {
         use ConnectionManagerRequest::{CancelDial, DialPeer, NotifyListening};
         self.state.inc_call_count();
-        self.state.add_call(format!("{:?}", req)).await;
+        self.state.add_call(format!("{req:?}")).await;
         match req {
             DialPeer { node_id, mut reply_tx } => {
                 // Send Ok(&mut conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)

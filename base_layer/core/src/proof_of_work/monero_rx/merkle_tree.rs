@@ -56,15 +56,13 @@ fn cn_fast_hash2(hash1: &Hash, hash2: &Hash) -> Hash {
 fn tree_hash_count(count: usize) -> Result<usize, MergeMineError> {
     if count < 3 {
         return Err(MergeMineError::HashingError(format!(
-            "Cannot calculate tree hash root. Expected count to be greater than 3 but got {}",
-            count
+            "Cannot calculate tree hash root. Expected count to be greater than 3 but got {count}"
         )));
     }
 
     if count > 0x10000000 {
         return Err(MergeMineError::HashingError(format!(
-            "Cannot calculate tree hash root. Expected count to be less than 0x10000000 but got {}",
-            count
+            "Cannot calculate tree hash root. Expected count to be less than 0x10000000 but got {count}",
         )));
     }
 
@@ -86,8 +84,11 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
     }
 
     match hashes.len() {
-        1 => Ok(hashes[0]),
-        2 => Ok(cn_fast_hash2(&hashes[0], &hashes[1])),
+        1 => Ok(*hashes.first().expect("Cannot fail")),
+        2 => Ok(cn_fast_hash2(
+            hashes.first().expect("Cannot fail"),
+            hashes.get(1).expect("Cannot fail"),
+        )),
         n => {
             let mut cnt = tree_hash_count(n)?;
             let mut buf = vec![Hash::null(); cnt];
@@ -95,12 +96,17 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
             // c is the number of elements between the number of hashes and the next power of 2.
             let c = 2 * cnt - hashes.len();
 
-            buf[..c].copy_from_slice(&hashes[..c]);
+            buf.get_mut(..c)
+                .expect("Cannot fail")
+                .copy_from_slice(hashes.get(..c).expect("Cannot fail"));
 
             // Hash the rest of the hashes together to
             let mut i: usize = c;
-            for b in &mut buf[c..cnt] {
-                *b = cn_fast_hash2(&hashes[i], &hashes[i + 1]);
+            for b in buf.get_mut(c..cnt).expect("Cannot fail") {
+                *b = cn_fast_hash2(
+                    hashes.get(i).expect("Cannot fail"),
+                    hashes.get(i + 1).expect("Cannot fail"),
+                );
                 i += 2;
             }
 
@@ -114,12 +120,16 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
                 cnt >>= 1;
                 let mut i = 0;
                 for j in 0..cnt {
-                    buf[j] = cn_fast_hash2(&buf[i], &buf[i + 1]);
+                    *buf.get_mut(j).expect("Cannot fail") =
+                        cn_fast_hash2(buf.get(i).expect("Cannot fail"), buf.get(i + 1).expect("Cannot fail"));
                     i += 2;
                 }
             }
 
-            Ok(cn_fast_hash2(&buf[0], &buf[1]))
+            Ok(cn_fast_hash2(
+                buf.first().expect("Cannot fail"),
+                buf.get(1).expect("Cannot fail"),
+            ))
         },
     }
 }
@@ -211,9 +221,9 @@ impl MerkleProof {
         let depth = self.branch.len();
         for d in 0..depth {
             if (self.path_bitmap >> (depth - d - 1)) & 1 > 0 {
-                root = cn_fast_hash2(&self.branch[d], &root);
+                root = cn_fast_hash2(self.branch.get(d).expect("Should exist"), &root);
             } else {
-                root = cn_fast_hash2(&root, &self.branch[d]);
+                root = cn_fast_hash2(&root, self.branch.get(d).expect("Should exist"));
             }
         }
 
@@ -267,7 +277,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
     match hashes.len() {
         0 => None,
         1 => {
-            if hashes[0] != *hash {
+            if hashes.first().expect("Already checked") != hash {
                 return None;
             }
             MerkleProof::try_construct(vec![], 0)
@@ -277,7 +287,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
                 return None;
             }
             let i = usize::from(pos == 0);
-            MerkleProof::try_construct(vec![hashes[i]], u32::from(pos != 0))
+            MerkleProof::try_construct(vec![*hashes.get(i).expect("Already checked")], u32::from(pos != 0))
         }),
         len => {
             let mut idx = hashes.iter().position(|node| node == hash)?;
@@ -286,7 +296,9 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
             let mut ints = vec![Hash::null(); count];
 
             let c = 2 * count - len;
-            ints[..c].copy_from_slice(&hashes[..c]);
+            ints.get_mut(..c)
+                .expect("Already checked")
+                .copy_from_slice(hashes.get(..c).expect("Already checked"));
 
             let mut branch = Vec::new();
             let mut path = 0u32;
@@ -295,11 +307,14 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
                 // Left or right
                 if idx == i || idx == i + 1 {
                     let ii = if idx == i { i + 1 } else { i };
-                    branch.push(hashes[ii]);
+                    branch.push(*hashes.get(ii).expect("Already checked"));
                     path = (path << 1) | u32::from(idx != i);
                     idx = j;
                 }
-                *val = cn_fast_hash2(&hashes[i], &hashes[i + 1]);
+                *val = cn_fast_hash2(
+                    hashes.get(i).expect("Already checked"),
+                    hashes.get(i + 1).expect("Already checked"),
+                );
                 i += 2;
             }
 
@@ -311,18 +326,21 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
                 for j in 0..count {
                     if idx == i || idx == i + 1 {
                         let ii = if idx == i { i + 1 } else { i };
-                        branch.push(ints[ii]);
+                        branch.push(*ints.get(ii).expect("Already checked"));
                         path = (path << 1) | u32::from(idx != i);
                         idx = j;
                     }
-                    ints[j] = cn_fast_hash2(&ints[i], &ints[i + 1]);
+                    *ints.get_mut(j).expect("Already checked") = cn_fast_hash2(
+                        ints.get(i).expect("Already checked"),
+                        ints.get(i + 1).expect("Already checked"),
+                    );
                     i += 2;
                 }
             }
 
             if idx == 0 || idx == 1 {
                 let ii = usize::from(idx == 0);
-                branch.push(ints[ii]);
+                branch.push(*ints.get(ii).expect("Already checked"));
                 path = (path << 1) | u32::from(idx != 0);
             }
 
@@ -333,6 +351,7 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::str::FromStr;
 
     use monero::{

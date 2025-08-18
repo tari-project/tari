@@ -239,7 +239,7 @@ where
                 let _result = service_reply_channel
                     .send(Ok(TransactionServiceResponse::TransactionSent(self.id)))
                     .inspect_err(|e| {
-                        warn!(target: LOG_TARGET, "Failed to send service reply: {:?}", e);
+                        warn!(target: LOG_TARGET, "Failed to send service reply: {e:?}");
                     });
                 Ok(sp)
             },
@@ -248,7 +248,7 @@ where
                 let _size = service_reply_channel
                     .send(Err(TransactionServiceError::from(e)))
                     .inspect_err(|e| {
-                        warn!(target: LOG_TARGET, "Failed to send service reply: {:?}", e);
+                        warn!(target: LOG_TARGET, "Failed to send service reply: {e:?}");
                     });
                 Err(TransactionServiceProtocolError::new(
                     self.id,
@@ -649,7 +649,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         info!(
             target: LOG_TARGET,
-            "Transaction Recipient Reply for TX_ID = {} received", tx_id,
+            "Transaction Recipient Reply for TX_ID = {tx_id} received"
         );
 
         send_finalized_transaction_message(
@@ -672,13 +672,11 @@ where
             .resources
             .event_publisher
             .send(Arc::new(TransactionEvent::ReceivedTransactionReply(tx_id)))
-            .map_err(|e| {
+            .inspect_err(|e| {
                 trace!(
                     target: LOG_TARGET,
-                    "Error sending event, usually because there are no subscribers: {:?}",
-                    e
+                    "Error sending event, usually because there are no subscribers: {e:?}"
                 );
-                e
             });
 
         Ok(())
@@ -900,7 +898,7 @@ where
                         "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
                          Tags: {:?}",
                         self.id,
-                        successful_sends[0],
+                        successful_sends.first().expect("Already checked"),
                     );
                     Ok(true)
                 } else if !failed_sends.is_empty() {
@@ -992,7 +990,7 @@ where
         self.resources.db.cancel_pending_transaction(self.id).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
-                "Pending Transaction does not exist and could not be cancelled: {:?}", e
+                "Pending Transaction does not exist and could not be cancelled: {e:?}"
             );
             TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
         })?;
@@ -1010,12 +1008,11 @@ where
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,
-                    "Error sending event because there are no subscribers: {:?}",
-                    e
+                    "Error sending event because there are no subscribers: {e:?}"
                 );
                 TransactionServiceProtocolError::new(
                     self.id,
-                    TransactionServiceError::BroadcastSendError(format!("{:?}", e)),
+                    TransactionServiceError::BroadcastSendError(format!("{e:?}")),
                 )
             });
 

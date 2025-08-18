@@ -133,8 +133,7 @@ impl WalletStateTool {
                 }))
             },
             Err(e) => Err(McpError::tool_execution_failed(format!(
-                "Failed to connect to wallet: {}",
-                e
+                "Failed to connect to wallet: {e}"
             ))),
         }
     }
@@ -146,7 +145,7 @@ impl WalletStateTool {
         let mut last_status = WalletStatus::NotRunning;
         let mut status_history = Vec::new();
 
-        log::info!("Starting wallet status monitoring (timeout: {}s)", timeout_secs);
+        log::info!("Starting wallet status monitoring (timeout: {timeout_secs}s)");
 
         loop {
             let current_status = self.check_wallet_status().await;
@@ -162,7 +161,7 @@ impl WalletStateTool {
             // Only add to history if status changed
             if !self.status_matches(&current_status, &last_status) {
                 status_history.push(status_info.clone());
-                log::info!("Wallet status changed: {:?}", current_status);
+                log::info!("Wallet status changed: {current_status:?}");
             }
 
             // Check for completion conditions
@@ -180,7 +179,7 @@ impl WalletStateTool {
                         "final_status": "error",
                         "total_time_seconds": elapsed.as_secs(),
                         "error": err,
-                        "message": format!("Wallet encountered an error: {}", err),
+                        "message": format!("Wallet encountered an error: {err}"),
                         "status_history": status_history
                     }));
                 },
@@ -193,7 +192,7 @@ impl WalletStateTool {
                     "final_status": "timeout",
                     "total_time_seconds": elapsed.as_secs(),
                     "current_status": self.status_to_json(&current_status),
-                    "message": format!("Wallet startup monitoring timed out after {}s", timeout_secs),
+                    "message": format!("Wallet startup monitoring timed out after {timeout_secs}s"),
                     "status_history": status_history
                 }));
             }

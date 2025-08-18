@@ -51,7 +51,7 @@ impl DedupCacheDatabase {
     pub fn new(connection: DbConnection, capacity: usize) -> Self {
         debug!(
             target: LOG_TARGET,
-            "Message dedup cache capacity initialized at {}", capacity,
+            "Message dedup cache capacity initialized at {capacity}",
         );
         Self { connection, capacity }
     }
@@ -102,7 +102,7 @@ impl DedupCacheDatabase {
         }
         debug!(
             target: LOG_TARGET,
-            "Message dedup cache: count {}, capacity {}, removed {}", msg_count, capacity, num_removed,
+            "Message dedup cache: count {msg_count}, capacity {capacity}, removed {num_removed}"
         );
         Ok(num_removed)
     }
@@ -121,8 +121,7 @@ impl DedupCacheDatabase {
         match insert_result {
             Ok(1) => Ok(1),
             Ok(n) => Err(StorageError::UnexpectedResult(format!(
-                "Expected exactly one row to be inserted. Got {}",
-                n
+                "Expected exactly one row to be inserted. Got {n}"
             ))),
             Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
                 DatabaseErrorKind::UniqueViolation => {

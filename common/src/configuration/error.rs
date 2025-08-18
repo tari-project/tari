@@ -33,7 +33,7 @@ impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.cause)?;
         if let Some(ref source) = self.source {
-            write!(f, ": {}", source)?
+            write!(f, ": {source}")?
         }
 
         Ok(())
@@ -61,7 +61,7 @@ mod test {
         let config_error = ConfigError::new("testing", Some(String::from("coverage")));
 
         // test formatting
-        assert_eq!(format!("{}", config_error), "testing: coverage");
+        assert_eq!(format!("{config_error}"), "testing: coverage");
 
         // create new error
         let clap_error = ClapError {

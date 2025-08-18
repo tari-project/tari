@@ -653,7 +653,7 @@ impl ConsensusConstants {
         con2.proof_of_work = algos;
 
         let mut con3 = con2.clone();
-        con3.effective_from_height = 80_000;
+        con3.effective_from_height = 82_000;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
@@ -676,6 +676,7 @@ impl ConsensusConstants {
             target_time: 60,
         });
         con3.blockchain_version = BlockVersion::V2;
+        con3.valid_blockchain_version_range = 2..=2;
         con3.proof_of_work = algos;
         let consensus_constants = vec![consensus_constants1, con2, con3];
         consensus_constants
@@ -1089,6 +1090,11 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    pub fn with_valid_blockchain_version_range(mut self, range: RangeInclusive<u16>) -> Self {
+        self.consensus.valid_blockchain_version_range = range;
+        self
+    }
+
     pub fn build(self) -> ConsensusConstants {
         self.consensus
     }
@@ -1096,6 +1102,7 @@ impl ConsensusConstantsBuilder {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::convert::TryFrom;
 
     use crate::{

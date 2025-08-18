@@ -115,7 +115,7 @@ impl Display for ContactOnlineStatus {
             ContactOnlineStatus::Online => write!(f, "Online"),
             ContactOnlineStatus::Offline => write!(f, "Offline"),
             ContactOnlineStatus::NeverSeen => write!(f, "NeverSeen"),
-            ContactOnlineStatus::Banned(reason) => write!(f, "Banned: {}", reason),
+            ContactOnlineStatus::Banned(reason) => write!(f, "Banned: {reason}"),
         }
     }
 }
@@ -214,15 +214,14 @@ where T: ContactsBackend + 'static
                 // Incoming chat messages
                 Some(msg) = chat_messages.next() => {
                     if let Err(err) = self.handle_incoming_message(msg).await {
-                        warn!(target: LOG_TARGET, "Failed to handle incoming chat message: {}", err);
+                        warn!(target: LOG_TARGET, "Failed to handle incoming chat message: {err}");
                     }
                 },
 
                 Some(request_context) = request_stream.next() => {
                     let (request, reply_tx) = request_context.split();
-                    let response = self.handle_request(request).await.map_err(|e| {
-                        error!(target: LOG_TARGET, "Error handling request: {:?}", e);
-                        e
+                    let response = self.handle_request(request).await.inspect_err(|e| {
+                        error!(target: LOG_TARGET, "Error handling request: {e:?}");
                     });
                     let _result = reply_tx.send(response).inspect_err(|_| {
                         error!(target: LOG_TARGET, "Failed to send reply");
@@ -231,7 +230,7 @@ where T: ContactsBackend + 'static
 
                 Ok(event) = liveness_event_stream.recv() => {
                     let _result = self.handle_liveness_event(&event).await.map_err(|e| {
-                        error!(target: LOG_TARGET, "Failed to handle contact status liveness event: {:?}", e);
+                        error!(target: LOG_TARGET, "Failed to handle contact status liveness event: {e:?}");
                         e
                     });
                 },
@@ -305,7 +304,7 @@ where T: ContactsBackend + 'static
                 match self.db.save_message(*message) {
                     Ok(_) => {
                         if let Err(e) = self.deliver_message(address.clone(), ob_message).await {
-                            trace!(target: LOG_TARGET, "Failed to broadcast a message {} over the network: {}", address, e);
+                            trace!(target: LOG_TARGET, "Failed to broadcast a message {address} over the network: {e}");
                         }
                     },
                     Err(e) => {
@@ -314,7 +313,7 @@ where T: ContactsBackend + 'static
                     },
                 }
 
-                trace!(target: LOG_TARGET, "Sent message to {} successfully", address);
+                trace!(target: LOG_TARGET, "Sent message to {address} successfully");
                 Ok(ContactsServiceResponse::MessageSent)
             },
             ContactsServiceRequest::SendReadConfirmation(address, confirmation) => {
@@ -385,7 +384,7 @@ where T: ContactsBackend + 'static
             LivenessEvent::PingRoundBroadcast(num_peers) => {
                 debug!(
                     target: LOG_TARGET,
-                    "New contact liveness round sent to {} peer(s)", num_peers
+                    "New contact liveness round sent to {num_peers} peer(s)"
                 );
                 // If there were no pings for a while, we are probably alone.
                 if *num_peers == 0 {
@@ -416,7 +415,7 @@ where T: ContactsBackend + 'static
                         let _size = self
                             .event_publisher
                             .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data.clone()))));
-                        trace!(target: LOG_TARGET, "{}", data);
+                        trace!(target: LOG_TARGET, "{data}");
                     }
                 };
             },
@@ -502,7 +501,7 @@ where T: ContactsBackend + 'static
                 .iter()
                 .position(|peer_status| *peer_status.node_id() == event.node_id)
             {
-                latency = self.liveness_data[pos].latency();
+                latency = self.liveness_data.get(pos).expect("Already checked").latency();
                 self.liveness_data.remove(pos);
             }
 
@@ -525,7 +524,7 @@ where T: ContactsBackend + 'static
             );
             self.liveness_data.push(data.clone());
 
-            trace!(target: LOG_TARGET, "{}", data);
+            trace!(target: LOG_TARGET, "{data}");
             // Send only fails if there are no subscribers.
             let _size = self
                 .event_publisher
@@ -569,7 +568,7 @@ where T: ContactsBackend + 'static
                 if let Some(pos) = self.liveness_data.iter().position(|p| *p.node_id() == node_id) {
                     debug!(
                         target: LOG_TARGET,
-                        "Removing disconnected/banned peer `{}` from contacts status list ", node_id
+                        "Removing disconnected/banned peer `{node_id}` from contacts status list "
                     );
                     self.liveness_data.remove(pos);
                 }
@@ -590,7 +589,7 @@ where T: ContactsBackend + 'static
             stored_at: EpochTime::now().as_u64(),
             ..message
         };
-        trace!(target: LOG_TARGET, "Handling chat message {:?}", our_message);
+        trace!(target: LOG_TARGET, "Handling chat message {our_message:?}");
 
         match self.db.save_message(our_message.clone()) {
             Ok(..) => {
@@ -598,7 +597,7 @@ where T: ContactsBackend + 'static
                     .message_publisher
                     .send(Arc::new(MessageDispatch::Message(Box::new(our_message.clone()))))
                 {
-                    debug!(target: LOG_TARGET, "Failed to re-broadcast chat message internally: {}", e);
+                    debug!(target: LOG_TARGET, "Failed to re-broadcast chat message internally: {e}");
                 }
 
                 // Send a delivery notification
@@ -607,7 +606,7 @@ where T: ContactsBackend + 'static
                 Ok(())
             },
             Err(e) => {
-                trace!(target: LOG_TARGET, "Failed to save incoming message to the db {}", e);
+                trace!(target: LOG_TARGET, "Failed to save incoming message to the db {e}");
                 Err(e.into())
             },
         }
@@ -623,7 +622,7 @@ where T: ContactsBackend + 'static
             timestamp: message.stored_at,
         });
         let msg = OutboundDomainMessage::from(confirmation);
-        trace!(target: LOG_TARGET, "Sending a delivery notification {:?}", msg);
+        trace!(target: LOG_TARGET, "Sending a delivery notification {msg:?}");
 
         self.deliver_message(address.clone(), msg).await?;
 
@@ -631,7 +630,7 @@ where T: ContactsBackend + 'static
             .db
             .confirm_message(message.message_id.clone(), Some(message.stored_at), None)
         {
-            trace!(target: LOG_TARGET, "Failed to store the delivery confirmation in the db: {}", e);
+            trace!(target: LOG_TARGET, "Failed to store the delivery confirmation in the db: {e}");
         }
 
         Ok(())
@@ -648,7 +647,7 @@ where T: ContactsBackend + 'static
             },
         };
 
-        trace!(target: LOG_TARGET, "Handling confirmation with details: message_id: {}, delivery: {:?}, read: {:?}", message_id, delivery, read);
+        trace!(target: LOG_TARGET, "Handling confirmation with details: message_id: {message_id}, delivery: {delivery:?}, read: {read:?}");
         self.db.confirm_message(message_id, delivery, read)?;
         let _msg = self.message_publisher.send(Arc::new(dispatch));
 

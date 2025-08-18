@@ -123,8 +123,7 @@ impl ResponseConverterRegistry {
 
         // No converter found
         Err(McpError::tool_execution_failed(format!(
-            "No response converter found for method: {}",
-            method_name
+            "No response converter found for method: {method_name}"
         )))
     }
 
@@ -398,6 +397,7 @@ impl ResponseConverterFactory {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[tokio::test]

@@ -45,7 +45,7 @@ impl CommandContext {
         } else {
             println!("Peers banned from node ({}):", banned.len());
             for peer in banned {
-                println!("{}", peer);
+                println!("{peer}");
             }
         }
         Ok(())

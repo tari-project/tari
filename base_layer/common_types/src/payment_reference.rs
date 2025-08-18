@@ -132,7 +132,7 @@ pub fn generate_payment_reference(block_hash: &BlockHash, output_hash: &HashOutp
 /// let payref_hex = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
 /// match parse_payment_reference_hex(payref_hex) {
 ///     Ok(payref) => println!("Parsed PayRef: {:?}", payref),
-///     Err(e) => eprintln!("Error: {}", e),
+///     Err(e) => eprintln!("Error: {e}"),
 /// }
 /// ```
 pub fn parse_payment_reference_hex(hex_str: &str) -> Result<PaymentReference, PayRefError> {

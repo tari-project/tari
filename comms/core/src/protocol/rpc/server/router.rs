@@ -296,7 +296,7 @@ mod test {
             let my_service = tower::service_fn(|req: Request<Bytes>| {
                 let msg = req.into_message();
                 let str = String::from_utf8_lossy(&msg);
-                future::ready(Ok(Response::from_message(format!("Hello {}", str))))
+                future::ready(Ok(Response::from_message(format!("Hello {str}"))))
             });
 
             future::ready(Ok(BoxService::new(my_service)))
@@ -321,7 +321,7 @@ mod test {
             let my_service = tower::service_fn(|req: Request<Bytes>| {
                 let msg = req.into_message();
                 let str = String::from_utf8_lossy(&msg);
-                future::ready(Ok(Response::from_message(format!("Goodbye {}", str))))
+                future::ready(Ok(Response::from_message(format!("Goodbye {str}"))))
             });
 
             future::ready(Ok(BoxService::new(my_service)))

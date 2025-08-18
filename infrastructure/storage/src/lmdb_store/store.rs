@@ -213,7 +213,7 @@ impl LMDBBuilder {
                 db: Arc::new(db),
             };
             databases.insert(name.to_string(), db);
-            trace!(target: LOG_TARGET, "({}) LMDB database '{}' is ready", path, name);
+            trace!(target: LOG_TARGET, "({path}) LMDB database '{name}' is ready");
         }
         Ok(LMDBStore {
             path,
@@ -744,11 +744,11 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
     {
         match val {
             Ok(None) => Ok(None),
-            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e))),
+            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {e}"))),
             Ok(Some(v)) => match bincode::deserialize(v) {
                 // The reference to v is about to be dropped, so we must copy the data now
                 Ok(val) => Ok(Some(val)),
-                Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e))),
+                Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {e}"))),
             },
         }
     }

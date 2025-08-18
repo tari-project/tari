@@ -75,12 +75,12 @@ fn multiaddr_from_service_id_and_port(service_id: &str, onion_port: u16) -> Resu
     const ONION_V2_LEN: usize = 16;
     const ONION_V3_LEN: usize = 56;
     match service_id.len() {
-        ONION_V2_LEN => format!("/onion/{}:{}", service_id, onion_port)
+        ONION_V2_LEN => format!("/onion/{service_id}:{onion_port}")
             .parse()
             .map_err(|_| TorClientError::InvalidServiceId),
         ONION_V3_LEN => {
             // This will fail until this PR is released (https://github.com/libp2p/rust-libp2p/pull/1354)
-            format!("/onion3/{}:{}", service_id, onion_port)
+            format!("/onion3/{service_id}:{onion_port}")
                 .parse()
                 .map_err(|_| TorClientError::InvalidServiceId)
         },

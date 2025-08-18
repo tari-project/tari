@@ -174,7 +174,7 @@ mod tests {
             Network::Igor,
             Network::Esmeralda,
         ] {
-            println!("Testing network: {:?}", network);
+            println!("Testing network: {network:?}");
             // Generate a specific network hash
             let hash_specify_network =
                 DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, network)

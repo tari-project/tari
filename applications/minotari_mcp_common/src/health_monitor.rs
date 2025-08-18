@@ -97,7 +97,7 @@ impl HealthMonitor {
         // Extract host and port from endpoint
         let endpoint_parts: Vec<&str> = self.endpoint.splitn(2, "://").collect();
         let address = if endpoint_parts.len() == 2 {
-            endpoint_parts[1] // Remove scheme (http://, https://)
+            *endpoint_parts.get(1).expect("Already checked") // Remove scheme (http://, https://)
         } else {
             &self.endpoint
         };
@@ -114,7 +114,7 @@ impl HealthMonitor {
                 status: HealthStatus::Unhealthy,
                 last_check: Instant::now(),
                 response_time: None,
-                error_message: Some(format!("Connection failed: {}", e)),
+                error_message: Some(format!("Connection failed: {e}")),
                 consecutive_failures: 1,
             },
             Err(_) => HealthCheckResult {
@@ -161,11 +161,11 @@ impl HealthMonitor {
     async fn test_grpc_connection(&self) -> McpResult<()> {
         // Create a channel to test connectivity
         let _channel = Channel::from_shared(self.endpoint.clone())
-            .map_err(|e| McpError::server_error(format!("Invalid endpoint: {}", e)))?
+            .map_err(|e| McpError::server_error(format!("Invalid endpoint: {e}")))?
             .timeout(self.timeout_duration)
             .connect()
             .await
-            .map_err(|e| McpError::server_error(format!("gRPC connection failed: {}", e)))?;
+            .map_err(|e| McpError::server_error(format!("gRPC connection failed: {e}")))?;
 
         // The channel creation itself is enough to test basic gRPC connectivity
         // For more sophisticated health checks, we would use tonic-health here
@@ -219,7 +219,7 @@ impl HealthMonitor {
             );
 
             if let Some(error) = &result.error_message {
-                log::debug!("Health check error: {}", error);
+                log::debug!("Health check error: {error}");
             }
 
             tokio::time::sleep(delay).await;
@@ -242,7 +242,7 @@ impl ServiceHealthMonitors {
         let endpoint = if grpc_address.starts_with("http") {
             grpc_address.to_string()
         } else {
-            format!("http://{}", grpc_address)
+            format!("http://{grpc_address}")
         };
 
         HealthMonitor::new("base_node".to_string(), endpoint)
@@ -255,7 +255,7 @@ impl ServiceHealthMonitors {
         let endpoint = if grpc_address.starts_with("http") {
             grpc_address.to_string()
         } else {
-            format!("http://{}", grpc_address)
+            format!("http://{grpc_address}")
         };
 
         HealthMonitor::new("wallet".to_string(), endpoint)

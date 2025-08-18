@@ -85,12 +85,12 @@ impl fmt::Display for ConnectionManagerEvent {
         #[allow(clippy::enum_glob_use)]
         use ConnectionManagerEvent::*;
         match self {
-            PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
+            PeerConnected(conn) => write!(f, "PeerConnected({conn})"),
             PeerDisconnected(id, node_id, minimized) => {
                 write!(f, "PeerDisconnected({}, {}, {:?})", id, node_id.short_str(), minimized)
             },
             PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
-            PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
+            PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({err:?})",),
             NewInboundSubstream(node_id, protocol, _) => write!(
                 f,
                 "NewInboundSubstream({}, {}, Stream)",
@@ -238,7 +238,7 @@ where
         );
 
         let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
-            info!(target: LOG_TARGET, "Starting auxiliary listener on {}", addr);
+            info!(target: LOG_TARGET, "Starting auxiliary listener on {addr}");
             let aux_config = ConnectionManagerConfig {
                 // Disable liveness checks on the auxiliary listener
                 self_liveness_self_check_interval: None,
@@ -314,7 +314,7 @@ where
             Err(err) => {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to start listener(s). {}. Connection manager is quitting.", err
+                    "Failed to start listener(s). {err}. Connection manager is quitting."
                 );
                 return;
             },
@@ -369,7 +369,7 @@ where
         if let Some(mut listener) = self.aux_listener.take() {
             listener.set_supported_protocols(self.protocols.get_supported_protocols());
             let addr = listener.listen().await?;
-            debug!(target: LOG_TARGET, "Aux TCP listener bound to address {}", addr);
+            debug!(target: LOG_TARGET, "Aux TCP listener bound to address {addr}");
             listener_info.aux_bind_address = Some(addr);
         }
 
@@ -388,7 +388,7 @@ where
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
         use ConnectionManagerRequest::{CancelDial, DialPeer, NotifyListening};
-        trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
+        trace!(target: LOG_TARGET, "Connection manager got request: {request:?}" );
         match request {
             DialPeer { node_id, reply_tx } => {
                 let tracing_id = tracing::Span::current().id();
@@ -400,7 +400,7 @@ where
                 if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
                     error!(
                         target: LOG_TARGET,
-                        "Failed to send cancel dial request to dialer: {}", err
+                        "Failed to send cancel dial request to dialer: {err}"
                     );
                 }
             },
@@ -444,18 +444,18 @@ where
                     .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
                 match time::timeout(Duration::from_secs(10), notify_fut).await {
                     Ok(Ok(_)) => {
-                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
+                        debug!(target: LOG_TARGET, "Protocol notification for '{proto_str}' sent" );
                     },
                     Ok(Err(err)) => {
                         error!(
                             target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{}' because '{:?}'", proto_str, err
+                            "Error sending NewSubstream notification for protocol '{proto_str}' because '{err:?}'"
                         );
                     },
                     Err(err) => {
                         error!(
                             target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{}' because {}", proto_str, err
+                            "Error sending NewSubstream notification for protocol '{proto_str}' because {err}"
                         );
                     },
                 }
@@ -492,7 +492,7 @@ where
     #[inline]
     async fn send_dialer_request(&mut self, req: DialerRequest) {
         if let Err(err) = self.dialer_tx.send(req).await {
-            error!(target: LOG_TARGET, "Failed to send request to dialer because '{}'", err);
+            error!(target: LOG_TARGET, "Failed to send request to dialer because '{err}'");
         }
     }
 
@@ -520,7 +520,7 @@ where
                 }
             },
             Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
+                warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{err}'");
                 if let Some(reply) = reply {
                     let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
                 }

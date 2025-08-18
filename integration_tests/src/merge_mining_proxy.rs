@@ -104,7 +104,7 @@ impl MergeMiningProxyProcess {
                         ("merge_mining_proxy.listener_address".to_string(), proxy_full_address),
                         (
                             "merge_mining_proxy.base_node_grpc_address".to_string(),
-                            format!("/ip4/127.0.0.1/tcp/{}", base_node_grpc_port),
+                            format!("/ip4/127.0.0.1/tcp/{base_node_grpc_port}"),
                         ),
                         (
                             "merge_mining_proxy.monerod_url".to_string(),
@@ -142,7 +142,7 @@ impl MergeMiningProxyProcess {
             };
             let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
             if let Err(e) = rt.block_on(start_merge_miner(cli)) {
-                println!("Error running merge mining proxy : {:?}", e);
+                println!("Error running merge mining proxy : {e:?}");
                 panic!("Error running merge mining proxy");
             }
         });
@@ -150,7 +150,7 @@ impl MergeMiningProxyProcess {
 
     async fn get_response(&self, path: &str) -> Value {
         let full_address = format!("http://127.0.0.1:{}", self.port);
-        reqwest::get(format!("{}/{}", full_address, path))
+        reqwest::get(format!("{full_address}/{path}"))
             .await
             .unwrap()
             .json::<Value>()
@@ -166,8 +166,8 @@ impl MergeMiningProxyProcess {
             "params": params,
             "id":self.id}
         );
-        println!("json_rpc_call {}", method_name);
-        println!("json payload {}", json);
+        println!("json_rpc_call {method_name}");
+        println!("json payload {json}");
         self.id += 1;
         let full_address = format!("http://127.0.0.1:{}/json_rpc", self.port);
         client
@@ -219,9 +219,9 @@ impl MergeMiningProxyProcess {
 
 pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
     let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
-    let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
+    let wallet_addr = format!("http://127.0.0.1:{wallet_grpc_port}");
 
-    eprintln!("Wallet GRPC at {}", wallet_addr);
+    eprintln!("Wallet GRPC at {wallet_addr}");
 
     Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
 }

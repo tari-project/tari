@@ -81,7 +81,7 @@ impl McpTool for GetAddressTool {
         let response = client
             .get_address(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get address: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get address: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -139,7 +139,7 @@ impl McpTool for GetCompleteAddressTool {
         let response = client
             .get_complete_address(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get complete address: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get complete address: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -213,7 +213,7 @@ impl McpTool for GetPaymentIdAddressTool {
         let payment_id_str = get_required_string_param(&params, "payment_id")?;
 
         let payment_id = if let Some(stripped) = payment_id_str.strip_prefix("0x") {
-            hex::decode(stripped).map_err(|e| McpError::invalid_request(format!("Invalid hex payment ID: {}", e)))?
+            hex::decode(stripped).map_err(|e| McpError::invalid_request(format!("Invalid hex payment ID: {e}")))?
         } else {
             payment_id_str.as_bytes().to_vec()
         };
@@ -224,7 +224,7 @@ impl McpTool for GetPaymentIdAddressTool {
         let response = client
             .get_payment_id_address(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get payment ID address: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get payment ID address: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -448,6 +448,7 @@ impl AddressConverterTool {
 }
 
 #[async_trait::async_trait]
+#[allow(clippy::indexing_slicing)]
 impl McpTool for AddressConverterTool {
     fn name(&self) -> &str {
         "convert_address_format"
@@ -509,7 +510,7 @@ impl McpTool for AddressConverterTool {
                     conversions["note"] = json!("Full format conversion requires Tari address encoding libraries");
                 },
                 Err(e) => {
-                    errors.push(format!("Invalid hex format: {}", e));
+                    errors.push(format!("Invalid hex format: {e}"));
                 },
             }
         } else {

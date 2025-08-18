@@ -40,6 +40,6 @@ pub enum KeyValStoreError {
 
 impl From<LMDBError> for KeyValStoreError {
     fn from(e: LMDBError) -> Self {
-        KeyValStoreError::DatabaseError(format!("{:?}", e))
+        KeyValStoreError::DatabaseError(format!("{e:?}"))
     }
 }

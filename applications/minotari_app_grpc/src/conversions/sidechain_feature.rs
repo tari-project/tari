@@ -138,12 +138,12 @@ impl TryFrom<grpc::SideChainId> for SideChainId {
 
     fn try_from(value: grpc::SideChainId) -> Result<Self, Self::Error> {
         let public_key =
-            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("sidechain_id: {}", e))?;
+            CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("sidechain_id: {e}"))?;
         let knowledge_proof = value
             .knowledge_proof
             .ok_or("sidechain_id knowledge_proof not provided")?;
         let knowledge_proof =
-            Signature::try_from(knowledge_proof).map_err(|e| format!("sidechain_id_knowledge_proof: {}", e))?;
+            Signature::try_from(knowledge_proof).map_err(|e| format!("sidechain_id_knowledge_proof: {e}"))?;
 
         Ok(Self::new(public_key, knowledge_proof))
     }
@@ -164,9 +164,9 @@ impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
 
     fn try_from(value: grpc::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
         let public_key = CompressedPublicKey::from_canonical_bytes(&value.public_key)
-            .map_err(|e| format!("Invalid public key: {}", e))?;
+            .map_err(|e| format!("Invalid public key: {e}"))?;
         let claim_public_key = CompressedPublicKey::from_canonical_bytes(&value.claim_public_key)
-            .map_err(|e| format!("Invalid claim public key: {}", e))?;
+            .map_err(|e| format!("Invalid claim public key: {e}"))?;
 
         Ok(ValidatorNodeRegistration::new(
             ValidatorNodeSignature::new(
@@ -206,7 +206,7 @@ impl TryFrom<grpc::ValidatorNodeExit> for ValidatorNodeExit {
 
     fn try_from(value: grpc::ValidatorNodeExit) -> Result<Self, Self::Error> {
         let public_key = CompressedPublicKey::from_canonical_bytes(&value.public_key)
-            .map_err(|e| format!("Invalid public key: {}", e))?;
+            .map_err(|e| format!("Invalid public key: {e}"))?;
 
         Ok(ValidatorNodeExit::new(
             ValidatorNodeSignature::new(

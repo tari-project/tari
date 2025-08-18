@@ -110,7 +110,11 @@ impl ConsensusManager {
 
     /// Get a reference to consensus constants that are effective from the given height
     pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
-        let mut constants = &self.inner.consensus_constants[0];
+        let mut constants = self
+            .inner
+            .consensus_constants
+            .first()
+            .expect("Should always have at least one consensus constant");
         for c in &self.inner.consensus_constants {
             if c.effective_from_height() > height {
                 break;
@@ -137,7 +141,7 @@ impl ConsensusManager {
         let block_window = constants.difficulty_block_window();
 
         let block_window_u =
-            usize::try_from(block_window).map_err(|e| format!("difficulty block window exceeds usize::MAX: {}", e))?;
+            usize::try_from(block_window).map_err(|e| format!("difficulty block window exceeds usize::MAX: {e}"))?;
 
         TargetDifficultyWindow::new(block_window_u, constants.pow_target_block_interval(pow_algo))
     }
@@ -243,12 +247,15 @@ impl ConsensusManager {
             .iter()
             .filter(|v| v.effective_from_height <= height)
             .max_by_key(|v| v.effective_from_height)
-            .ok_or_else(|| format!("Last effective maturity tranche for height {} not found", height))?;
+            .ok_or_else(|| format!("Last effective maturity tranche for height {height} not found"))?;
         let last_effective_index = maturity_tranches
             .iter()
             .position(|v| v == last_effective_tranche)
-            .ok_or_else(|| format!("Last effective maturity tranche index for height {} not found", height))?;
-        let previous_effective_tranch = maturity_tranches[last_effective_index.saturating_sub(1)].clone();
+            .ok_or_else(|| format!("Last effective maturity tranche index for height {height} not found"))?;
+        let previous_effective_tranch = maturity_tranches
+            .get(last_effective_index.saturating_sub(1))
+            .expect("Index should exist")
+            .clone();
 
         // We have to adjust the matured rewards at height to account for the effective from height of the last
         // effective tranche
@@ -341,13 +348,16 @@ impl ConsensusManagerBuilder {
         if self.consensus_constants.is_empty() {
             self.consensus_constants = self.network.create_consensus_constants();
         }
-
+        let cc = self
+            .consensus_constants
+            .first()
+            .expect("Consensus constants should not be empty");
         let emission = EmissionSchedule::new(
-            self.consensus_constants[0].emission_initial,
-            self.consensus_constants[0].emission_decay,
-            self.consensus_constants[0].inflation_bips,
-            self.consensus_constants[0].tail_epoch_length,
-            self.consensus_constants[0].pre_mine_value(),
+            cc.emission_initial,
+            cc.emission_decay,
+            cc.inflation_bips,
+            cc.tail_epoch_length,
+            cc.pre_mine_value(),
         );
 
         let inner = ConsensusManagerInner {

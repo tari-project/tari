@@ -68,7 +68,7 @@ impl CommandContext {
         table.print_stdout();
 
         println!();
-        println!("{} active validator(s)", num_vns);
+        println!("{num_vns} active validator(s)");
     }
 }
 

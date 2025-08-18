@@ -216,7 +216,7 @@ impl GrpcHealthChecker {
             .timeout(self.config.check_timeout)
             .connect()
             .await
-            .map_err(|e| McpError::connection_failed(format!("Failed to connect to {}: {}", service_name, e)))?;
+            .map_err(|e| McpError::connection_failed(format!("Failed to connect to {service_name}: {e}")))?;
 
         {
             let mut channels = self.channels.write().unwrap();
@@ -281,7 +281,7 @@ impl GrpcHealthChecker {
             Ok(Ok(_)) => HealthResult::healthy(service_name.to_string(), response_time),
             Ok(Err(e)) => HealthResult::unhealthy(
                 service_name.to_string(),
-                format!("Connection check failed: {}", e),
+                format!("Connection check failed: {e}"),
                 response_time,
             ),
             Err(_) => HealthResult::unhealthy(
@@ -335,11 +335,11 @@ impl GrpcHealthChecker {
                             match check_result {
                                 Ok(Ok(_)) => {
                                     current_status.update_success(response_time);
-                                    log::debug!("Health check successful for {}", service_name_clone);
+                                    log::debug!("Health check successful for {service_name_clone}");
                                 },
                                 Ok(Err(e)) => {
-                                    current_status.update_failure(format!("Connection failed: {}", e), response_time);
-                                    log::warn!("Health check failed for {}: {}", service_name_clone, e);
+                                    current_status.update_failure(format!("Connection failed: {e}"), response_time);
+                                    log::warn!("Health check failed for {service_name_clone}: {e}");
 
                                     // Log if we've hit the failure threshold
                                     if current_status.consecutive_failures >= failure_threshold {
@@ -352,18 +352,18 @@ impl GrpcHealthChecker {
                                 },
                                 Err(_) => {
                                     current_status.update_failure("Health check timeout".to_string(), response_time);
-                                    log::warn!("Health check timeout for {}", service_name_clone);
+                                    log::warn!("Health check timeout for {service_name_clone}");
                                 },
                             }
                         }
                     }
                 } else {
-                    log::warn!("No channel found for service: {}", service_name_clone);
+                    log::warn!("No channel found for service: {service_name_clone}");
                     break;
                 }
             }
 
-            log::info!("Health monitoring stopped for service: {}", service_name_clone);
+            log::info!("Health monitoring stopped for service: {service_name_clone}");
         })
     }
 
@@ -409,7 +409,7 @@ impl HealthChecker for GrpcHealthChecker {
             tasks.insert(service_name.clone(), task);
         }
 
-        log::info!("Started health monitoring for service: {}", service_name);
+        log::info!("Started health monitoring for service: {service_name}");
         Ok(())
     }
 
@@ -421,7 +421,7 @@ impl HealthChecker for GrpcHealthChecker {
 
         if let Some(task) = task {
             task.abort();
-            log::info!("Stopped health monitoring for service: {}", service_name);
+            log::info!("Stopped health monitoring for service: {service_name}");
         }
 
         Ok(())
@@ -448,7 +448,7 @@ impl Drop for GrpcHealthChecker {
 
         for (service_name, task) in tasks {
             task.abort();
-            log::debug!("Aborted health monitoring task for: {}", service_name);
+            log::debug!("Aborted health monitoring task for: {service_name}");
         }
     }
 }

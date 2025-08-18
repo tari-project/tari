@@ -153,7 +153,7 @@ impl ResourceRegistry {
         resource
             .read()
             .await
-            .map_err(|e| McpError::ResourceAccessFailed(format!("Failed to read resource '{}': {}", uri, e)))
+            .map_err(|e| McpError::ResourceAccessFailed(format!("Failed to read resource '{uri}': {e}")))
     }
 
     /// Extract pattern from templated URI

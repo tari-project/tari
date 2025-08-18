@@ -198,7 +198,7 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
             Some(match BlockHash::try_from(proto_response.best_block_hash.clone()) {
                 Ok(h) => h,
                 Err(e) => {
-                    return Err(format!("Malformed block hash: {}", e));
+                    return Err(format!("Malformed block hash: {e}"));
                 },
             })
         };
@@ -245,7 +245,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
             Some(match BlockHash::try_from(proto_response.best_block_hash.clone()) {
                 Ok(h) => h,
                 Err(e) => {
-                    return Err(format!("Malformed block hash: {}", e));
+                    return Err(format!("Malformed block hash: {e}"));
                 },
             })
         };

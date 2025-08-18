@@ -79,11 +79,11 @@ impl fmt::Display for BroadcastStrategy {
         #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
         match self {
-            DirectPublicKey(pk) => write!(f, "DirectPublicKey({})", pk),
-            DirectNodeId(node_id) => write!(f, "DirectNodeId({})", node_id),
+            DirectPublicKey(pk) => write!(f, "DirectPublicKey({pk})"),
+            DirectNodeId(node_id) => write!(f, "DirectNodeId({node_id})"),
             Flood(excluded) => write!(f, "Flood({} excluded)", excluded.len()),
-            ClosestNodes(request) => write!(f, "ClosestNodes({})", request),
-            DirectOrClosestNodes(request) => write!(f, "DirectOrClosestNodes({})", request),
+            ClosestNodes(request) => write!(f, "ClosestNodes({request})"),
+            DirectOrClosestNodes(request) => write!(f, "DirectOrClosestNodes({request})"),
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),
             Propagate(destination, excluded) => write!(f, "Propagate({}, {} excluded)", destination, excluded.len(),),

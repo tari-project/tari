@@ -70,7 +70,10 @@ where D: Digest
         hashes.extend(leaves);
         // Now we compute the hashes from bottom to up of the tree.
         for i in (0..leaves_cnt - 1).rev() {
-            hashes[i] = hash_together::<D>(&hashes[2 * i + 1], &hashes[2 * i + 2]);
+            *hashes.get_mut(i).expect("Should exist") = hash_together::<D>(
+                hashes.get(2 * i + 1).expect("Index should exist"),
+                hashes.get(2 * i + 2).expect("Index should exist"),
+            );
         }
         Self {
             hashes,
@@ -82,7 +85,7 @@ where D: Digest
         if self.hashes.is_empty() {
             D::digest(b"").to_vec()
         } else {
-            self.hashes[0].clone()
+            self.hashes.first().expect("Should exist").clone()
         }
     }
 

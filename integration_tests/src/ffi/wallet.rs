@@ -237,7 +237,7 @@ impl Wallet {
                 &mut error,
             );
             if error > 0 {
-                println!("wallet_create error {}", error);
+                println!("wallet_create error {error}");
                 panic!("wallet_create error");
             }
         }
@@ -278,7 +278,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_tari_interactive_address(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_interactive_address error {}", error);
+                println!("wallet_get_tari_interactive_address error {error}");
                 panic!("wallet_get_tari_interactive_address error");
             }
         }
@@ -291,7 +291,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::comms_list_connected_public_keys(self.ptr, &mut error);
             if error > 0 {
-                println!("comms_list_connected_public_keys error {}", error);
+                println!("comms_list_connected_public_keys error {error}");
                 panic!("comms_list_connected_public_keys error");
             }
         }
@@ -304,7 +304,7 @@ impl Wallet {
         unsafe {
             success = ffi_import::wallet_upsert_contact(self.ptr, contact.get_ptr(), &mut error);
             if error > 0 {
-                println!("wallet_upsert_contact error {}", error);
+                println!("wallet_upsert_contact error {error}");
                 panic!("wallet_upsert_contact error");
             }
         }
@@ -317,7 +317,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_contacts(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_contacts error {}", error);
+                println!("wallet_get_contacts error {error}");
                 panic!("wallet_get_contacts error");
             }
         }
@@ -330,7 +330,7 @@ impl Wallet {
         unsafe {
             success = ffi_import::wallet_remove_contact(self.ptr, contact.get_ptr(), &mut error);
             if error > 0 {
-                println!("wallet_remove_contact error {}", error);
+                println!("wallet_remove_contact error {error}");
                 panic!("wallet_remove_contact error");
             }
         }
@@ -343,7 +343,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_balance(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_balance error {}", error);
+                println!("wallet_get_balance error {error}");
                 panic!("wallet_get_balance error");
             }
         }
@@ -372,7 +372,7 @@ impl Wallet {
                 &mut error,
             );
             if error > 0 {
-                println!("wallet_send_transaction error {}", error);
+                println!("wallet_send_transaction error {error}");
                 panic!("wallet_send_transaction error");
             }
         }
@@ -385,7 +385,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_pending_outbound_transactions(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_pending_outbound_transactions error {}", error);
+                println!("wallet_get_pending_outbound_transactions error {error}");
                 panic!("wallet_get_pending_outbound_transactions error");
             }
         }
@@ -398,7 +398,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_pending_inbound_transactions(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_pending_inbound_transactions error {}", error);
+                println!("wallet_get_pending_inbound_transactions error {error}");
                 panic!("wallet_get_pending_inbound_transactions error");
             }
         }
@@ -411,7 +411,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_completed_transactions(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_completed_transactions error {}", error);
+                println!("wallet_get_completed_transactions error {error}");
                 panic!("wallet_get_completed_transactions error");
             }
         }
@@ -424,7 +424,7 @@ impl Wallet {
         unsafe {
             cancelled = ffi_import::wallet_cancel_pending_transaction(self.ptr, transaction_id, &mut error);
             if error > 0 {
-                println!("wallet_cancel_pending_transaction error {}", error);
+                println!("wallet_cancel_pending_transaction error {error}");
                 panic!("wallet_cancel_pending_transaction error");
             }
         }
@@ -437,7 +437,7 @@ impl Wallet {
         unsafe {
             request_key = ffi_import::wallet_start_txo_validation(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_start_txo_validation error {}", error);
+                println!("wallet_start_txo_validation error {error}");
                 panic!("wallet_start_txo_validation error");
             }
         }
@@ -450,7 +450,7 @@ impl Wallet {
         unsafe {
             request_key = ffi_import::wallet_start_transaction_validation(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_start_transaction_validation error {}", error);
+                println!("wallet_start_transaction_validation error {error}");
                 panic!("wallet_start_transaction_validation error");
             }
         }
@@ -468,7 +468,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::wallet_get_fee_per_gram_stats(self.ptr, count, &mut error);
             if error > 0 {
-                println!("wallet_get_fee_per_gram_stats error {}", error);
+                println!("wallet_get_fee_per_gram_stats error {error}");
                 panic!("wallet_get_fee_per_gram_stats error");
             }
         }
@@ -481,7 +481,7 @@ impl Wallet {
         unsafe {
             ptr = ffi_import::contacts_handle(self.ptr, &mut error);
             if error > 0 {
-                println!("contacts_handle error {}", error);
+                println!("contacts_handle error {error}");
                 panic!("contacts_handle error");
             }
         }

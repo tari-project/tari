@@ -90,14 +90,14 @@ pub(crate) fn command_mode(
 ) -> Result<(), ExitError> {
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Command mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER_A);
+    println!("{CUCUMBER_TEST_MARKER_A}");
 
     info!(target: LOG_TARGET, "Starting wallet command mode");
     let exit_override = handle.block_on(command_runner(config, vec![command.clone()], wallet.clone()))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Command mode completed)";
-    println!("{}", CUCUMBER_TEST_MARKER_B);
+    println!("{CUCUMBER_TEST_MARKER_B}");
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
@@ -141,7 +141,7 @@ pub(crate) fn parse_command_file(script: String) -> Result<Vec<CliCommands>, Exi
                     }
                 },
                 Err(e) => {
-                    println!("\nError! parsing '{}' ({})\n", command, e);
+                    println!("\nError! parsing '{command}' ({e})\n");
                     return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
                 },
             }
@@ -172,7 +172,7 @@ pub(crate) fn script_mode(
     for command in &commands {
         (force_exit, force_interactive) = force_exit_for_pre_mine_commands(command);
         if force_exit || force_interactive {
-            println!("Pre-mine command '{:?}' may not run in script mode!", command);
+            println!("Pre-mine command '{command:?}' may not run in script mode!");
             break;
         }
     }
@@ -182,7 +182,7 @@ pub(crate) fn script_mode(
 
         // Do not remove this println!
         const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Script mode started)";
-        println!("{}", CUCUMBER_TEST_MARKER_A);
+        println!("{CUCUMBER_TEST_MARKER_A}");
 
         println!("Starting the command runner!");
         let exit_override = handle.block_on(command_runner(config, commands, wallet.clone()))?;
@@ -193,7 +193,7 @@ pub(crate) fn script_mode(
 
         // Do not remove this println!
         const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Script mode completed)";
-        println!("{}", CUCUMBER_TEST_MARKER_B);
+        println!("{CUCUMBER_TEST_MARKER_B}");
 
         info!(target: LOG_TARGET, "Completed wallet script mode");
     }
@@ -304,7 +304,7 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER: &str = "Minotari Console Wallet running... (TUI mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER);
+    println!("{CUCUMBER_TEST_MARKER}");
 
     {
         let _enter = handle.enter();
@@ -329,14 +329,14 @@ pub fn recovery_mode(
     if !skip_recovery {
         // Do not remove this println!
         const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
-        println!("{}", CUCUMBER_TEST_MARKER_A);
+        println!("{CUCUMBER_TEST_MARKER_A}");
 
         let url = Url::parse(wallet_config.http_server_url.as_ref())
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid HTTP client URL: {}", e)))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Invalid HTTP client URL: {e}")))?;
         match handle.block_on(wallet_recovery(&wallet, wallet_config.recovery_retry_limit)) {
             Ok(_) => println!("Wallet recovered!"),
             Err(e) => {
-                error!(target: LOG_TARGET, "Recovery failed: {}", e);
+                error!(target: LOG_TARGET, "Recovery failed: {e}");
                 println!(
                     "Recovery failed. Restarting the console wallet will restart the recovery process from where you \
                      left off. If you want to start with a fresh wallet then delete the wallet data file"
@@ -348,7 +348,7 @@ pub fn recovery_mode(
 
         // Do not remove this println!
         const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Recovery mode completed)";
-        println!("{}", CUCUMBER_TEST_MARKER_B);
+        println!("{CUCUMBER_TEST_MARKER_B}");
     }
 
     println!("Starting TUI.");
@@ -413,9 +413,9 @@ async fn run_grpc(
 ) -> Result<(), String> {
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (gRPC mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER_A);
+    println!("{CUCUMBER_TEST_MARKER_A}");
 
-    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_listener_addr);
+    info!(target: LOG_TARGET, "Starting GRPC on {grpc_listener_addr}");
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
     let auth = ServerAuthenticationInterceptor::new(auth_config)
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;
@@ -437,11 +437,11 @@ async fn run_grpc(
         .add_service(service)
         .serve_with_shutdown(address, wallet.wait_until_shutdown())
         .await
-        .map_err(|e| format!("GRPC server returned error:{}", e))?;
+        .map_err(|e| format!("GRPC server returned error:{e}"))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (gRPC mode completed)";
-    println!("{}", CUCUMBER_TEST_MARKER_B);
+    println!("{CUCUMBER_TEST_MARKER_B}");
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())

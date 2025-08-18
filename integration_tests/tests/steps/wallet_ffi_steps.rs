@@ -53,14 +53,14 @@ async fn ffi_get_emoji_id(world: &mut TariWorld, wallet: String) {
 async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
     let address = world.get_wallet_address(&wallet).await.unwrap();
     let ffi_wallet = world.ffi_wallets.get_mut(&wallet).unwrap();
-    cucumber_steps_log(format!("Adding wallet {}", wallet));
+    cucumber_steps_log(format!("Adding wallet {wallet}"));
     world.wallet_addresses.insert(wallet, address);
     ffi_wallet.destroy();
 }
 
 #[then(expr = "I retrieve the mnemonic word list for {word}")]
 async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
-    cucumber_steps_log(format!("Mnemonic words for language {}:", language));
+    cucumber_steps_log(format!("Mnemonic words for language {language}:"));
     let words = get_mnemonic_word_list_for_language(language);
     for i in 0..words.get_length() {
         cucumber_steps_log(format!("{} ", words.get_at(u32::try_from(i).unwrap()).as_string()));
@@ -220,7 +220,7 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
     let payment_id = MemoField::open_from_string(
-        &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
+        &format!("Send from ffi {wallet} to ${dest} at fee ${fee}"),
         TxType::PaymentToOther,
     );
     let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, false);
@@ -233,7 +233,7 @@ async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wall
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
     let payment_id = MemoField::open_from_string(
-        &format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee),
+        &format!("Send from ffi {wallet} to ${dest} at fee ${fee}"),
         TxType::PaymentToOther,
     );
     let tx_id = ffi_wallet.send_transaction(dest_pub_key, amount, fee, payment_id, true);
@@ -282,13 +282,11 @@ async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet
 async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, status: String) {
     assert!(
         ["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
-        "Unknown status: {}",
-        status
+        "Unknown status: {status}"
     );
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     cucumber_steps_log(format!(
-        "Waiting for {} to have at least {} contacts with status '{}'",
-        wallet, cnt, status
+        "Waiting for {wallet} to have at least {cnt} contacts with status '{status}'"
     ));
     let mut found_cnt = 0;
 
@@ -296,8 +294,8 @@ async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, sta
     for i in 0..120 {
         if i % 5 == 0 {
             cucumber_steps_log(format!(
-                "Waiting for {} to have at least {} contacts with status '{}', current count: {}",
-                wallet, cnt, status, found_cnt
+                "Waiting for {wallet} to have at least {cnt} contacts with status '{status}', current count: \
+                 {found_cnt}"
             ));
         }
         found_cnt = 0;
@@ -313,10 +311,7 @@ async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, sta
     }
     assert!(
         found_cnt >= cnt,
-        "{} doesn't have at least {} contacts with status {}!",
-        wallet,
-        cnt,
-        status
+        "{wallet} doesn't have at least {cnt} contacts with status {status}!"
     );
 }
 
@@ -327,9 +322,9 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
     for i in 0..completed_transactions.get_length() {
         let completed_transaction = completed_transactions.get_at(i);
         let kernel = completed_transaction.get_transaction_kernel();
-        cucumber_steps_log(format!("Wallet {}, Transaction kernel info :", wallet));
+        cucumber_steps_log(format!("Wallet {wallet}, Transaction kernel info :"));
         assert!(!kernel.get_excess_hex().is_empty());
-        cucumber_steps_log(format!("Wallet {}, Excess {}", wallet, kernel.get_excess_hex()));
+        cucumber_steps_log(format!("Wallet {wallet}, Excess {}", kernel.get_excess_hex()));
         assert!(!kernel.get_excess_public_nonce_hex().is_empty());
         cucumber_steps_log(format!(
             "Wallet {}, Nonce {}",
@@ -347,32 +342,25 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
         let address = completed_transaction.get_source_tari_address();
         assert!(TariAddress::from_hex(&address.address().get_as_hex()).is_ok());
         let amount = completed_transaction.get_amount();
-        assert!(amount > 0, "Amount '{}', expected > 0", amount);
+        assert!(amount > 0, "Amount '{amount}', expected > 0");
         let fee = completed_transaction.get_fee();
-        assert!(fee > 0, "Fee '{}', expected > 0", fee);
+        assert!(fee > 0, "Fee '{fee}', expected > 0");
         let timestamp = completed_transaction.get_timestamp();
-        assert!(timestamp > 0, "Timestamp '{}', expected > 0", timestamp);
+        assert!(timestamp > 0, "Timestamp '{timestamp}', expected > 0");
         let payment_id = completed_transaction.get_payment_id();
-        assert!(
-            !payment_id.is_empty(),
-            "Payment id '{}', expected not empty",
-            payment_id
-        );
+        assert!(!payment_id.is_empty(), "Payment id '{payment_id}', expected not empty");
         let transaction_type = completed_transaction.get_transaction_type();
         assert_ne!(
             transaction_type, 99,
-            "Transaction type '{}', expected not 99",
-            transaction_type
+            "Transaction type '{transaction_type}', expected not 99"
         );
         let status = completed_transaction.get_status();
-        assert_ne!(status, -1, "Status '{}', expected not -1", status);
+        assert_ne!(status, -1, "Status '{status}', expected not -1");
 
         let cancellation_reason = completed_transaction.get_cancellation_reason();
         assert!(
             if status == 6 { cancellation_reason == -1 } else { true },
-            "Cancellation reason '{}' (with status '{}'), expected -1",
-            cancellation_reason,
-            status
+            "Cancellation reason '{cancellation_reason}' (with status '{status}'), expected -1"
         );
     }
 }
@@ -403,7 +391,7 @@ async fn ffi_wait_for_transaction_received(world: &mut TariWorld, wallet: String
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    assert!(found_cnt >= cnt, "Expected {}, but got only {}", cnt, found_cnt);
+    assert!(found_cnt >= cnt, "Expected {cnt}, but got only {found_cnt}");
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} finalization")]
@@ -418,7 +406,7 @@ async fn ffi_wait_for_transaction_finalized(world: &mut TariWorld, wallet: Strin
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    assert!(found_cnt >= cnt, "Expected {}, but got only {}", cnt, found_cnt);
+    assert!(found_cnt >= cnt, "Expected {cnt}, but got only {found_cnt}");
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} broadcast")]
@@ -433,7 +421,7 @@ async fn ffi_wait_for_transaction_broadcast(world: &mut TariWorld, wallet: Strin
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    assert!(found_cnt >= cnt, "Expected {}, but got only {}", cnt, found_cnt);
+    assert!(found_cnt >= cnt, "Expected {cnt}, but got only {found_cnt}");
 }
 
 #[then(expr = "I start TXO validation on ffi wallet {word}")]
@@ -486,15 +474,14 @@ async fn ffi_detects_transaction(
     ]
     .contains(&status.as_str()));
     cucumber_steps_log(format!(
-        "Waiting for {} to have detected {} {} {} transaction(s)",
-        wallet, comparison, count, status
+        "Waiting for {wallet} to have detected {comparison} {count} {status} transaction(s)"
     ));
     let mut found_count = 0;
     for i in 0..120 {
         if i % 5 == 0 {
             cucumber_steps_log(format!(
-                "Waiting for {} to have detected {} {} {} transaction(s), current count: {}",
-                wallet, comparison, count, status, found_count
+                "Waiting for {wallet} to have detected {comparison} {count} {status} transaction(s), current count: \
+                 {found_count}"
             ));
         }
         found_count = match status.as_str() {
@@ -520,34 +507,22 @@ async fn ffi_detects_transaction(
     }
     cucumber_steps_log(format!("Counters {:?}", ffi_wallet.get_counters()));
     match comparison.as_str() {
-        "AT_LEAST" => assert!(
-            found_count >= count,
-            "Counter not adequate! Counter is {}.",
-            found_count
-        ),
-        "EXACTLY" => assert!(
-            found_count == count,
-            "Counter not adequate! Counter is {}.",
-            found_count
-        ),
-        _ => panic!("Unknown comparison method {}", comparison),
+        "AT_LEAST" => assert!(found_count >= count, "Counter not adequate! Counter is {found_count}."),
+        "EXACTLY" => assert!(found_count == count, "Counter not adequate! Counter is {found_count}."),
+        _ => panic!("Unknown comparison method {comparison}"),
     };
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} mined")]
 async fn ffi_wait_for_received_mined(world: &mut TariWorld, wallet: String, count: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
-    cucumber_steps_log(format!(
-        "Waiting for {} to receive {} transaction(s) mined",
-        wallet, count
-    ));
+    cucumber_steps_log(format!("Waiting for {wallet} to receive {count} transaction(s) mined"));
 
     let mut found_cnt = 0;
     for i in 0..120 {
         if i % 5 == 0 {
             cucumber_steps_log(format!(
-                "Waiting for {} to receive {} transaction(s) mined, current count: {}",
-                wallet, count, found_cnt
+                "Waiting for {wallet} to receive {count} transaction(s) mined, current count: {found_cnt}"
             ));
         }
         found_cnt = ffi_wallet.get_counters().get_transaction_mined();

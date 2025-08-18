@@ -204,7 +204,7 @@ impl MultiaddressesWithStats {
                     addr.update_latency(latency_measurement);
                 },
                 None => {
-                    trace!(target: LOG_TARGET, "Peer address '{}' not in claim, stats not updated", address);
+                    trace!(target: LOG_TARGET, "Peer address '{address}' not in claim, stats not updated");
                     all_exist = false
                 },
             }
@@ -225,7 +225,7 @@ impl MultiaddressesWithStats {
                 true
             },
             None => {
-                trace!(target: LOG_TARGET, "Peer address '{}' not in claim, stats not updated", address);
+                trace!(target: LOG_TARGET, "Peer address '{address}' not in claim, stats not updated");
                 false
             },
         }
@@ -278,7 +278,7 @@ impl Index<usize> for MultiaddressesWithStats {
 
     /// Returns the NetAddressWithStats at the given index
     fn index(&self, index: usize) -> &Self::Output {
-        &self.addresses[index]
+        self.addresses.get(index).expect("Index out of bounds")
     }
 }
 
@@ -315,6 +315,7 @@ impl Display for MultiaddressesWithStats {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[test]

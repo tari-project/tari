@@ -75,7 +75,7 @@ impl Transport for TcpWithTorTransport {
         if addr.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("Invalid address '{}'", addr),
+                format!("Invalid address '{addr}'"),
             ));
         }
 

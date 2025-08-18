@@ -129,7 +129,7 @@ impl LivenessHandle {
     /// Send a ping to a given node ID
     pub async fn send_ping(&mut self, node_id: NodeId) -> Result<u64, LivenessError> {
         match self.handle.call(LivenessRequest::SendPing(node_id)).await?? {
-            LivenessResponse::Ok(Some(nonces)) => Ok(nonces[0]),
+            LivenessResponse::Ok(Some(nonces)) => Ok(*nonces.first().ok_or(LivenessError::InvalidBytes)?),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }
     }

@@ -139,12 +139,12 @@ impl DhtConnectivity {
         task::spawn(async move {
             debug!(target: LOG_TARGET, "Waiting for connectivity manager to start");
             if let Err(err) = self.connectivity.wait_started().await {
-                error!(target: LOG_TARGET, "Comms connectivity failed to start: {}", err);
+                error!(target: LOG_TARGET, "Comms connectivity failed to start: {err}");
             }
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
-                    error!(target: LOG_TARGET, "DhtConnectivity exited with error: {:?}", err);
+                    error!(target: LOG_TARGET, "DhtConnectivity exited with error: {err:?}");
                     Err(err)
                 },
             }
@@ -156,7 +156,7 @@ impl DhtConnectivity {
         // usually needed for the wallet to connect to its own base node first.
         if let Some(delay) = self.config.network_discovery.initial_peer_sync_delay {
             tokio::time::sleep(delay).await;
-            debug!(target: LOG_TARGET, "DHT connectivity starting after delayed for {:.0?}", delay);
+            debug!(target: LOG_TARGET, "DHT connectivity starting after delayed for {delay:.0?}");
         }
         self.refresh_neighbour_pool(true).await?;
 
@@ -166,29 +166,29 @@ impl DhtConnectivity {
             tokio::select! {
                 Ok(event) = connectivity_events.recv() => {
                     if let Err(err) = self.handle_connectivity_event(event).await {
-                        error!(target: LOG_TARGET, "Error handling connectivity event: {:?}", err);
+                        error!(target: LOG_TARGET, "Error handling connectivity event: {err:?}");
                     }
                },
 
                Ok(event) = self.dht_events.recv() => {
                     if let Err(err) = self.handle_dht_event(&event).await {
-                        error!(target: LOG_TARGET, "Error handling DHT event: {:?}", err);
+                        error!(target: LOG_TARGET, "Error handling DHT event: {err:?}");
                     }
                },
 
                _ = ticker.tick() => {
                     if let Err(err) = self.check_and_ban_flooding_peers().await {
-                        error!(target: LOG_TARGET, "Error checking for peer flooding: {:?}", err);
+                        error!(target: LOG_TARGET, "Error checking for peer flooding: {err:?}");
                     }
                     if let Err(err) = self.refresh_neighbour_pool_if_required().await {
-                        error!(target: LOG_TARGET, "Error refreshing neighbour peer pool: {:?}", err);
+                        error!(target: LOG_TARGET, "Error refreshing neighbour peer pool: {err:?}");
                     }
                     if let Err(err) = self.refresh_random_pool_if_required().await {
-                        error!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
+                        error!(target: LOG_TARGET, "Error refreshing random peer pool: {err:?}");
                     }
                     self.log_status();
                     if let Err(err) = self.check_minimum_required_tcp_nodes().await {
-                        error!(target: LOG_TARGET, "Error checking minimum required TCP nodes: {:?}", err);
+                        error!(target: LOG_TARGET, "Error checking minimum required TCP nodes: {err:?}");
                     }
                },
 
@@ -315,7 +315,7 @@ impl DhtConnectivity {
         for (peer, mps) in nodes {
             warn!(
                 target: LOG_TARGET,
-                "Banning peer `{}` because of flooding. Message rate: {:.2}m/s", peer, mps
+                "Banning peer `{peer}` because of flooding. Message rate: {mps:.2}m/s"
             );
             self.connectivity
                 .ban_peer_until(
@@ -483,9 +483,8 @@ impl DhtConnectivity {
         );
         trace!(
             target: LOG_TARGET,
-            "Random peers: Adding = {:?}, Removing = {:?}",
-            random_peers,
-            difference
+            "Random peers: Adding = {random_peers:?}, Removing = {difference:?}"
+
         );
         for peer in &random_peers {
             self.insert_random_peer_ordered_by_distance(peer.clone());
@@ -545,7 +544,7 @@ impl DhtConnectivity {
                 // it is not full or if it is closer than the furthest random peer.
                 debug!(
                     target: LOG_TARGET,
-                    "Moving peer '{}' from neighbouring pool to random pool if not full or closer", peer_to_insert
+                    "Moving peer '{peer_to_insert}' from neighbouring pool to random pool if not full or closer"
                 );
                 self.insert_random_peer_ordered_by_distance(node_id)
             }
@@ -599,21 +598,21 @@ impl DhtConnectivity {
     fn insert_connection_handle(&mut self, conn: PeerConnection) {
         // Remove any existing connection for this peer
         self.remove_connection_handle(conn.peer_node_id());
-        trace!(target: LOG_TARGET, "Insert new peer connection {}", conn);
+        trace!(target: LOG_TARGET, "Insert new peer connection {conn}" );
         self.connection_handles.push(conn);
     }
 
     fn remove_connection_handle(&mut self, node_id: &NodeId) {
         if let Some(idx) = self.connection_handles.iter().position(|c| c.peer_node_id() == node_id) {
             let conn = self.connection_handles.swap_remove(idx);
-            trace!(target: LOG_TARGET, "Removing peer connection {}", conn);
+            trace!(target: LOG_TARGET, "Removing peer connection {conn}" );
         }
     }
 
     async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) -> Result<(), DhtConnectivityError> {
         #[allow(clippy::enum_glob_use)]
         use ConnectivityEvent::*;
-        debug!(target: LOG_TARGET, "Connectivity event: {}", event);
+        debug!(target: LOG_TARGET, "Connectivity event: {event}");
         match event {
             PeerConnected(conn) => {
                 self.handle_new_peer_connected(*conn.clone()).await?;
@@ -634,12 +633,12 @@ impl DhtConnectivity {
                 if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
                     debug!(
                         target: LOG_TARGET,
-                        "Failed to clear metrics for peer `{}`. Metric collector is shut down.", node_id
+                        "Failed to clear metrics for peer `{node_id}`. Metric collector is shut down."
                     );
                 };
                 self.remove_unmanaged_peers_from_pools().await?;
                 if !self.is_pool_peer(&node_id) {
-                    debug!(target: LOG_TARGET, "{} is not managed by the DHT. Ignoring", node_id);
+                    debug!(target: LOG_TARGET, "{node_id} is not managed by the DHT. Ignoring");
                     return Ok(());
                 }
                 self.replace_pool_peer(&node_id).await?;
@@ -656,19 +655,19 @@ impl DhtConnectivity {
                 if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
                     debug!(
                         target: LOG_TARGET,
-                        "Failed to clear metrics for peer `{}`. Metric collector is shut down.", node_id
+                        "Failed to clear metrics for peer `{node_id}`. Metric collector is shut down."
                     );
                 };
                 self.remove_unmanaged_peers_from_pools().await?;
                 if !self.is_pool_peer(&node_id) {
-                    debug!(target: LOG_TARGET, "{} is not managed by the DHT. Ignoring", node_id);
+                    debug!(target: LOG_TARGET, "{node_id} is not managed by the DHT. Ignoring");
                     return Ok(());
                 }
                 if minimized == Minimized::Yes || self.config.minimize_connections {
                     debug!(
                         target: LOG_TARGET,
-                        "Peer '{}' was disconnected because it was minimized, will not reconnect.",
-                        node_id
+                        "Peer '{node_id}' was disconnected because it was minimized, will not reconnect."
+
                     );
                     // Remove from managed pool if applicable
                     self.replace_pool_peer(&node_id).await?;
@@ -676,7 +675,7 @@ impl DhtConnectivity {
                     self.remove_connection_handle(&node_id);
                     return Ok(());
                 }
-                debug!(target: LOG_TARGET, "Pool peer {} disconnected. Redialling...", node_id);
+                debug!(target: LOG_TARGET, "Pool peer {node_id} disconnected. Redialling...");
                 // Attempt to reestablish the lost connection to the pool peer. If reconnection fails,
                 // it is replaced with another peer (replace_pool_peer via PeerConnectFailed)
                 self.dial_multiple_peers(&[node_id]).await?;
@@ -686,7 +685,7 @@ impl DhtConnectivity {
                 if self.config.auto_join && self.should_send_join() {
                     debug!(
                         target: LOG_TARGET,
-                        "Node is online ({} peer(s) connected). Sending network join message.", n
+                        "Node is online ({n} peer(s) connected). Sending network join message."
                     );
                     self.dht_requester
                         .send_join()
@@ -733,8 +732,8 @@ impl DhtConnectivity {
         if self.is_allow_list_peer(current_peer).await? {
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' is on the allow list, ignoring replacement.",
-                current_peer
+                "Peer '{current_peer}' is on the allow list, ignoring replacement."
+
             );
             return Ok(());
         }
@@ -751,7 +750,7 @@ impl DhtConnectivity {
 
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' in random pool is unavailable. Adding a new random peer if possible", current_peer
+                "Peer '{current_peer}' in random pool is unavailable. Adding a new random peer if possible"
             );
             match self.fetch_random_peers(1, &exclude).await?.pop() {
                 Some(new_peer) => {
@@ -778,7 +777,7 @@ impl DhtConnectivity {
 
             debug!(
                 target: LOG_TARGET,
-                "Peer '{}' in neighbour pool is offline. Adding a new peer if possible", current_peer
+                "Peer '{current_peer}' in neighbour pool is offline. Adding a new peer if possible"
             );
             match self.fetch_neighbouring_peers(1, &exclude, false).await?.pop() {
                 Some(new_peer) => {

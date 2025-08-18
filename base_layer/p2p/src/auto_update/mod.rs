@@ -118,8 +118,8 @@ pub async fn check_for_updates(
         Some(update_spec) => {
             log::debug!(
                 target: LOG_TARGET,
-                "New unverified update found ({}). Verifying...",
-                update_spec
+                "New unverified update found ({update_spec}). Verifying..."
+
             );
             let (hashes, sig) = future::join(
                 download_hashes_file(&hashes_url),
@@ -132,8 +132,8 @@ pub async fn check_for_updates(
             verifier
                 .verify_signed_update(&sig, &hashes, &update_spec)
                 .map(|(_, filename)| {
-                    let download_url = format!("{}/{}", download_base_url, filename);
-                    log::info!(target: LOG_TARGET, "Valid update found at {}", download_url);
+                    let download_url = format!("{download_base_url}/{filename}");
+                    log::info!(target: LOG_TARGET, "Valid update found at {download_url}");
                     Ok(SoftwareUpdate {
                         spec: update_spec,
                         download_url,
@@ -142,7 +142,7 @@ pub async fn check_for_updates(
                 .transpose()
         },
         None => {
-            log::info!("No new updates for {} ({} {})", app, arch, version);
+            log::info!("No new updates for {app} ({arch} {version})");
             Ok(None)
         },
     }
@@ -228,7 +228,7 @@ mod test {
                 format!(
                     r#"
                     [auto_update]
-                    override_from="{}"
+                    override_from="{o}"
                     check_interval=31
                     name_server="127.0.0.1:80/localtest"
                     update_uris = ["http://none", "http://local"]
@@ -239,8 +239,7 @@ mod test {
                     [config_b.auto_update]
                     # spelling error in name
                     use_dns_sec=true
-                    "#,
-                    o
+                    "#
                 )
             },
             None => r#"

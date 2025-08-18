@@ -45,7 +45,7 @@ impl Display for DbTransaction {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         fmt.write_str("Db transaction: \n")?;
         for write_op in &self.operations {
-            fmt.write_str(&format!("{}\n", write_op))?;
+            fmt.write_str(&format!("{write_op}\n"))?;
         }
         Ok(())
     }
@@ -404,19 +404,19 @@ impl fmt::Display for WriteOperation {
                 header_height,
                 header_hash,
             ),
-            DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash),
+            DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({hash})",),
             InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
-                write!(f, "InsertOrphanChainTip({}, {})", hash, total_accumulated_difficulty)
+                write!(f, "InsertOrphanChainTip({hash}, {total_accumulated_difficulty})")
             },
-            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash),
+            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({hash})"),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash()),
             UpdateBlockAccumulatedData { header_hash, .. } => {
-                write!(f, "Update Block data for block {}", header_hash)
+                write!(f, "Update Block data for block {header_hash}")
             },
-            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {}", block_hash),
+            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {block_hash}"),
             PruneOutputFromAllDbs {
                 output_hash,
                 commitment,
@@ -428,10 +428,10 @@ impl fmt::Display for WriteOperation {
                 commitment.to_hex(),
                 output_type,
             ),
-            DeleteAllKernelsInBlock { block_hash } => write!(f, "Delete kernels in block {}", block_hash),
-            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash),
+            DeleteAllKernelsInBlock { block_hash } => write!(f, "Delete kernels in block {block_hash}"),
+            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {block_hash}"),
             SetAccumulatedDataForOrphan { version, data } => {
-                write!(f, "Set accumulated data for orphan {} version {}", data, version)
+                write!(f, "Set accumulated data for orphan {data} version {version}")
             },
             SetBestBlock {
                 height,
@@ -441,15 +441,15 @@ impl fmt::Display for WriteOperation {
                 timestamp,
             } => write!(
                 f,
-                "Update best block to height:{} ({}) with difficulty: {} and timestamp: {}",
-                height, hash, accumulated_difficulty, timestamp
+                "Update best block to height:{height} ({hash}) with difficulty: {accumulated_difficulty} and \
+                 timestamp: {timestamp}"
             ),
-            SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {}", pruning_horizon),
-            SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
-            DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
-            DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash),
+            SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {pruning_horizon}"),
+            SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {height}"),
+            DeleteHeader(height) => write!(f, "Delete header at height: {height}"),
+            DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {hash}"),
             InsertBadBlock { hash, height, reason } => {
-                write!(f, "Insert bad block #{} {} for {}", height, hash, reason)
+                write!(f, "Insert bad block #{height} {hash} for {reason}")
             },
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             InsertReorg { .. } => write!(f, "Insert reorg"),
@@ -496,9 +496,9 @@ impl Display for DbValue {
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::HeaderHeight(v) => f.write_str(&format!("Header height (#{})", v)),
-            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{})", v)),
-            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", v)),
+            DbKey::HeaderHeight(v) => f.write_str(&format!("Header height (#{v})")),
+            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{v})")),
+            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({v})")),
         }
     }
 }

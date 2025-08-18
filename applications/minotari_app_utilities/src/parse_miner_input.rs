@@ -66,7 +66,7 @@ pub fn prompt_for_base_node_address(network: Network) -> Result<String, ParseInp
             .unwrap();
         process_quit(&address);
         if Uri::from_str(&address).is_err() {
-            println!("  Error - base node address '{}' not valid", address);
+            println!("  Error - base node address '{address}' not valid");
             continue;
         }
         // Remove leading and trailing whitespace
@@ -84,7 +84,7 @@ pub fn prompt_for_p2pool_address() -> Result<String, ParseInputError> {
             .unwrap();
         process_quit(&address);
         if Uri::from_str(&address).is_err() {
-            println!("  Error - p2pool address '{}' not valid", address);
+            println!("  Error - p2pool address '{address}' not valid");
             continue;
         }
         // Remove leading and trailing whitespace
@@ -112,33 +112,31 @@ pub fn wallet_payment_address(
                     process_quit(&address);
                     // Remove leading and trailing whitespace
                     address = address.trim().to_string();
-                    let wallet_address: Result<TariAddress, String> = address.parse().map_err(|e| format!("{:?}", e));
+                    let wallet_address: Result<TariAddress, String> = address.parse().map_err(|e| format!("{e:?}"));
                     match wallet_address {
                         Ok(val) => {
                             if val.network() == network {
                                 return Ok(val);
                             } else {
                                 println!(
-                                    "  Error - wallet payment address '{}' does not match miner network '{}'",
-                                    address, network
+                                    "  Error - wallet payment address '{address}' does not match miner network \
+                                     '{network}'"
                                 );
                             }
                         },
-                        Err(e) => println!("  Error - wallet payment address '{}' not valid ({})", address, e),
+                        Err(e) => println!("  Error - wallet payment address '{address}' not valid ({e})"),
                     }
                 }
             }
             if address.network() != network {
                 return Err(ParseInputError::WalletPaymentAddress(format!(
-                    "Wallet payment address '{}' does not match miner network '{}'",
-                    config_wallet_payment_address, network
+                    "Wallet payment address '{config_wallet_payment_address}' does not match miner network '{network}'"
                 )));
             }
             Ok(address)
         },
         Err(err) => Err(ParseInputError::WalletPaymentAddress(format!(
-            "Wallet payment address '{}' not valid ({})",
-            config_wallet_payment_address, err
+            "Wallet payment address '{config_wallet_payment_address}' not valid ({err})"
         ))),
     }
 }

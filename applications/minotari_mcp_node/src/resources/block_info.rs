@@ -74,7 +74,7 @@ impl McpResource for BlockInfoResource {
             .parse::<u64>()
             .map_err(|_| McpError::invalid_request("Height must be a valid number"))?;
 
-        Ok(format!("block/{}", height))
+        Ok(format!("block/{height}"))
     }
 
     async fn read(&self) -> McpResult<Value> {

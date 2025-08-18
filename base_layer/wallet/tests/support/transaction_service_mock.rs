@@ -99,7 +99,7 @@ impl TransactionServiceMock {
         request: TransactionServiceRequest,
         reply_tx: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) {
-        info!(target: LOG_TARGET, "Handling Request: {}", request);
+        info!(target: LOG_TARGET, "Handling Request: {request}");
 
         match request {
             TransactionServiceRequest::ImportUtxoWithStatus { .. } => {

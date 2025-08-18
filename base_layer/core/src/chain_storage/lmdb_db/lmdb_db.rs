@@ -379,7 +379,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
         .add_database(LMDB_DB_JMT_NODE_DATA, flags)
         .add_database(LMDB_DB_JMT_UNIQUE_KEY_DATA, flags)
         .build()
-        .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{err}")))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
 
     Ok((lmdb_store, file_lock))
@@ -389,7 +389,7 @@ fn build_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<(LMDB
 /// This opens the environment directly without trying to set up databases, avoiding permission issues.
 pub fn create_readonly_lmdb_environment<P: AsRef<Path>>(path: P) -> Result<Arc<Environment>, ChainStorageError> {
     let path_ref = path.as_ref();
-    debug!(target: LOG_TARGET, "Opening LMDB environment in read-only mode at {:?}", path_ref);
+    debug!(target: LOG_TARGET, "Opening LMDB environment in read-only mode at {path_ref:?}");
 
     if !path_ref.exists() {
         return Err(ChainStorageError::CriticalError(format!(
@@ -405,10 +405,10 @@ pub fn create_readonly_lmdb_environment<P: AsRef<Path>>(path: P) -> Result<Arc<E
 
     let env = unsafe {
         let mut builder = EnvBuilder::new()
-            .map_err(|err| ChainStorageError::CriticalError(format!("Failed to create EnvBuilder: {}", err)))?;
+            .map_err(|err| ChainStorageError::CriticalError(format!("Failed to create EnvBuilder: {err}")))?;
         builder
             .set_maxdbs(50)
-            .map_err(|err| ChainStorageError::CriticalError(format!("Failed to set maxdbs: {}", err)))?;
+            .map_err(|err| ChainStorageError::CriticalError(format!("Failed to set maxdbs: {err}")))?;
         let flags = open::NOLOCK | open::RDONLY | open::NOTLS;
         builder.open(path_str, flags, 0o644).map_err(|err| {
             ChainStorageError::CriticalError(format!(
@@ -715,8 +715,7 @@ impl LMDBDatabase {
                     // we dont want to check this if the prev block has never been set, this means a empty hash of 32
                     // bytes.
                     trace!(target: LOG_TARGET,
-                        "Setting new best block as height: {}",
-                        height
+                        "Setting new best block as height: {height}"
                     );
                     if *height > 0 {
                         let prev = fetch_best_block(&write_txn, &self.metadata_db)?;
@@ -1088,7 +1087,7 @@ impl LMDBDatabase {
             BlockVersion::try_from(blockchain_version).map_err(|e| ChainStorageError::InvalidArguments {
                 func: "set_accumulated_data_for_orphan",
                 arg: "blockchain_version",
-                message: format!("Invalid blockchain version: {} :{}", blockchain_version, e),
+                message: format!("Invalid blockchain version: {blockchain_version} :{e}"),
             })?;
         let hash = accumulated_data.hash;
         match blockchain_version {
@@ -1168,7 +1167,7 @@ impl LMDBDatabase {
                 ChainStorageError::InvalidArguments {
                     func: "insert_best_block",
                     arg: "block",
-                    message: format!("block contained invalid or malformed monero PoW data: {}", e),
+                    message: format!("block contained invalid or malformed monero PoW data: {e}"),
                 }
             })?;
             let vm_key = monero_header.randomx_key.to_vec();
@@ -1220,8 +1219,7 @@ impl LMDBDatabase {
     fn delete_header(&self, txn: &WriteTransaction<'_>, height: u64) -> Result<(), ChainStorageError> {
         if self.fetch_block_accumulated_data(txn, height)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
-                "Attempted to delete header at height {} while block accumulated data still exists",
-                height
+                "Attempted to delete header at height {height} while block accumulated data still exists"
             )));
         }
 
@@ -1240,7 +1238,7 @@ impl LMDBDatabase {
         let block_version = BlockVersion::try_from(version).map_err(|e| ChainStorageError::InvalidArguments {
             func: "delete_header",
             arg: "version",
-            message: format!("Invalid blockchain version: {} :{}", version, e),
+            message: format!("Invalid blockchain version: {version} :{e}"),
         })?;
         let hash = header.hash();
 
@@ -1297,7 +1295,7 @@ impl LMDBDatabase {
         block_hash: &HashOutput,
     ) -> Result<(), ChainStorageError> {
         let hash_hex = block_hash.to_hex();
-        debug!(target: LOG_TARGET, "Deleting block `{}`", hash_hex);
+        debug!(target: LOG_TARGET, "Deleting block `{hash_hex}`");
         debug!(target: LOG_TARGET, "Deleting UTXOs...");
         let height = self
             .fetch_height_from_hash(write_txn, block_hash)
@@ -1306,8 +1304,7 @@ impl LMDBDatabase {
         let prev_height = height.saturating_sub(1);
         if self.fetch_block_accumulated_data(write_txn, next_height)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
-                "Attempted to delete block at height {} while next block still exists",
-                height
+                "Attempted to delete block at height {height} while next block still exists"
             )));
         }
 
@@ -1374,7 +1371,7 @@ impl LMDBDatabase {
         for (_, utxo) in &output_rows {
             let output_hash = utxo.hash;
             let payref = Self::generate_payment_reference_for_output(block_hash, &output_hash);
-            trace!(target: LOG_TARGET, "Deleting UTXO `{}` with payref `{}`", output_hash, payref);
+            trace!(target: LOG_TARGET, "Deleting UTXO `{output_hash}` with payref `{payref}`");
             lmdb_delete(
                 txn,
                 &self.txos_hash_to_index_db,
@@ -1403,7 +1400,7 @@ impl LMDBDatabase {
             // If an output was already spent in the block, it was never created as unspent, so don't delete it as it
             // does not exist here
             if inputs.iter().any(|(_, r)| r.input.output_hash() == output_hash) {
-                trace!(target: LOG_TARGET, "Not deleting UTXO `{}` - immediate spend", output_hash);
+                trace!(target: LOG_TARGET, "Not deleting UTXO `{output_hash}` - immediate spend");
                 continue;
             }
 
@@ -1445,7 +1442,7 @@ impl LMDBDatabase {
 
             // If an output was burned, it was never created as an unspent utxo
             if utxo.output.is_burned() {
-                trace!(target: LOG_TARGET, "Not deleting UTXO `{}` - burned", output_hash);
+                trace!(target: LOG_TARGET, "Not deleting UTXO `{output_hash}` - burned");
                 continue;
             }
 
@@ -1492,7 +1489,7 @@ impl LMDBDatabase {
                 &output_hash,
                 "utxo_commitment_index",
             )?;
-            trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
+            trace!(target: LOG_TARGET, "Input moved to UTXO set: {input}");
         }
         Ok(())
     }
@@ -2047,7 +2044,9 @@ impl LMDBDatabase {
                 lmdb_get::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, input.output_hash().as_slice())?
             {
                 let mut buffer = [0u8; 32];
-                buffer.copy_from_slice(&key_bytes[0..32]);
+                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))?);
                 let key = OutputKey::new(&FixedHash::from(buffer), &input.output_hash())?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
@@ -2096,7 +2095,9 @@ impl LMDBDatabase {
                 )?;
 
                 let mut buffer = [0u8; 32];
-                buffer.copy_from_slice(&key_bytes[0..32]);
+                buffer.copy_from_slice(key_bytes.get(0..32).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))?);
                 let key = OutputKey::new(&FixedHash::from(buffer), output_hash)?;
                 debug!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
@@ -2131,7 +2132,7 @@ impl LMDBDatabase {
     ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError> {
         let block_version =
             BlockVersion::from_u16(block_version).ok_or_else(|| ChainStorageError::InvalidArguments {
-                message: format!("Invalid block version: {}", block_version),
+                message: format!("Invalid block version: {block_version}"),
                 func: "fetch_orphan_header_accumulated_data",
                 arg: "block_version",
             })?;
@@ -2171,7 +2172,7 @@ impl LMDBDatabase {
     ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError> {
         let block_version =
             BlockVersion::from_u16(block_version).ok_or_else(|| ChainStorageError::InvalidArguments {
-                message: format!("Invalid block version: {}", block_version),
+                message: format!("Invalid block version: {block_version}"),
                 func: "fetch_header_accumulated_data_by_height",
                 arg: "block_version",
             })?;
@@ -2215,7 +2216,7 @@ impl LMDBDatabase {
         let num_deleted = lmdb_delete_each_where::<[u8], (u64, String), _>(txn, &self.bad_blocks, |_, (v, _)| {
             Some(v < deleted_before_height)
         })?;
-        debug!(target: LOG_TARGET, "Cleaned out {} stale bad blocks", num_deleted);
+        debug!(target: LOG_TARGET, "Cleaned out {num_deleted} stale bad blocks");
 
         Ok(())
     }
@@ -2320,7 +2321,7 @@ impl LMDBDatabase {
             });
         }
 
-        trace!(target: LOG_TARGET, "Payref index is not completed yet, current status: {:?}", status);
+        trace!(target: LOG_TARGET, "Payref index is not completed yet, current status: {status:?}");
         Err(ChainStorageError::PayRefIndexNotAvailable {
             current_height: status.last_rebuild_height.unwrap_or_default(),
             start_height: if let Some(metadata) = status.metadata_at_start {
@@ -2404,7 +2405,7 @@ pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), Chai
     let new_data_file = new_path.join("data.mdb");
 
     fs::rename(data_file, new_data_file)
-        .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{}", err)))?;
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{err}")))?;
     Ok(())
 }
 
@@ -2416,7 +2417,7 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, ChainStorageError
     if let Err(e) = file.try_lock_exclusive() {
         error!(
             target: LOG_TARGET,
-            "Could not acquire exclusive write lock on database lock file: {:?}", e
+            "Could not acquire exclusive write lock on database lock file: {e:?}"
         );
         return Err(ChainStorageError::CannotAcquireFileLock);
     }
@@ -2511,13 +2512,13 @@ impl BlockchainBackend for LMDBDatabase {
                             }
                         },
                         _ => {
-                            error!(target: LOG_TARGET, "Failed to apply DB transaction: {:?}", jmt_err);
+                            error!(target: LOG_TARGET, "Failed to apply DB transaction: {jmt_err:?}");
                             return Err(ChainStorageError::JellyfishMerkleTreeError(jmt_err));
                         },
                     }
                 },
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Failed to apply DB transaction: {:?}", e);
+                    error!(target: LOG_TARGET, "Failed to apply DB transaction: {e:?}");
                     return Err(e);
                 },
             }
@@ -2594,7 +2595,7 @@ impl BlockchainBackend for LMDBDatabase {
         let chain_header = ChainHeader::try_construct(header, accum_data).ok_or_else(|| {
             ChainStorageError::DataInconsistencyDetected {
                 function: "fetch_chain_header_by_height",
-                details: format!("Mismatch in accumulated data at height #{}", height),
+                details: format!("Mismatch in accumulated data at height #{height}"),
             }
         })?;
 
@@ -2681,7 +2682,7 @@ impl BlockchainBackend for LMDBDatabase {
         let chain_header = ChainHeader::try_construct(header, accum_data).ok_or_else(|| {
             ChainStorageError::DataInconsistencyDetected {
                 function: "fetch_header_containing_kernel_mmr",
-                details: format!("Accumulated data mismatch at height #{}", height),
+                details: format!("Accumulated data mismatch at height #{height}"),
             }
         })?;
         Ok(chain_header)
@@ -2860,7 +2861,7 @@ impl BlockchainBackend for LMDBDatabase {
     fn orphan_count(&self) -> Result<usize, ChainStorageError> {
         let txn = self.read_transaction()?;
         let count = lmdb_len(&txn, &self.orphans_db)?;
-        trace!(target: LOG_TARGET, "Get orphan count ...({})", count);
+        trace!(target: LOG_TARGET, "Get orphan count ...({count})");
         Ok(count)
     }
 
@@ -2890,7 +2891,7 @@ impl BlockchainBackend for LMDBDatabase {
         let chain_header = ChainHeader::try_construct(header, accumulated_data).ok_or_else(|| {
             ChainStorageError::DataInconsistencyDetected {
                 function: "fetch_tip_header",
-                details: format!("Accumulated data mismatch at height #{}", height),
+                details: format!("Accumulated data mismatch at height #{height}"),
             }
         })?;
 
@@ -2918,7 +2919,7 @@ impl BlockchainBackend for LMDBDatabase {
         let chain_header = ChainHeader::try_construct(header, accumulated_data).ok_or_else(|| {
             ChainStorageError::DataInconsistencyDetected {
                 function: "fetch_tip_header",
-                details: format!("Accumulated data mismatch at height #{}", height),
+                details: format!("Accumulated data mismatch at height #{height}"),
             }
         })?;
         Ok(chain_header)
@@ -2972,8 +2973,8 @@ impl BlockchainBackend for LMDBDatabase {
         let best_block_height = self.fetch_chain_metadata()?.best_block_height();
         if height > best_block_height {
             return Err(ChainStorageError::InvalidOperation(format!(
-                "Cannot build payref indexes for height {} which is greater than the current best block height {}",
-                height, best_block_height
+                "Cannot build payref indexes for height {height} which is greater than the current best block height \
+                 {best_block_height}"
             )));
         }
 
@@ -3106,7 +3107,7 @@ impl BlockchainBackend for LMDBDatabase {
         let chain_header = ChainHeader::try_construct(orphan.header, accumulated_data).ok_or_else(|| {
             ChainStorageError::DataInconsistencyDetected {
                 function: "fetch_orphan_chain_tip_by_hash",
-                details: format!("Accumulated data mismatch at height #{}", height),
+                details: format!("Accumulated data mismatch at height #{height}"),
             }
         })?;
         Ok(Some(chain_header))
@@ -3152,7 +3153,7 @@ impl BlockchainBackend for LMDBDatabase {
             let chain_header = ChainHeader::try_construct(orphan.header, accumulated_data).ok_or_else(|| {
                 ChainStorageError::DataInconsistencyDetected {
                     function: "fetch_orphan_chain_tip_by_hash",
-                    details: format!("Accumulated data mismatch at height #{}", height),
+                    details: format!("Accumulated data mismatch at height #{height}"),
                 }
             })?;
             chain_tips.push(chain_header);
@@ -3215,9 +3216,7 @@ impl BlockchainBackend for LMDBDatabase {
         }
         debug!(
             target: LOG_TARGET,
-            "Orphan block storage limit of {} reached, performing cleanup of {} entries.",
-            orphan_storage_capacity,
-            num_over_limit,
+            "Orphan block storage limit of {orphan_storage_capacity} reached, performing cleanup of {num_over_limit} entries."
         );
 
         let mut orphans;
@@ -3296,8 +3295,7 @@ impl BlockchainBackend for LMDBDatabase {
             Ok(Some((height, reason))) => {
                 trace!(
                     target: LOG_TARGET,
-                    "Bad block exists at height: {}, hash: {}, reason: {}",
-                    height, block_hash, reason
+                    "Bad block exists at height: {height}, hash: {block_hash}, reason: {reason}"
                 );
                 Ok((true, reason))
             },
@@ -3661,7 +3659,7 @@ fn fetch_horizon_data(txn: &ConstTransaction<'_>, db: &Database) -> Result<Horiz
         }),
         Some(k) => Err(ChainStorageError::DataInconsistencyDetected {
             function: "fetch_horizon_data",
-            details: format!("Received incorrect value {:?} for key horizon data", k),
+            details: format!("Received incorrect value {k:?} for key horizon data"),
         }),
     }
 }
@@ -3721,7 +3719,7 @@ fn fetch_pruning_horizon(txn: &ConstTransaction<'_>, db: &Database) -> Result<u6
 fn get_database(store: &LMDBStore, name: &str) -> Result<DatabaseRef, ChainStorageError> {
     let handle = store
         .get_handle(name)
-        .ok_or_else(|| ChainStorageError::CriticalError(format!("Could not get `{}` database", name)))?;
+        .ok_or_else(|| ChainStorageError::CriticalError(format!("Could not get `{name}` database")))?;
     Ok(handle.db())
 }
 
@@ -3803,14 +3801,14 @@ pub enum MetadataValue {
 impl fmt::Display for MetadataValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MetadataValue::ChainHeight(h) => write!(f, "Chain height is {}", h),
-            MetadataValue::AccumulatedWork(d) => write!(f, "Total accumulated work is {}", d),
-            MetadataValue::PruningHorizon(h) => write!(f, "Pruning horizon is {}", h),
-            MetadataValue::PrunedHeight(height) => write!(f, "Effective pruned height is {}", height),
-            MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash),
+            MetadataValue::ChainHeight(h) => write!(f, "Chain height is {h}"),
+            MetadataValue::AccumulatedWork(d) => write!(f, "Total accumulated work is {d}"),
+            MetadataValue::PruningHorizon(h) => write!(f, "Pruning horizon is {h}"),
+            MetadataValue::PrunedHeight(height) => write!(f, "Effective pruned height is {height}"),
+            MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {hash}"),
             MetadataValue::HorizonData(_) => write!(f, "Horizon data"),
-            MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {}", timestamp),
-            MetadataValue::MigrationVersion(n) => write!(f, "Migration version {}", n),
+            MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {timestamp}"),
+            MetadataValue::MigrationVersion(n) => write!(f, "Migration version {n}"),
             MetadataValue::PayrefRebuildStatus(status) => {
                 write!(f, "Payref indexes has been rebuilt - {}", status.is_rebuilt)
             },
@@ -3834,8 +3832,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
     };
     info!(
         target: LOG_TARGET,
-        "[MIGRATIONS] Blockchain database is at v{} (required version: {})",
-        last_migrated_version, MIGRATION_VERSION
+        "[MIGRATIONS] Blockchain database is at v{last_migrated_version} (required version: {MIGRATION_VERSION})"
     );
     drop(txn);
 
@@ -3884,8 +3881,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 txn.commit()?;
                 info!(
                     target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: Replaced tip accumulated data ",
-                    migrate_from_version
+                    "[MIGRATIONS] v{migrate_from_version}: Replaced tip accumulated data "
                 );
             }
 
@@ -3929,8 +3925,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET,
-                "[MIGRATIONS] v{}: Replaced accumulated data for blocks",
-                migrate_from_version
+                "[MIGRATIONS] v{migrate_from_version}: Replaced accumulated data for blocks"
             );
             let orphan_headers_accum_data: Vec<(Vec<u8>, V0BLockHeaderAccumulatedData)> =
                 lmdb_all(&txn, &db.orphan_header_accumulated_data_db.db)?;
@@ -3957,8 +3952,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let txn = db.write_transaction()?;
             info!(
                 target: LOG_TARGET,
-                "[MIGRATIONS] v{}: Replaced accumulated data for orphan blocks",
-                migrate_from_version
+                "[MIGRATIONS] v{migrate_from_version}: Replaced accumulated data for orphan blocks"
             );
             let orphan_chain_tips: Vec<(Vec<u8>, OldChainTipData)> = lmdb_all(&txn, &db.orphan_chain_tips_db)?;
 
@@ -3976,8 +3970,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         if migrate_from_version == 1 {
             info!(
                 target: LOG_TARGET,
-                "[MIGRATIONS] v{}: Skipping migration; this will run in v5",
-                migrate_from_version
+                "[MIGRATIONS] v{migrate_from_version}: Skipping migration; this will run in v5"
             );
             continue;
         }
@@ -3987,7 +3980,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
         //       to `migrate_from_version == 4`. This migration also fix the error introduced with the original payref
         //       migration where it was only added for outputs in the unspent set, resulting in missing payrefs.
         if (migrate_from_version == 2 || migrate_from_version == 3 || migrate_from_version == 4) && !payref_index_done {
-            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: Starting PayRef migration management", migrate_from_version);
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{migrate_from_version}: Starting PayRef migration management");
 
             // Set the payref rebuild status to done for new databases or to default for existing databases
             let write_txn = db.write_transaction()?;
@@ -4003,8 +3996,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         if status.is_rebuilt {
                             info!(
                                 target: LOG_TARGET,
-                                "[MIGRATIONS] v{}: PayRef index already rebuilt in the background",
-                                migrate_from_version
+                                "[MIGRATIONS] v{migrate_from_version}: PayRef index already rebuilt in the background"
                             );
                             payref_index_done = true;
                             continue;
@@ -4012,8 +4004,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                     }
                     info!(
                         target: LOG_TARGET,
-                        "[MIGRATIONS] v{}: Resetting PayRef index rebuild status to enable the background task to run",
-                        migrate_from_version
+                        "[MIGRATIONS] v{migrate_from_version}: Resetting PayRef index rebuild status to enable the background task to run"
                     );
                     lmdb_replace(
                         &write_txn,
@@ -4026,8 +4017,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 Err(_) => {
                     info!(
                         target: LOG_TARGET,
-                        "[MIGRATIONS] v{}: Setting PayRef index rebuild status as rebuilt for new blockchains",
-                        migrate_from_version
+                        "[MIGRATIONS] v{migrate_from_version}: Setting PayRef index rebuild status as rebuilt for new blockchains"
                     );
                     lmdb_replace(
                         &write_txn,
@@ -4044,7 +4034,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             write_txn.commit()?;
 
             payref_index_done = true;
-            info!(target: LOG_TARGET, "[MIGRATIONS] v{}: PayRef migration management completed", migrate_from_version);
+            info!(target: LOG_TARGET, "[MIGRATIONS] v{migrate_from_version}: PayRef migration management completed");
         }
 
         // MIGRATION: Total accumulated difficulty migration - re-calculate accumulated difficulties from the last known
@@ -4057,18 +4047,18 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 fetch_chain_height(&txn, &db.metadata_db).unwrap_or(0)
             };
 
-            if known_good_difficulties.is_empty() || current_height < known_good_difficulties[0].0 {
+            if known_good_difficulties.is_empty() ||
+                current_height < known_good_difficulties.first().expect("is checked").0
+            {
                 // This will happen only happen if the db is below the fork height of the RxT fork
                 info!(
                     target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: No migration to perform for this network version",
-                    migrate_from_version
+                    "[MIGRATIONS] v{migrate_from_version}: No migration to perform for this network version"
                 );
 
                 info!(
                     target: LOG_TARGET,
-                    "[MIGRATIONS] v{}: Setting accumulated data rebuild status as rebuilt for new blockchains",
-                    migrate_from_version
+                    "[MIGRATIONS] v{migrate_from_version}: Setting accumulated data rebuild status as rebuilt for new blockchains"
                 );
                 let write_txn = db.write_transaction()?;
                 lmdb_replace(
@@ -4086,7 +4076,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                 continue;
             }
 
-            let mut last_correct_height = known_good_difficulties[0].0.saturating_sub(1);
+            let mut last_correct_height = known_good_difficulties.first().expect("is checked").0.saturating_sub(1);
             for (height, correct_difficulty) in known_good_difficulties {
                 let txn = db.read_transaction()?;
 
@@ -4098,24 +4088,21 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
                         Some(accum_data) if accum_data.total_accumulated_difficulty == correct_difficulty => {
                             info!(
                                 target: LOG_TARGET,
-                                "[MIGRATIONS] v{}: Block height {} has correct accumulated difficulty",
-                                migrate_from_version, height
+                                "[MIGRATIONS] v{migrate_from_version}: Block height {height} has correct accumulated difficulty"
                             );
                             last_correct_height = height;
                         },
                         Some(_) => {
                             info!(
                                 target: LOG_TARGET,
-                                "[MIGRATIONS] v{}: Block height {} has incorrect accumulated difficulty",
-                                migrate_from_version, height
+                                "[MIGRATIONS] v{migrate_from_version}: Block height {height} has incorrect accumulated difficulty"
                             );
                             break;
                         },
                         None => {
                             info!(
                                 target: LOG_TARGET,
-                                "[MIGRATIONS] v{}: No accumulated difficulty found for block height {}",
-                                migrate_from_version, height
+                                "[MIGRATIONS] v{migrate_from_version}: No accumulated difficulty found for block height {height}"
                             );
                             break;
                         },
@@ -4131,8 +4118,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             };
             info!(
                 target: LOG_TARGET,
-                "[MIGRATIONS] v{}: Set accumulated difficulty rebuild status to enable the background task to run: {:?}",
-                migrate_from_version, status,
+                "[MIGRATIONS] v{migrate_from_version}: Set accumulated difficulty rebuild status to enable the background task to run: {status:?}"
             );
             let write_txn = db.write_transaction()?;
             lmdb_replace(
@@ -4150,8 +4136,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             let migrated_to_version = migrate_from_version + 1;
             let txn = db.write_transaction()?;
             info!(
-                target: LOG_TARGET, "[MIGRATIONS] Migrated database from version {} to version {}",
-                migrate_from_version, migrated_to_version
+                target: LOG_TARGET, "[MIGRATIONS] Migrated database from version {migrate_from_version} to version {migrated_to_version}"
             );
             lmdb_replace(
                 &txn,

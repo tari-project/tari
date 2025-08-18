@@ -158,7 +158,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let Some(authenticated_pk) = authenticated_origin else {
             warn!(
                 target: LOG_TARGET,
-                "Received JoinMessage that did not have an authenticated origin from source peer {}. Banning source", source_peer
+                "Received JoinMessage that did not have an authenticated origin from source peer {source_peer}. Banning source"
             );
 
             self.dht
@@ -212,7 +212,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         debug!(
             target: LOG_TARGET,
-            "Received join Message from '{}' {}", authenticated_pk, join_msg
+            "Received join Message from '{authenticated_pk}' {join_msg}"
         );
 
         let validator = PeerValidator::new(&self.config);
@@ -294,7 +294,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let Some(authenticated_origin) = message.authenticated_origin.as_ref() else {
             warn!(
                 target: LOG_TARGET,
-                "Received DiscoveryResponseMessage that did not have an authenticated origin: {}. Banning source", message
+                "Received DiscoveryResponseMessage that did not have an authenticated origin: {message}. Banning source"
             );
             self.dht
                 .ban_peer(
@@ -410,7 +410,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         if origin_peer.is_banned() {
             warn!(
                 target: LOG_TARGET,
-                "Received Discovery request for banned peer '{}'. Not propagating further.", node_id
+                "Received Discovery request for banned peer '{node_id}'. Not propagating further."
             );
             return Ok(());
         }
@@ -441,7 +441,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
         };
 
-        trace!(target: LOG_TARGET, "Sending discovery response to {}", dest_public_key);
+        trace!(target: LOG_TARGET, "Sending discovery response to {dest_public_key}");
         self.outbound_service
             .send_message_no_header_no_wait(
                 SendMessageParams::new()

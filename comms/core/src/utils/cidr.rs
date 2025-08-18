@@ -29,7 +29,7 @@ pub fn parse_cidrs<I: IntoIterator<Item = T>, T: AsRef<str>>(cidr_strs: I) -> Re
         .partition::<Vec<_>, _>(Result::is_ok);
 
     if !failed.is_empty() {
-        return Err(format!("Invalid CIDR strings: {:?}", failed));
+        return Err(format!("Invalid CIDR strings: {failed:?}"));
     }
 
     Ok(success.into_iter().map(Result::unwrap).collect())
@@ -37,6 +37,7 @@ pub fn parse_cidrs<I: IntoIterator<Item = T>, T: AsRef<str>>(cidr_strs: I) -> Re
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[test]

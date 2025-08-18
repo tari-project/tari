@@ -75,9 +75,9 @@ impl CommandContext {
             Format::Text => {
                 let block_data = self.blockchain_db.fetch_block_accumulated_data(*block.hash()).await?;
 
-                println!("{}", block);
+                println!("{block}");
                 println!("-- Accumulated data --");
-                println!("{}", block_data);
+                println!("{block_data}");
             },
             Format::Json => eprintln!("JSON format not supported for blocks in this command"),
         }
@@ -88,14 +88,14 @@ impl CommandContext {
         let block = self.blockchain_db.fetch_block_by_hash(hash, false).await?;
         match block {
             Some(block) => match format {
-                Format::Text => println!("{}", block),
+                Format::Text => println!("{block}"),
                 Format::Json => eprintln!("JSON format not supported for blocks in this command"),
             },
             None => {
                 let block = self.blockchain_db.fetch_orphan(hash).await?;
                 println!("Found in orphan database");
                 match format {
-                    Format::Text => println!("{}", block),
+                    Format::Text => println!("{block}"),
                     Format::Json => eprintln!("JSON format not supported for blocks in this command"),
                 }
             },

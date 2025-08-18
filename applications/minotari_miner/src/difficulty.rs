@@ -152,8 +152,7 @@ pub mod test {
             assert_eq!(
                 hasher.difficulty_sha3().unwrap(),
                 core_sha3x_difficulty(&core_header).unwrap().as_u64(),
-                "with timestamp = {}",
-                timestamp
+                "with timestamp = {timestamp}"
             );
             timestamp = timestamp.checked_add(EpochTime::from(1)).unwrap();
             core_header.timestamp = timestamp;

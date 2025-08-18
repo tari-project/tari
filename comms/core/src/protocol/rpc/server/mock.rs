@@ -307,8 +307,7 @@ impl Service<Request<Bytes>> for MockRpcImpl {
             match state.lock().await.accepted_calls.get(&method_id) {
                 Some(resp) => Ok(resp.clone().map(Body::single)),
                 None => Err(RpcStatus::unsupported_method(&format!(
-                    "Method identifier `{}` is not recognised or supported",
-                    method_id
+                    "Method identifier `{method_id}` is not recognised or supported"
                 ))),
             }
         })
