@@ -98,9 +98,13 @@ pub mod proto;
 pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
+pub mod transaction_builder;
 pub mod transaction_initializer;
 use tari_common_types::types::CompressedCommitment;
-pub use transaction_builder::TransactionBuilder;
+pub use transaction_builder::{
+    BuilderState, LegacyTransactionBuilder, NoInputs, ReadyToBuild, TransactionBuilder, TransactionParameters,
+    WithInputs, WithOutputs,
+};
 
 use crate::transactions::{
     transaction_components::KernelFeatures, transaction_key_manager::error::KeyManagerServiceError,

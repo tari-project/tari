@@ -35,8 +35,7 @@ use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::transactions::{
-    transaction_components::EncryptedDataError,
-    transaction_key_manager::error::KeyManagerServiceError,
+    transaction_components::EncryptedDataError, transaction_key_manager::error::KeyManagerServiceError,
 };
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
@@ -91,6 +90,14 @@ pub enum TransactionError {
     OutputNotFound(String),
     #[error("Unsupported TariKeyId: `{0}`")]
     UnsupportedTariKeyId(String),
+    #[error("Transaction builder requires at least one input")]
+    NoInputs,
+    #[error("Transaction builder requires at least one output")]
+    NoOutputs,
+    #[error("Invalid or missing transaction offset")]
+    InvalidOffset,
+    #[error("Invalid or missing script offset")]
+    InvalidScriptOffset,
 }
 
 impl From<KeyManagerServiceError> for TransactionError {
