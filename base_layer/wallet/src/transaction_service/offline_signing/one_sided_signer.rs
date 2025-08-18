@@ -29,9 +29,9 @@ use tari_core::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{
+            CoreTransactionBuilder,
             KernelBuilder,
             Transaction,
-            TransactionBuilder,
             TransactionKernel,
             TransactionKernelVersion,
             WalletOutput,
@@ -303,7 +303,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         sender_public_nonce: CompressedPublicKey,
         sender_public_excess: CompressedPublicKey,
     ) -> Result<(Transaction, Option<WalletOutput>), TPE> {
-        let mut tx_builder = TransactionBuilder::new();
+        let mut tx_builder = CoreTransactionBuilder::new();
 
         let total_public_nonce = &sender_public_nonce.to_public_key()? +
             signed_message

@@ -49,7 +49,7 @@ use crate::{
             KernelBuilder,
             OutputFeatures,
             Transaction,
-            TransactionBuilder,
+            CoreTransactionBuilder,
             TransactionKernel,
             TransactionKernelVersion,
             TransactionOutput,
@@ -690,7 +690,7 @@ impl SenderTransactionProtocol {
         info: &RawTransactionInfo,
         key_manager: &KM,
     ) -> Result<(Transaction, Option<OutputPair>), TPE> {
-        let mut tx_builder = TransactionBuilder::new();
+        let mut tx_builder = CoreTransactionBuilder::new();
         let (total_public_nonce, total_public_excess) = if info.recipient_data.is_none() {
             // we dont have a recipient and thus we have not yet calculated the sender_nonce and sender_offset_excess
             SenderTransactionProtocol::calculate_total_nonce_and_total_public_excess(info, key_manager).await?

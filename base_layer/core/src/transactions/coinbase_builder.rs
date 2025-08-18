@@ -43,12 +43,12 @@ use crate::{
         transaction_components::{
             memo_field::{MemoField, TxType},
             CoinBaseExtra,
+            CoreTransactionBuilder,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
             RangeProofType,
             Transaction,
-            TransactionBuilder,
             TransactionError,
             TransactionKernel,
             TransactionKernelVersion,
@@ -377,7 +377,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
-        let mut builder = TransactionBuilder::new();
+        let mut builder = CoreTransactionBuilder::new();
         builder
             .add_output(output)
             // A coinbase must have 0 offset or the reward balance check will fail.

@@ -1203,7 +1203,7 @@ async fn consensus_validation_large_tx() {
     .await
     .unwrap();
 
-    // build huge tx manually - the TransactionBuilder already has checks for max inputs/outputs
+    // build huge tx manually - the CoreTransactionBuilder already has checks for max inputs/outputs
     let fee_per_gram = 15;
     let input_count = 1;
     let output_count = 39;
