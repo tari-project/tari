@@ -354,8 +354,8 @@ where
             .map(|c| c.peer_node_id().clone())
             .collect::<Vec<_>>();
 
-        // If no connections were selected, use connected seed nodes as a fallback
-        if selected_peers.is_empty() {
+        // If not enough connections were selected, use potentially connected seed nodes as a fallback
+        if selected_peers.len() < self.config.num_peers_per_round {
             selected_peers = self
                 .connectivity
                 .select_connections(ConnectivitySelection::random_nodes(
