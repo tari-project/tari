@@ -486,7 +486,7 @@ pub mod tari_address_json {
                     },
                     _ => {
                         // Skip unknown keys to allow forward compat
-                        let _: serde_json::Value = map.next_value()?;
+                        let _unused: serde_json::Value = map.next_value()?;
                     },
                 }
             }
