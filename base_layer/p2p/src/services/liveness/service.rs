@@ -126,7 +126,7 @@ where
             .peer_manager
             .get_seed_peers()
             .await
-            .unwrap_or({
+            .unwrap_or_else(|_| {
                 warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
                 vec![]
             })
