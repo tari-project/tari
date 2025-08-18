@@ -24,6 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::types::FixedHash;
+use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
 use crate::commands::parser::FromHex;
@@ -54,7 +55,7 @@ impl CommandContext {
         }
         println!(
             "Found output for payref, commitment: {}",
-            mined_info.output.as_ref().unwrap().output.commitment()
+            mined_info.output.as_ref().unwrap().output.commitment().to_hex()
         );
 
         println!("---- Mined info ----");
