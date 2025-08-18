@@ -120,10 +120,10 @@ jobs:
 
             if [ ! -z "${{ inputs.tag_alias }}" ] ; then
               echo "Setup tag_alias with network"
-              echo "TAG_ALIASQ=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ matrix.builds.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
-              echo "TAG_ALIASG=ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ matrix.builds.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+              echo "TAG_ALIASQ=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ matrix.builds.tari_network }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+              echo "TAG_ALIASG=ghcr.io/${{ github.repository_owner }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ matrix.builds.tari_network }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
             fi
-            echo "DSuffix=-${{ matrix.builds.TARI_NETWORK }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
+            echo "DSuffix=-${{ matrix.builds.tari_network }}-${{ matrix.builds.arch }}" >> $GITHUB_ENV
           else
             echo "3rd Party builds - ${IMAGE_NAME}"
             echo "DOCKER_SUBTAG=${{ matrix.builds.build_args }}" >> $GITHUB_ENV
@@ -204,8 +204,8 @@ jobs:
             FEATURES=${{ inputs.features }}
             APP_NAME=${{ matrix.builds.app_name }}
             APP_EXEC=${{ matrix.builds.app_exec }}
-            TARI_NETWORK=${{ matrix.builds.TARI_NETWORK }}
-            TARI_TARGET_NETWORK=${{ matrix.builds.TARI_TARGET_NETWORK }}
+            TARI_NETWORK=${{ matrix.builds.tari_network }}
+            TARI_TARGET_NETWORK=${{ matrix.builds.tari_target_network }}
             ${{ env.DOCKER_SUBTAG }}
           tags: |
             ${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ matrix.builds.version }}${{ env.DSuffix }}
@@ -300,7 +300,7 @@ jobs:
                 docker manifest push ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX} || true
 
                 if [[ "${{ inputs.tag_alias }}" =~ ^latest-.*$ ]]; then
-                  echo "Latest Alis Multi-Arch tag - ${{ inputs.tag_alias }}"
+                  echo "Latest Alias Multi-Arch tag - ${{ inputs.tag_alias }}"
                   docker manifest create \
                     ${DREGISTRY}/${REPO}/${DNAME}:${{ inputs.tag_alias }}${DSUFFIX} \
                       --amend ${DREGISTRY}/${REPO}/${DNAME}:${DVERSION}${DSUFFIX}-amd64 \
