@@ -433,6 +433,86 @@ impl Default for TariAddress {
     }
 }
 
+pub mod tari_address_json {
+    use std::fmt;
+
+    use serde::{
+        de::{self, Deserializer, MapAccess, Visitor},
+        ser::{SerializeStruct, Serializer},
+    };
+
+    use crate::tari_address::{DualAddress, SingleAddress, TariAddress};
+
+    pub fn serialize<S>(addr: &TariAddress, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        match addr {
+            TariAddress::Dual(inner) => {
+                let mut s = serializer.serialize_struct("TariAddress", 2)?;
+                s.serialize_field("type", "Dual")?;
+                s.serialize_field("data", inner)?;
+                s.end()
+            },
+            TariAddress::Single(inner) => {
+                let mut s = serializer.serialize_struct("TariAddress", 2)?;
+                s.serialize_field("type", "Single")?;
+                s.serialize_field("data", inner)?;
+                s.end()
+            },
+        }
+    }
+
+    struct TariAddressVisitor;
+
+    impl<'de> Visitor<'de> for TariAddressVisitor {
+        type Value = TariAddress;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str(r#"{"type":"Dual|Single","data":{...}}" or legacy "value""#)
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where M: MapAccess<'de> {
+            let mut typ: Option<String> = None;
+            let mut data: Option<serde_json::Value> = None;
+
+            while let Some(key) = map.next_key::<String>()? {
+                match key.as_str() {
+                    "type" => {
+                        typ = Some(map.next_value()?);
+                    },
+                    // accept both "data" (new) and "value" (legacy)
+                    "data" | "value" => {
+                        data = Some(map.next_value()?);
+                    },
+                    _ => {
+                        // Skip unknown keys to allow forward compat
+                        let _: serde_json::Value = map.next_value()?;
+                    },
+                }
+            }
+
+            let typ = typ.ok_or_else(|| de::Error::missing_field("type"))?;
+            let data = data.ok_or_else(|| de::Error::missing_field("data/value"))?;
+
+            match typ.as_str() {
+                "Dual" => {
+                    let inner: DualAddress = serde_json::from_value(data).map_err(de::Error::custom)?;
+                    Ok(TariAddress::Dual(Box::new(inner)))
+                },
+                "Single" => {
+                    let inner: SingleAddress = serde_json::from_value(data).map_err(de::Error::custom)?;
+                    Ok(TariAddress::Single(Box::new(inner)))
+                },
+                other => Err(de::Error::unknown_variant(other, &["Dual", "Single"])),
+            }
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<TariAddress, D::Error>
+    where D: Deserializer<'de> {
+        deserializer.deserialize_map(TariAddressVisitor)
+    }
+}
 pub mod tari_address_json_bs58 {
     use std::fmt;
 
