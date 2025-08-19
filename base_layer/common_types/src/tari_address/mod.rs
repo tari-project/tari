@@ -457,9 +457,7 @@ impl Serialize for TariAddress {
                 },
             }
         } else {
-            // Fallback: simple serialize as enum's variant and inner value
-            // or derive Serialize on inner types and delegate
-            unimplemented!("Binary serialization not implemented")
+            serializer.serialize_bytes(&self.to_vec())
         }
     }
 }
@@ -496,11 +494,9 @@ impl<'de> Deserialize<'de> for TariAddress {
     fn deserialize<D>(deserializer: D) -> Result<TariAddress, D::Error>
     where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            // Use custom visitor for JSON/human-readable formats
             deserializer.deserialize_map(TariAddressVisitor)
         } else {
-            // Fallback: custom or default binary deserialization
-            unimplemented!("Binary deserialization not implemented")
+            deserializer.deserialize_bytes(TariAddressVisitor)
         }
     }
 }
@@ -602,6 +598,7 @@ mod test {
             "memo_field_payment_id": {
               "inner": []
             }
+          }
         }
         "#;
 
