@@ -50,7 +50,7 @@ use crate::{
         },
         transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
         transaction_protocol::{
-            sender::{OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+            sender::{LegacyOutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
             KernelFeatures,
             TransactionMetadata,
         },

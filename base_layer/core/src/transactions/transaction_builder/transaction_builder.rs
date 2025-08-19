@@ -137,8 +137,9 @@ where KM: TransactionKeyManagerInterface
         recipient_address: TariAddress,
         recipient_output: WalletOutput,
         sender_offset_key_id: Option<TariKeyId>,
-    ) -> Result<&mut Self,TransactionBuilderError> {
-        let kernel_nonce = self.key_manager
+    ) -> Result<&mut Self, TransactionBuilderError> {
+        let kernel_nonce = self
+            .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let recipient_output = OutputPair::new(recipient_output, kernel_nonce.key_id, sender_offset_key_id);
@@ -207,6 +208,7 @@ where KM: TransactionKeyManagerInterface
         }
         Ok(size)
     }
+
     pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
         self.inputs
             .iter()
@@ -221,7 +223,7 @@ where KM: TransactionKeyManagerInterface
         let num_outputs = self.sender_custom_outputs.len() + self.recipients.len();
         let num_inputs = self.inputs.len();
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-         Ok(match self.fee_per_gram {
+        Ok(match self.fee_per_gram {
             Some(fee_per_gram) => {
                 let features_and_scripts_size_without_change =
                     self.get_total_features_and_scripts_size_for_outputs()?;
@@ -649,7 +651,6 @@ where KM: TransactionKeyManagerInterface
                 .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
             sender_offset_keys.push(sender_offset_key_id);
         }
-
 
         for output in &self.recipients {
             signature = &signature +

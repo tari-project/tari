@@ -1827,10 +1827,7 @@ where
             .unwrap();
 
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
-        let kernel_nonce = self.resources.transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
-        tx_builder.add_recipient(destination.clone(), output.clone(),kernel_nonce,sender_offset_private_key )?;
+        tx_builder.add_recipient(destination.clone(), output.clone(),sender_offset_private_key )?;
 
         // Finalize
         let finalized = tx_builder.build().await?;
@@ -2035,10 +2032,7 @@ where
 
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
         let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
-        let kernel_nonce = self.resources.transaction_key_manager_service
-            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
-            .await?;
-        tx_builder.add_recipient(dest_address, output.clone(), kernel_nonce, Some(sender_offset_private_key))?;
+        tx_builder.add_recipient(dest_address, output.clone(),  Some(sender_offset_private_key))?;
 
         let finalized = tx_builder.build().await?;
 

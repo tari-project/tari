@@ -28,18 +28,9 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey, Signature},
 };
 
-use crate::{
-    consensus::ConsensusConstants,
-    transactions::{
-        transaction_components::{TransactionOutput, WalletOutput},
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::{
-            sender::{SingleRoundSenderData, TransactionSenderMessage},
-            single_receiver::SingleReceiverTransactionProtocol,
-            TransactionMetadata,
-            TransactionProtocolError,
-        },
-    },
+use crate::transactions::{
+    transaction_components::TransactionOutput,
+    transaction_protocol::{TransactionMetadata, TransactionProtocolError},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -90,21 +81,21 @@ pub struct ReceiverTransactionProtocol {
 /// The function returns the protocol in the relevant state. If this is a single-round protocol, the state will
 /// already be finalised, and the return message will be accessible from the `get_signed_data` method.
 impl ReceiverTransactionProtocol {
-    pub async fn new<KM: TransactionKeyManagerInterface>(
-        info: TransactionSenderMessage,
-        output: WalletOutput,
-        key_manager: &KM,
-        consensus_constants: &ConsensusConstants,
-    ) -> ReceiverTransactionProtocol {
-        let state = match info {
-            TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
-            TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(output, &v, key_manager, consensus_constants).await
-            },
-            TransactionSenderMessage::Multiple => Self::multi_round(),
-        };
-        ReceiverTransactionProtocol { state }
-    }
+    // pub async fn new<KM: TransactionKeyManagerInterface>(
+    //     info: TransactionSenderMessage,
+    //     output: WalletOutput,
+    //     key_manager: &KM,
+    //     consensus_constants: &ConsensusConstants,
+    // ) -> ReceiverTransactionProtocol {
+    //     let state = match info {
+    //         TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
+    //         TransactionSenderMessage::Single(v) => {
+    //             ReceiverTransactionProtocol::single_round(output, &v, key_manager, consensus_constants).await
+    //         },
+    //         TransactionSenderMessage::Multiple => Self::multi_round(),
+    //     };
+    //     ReceiverTransactionProtocol { state }
+    // }
 
     /// Returns true if the recipient protocol is finalised, and the signature data is ready to be sent to the sender.
     pub fn is_finalized(&self) -> bool {
@@ -132,35 +123,35 @@ impl ReceiverTransactionProtocol {
         }
     }
 
-    /// Run the single-round recipient protocol, which can immediately construct an output and sign the data
-    async fn single_round<KM: TransactionKeyManagerInterface>(
-        output: WalletOutput,
-        data: &SingleRoundSenderData,
-        key_manager: &KM,
-        consensus_constants: &ConsensusConstants,
-    ) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::create(data, output, key_manager, consensus_constants).await;
-        match signer {
-            Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
-            Err(e) => RecipientState::Failed(e),
-        }
-    }
-
-    fn multi_round() -> RecipientState {
-        RecipientState::Failed(TransactionProtocolError::UnsupportedError(
-            "Multiple recipients aren't supported yet".into(),
-        ))
-    }
-
-    /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
-    /// require a well formed version
-    pub fn new_placeholder() -> Self {
-        ReceiverTransactionProtocol {
-            state: RecipientState::Failed(TransactionProtocolError::IncompleteStateError(
-                "This is a placeholder protocol".to_string(),
-            )),
-        }
-    }
+    // /// Run the single-round recipient protocol, which can immediately construct an output and sign the data
+    // async fn single_round<KM: TransactionKeyManagerInterface>(
+    //     output: WalletOutput,
+    //     data: &SingleRoundSenderData,
+    //     key_manager: &KM,
+    //     consensus_constants: &ConsensusConstants,
+    // ) -> RecipientState {
+    //     let signer = SingleReceiverTransactionProtocol::create(data, output, key_manager, consensus_constants).await;
+    //     match signer {
+    //         Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
+    //         Err(e) => RecipientState::Failed(e),
+    //     }
+    // }
+    //
+    // fn multi_round() -> RecipientState {
+    //     RecipientState::Failed(TransactionProtocolError::UnsupportedError(
+    //         "Multiple recipients aren't supported yet".into(),
+    //     ))
+    // }
+    //
+    // /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
+    // /// require a well formed version
+    // pub fn new_placeholder() -> Self {
+    //     ReceiverTransactionProtocol {
+    //         state: RecipientState::Failed(TransactionProtocolError::IncompleteStateError(
+    //             "This is a placeholder protocol".to_string(),
+    //         )),
+    //     }
+    // }
 }
 
 #[cfg(test)]

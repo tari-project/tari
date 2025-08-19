@@ -65,7 +65,7 @@ impl OutputPair {
     }
 }
 
-#[derive(Clone, Debug,PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FinalizedTransaction {
     pub source_address: TariAddress,
     pub destination_addresses: Vec<TariAddress>,
