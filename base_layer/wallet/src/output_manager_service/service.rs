@@ -2808,23 +2808,13 @@ where
 
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
 
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
-            self.resources.key_manager.clone(),
+            self.resources.key_manager.clone(),self.resources.network
         );
         let tx_meta = TransactionMetadata::default();
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_recipient_data(
-                // TMS will fix the script later with correct spend key
-                push_pubkey_script(&Default::default()),
-                Default::default(),
-                Default::default(),
-                MicroMinotari::zero(),
-                accumulated_amount,
-                recipient_address,
-            )
-            .await?
             .with_sender_address(self.resources.interactive_tari_address.clone())
             .with_payment_id(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
@@ -2836,29 +2826,9 @@ where
             builder.with_input(uo.wallet_output.clone()).await?;
         }
 
-        let (change_commitment_mask_key, change_script_key) = self
-            .resources
-            .key_manager
-            .get_next_commitment_mask_and_script_key()
-            .await?;
-        // builder needs change data, but this should be 0
-        builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
-            ExecutionStack::default(),
-            change_script_key.key_id,
-            change_commitment_mask_key.key_id,
-            Covenant::default(),
-            self.resources.interactive_tari_address.clone(),
-        );
-
-        let stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
         // encumbering transaction
         self.resources.db.encumber_outputs(tx_id, src_outputs.clone(), vec![])?;
-        Ok(stp)
+        Ok(builder)
     }
 
     async fn fetch_utxo_from_node(

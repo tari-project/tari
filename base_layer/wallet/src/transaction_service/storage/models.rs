@@ -44,6 +44,7 @@ use tari_core::{
 
 use crate::transaction_service::error::TransactionStorageError;
 
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
     pub tx_id: TxId,

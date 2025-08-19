@@ -3,7 +3,6 @@
 
 use std::sync::OnceLock;
 
-use serde::{Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 
 use crate::transactions::{
@@ -66,7 +65,7 @@ impl OutputPair {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug,PartialEq)]
 pub struct FinalizedTransaction {
     pub source_address: TariAddress,
     pub destination_addresses: Vec<TariAddress>,
@@ -75,6 +74,7 @@ pub struct FinalizedTransaction {
     pub transaction: Transaction,
     pub payment_id: MemoField,
     pub change: Option<WalletOutput>,
+    pub sent_outputs: Vec<OutputPair>,
     /// Hashes of outputs being sent to others (excluding change)
     pub sent_output_hashes: Vec<FixedHash>,
     /// Hashes of outputs received from others (excluding change)

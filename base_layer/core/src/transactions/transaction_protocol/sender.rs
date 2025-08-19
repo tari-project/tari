@@ -190,12 +190,12 @@ pub struct SenderTransactionProtocol {
 impl SenderTransactionProtocol {
     /// Begin constructing a new transaction. All the up-front data is collected via the
     /// `SenderTransactionInitializer` builder function
-    pub fn builder<KM: TransactionKeyManagerInterface>(
-        consensus_constants: ConsensusConstants,
-        key_manager: KM,
-    ) -> SenderTransactionInitializer<KM> {
-        SenderTransactionInitializer::new(&consensus_constants, key_manager)
-    }
+    // pub fn builder<KM: TransactionKeyManagerInterface>(
+    //     consensus_constants: ConsensusConstants,
+    //     key_manager: KM,
+    // ) -> SenderTransactionInitializer<KM> {
+    //     SenderTransactionInitializer::new(&consensus_constants, key_manager)
+    // }
 
     /// Convenience method to check whether we're receiving recipient data
     pub fn is_collecting_single_signature(&self) -> bool {

@@ -126,21 +126,28 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
+    pub fn with_kernel_features(&mut self, kernel_features: KernelFeatures) -> &mut Self {
+        self.kernel_features = kernel_features;
+        self
+    }
+
     /// Add a recipient to the transaction.
-    pub fn add_recipient(
+    pub async fn add_recipient(
         &mut self,
         recipient_address: TariAddress,
         recipient_output: WalletOutput,
-        kernel_nonce: TariKeyId,
         sender_offset_key_id: Option<TariKeyId>,
-    ) -> &mut Self {
-        let recipient_output = OutputPair::new(recipient_output, kernel_nonce, sender_offset_key_id);
+    ) -> Result<&mut Self,TransactionBuilderError> {
+        let kernel_nonce = self.key_manager
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+            .await?;
+        let recipient_output = OutputPair::new(recipient_output, kernel_nonce.key_id, sender_offset_key_id);
         let recipient_details = RecipientDetails {
             output: recipient_output,
             recipient_address,
         };
         self.recipients.push(recipient_details);
-        self
+        Ok(self)
     }
 
     pub async fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, TransactionBuilderError> {
@@ -199,6 +206,35 @@ where KM: TransactionKeyManagerInterface
             );
         }
         Ok(size)
+    }
+    pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
+        self.inputs
+            .iter()
+            .map(|i| i.output.value)
+            .try_fold(MicroMinotari::zero(), |acc, x| {
+                acc.checked_add(x)
+                    .ok_or(TransactionBuilderError::TransactionAmountOverflow)
+            })
+    }
+
+    pub fn get_fee_estimate(&self) -> Result<MicroMinotari, TransactionBuilderError> {
+        let num_outputs = self.sender_custom_outputs.len() + self.recipients.len();
+        let num_inputs = self.inputs.len();
+        let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
+         Ok(match self.fee_per_gram {
+            Some(fee_per_gram) => {
+                let features_and_scripts_size_without_change =
+                    self.get_total_features_and_scripts_size_for_outputs()?;
+                fee_weighting.calculate(
+                    fee_per_gram,
+                    1,
+                    num_inputs,
+                    num_outputs,
+                    features_and_scripts_size_without_change,
+                )
+            },
+            None => self.fee,
+        })
     }
 
     fn check_conditions(&self) -> Result<(), TransactionBuilderError> {
@@ -529,6 +565,32 @@ where KM: TransactionKeyManagerInterface
         let mut signature = UncompressedSignature::default();
 
         let kernel_version = TransactionKernelVersion::get_current_version();
+        for input in &self.inputs {
+            core_tx_builder.add_input(input.tx_input(&self.key_manager).await?.clone());
+        }
+        for output in &self.sender_custom_outputs {
+            core_tx_builder.add_output(output.tx_output(&self.key_manager).await?);
+        }
+        let mut sent_outputs = Vec::new();
+        for recipient in &self.recipients {
+            let output = recipient.output.tx_output(&self.key_manager).await?;
+            sent_outputs.push(recipient.output.clone());
+            if self.tx_type == TxType::Burn {
+                // lets do some burn logic
+                if output.is_burned() {
+                    match self.burn_commitment {
+                        Some(_burn_commitment) => {
+                            // we can only have a single burn commitment here, so we error here
+                            return Err(TransactionBuilderError::MultipleBurnCommitments);
+                        },
+                        None => {
+                            self.burn_commitment = Some(output.commitment.clone());
+                        },
+                    }
+                }
+            }
+            core_tx_builder.add_output(output);
+        }
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
@@ -539,7 +601,6 @@ where KM: TransactionKeyManagerInterface
         );
 
         for input in &self.inputs {
-            core_tx_builder.add_input(input.tx_input(&self.key_manager).await?.clone());
             signature = &signature +
                 &(self
                     .key_manager
@@ -563,7 +624,6 @@ where KM: TransactionKeyManagerInterface
         }
 
         for output in &self.sender_custom_outputs {
-            core_tx_builder.add_output(output.tx_output(&self.key_manager).await?);
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -590,8 +650,8 @@ where KM: TransactionKeyManagerInterface
             sender_offset_keys.push(sender_offset_key_id);
         }
 
+
         for output in &self.recipients {
-            core_tx_builder.add_output(output.output.tx_output(&self.key_manager).await?);
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -710,6 +770,7 @@ where KM: TransactionKeyManagerInterface
             transaction: tx,
             payment_id: self.payment_id.unwrap_or_default(),
             change: change_output.map(|o| o.output),
+            sent_outputs,
             // Hashes of outputs being sent to others (excluding change)
             sent_output_hashes: sent_hashes,
             // Hashes of outputs received from others (excluding change)
