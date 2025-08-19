@@ -30,7 +30,14 @@ use std::{
 };
 
 use bitflags::bitflags;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{Error as DeError, MapAccess, Visitor},
+    ser::SerializeMap,
+    Deserialize,
+    Deserializer,
+    Serialize,
+    Serializer,
+};
 use tari_common::configuration::Network;
 use tari_utilities::hex::{from_hex, Hex};
 use thiserror::Error;
@@ -135,7 +142,7 @@ pub enum TariAddressError {
     PaymentIdNotSupported,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TariAddress {
     Dual(Box<DualAddress>),
     Single(Box<SingleAddress>),
@@ -433,86 +440,71 @@ impl Default for TariAddress {
     }
 }
 
-pub mod tari_address_json {
-    use std::fmt;
-
-    use serde::{
-        de::{self, Deserializer, MapAccess, Visitor},
-        ser::{SerializeStruct, Serializer},
-    };
-
-    use crate::tari_address::{DualAddress, SingleAddress, TariAddress};
-
-    pub fn serialize<S>(addr: &TariAddress, serializer: S) -> Result<S::Ok, S::Error>
+impl Serialize for TariAddress {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
-        match addr {
-            TariAddress::Dual(inner) => {
-                let mut s = serializer.serialize_struct("TariAddress", 2)?;
-                s.serialize_field("type", "Dual")?;
-                s.serialize_field("data", inner)?;
-                s.end()
-            },
-            TariAddress::Single(inner) => {
-                let mut s = serializer.serialize_struct("TariAddress", 2)?;
-                s.serialize_field("type", "Single")?;
-                s.serialize_field("data", inner)?;
-                s.end()
-            },
-        }
-    }
-
-    struct TariAddressVisitor;
-
-    impl<'de> Visitor<'de> for TariAddressVisitor {
-        type Value = TariAddress;
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str(r#"{"type":"Dual|Single","data":{...}}" or legacy "value""#)
-        }
-
-        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
-        where M: MapAccess<'de> {
-            let mut typ: Option<String> = None;
-            let mut data: Option<serde_json::Value> = None;
-
-            while let Some(key) = map.next_key::<String>()? {
-                match key.as_str() {
-                    "type" => {
-                        typ = Some(map.next_value()?);
-                    },
-                    // accept both "data" (new) and "value" (legacy)
-                    "data" | "value" => {
-                        data = Some(map.next_value()?);
-                    },
-                    _ => {
-                        // Skip unknown keys to allow forward compat
-                        let _unused: serde_json::Value = map.next_value()?;
-                    },
-                }
-            }
-
-            let typ = typ.ok_or_else(|| de::Error::missing_field("type"))?;
-            let data = data.ok_or_else(|| de::Error::missing_field("data/value"))?;
-
-            match typ.as_str() {
-                "Dual" => {
-                    let inner: DualAddress = serde_json::from_value(data).map_err(de::Error::custom)?;
-                    Ok(TariAddress::Dual(Box::new(inner)))
+        if serializer.is_human_readable() {
+            match self {
+                TariAddress::Dual(inner) => {
+                    let mut map = serializer.serialize_map(Some(1))?;
+                    map.serialize_entry("Dual", inner)?;
+                    map.end()
                 },
-                "Single" => {
-                    let inner: SingleAddress = serde_json::from_value(data).map_err(de::Error::custom)?;
-                    Ok(TariAddress::Single(Box::new(inner)))
+                TariAddress::Single(inner) => {
+                    let mut map = serializer.serialize_map(Some(1))?;
+                    map.serialize_entry("Single", inner)?;
+                    map.end()
                 },
-                other => Err(de::Error::unknown_variant(other, &["Dual", "Single"])),
             }
+        } else {
+            // Fallback: simple serialize as enum's variant and inner value
+            // or derive Serialize on inner types and delegate
+            unimplemented!("Binary serialization not implemented")
         }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<TariAddress, D::Error>
-    where D: Deserializer<'de> {
-        deserializer.deserialize_map(TariAddressVisitor)
     }
 }
+
+struct TariAddressVisitor;
+
+impl<'de> Visitor<'de> for TariAddressVisitor {
+    type Value = TariAddress;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a map with a single key as TariAddress variant")
+    }
+
+    fn visit_map<M>(self, mut map: M) -> Result<TariAddress, M::Error>
+    where M: MapAccess<'de> {
+        let entry = map.next_entry::<String, serde_json::Value>()?;
+        let (variant, value) = entry.ok_or_else(|| M::Error::custom("expected a single key for enum variant"))?;
+
+        match variant.as_str() {
+            "Dual" => {
+                let inner: DualAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                Ok(TariAddress::Dual(Box::new(inner)))
+            },
+            "Single" => {
+                let inner: SingleAddress = serde_json::from_value(value).map_err(M::Error::custom)?;
+                Ok(TariAddress::Single(Box::new(inner)))
+            },
+            other => Err(M::Error::unknown_variant(other, &["Dual", "Single"])),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TariAddress {
+    fn deserialize<D>(deserializer: D) -> Result<TariAddress, D::Error>
+    where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            // Use custom visitor for JSON/human-readable formats
+            deserializer.deserialize_map(TariAddressVisitor)
+        } else {
+            // Fallback: custom or default binary deserialization
+            unimplemented!("Binary deserialization not implemented")
+        }
+    }
+}
+
 pub mod tari_address_json_bs58 {
     use std::fmt;
 
@@ -580,10 +572,78 @@ pub mod tari_address_json_bs58 {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
+    use serde_json;
     use tari_crypto::keys::SecretKey;
 
     use super::*;
     use crate::{dammsum::compute_checksum, types::PrivateKey};
+
+    #[test]
+    fn test_serialize_deserialize_dual_address() {
+        let dual_address = DualAddress::new(
+            CompressedPublicKey::from_hex("3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924").unwrap(),
+            CompressedPublicKey::from_hex("d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61").unwrap(),
+            Network::MainNet,
+            TariAddressFeatures(1),
+            None,
+        )
+        .unwrap();
+
+        let addr = TariAddress::Dual(Box::new(dual_address));
+
+        let json_str = serde_json::to_string(&addr).expect("Failed to serialize TariAddress");
+        let expected_json = r#"
+        {
+          "Dual": {
+            "network": "mainnet",
+            "features": 1,
+            "public_view_key": "3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924",
+            "public_spend_key": "d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61",
+            "memo_field_payment_id": {
+              "inner": []
+            }
+        }
+        "#;
+
+        let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
+        let actual_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(actual_value, expected_value);
+
+        let decoded_addr: TariAddress = serde_json::from_str(&json_str).expect("Failed to deserialize TariAddress");
+
+        assert_eq!(addr, decoded_addr);
+    }
+
+    #[test]
+    fn deserialize_dual_address_legacy() {
+        let expected_deserialized_dual_address = DualAddress::new(
+            CompressedPublicKey::from_hex("3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924").unwrap(),
+            CompressedPublicKey::from_hex("d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61").unwrap(),
+            Network::MainNet,
+            TariAddressFeatures(1),
+            None,
+        )
+        .unwrap();
+        let expected_addr = TariAddress::Dual(Box::new(expected_deserialized_dual_address));
+
+        let legacy_dual_address = r#"
+        {
+          "Dual": {
+            "network": "mainnet",
+            "features": 1,
+            "public_view_key": "3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924",
+            "public_spend_key": "d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61",
+            "payment_id_user_data": {
+              "inner": []
+            }
+          }
+        }
+        "#;
+        let actual_addr = serde_json::from_str::<TariAddress>(legacy_dual_address)
+            .expect("Failed to deserialize TariAddress from JSON");
+        assert_eq!(actual_addr, expected_addr);
+    }
 
     #[test]
     /// Test valid single tari address
