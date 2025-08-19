@@ -27,7 +27,6 @@ use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    tari_address::TariAddress,
     types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedSignature},
 };
 use tari_crypto::keys::SecretKey;
@@ -666,11 +665,11 @@ pub async fn spend_utxos(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
 ) -> (Transaction, Vec<WalletOutput>) {
-    let (mut stx_protocol, mut outputs) = create_stx_protocol(schema, key_manager).await;
-    stx_protocol.finalize(key_manager).await.unwrap();
-    let txn = stx_protocol.get_transaction().unwrap().clone();
-    let change_output = stx_protocol.get_finalized_change_output().unwrap().unwrap();
-    outputs.push(change_output);
+    let (finalized_tx, mut outputs) = create_test_transaction(schema, key_manager).await;
+    let txn = finalized_tx.transaction.clone();
+    if let Some(change) = &finalized_tx.change {
+        outputs.push(change.clone());
+    }
     (txn, outputs)
 }
 
@@ -680,10 +679,10 @@ pub async fn create_test_transaction(
     key_manager: &MemoryDbKeyManager,
 ) -> (FinalizedTransaction, Vec<WalletOutput>) {
     let mut outputs = Vec::with_capacity(schema.to.len());
-    let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
+    let builder = create_test_transaction_internal(schema, key_manager, &mut outputs).await;
 
-    let stx_protocol = stx_builder.build().await.unwrap();
-    (stx_protocol, outputs)
+    let finalized_tx = builder.build().await.unwrap();
+    (finalized_tx, outputs)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -697,26 +696,15 @@ async fn create_test_transaction_internal(
         .unwrap()
         .consensus_constants(0)
         .clone();
-    let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let change = TestParams::new(key_manager).await;
-    let script_public_key = key_manager
-        .get_public_key_at_key_id(&change.script_key_id)
+    let mut tx_builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
         .await
         .unwrap();
-    stx_builder
+    tx_builder
         .with_lock_height(schema.lock_height)
-        .with_fee_per_gram(schema.fee)
-        .with_change_data(
-            script!(PushPubKey(Box::new(script_public_key))).unwrap(),
-            ExecutionStack::default(),
-            change.script_key_id,
-            change.commitment_mask_key_id,
-            Covenant::default(),
-            TariAddress::default(),
-        );
+        .with_fee_per_gram(schema.fee);
 
     for tx_input in &schema.from {
-        stx_builder.with_input(tx_input.clone()).await.unwrap();
+        tx_builder.with_input(tx_input.clone()).await.unwrap();
     }
     for val in schema.to {
         let commitment_mask = key_manager
@@ -755,7 +743,7 @@ async fn create_test_transaction_internal(
             .unwrap();
 
         outputs.push(output.clone());
-        stx_builder.with_output(output, sender_offset.key_id).await.unwrap();
+        tx_builder.with_output(output, sender_offset.key_id).await.unwrap();
     }
     for mut utxo in schema.to_outputs {
         let sender_offset = key_manager
@@ -775,10 +763,10 @@ async fn create_test_transaction_internal(
             .await
             .unwrap();
 
-        stx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
+        tx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
     }
 
-    stx_builder
+    tx_builder
 }
 
 pub async fn create_coinbase_kernel(

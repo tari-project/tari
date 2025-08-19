@@ -39,8 +39,6 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{memo_field::MemoField, Transaction},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     },
 };
 

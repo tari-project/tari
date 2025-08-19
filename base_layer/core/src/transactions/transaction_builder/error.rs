@@ -1,7 +1,6 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use serde::{Deserialize, Serialize};
 use tari_common_types::tari_address::TariAddressError;
 use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
@@ -13,7 +12,7 @@ use crate::transactions::{
     transaction_key_manager::error::KeyManagerServiceError,
 };
 
-#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
+#[derive(Debug, Error)]
 pub enum TransactionBuilderError {
     #[error("Key manager error: `{0}`")]
     KeyManagerError(#[from] KeyManagerServiceError),
@@ -48,6 +47,8 @@ pub enum TransactionBuilderError {
     TransactionError(#[from] TransactionError),
     #[error("ByteArrayError error: {0}")]
     ByteArrayError(String),
+    #[error("Sender offset key ID is missing")]
+    SenderOffsetKeyIdMissing,
 }
 
 impl From<ByteArrayError> for TransactionBuilderError {

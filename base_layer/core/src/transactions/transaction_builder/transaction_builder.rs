@@ -54,7 +54,6 @@ pub struct TransactionBuilder<KM> {
     payment_id: Option<MemoField>,
     lock_height: u64,
     kernel_features: KernelFeatures,
-    network: Network,
     burn_commitment: Option<CompressedCommitment>,
     own_address: TariAddress,
 }
@@ -91,7 +90,6 @@ where KM: TransactionKeyManagerInterface
             lock_height: 0,
             kernel_features: KernelFeatures::empty(),
             burn_commitment: None,
-            network,
             own_address,
         })
     }
@@ -136,11 +134,7 @@ where KM: TransactionKeyManagerInterface
         kernel_nonce: TariKeyId,
         sender_offset_key_id: Option<TariKeyId>,
     ) -> &mut Self {
-        let recipient_output = OutputPair {
-            output: recipient_output,
-            kernel_nonce,
-            sender_offset_key_id,
-        };
+        let recipient_output = OutputPair::new(recipient_output, kernel_nonce, sender_offset_key_id);
         let recipient_details = RecipientDetails {
             output: recipient_output,
             recipient_address,
@@ -188,31 +182,22 @@ where KM: TransactionKeyManagerInterface
     fn get_total_features_and_scripts_size_for_outputs(&self) -> Result<usize, TransactionBuilderError> {
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let mut size = 0;
-        size += self
-            .sender_custom_outputs
-            .iter()
-            .map(|o| {
-                fee_weighting.weighting().round_up_features_and_scripts_size(
-                    o.output
-                        .features_and_scripts_byte_size()
-                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string)),
-                )
-            })
-            .collect::<Result<Vec<usize>, TransactionBuilderError>>()?
-            .sum::<usize>();
-        size += self
-            .recipients
-            .iter()
-            .map(|o| {
-                fee_weighting.weighting().round_up_features_and_scripts_size(
-                    o.output
-                        .features_and_scripts_byte_size()
-                        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string)),
-                )
-            })
-            .collect::<Result<Vec<usize>, TransactionBuilderError>>()?
-            .sum::<usize>();
-
+        for o in &self.sender_custom_outputs {
+            size += fee_weighting.weighting().round_up_features_and_scripts_size(
+                o.output
+                    .features_and_scripts_byte_size()
+                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+            );
+        }
+        for recipient in &self.recipients {
+            size += fee_weighting.weighting().round_up_features_and_scripts_size(
+                recipient
+                    .output
+                    .output
+                    .features_and_scripts_byte_size()
+                    .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
+            );
+        }
         Ok(size)
     }
 
@@ -598,7 +583,10 @@ where KM: TransactionKeyManagerInterface
                     .key_manager
                     .get_txo_private_kernel_offset(&output.output.spending_key_id, &output.kernel_nonce)
                     .await?;
-            let sender_offset_key_id = output.sender_offset_key_id.clone();
+            let sender_offset_key_id = output
+                .sender_offset_key_id
+                .clone()
+                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
             sender_offset_keys.push(sender_offset_key_id);
         }
 
@@ -623,7 +611,11 @@ where KM: TransactionKeyManagerInterface
                     .key_manager
                     .get_txo_private_kernel_offset(&output.output.output.spending_key_id, &output.output.kernel_nonce)
                     .await?;
-            let sender_offset_key_id = output.output.sender_offset_key_id.clone();
+            let sender_offset_key_id = output
+                .output
+                .sender_offset_key_id
+                .clone()
+                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
             sender_offset_keys.push(sender_offset_key_id);
         }
 
@@ -649,7 +641,10 @@ where KM: TransactionKeyManagerInterface
                     .key_manager
                     .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
                     .await?;
-            let sender_offset_key_id = change.sender_offset_key_id.clone();
+            let sender_offset_key_id = change
+                .sender_offset_key_id
+                .clone()
+                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
             sender_offset_keys.push(sender_offset_key_id);
         }
 
@@ -714,6 +709,7 @@ where KM: TransactionKeyManagerInterface
             fee: total_fee,
             transaction: tx,
             payment_id: self.payment_id.unwrap_or_default(),
+            change: change_output.map(|o| o.output),
             // Hashes of outputs being sent to others (excluding change)
             sent_output_hashes: sent_hashes,
             // Hashes of outputs received from others (excluding change)

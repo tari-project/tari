@@ -29,7 +29,6 @@ use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_key_manager::error::KeyManagerServiceError,
-    transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::errors::RangeProofError;
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
@@ -50,8 +49,6 @@ pub enum OutputManagerError {
     BuildError(String),
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
-    #[error("Transaction protocol error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
     #[error("Output manager storage error: `{0}`")]

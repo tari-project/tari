@@ -24,6 +24,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, Signature, UncompressedPublicKey},
 };
+use tari_core::transactions::transaction_builder::OutputPair;
 use tari_core::{
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
@@ -38,19 +39,26 @@ use tari_core::{
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::{
-            recipient::RecipientSignedMessage,
-            sender::OutputPair,
-            TransactionProtocolError as TPE,
-        },
     },
 };
 use tari_script::push_pubkey_script;
-
+use tari_core::transactions::transaction_components::TransactionOutput;
+use tari_core::transactions::transaction_protocol::TransactionMetadata;
+use tari_common_types::types::PrivateKey;
 use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
     offline_signing::models::{OneSidedTransactionInfo, SignedTransaction},
 };
+/// This is the message containing the public data that the Receiver will send back to the Sender
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecipientSignedMessage {
+    pub tx_id: TxId,
+    pub output: TransactionOutput,
+    pub public_spend_key: CompressedPublicKey,
+    pub partial_signature: Signature,
+    pub tx_metadata: TransactionMetadata,
+    pub offset: PrivateKey,
+}
 
 struct SignedMessage {
     pub signed_data: RecipientSignedMessage,
@@ -110,7 +118,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     async fn calculate_total_nonce_and_total_public_excess(
         &self,
         info: &OneSidedTransactionInfo,
-    ) -> Result<(CompressedPublicKey, CompressedPublicKey), TPE> {
+    ) -> Result<(CompressedPublicKey, CompressedPublicKey), TransactionServiceError> {
         let mut public_nonce = UncompressedPublicKey::default();
         let mut public_excess = UncompressedPublicKey::default();
         for input in &info.inputs {
@@ -302,7 +310,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         sender_offset_key_id: TariKeyId,
         sender_public_nonce: CompressedPublicKey,
         sender_public_excess: CompressedPublicKey,
-    ) -> Result<(Transaction, Option<WalletOutput>), TPE> {
+    ) -> Result<(Transaction, Option<WalletOutput>), TransactionServiceError> {
         let mut tx_builder = CoreTransactionBuilder::new();
 
         let total_public_nonce = &sender_public_nonce.to_public_key()? +
@@ -466,11 +474,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         change: &OutputPair,
         output_hash: FixedHash,
-    ) -> Result<OutputPair, TPE> {
+    ) -> Result<OutputPair, TransactionServiceError> {
         let mut payment_id = change.output.payment_id.clone();
         payment_id
             .transaction_info_set_sent_output_hashes(vec![output_hash])
-            .map_err(TPE::AddressExceededMaximumMemoFieldSize)?;
+            .map_err(|e| TransactionServiceError::OneSidedTransactionError(e))?;
         let encrypted_data = self
             .key_manager
             .encrypt_data_for_recovery(
@@ -487,14 +495,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 change
                     .sender_offset_key_id
                     .as_ref()
-                    .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?,
+                    .ok_or_else(|| TransactionServiceError::IncompleteStateError("Missing sender offset key id".to_string()))?,
                 self.key_manager,
             )
             .await?;
-        Ok(OutputPair {
-            output: change_output,
-            kernel_nonce: change.kernel_nonce.clone(),
-            sender_offset_key_id: change.sender_offset_key_id.clone(),
-        })
+        Ok(OutputPair::new(change_output,change.kernel_nonce.clone(),change.sender_offset_key_id.clone(),
+        ))
     }
 }

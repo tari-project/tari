@@ -31,11 +31,7 @@ use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
     proto::base_node as base_node_proto,
-    transactions::{
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::proto::protocol as proto,
-        CryptoFactories,
-    },
+    transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories},
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
@@ -74,7 +70,7 @@ pub mod offline_signing;
 pub mod protocols;
 pub mod service;
 pub mod storage;
-pub mod tasks;
+// pub mod tasks;
 mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";

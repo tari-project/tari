@@ -36,7 +36,6 @@ use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_key_manager::error::KeyManagerServiceError,
-    transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
 use tari_p2p::services::liveness::error::LivenessError;
@@ -63,8 +62,6 @@ pub enum TransactionServiceError {
     InvalidNetwork,
     #[error("One-sided transaction error: `{0}`")]
     OneSidedTransactionError(String),
-    #[error("Transaction Protocol Error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("The message being processed is not recognized by the Transaction Manager")]
     InvalidMessageTypeError,
     #[error("A message for a specific tx_id has been repeated")]

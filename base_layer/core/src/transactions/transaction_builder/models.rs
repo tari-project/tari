@@ -19,17 +19,17 @@ use crate::transactions::{
     transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecipientDetails {
     pub output: OutputPair,
     pub recipient_address: TariAddress,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
-    pub sender_offset_key_id: TariKeyId,
+    pub sender_offset_key_id: Option<TariKeyId>,
     tx_input: OnceLock<TransactionInput>,
     tx_output: OnceLock<TransactionOutput>,
 }
@@ -66,7 +66,7 @@ impl OutputPair {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FinalizedTransaction {
     pub source_address: TariAddress,
     pub destination_addresses: Vec<TariAddress>,
@@ -74,6 +74,7 @@ pub struct FinalizedTransaction {
     pub fee: MicroMinotari,
     pub transaction: Transaction,
     pub payment_id: MemoField,
+    pub change: Option<WalletOutput>,
     /// Hashes of outputs being sent to others (excluding change)
     pub sent_output_hashes: Vec<FixedHash>,
     /// Hashes of outputs received from others (excluding change)
