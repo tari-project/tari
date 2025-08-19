@@ -157,7 +157,7 @@ async fn create_wallet(
         .join(database_name)
         .with_extension("db");
 
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, key_manager_backend) =
         initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
@@ -192,7 +192,6 @@ async fn create_wallet(
         output_db,
         transaction_backend,
         output_manager_backend,
-        contacts_backend,
         key_manager_backend,
         shutdown_signal,
         master_seed,
@@ -309,23 +308,6 @@ async fn test_wallet() {
         }
     }
     assert!(received_reply);
-
-    let mut contacts = Vec::new();
-    for i in 0..2 {
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::LocalNet);
-
-        contacts.push(Contact::new(random::string(8), address, None, None, false));
-
-        alice_wallet
-            .contacts_service
-            .upsert_contact(contacts[i].clone())
-            .await
-            .unwrap();
-    }
-
-    let got_contacts = alice_wallet.contacts_service.get_contacts().await.unwrap();
-    assert_eq!(contacts, got_contacts);
 
     // Test applying and removing encryption
     let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("db");

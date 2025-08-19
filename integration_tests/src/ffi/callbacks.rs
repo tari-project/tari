@@ -43,7 +43,6 @@ pub struct Callbacks {
     tx_validation_complete: Mutex<bool>,
     tx_validation_result: Mutex<u64>,
     transaction_saf_message_received: Mutex<u64>,
-    contacts_liveness_data_updated: Mutex<u64>,
     basenode_state_updated: Mutex<u64>,
     pub wallet: Option<Arc<Mutex<Wallet>>>,
 }
@@ -112,11 +111,6 @@ impl Callbacks {
     #[allow(dead_code)]
     pub fn get_transaction_saf_message_received(&self) -> u64 {
         *self.transaction_saf_message_received.lock().unwrap()
-    }
-
-    #[allow(dead_code)]
-    pub fn get_contacts_liveness_data_updated(&self) -> u64 {
-        *self.contacts_liveness_data_updated.lock().unwrap()
     }
 
     pub fn on_received_transaction(&mut self, ptr: *mut c_void) {
@@ -304,7 +298,6 @@ impl Callbacks {
         *self.tx_validation_complete.lock().unwrap() = false;
         *self.tx_validation_result.lock().unwrap() = 0;
         *self.transaction_saf_message_received.lock().unwrap() = 0;
-        *self.contacts_liveness_data_updated.lock().unwrap() = 0;
         *self.basenode_state_updated.lock().unwrap() = 0;
         self.wallet = Some(wallet);
         println!("wallet {:?}", self.wallet);

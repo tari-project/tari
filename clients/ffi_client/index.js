@@ -131,7 +131,6 @@ try {
     transactionSendResult,
     txCancelled,
     txoValidation,
-    contactsLivenessDataUpdated,
     balanceUpdated,
     txValidation,
     safsReceived,
