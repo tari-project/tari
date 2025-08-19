@@ -22,7 +22,7 @@
 
 use std::{
     cmp,
-    cmp::{min, Ordering},
+    cmp::{max, min, Ordering},
     collections::VecDeque,
     convert::TryFrom,
     mem,
@@ -2313,15 +2313,10 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     chain_strength_comparer: &dyn ChainStrengthComparer,
     // smt_writer: &mut LmdbTreeWriter,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    let metadata = db.fetch_chain_metadata()?;
-    // lets clear out all remaining headers that dont have a matching block
-    // rewind to height will first delete the headers, then try delete from blocks, if we call this to the current
-    // height it will only trim the extra headers with no blocks
-    rewind_to_height(db, metadata.best_block_height())?;
     let strongest_orphan_tips = db.fetch_strongest_orphan_chain_tips()?;
     if strongest_orphan_tips.is_empty() {
-        // we have no orphan chain tips, we have trimmed remaining headers, we are on the best tip we have, so lets
-        // return ok
+        // we have no orphan chain tips, we are on the best tip we have, so lets return ok
+        remove_non_canonical_headers(db)?;
         return Ok(BlockAddResult::OrphanBlock);
     }
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
@@ -2356,6 +2351,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
                 tip_header.header().height,
                 tip_header.hash(),
             );
+            remove_non_canonical_headers(db)?;
             return Ok(BlockAddResult::OrphanBlock);
         },
     }
@@ -2368,6 +2364,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .prev_hash;
 
     let num_added_blocks = reorg_chain.len();
+    // Mote: This will also remove ay surplus headers (i.e. headers that are not linked to any blocks)
     let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
     let num_removed_blocks = removed_blocks.len();
 
@@ -2412,6 +2409,44 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         // NOTE: panic is not possible because get_orphan_link_main_chain cannot return an empty Vec (reorg_chain)
         Ok(BlockAddResult::Ok(reorg_chain.front().unwrap().clone()))
     }
+}
+
+// Trim non-canonical headers above best-block height, but keep aligned banked headers.
+// Safety:
+// - Deletes only headers above best-block height that do not have a canonical predecessor.
+// - Never deletes blocks.
+fn remove_non_canonical_headers<T: BlockchainBackend>(db: &mut T) -> Result<usize, ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let best_block_height = metadata.best_block_height();
+    let mut expected_prev_hash = *metadata.best_block_hash();
+
+    // Find the first mismatch above best-block height
+    let mut height = best_block_height.saturating_add(1);
+    loop {
+        let next_chain_header = match db.fetch_chain_header_by_height(height) {
+            Ok(hdr) => hdr,
+            Err(ChainStorageError::ValueNotFound { .. }) => break, // no more headers stored
+            Err(e) => return Err(e),
+        };
+
+        if next_chain_header.header().prev_hash != expected_prev_hash {
+            let last_chain_header_height = db.fetch_last_chain_header()?.height();
+            // let's clear out all remaining headers that don't have a canonical predecessor
+            // rewind to height will first delete the headers, then try to delete blocks, but if we call this to a
+            // height above the current best block height, it will only trim the extra headers with no blocks
+            rewind_to_height(db, max(height.saturating_sub(1), best_block_height))?;
+            let removed =
+                usize::try_from(last_chain_header_height.saturating_sub(height).saturating_add(1)).unwrap_or(0);
+            debug!(target: LOG_TARGET, "Trimmed {removed} non-canonical header(s) starting at height {height}");
+            return Ok(removed);
+        }
+
+        expected_prev_hash = *next_chain_header.hash();
+        height = height.saturating_add(1);
+    }
+
+    // All banked headers align with the current best chain; nothing to do
+    Ok(0)
 }
 
 fn restore_reorged_chain<T: BlockchainBackend>(
