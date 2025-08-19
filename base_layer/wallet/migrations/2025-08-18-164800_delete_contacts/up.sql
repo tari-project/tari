@@ -1,2 +1,2 @@
 -- Drop table contacts - contacts service has been removed
-DROP TABLE contacts;
+DROP TABLE IF EXISTS contacts;
