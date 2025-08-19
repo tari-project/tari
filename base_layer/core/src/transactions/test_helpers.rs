@@ -42,6 +42,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::MicroMinotari,
+        transaction_builder::{FinalizedTransaction, TransactionBuilder},
         transaction_components::{
             memo_field::MemoField,
             KernelBuilder,
@@ -64,9 +65,8 @@ use crate::{
             TransactionKeyManagerWrapper,
             TxoStage,
         },
-        transaction_protocol::{transaction_initializer::SenderTransactionInitializer, TransactionMetadata},
+        transaction_protocol::TransactionMetadata,
         weight::TransactionWeight,
-        SenderTransactionProtocol,
     },
 };
 
@@ -642,32 +642,20 @@ pub async fn create_transaction_with(
 ) -> Transaction {
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let constants = rules.consensus_constants(0).clone();
-    let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let change = TestParams::new(key_manager).await;
-    stx_builder
-        .with_lock_height(lock_height)
-        .with_fee_per_gram(fee_per_gram)
-        .with_kernel_features(KernelFeatures::empty())
-        .with_change_data(
-            TariScript::default(),
-            ExecutionStack::default(),
-            change.script_key_id,
-            change.commitment_mask_key_id,
-            Covenant::default(),
-            TariAddress::default(),
-        );
+    let mut tx_builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+        .await
+        .unwrap();
+    tx_builder.with_lock_height(lock_height).with_fee_per_gram(fee_per_gram);
     for input in inputs {
-        stx_builder.with_input(input).await.unwrap();
+        tx_builder.with_input(input).await.unwrap();
     }
 
     for (output, script_offset_key_id) in outputs {
-        stx_builder.with_output(output, script_offset_key_id).await.unwrap();
+        tx_builder.with_output(output, script_offset_key_id).await.unwrap();
     }
+    let finalized = tx_builder.build().await.unwrap();
 
-    let mut stx_protocol = stx_builder.build().await.unwrap();
-    stx_protocol.finalize(key_manager).await.unwrap();
-
-    stx_protocol.into_transaction().unwrap()
+    finalized.transaction
 }
 
 /// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
@@ -687,10 +675,10 @@ pub async fn spend_utxos(
 }
 
 #[allow(clippy::too_many_lines)]
-pub async fn create_stx_protocol(
+pub async fn create_test_transaction(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
-) -> (SenderTransactionProtocol, Vec<WalletOutput>) {
+) -> (FinalizedTransaction, Vec<WalletOutput>) {
     let mut outputs = Vec::with_capacity(schema.to.len());
     let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
 
@@ -699,11 +687,11 @@ pub async fn create_stx_protocol(
 }
 
 #[allow(clippy::too_many_lines)]
-pub async fn create_stx_protocol_internal(
+async fn create_test_transaction_internal(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
     outputs: &mut Vec<WalletOutput>,
-) -> SenderTransactionInitializer<MemoryDbKeyManager> {
+) -> TransactionBuilder<MemoryDbKeyManager> {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .unwrap()

@@ -3,30 +3,20 @@
 
 use std::sync::OnceLock;
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, Signature},
-};
-use tari_script::{ExecutionStack, TariScript};
+use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 
-use crate::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::MemoField,
-            OutputFeatures,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionOutput,
-            WalletOutput,
-        },
-        transaction_key_manager::TariKeyId,
+use crate::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        memo_field::MemoField,
+        Transaction,
+        TransactionError,
+        TransactionInput,
+        TransactionOutput,
+        WalletOutput,
     },
+    transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -58,26 +48,26 @@ impl OutputPair {
     pub async fn tx_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
-    ) -> Result<&TransactionInput, TransactionError> {
+    ) -> Result<TransactionInput, TransactionError> {
         match self.tx_input.get() {
-            Some(input) => Ok(&input),
-            None => Ok(&self.output.to_transaction_input(key_manager).await?),
+            Some(input) => Ok(input.clone()),
+            None => Ok(self.output.to_transaction_input(key_manager).await?),
         }
     }
 
     pub async fn tx_output<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
-    ) -> Result<&TransactionOutput, TransactionError> {
+    ) -> Result<TransactionOutput, TransactionError> {
         match self.tx_output.get() {
-            Some(output) => Ok(&output),
-            None => Ok(&self.output.to_transaction_output(key_manager).await?),
+            Some(output) => Ok(output.clone()),
+            None => Ok(self.output.to_transaction_output(key_manager).await?),
         }
     }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct CompletedTransaction {
+pub struct FinalizedTransaction {
     pub source_address: TariAddress,
     pub destination_addresses: Vec<TariAddress>,
     pub amount: MicroMinotari,
