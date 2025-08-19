@@ -70,6 +70,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     shutdown_signal: ShutdownSignal,
     monitored_peers: Arc<RwLock<Vec<NodeId>>>,
     peer_manager: Arc<PeerManager>,
+    seeds: Vec<NodeId>,
 }
 
 impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
@@ -99,6 +100,7 @@ where
             config: config.clone(),
             monitored_peers: Arc::new(RwLock::new(config.monitored_peers)),
             peer_manager,
+            seeds: Vec::new(),
         }
     }
 
@@ -119,6 +121,18 @@ where
             },
             None => Either::Right(futures::stream::iter(iter::empty())),
         };
+
+        self.seeds = self
+            .peer_manager
+            .get_seed_peers()
+            .await
+            .unwrap_or_else(|_| {
+                warn!(target: LOG_TARGET, "Failed to get seed peers from PeerManager, using empty list");
+                vec![]
+            })
+            .iter()
+            .map(|s| s.node_id.clone())
+            .collect();
 
         loop {
             tokio::select! {
@@ -327,25 +341,44 @@ where
     }
 
     async fn start_ping_round(&mut self) -> Result<(), LivenessError> {
-        let monitored_peers = { self.monitored_peers.read().await.clone() };
-        let selected_peers = self
+        let mut monitored_peers = { self.monitored_peers.read().await.clone() };
+        // Try to select connections that exclude seed nodes
+        let mut selected_peers = self
             .connectivity
             .select_connections(ConnectivitySelection::random_nodes(
                 self.config.num_peers_per_round,
-                Default::default(),
+                self.seeds.clone(),
             ))
             .await?
             .into_iter()
             .map(|c| c.peer_node_id().clone())
-            .chain(monitored_peers)
             .collect::<Vec<_>>();
 
-        if selected_peers.is_empty() {
-            debug!(
-                target: LOG_TARGET,
-                "Cannot broadcast pings because there are no broadcast peers available"
-            )
+        // If not enough connections were selected, use potentially connected seed nodes as a fallback
+        if selected_peers.len() < self.config.num_peers_per_round {
+            selected_peers = self
+                .connectivity
+                .select_connections(ConnectivitySelection::random_nodes(
+                    self.config.num_peers_per_round,
+                    vec![],
+                ))
+                .await?
+                .into_iter()
+                .map(|c| c.peer_node_id().clone())
+                .collect::<Vec<_>>();
+            if selected_peers.is_empty() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Cannot broadcast pings because there are no connected broadcast peers available"
+                )
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding seed peers to ping round as there are no other connected broadcast peers available"
+                )
+            }
         }
+        selected_peers.append(&mut monitored_peers);
 
         let len_peers = selected_peers.len();
 
