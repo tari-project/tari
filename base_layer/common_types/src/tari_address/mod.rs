@@ -31,8 +31,7 @@ use std::{
 
 use bitflags::bitflags;
 use serde::{
-    de::{Error as DeError, MapAccess, Visitor},
-    ser::SerializeMap,
+    de::{Error as DeError, Visitor},
     Deserialize,
     Deserializer,
     Serialize,
@@ -445,16 +444,8 @@ impl Serialize for TariAddress {
     where S: Serializer {
         if serializer.is_human_readable() {
             match self {
-                TariAddress::Dual(inner) => {
-                    let mut map = serializer.serialize_map(Some(1))?;
-                    map.serialize_entry("Dual", inner)?;
-                    map.end()
-                },
-                TariAddress::Single(inner) => {
-                    let mut map = serializer.serialize_map(Some(1))?;
-                    map.serialize_entry("Single", inner)?;
-                    map.end()
-                },
+                TariAddress::Dual(inner) => serializer.serialize_str(&inner.to_base58()),
+                TariAddress::Single(inner) => serializer.serialize_str(&inner.to_base58()),
             }
         } else {
             serializer.serialize_bytes(&self.to_vec())
@@ -462,17 +453,17 @@ impl Serialize for TariAddress {
     }
 }
 
-struct TariAddressVisitor;
+struct TariAddressVisitorLegacy;
 
-impl<'de> Visitor<'de> for TariAddressVisitor {
+impl<'de> Visitor<'de> for TariAddressVisitorLegacy {
     type Value = TariAddress;
 
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a map with a single key as TariAddress variant")
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a map with a single key as TariAddress variant")
     }
 
     fn visit_map<M>(self, mut map: M) -> Result<TariAddress, M::Error>
-    where M: MapAccess<'de> {
+    where M: serde::de::MapAccess<'de> {
         let entry = map.next_entry::<String, serde_json::Value>()?;
         let (variant, value) = entry.ok_or_else(|| M::Error::custom("expected a single key for enum variant"))?;
 
@@ -490,11 +481,56 @@ impl<'de> Visitor<'de> for TariAddressVisitor {
     }
 }
 
+struct TariAddressVisitor;
+
+impl<'de> Visitor<'de> for TariAddressVisitor {
+    type Value = TariAddress;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a base58 string or legacy map representing a TariAddress")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<TariAddress, E>
+    where E: DeError {
+        // Try base58 decoding first
+        match TariAddress::from_base58(v) {
+            Ok(addr) => Ok(addr),
+            Err(_) => {
+                // Fallback to legacy JSON value parsing
+
+                // Deserialize from the JSON string as legacy map format
+                // Note: this is a little tricky because visit_str gives you a &str,
+                // but legacy expects a map object. So we deserialize here from the string JSON text.
+
+                let value: serde_json::Value = serde_json::from_str(v).map_err(DeError::custom)?;
+                // Convert serde_json::Value back to a string JSON fragment for deserialization
+                let json_str = serde_json::to_string(&value).map_err(DeError::custom)?;
+                let mut deserializer = serde_json::Deserializer::from_str(&json_str);
+                // Use legacy visitor to parse the map structure
+                deserializer
+                    .deserialize_map(TariAddressVisitorLegacy)
+                    .map_err(DeError::custom)
+            },
+        }
+    }
+
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<TariAddress, E>
+    where E: DeError {
+        TariAddress::from_bytes(v).map_err(DeError::custom)
+    }
+
+    fn visit_map<M>(self, map: M) -> Result<TariAddress, M::Error>
+    where M: serde::de::MapAccess<'de> {
+        // Delegate map deserialization to legacy visitor
+        TariAddressVisitorLegacy.visit_map(map)
+    }
+}
+
 impl<'de> Deserialize<'de> for TariAddress {
     fn deserialize<D>(deserializer: D) -> Result<TariAddress, D::Error>
     where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            deserializer.deserialize_map(TariAddressVisitor)
+            deserializer.deserialize_any(TariAddressVisitor)
         } else {
             deserializer.deserialize_bytes(TariAddressVisitor)
         }
@@ -588,19 +624,8 @@ mod test {
         let addr = TariAddress::Dual(Box::new(dual_address));
 
         let json_str = serde_json::to_string(&addr).expect("Failed to serialize TariAddress");
-        let expected_json = r#"
-        {
-          "Dual": {
-            "network": "mainnet",
-            "features": 1,
-            "public_view_key": "3c0223f2be5917384926cbe1a3cd32a907963a933c035801e3f99d1902f3e924",
-            "public_spend_key": "d09dfde45e45456b7a8935fecfc0ebea431548d105d2f098a488820526395a61",
-            "memo_field_payment_id": {
-              "inner": []
-            }
-          }
-        }
-        "#;
+        let expected_json =
+            r#""126J92Yow5y9UoRFd1DNujPmVFq9C1ZeiYWT95UKxz5Y1rzbfjtHg4SCZS1dk83ivzt3m2XRQHTaYUk9SwmyeCvy5BJ""#;
 
         let expected_value: serde_json::Value = serde_json::from_str(expected_json).unwrap();
         let actual_value: serde_json::Value = serde_json::from_str(&json_str).unwrap();
