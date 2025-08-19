@@ -40,10 +40,8 @@ use std::{
     num::NonZeroUsize,
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    Blake2bVar,
-};
+use blake2::{Blake2b, Digest};
+use digest::{consts::U32, FixedOutput};
 use thiserror::Error;
 
 use crate::{
@@ -84,14 +82,10 @@ pub enum CuckarooVerificationError {
 }
 
 fn determine_sip_hash(mining_hash: &[u8], nonce: u64) -> Vec<u8> {
-    let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
+    let mut hasher = Blake2b::<U32>::new();
     hasher.update(&nonce.to_be_bytes());
     hasher.update(mining_hash);
-    let mut blob = vec![0u8; hasher.output_size()];
-    hasher
-        .finalize_variable(&mut blob)
-        .expect("Infallible because we've set the output size");
-    blob
+    hasher.finalize_fixed().to_vec()
 }
 
 pub fn cuckaroo_result(
@@ -189,17 +183,11 @@ fn cuckaroo_result_inner(
     // // Generate the hasher.
     verify(&siphash_keys, &nonces, required_cycle_length, edge_bits)?;
 
-    // nonces must be sorted, so we just hash them
-    let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
+    // Replace the Blake2bVar hasher with Blake2b (fixed size)
+    let mut hasher = Blake2b::<U32>::new();
 
-    // for nonce in &nonces {
-    // hasher.update(&nonce.to_le_bytes());
-    // }
     hasher.update(&packed_edge_data);
-    let mut res = vec![0u8; hasher.output_size()];
-    hasher
-        .finalize_variable(&mut res)
-        .expect("Infallible because we've set the output size");
+    let res = hasher.finalize_fixed().to_vec();
 
     Ok(res)
 }
