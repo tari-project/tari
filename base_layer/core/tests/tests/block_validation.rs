@@ -112,7 +112,6 @@ async fn test_monero_blocks() {
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
     let key_manager = create_memory_db_key_manager().unwrap();
-    let network = Network::Esmeralda;
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
