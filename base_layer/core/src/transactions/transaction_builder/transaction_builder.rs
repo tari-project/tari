@@ -41,6 +41,7 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::tx::tx_builder";
 
+#[derive(Clone, Debug)]
 pub struct TransactionBuilder<KM> {
     consensus_constants: ConsensusConstants,
     key_manager: KM,

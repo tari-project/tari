@@ -293,7 +293,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         .await
         .unwrap();
 
-    let output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+    let output_manager_handle = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
     let key_manager_handle = handles.expect_handle::<MemoryDbKeyManager>();
     let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
     let connectivity_service_handle = handles.expect_handle::<WalletConnectivityHandle<MockHttpClientFactory>>();

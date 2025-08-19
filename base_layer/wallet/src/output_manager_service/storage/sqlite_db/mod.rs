@@ -875,6 +875,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
+        // Add the change outputs to be correct
+        for output in change_outputs_to_add {
+            let new_output =
+                NewOutputSql::new(output.clone(), Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
+            new_output.commit(&mut conn)?;
+        }
+
         conn.transaction::<_, _, _>(|conn| {
             update_outputs_with_tx_id_and_status_to_new_status(
                 conn,
@@ -882,12 +889,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::ShortTermEncumberedToBeReceived,
                 OutputStatus::EncumberedToBeReceived,
             )?;
-            // Add the change outputs to be correct
-            for output in change_outputs_to_add {
-                let new_output =
-                    NewOutputSql::new(output.clone(), Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
-                new_output.commit(&mut conn)?;
-            }
 
             update_outputs_with_tx_id_and_status_to_new_status(
                 conn,

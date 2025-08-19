@@ -143,15 +143,15 @@ impl ReceiverTransactionProtocol {
     //     ))
     // }
     //
-    // /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
-    // /// require a well formed version
-    // pub fn new_placeholder() -> Self {
-    //     ReceiverTransactionProtocol {
-    //         state: RecipientState::Failed(TransactionProtocolError::IncompleteStateError(
-    //             "This is a placeholder protocol".to_string(),
-    //         )),
-    //     }
-    // }
+    /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
+    /// require a well formed version
+    pub fn new_placeholder() -> Self {
+        ReceiverTransactionProtocol {
+            state: RecipientState::Failed(TransactionProtocolError::IncompleteStateError(
+                "This is a placeholder protocol".to_string(),
+            )),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use diesel::{
-    result::{DatabaseErrorKind, Error as DieselError},
-    RunQueryDsl,
-};
+use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;

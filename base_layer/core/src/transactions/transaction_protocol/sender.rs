@@ -903,14 +903,13 @@ impl SenderTransactionProtocol {
     //         _ => Err(TPE::InvalidStateError),
     //     }
     // }
-    //
-    // /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
-    // /// require a well formed version
-    // pub fn new_placeholder() -> Self {
-    //     SenderTransactionProtocol {
-    //         state: SenderState::Failed(TPE::IncompleteStateError("This is a placeholder protocol".to_string())),
-    //     }
-    // }
+    /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
+    /// require a well formed version
+    pub fn new_placeholder() -> Self {
+        SenderTransactionProtocol {
+            state: SenderState::Failed(TPE::IncompleteStateError("This is a placeholder protocol".to_string())),
+        }
+    }
 
     pub async fn get_output_commitments<KM: TransactionKeyManagerInterface>(
         &self,

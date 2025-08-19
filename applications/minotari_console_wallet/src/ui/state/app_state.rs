@@ -383,13 +383,6 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn restart_transaction_protocols(&mut self) -> Result<(), UiError> {
-        let inner = self.inner.write().await;
-        let mut tx_service = inner.wallet.transaction_service.clone();
-        tx_service.restart_transaction_protocols().await?;
-        Ok(())
-    }
-
     pub fn get_http_node_url(&self) -> String {
         self.cached_data.wallet_current_connected_node.clone()
     }

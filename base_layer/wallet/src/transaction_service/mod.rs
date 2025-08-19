@@ -156,11 +156,7 @@ where
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
-        let transaction_stream = self.transaction_stream();
-        let transaction_reply_stream = self.transaction_reply_stream();
-        let transaction_finalized_stream = self.transaction_finalized_stream();
         let base_node_response_stream = self.base_node_response_stream();
-        let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
         let (publisher, _) = broadcast::channel(self.config.transaction_event_channel_size);
 
@@ -188,7 +184,7 @@ where
 
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
-            let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
             let core_key_manager_service = handles.expect_handle::<TKeyManagerInterface>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle<THttpClientFactory>>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
@@ -199,11 +195,7 @@ where
                 TransactionDatabase::new(tx_backend),
                 wallet_database,
                 receiver,
-                transaction_stream,
-                transaction_reply_stream,
-                transaction_finalized_stream,
                 base_node_response_stream,
-                transaction_cancelled_stream,
                 output_manager_service,
                 core_key_manager_service,
                 outbound_message_service,

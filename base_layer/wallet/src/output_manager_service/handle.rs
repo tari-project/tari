@@ -173,16 +173,8 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
-            ScrapeWallet {
-                tx_id,
-                fee_per_gram,
-                recipient_address,
-            } => {
-                write!(
-                    f,
-                    "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram}, recipient_address \
-                     {recipient_address})"
-                )
+            ScrapeWallet { tx_id, fee_per_gram } => {
+                write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram}")
             },
             EncumberAggregateUtxo {
                 tx_id,
@@ -217,7 +209,7 @@ impl fmt::Display for OutputManagerRequest {
                 output_hash
             ),
             ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({v})"),
-            GetTransactionBuilder { payment_id, .. } => write!(f, "PrepareToSendTransaction ({payment_id})"),
+            GetTransactionBuilder { .. } => write!(f, "PrepareToSendTransaction "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),

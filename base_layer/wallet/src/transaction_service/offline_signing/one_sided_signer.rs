@@ -24,12 +24,11 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, Signature, UncompressedPublicKey},
 };
-use tari_core::transactions::transaction_builder::TransactionBuilderError;
 use tari_core::{
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
         tari_amount::MicroMinotari,
-        transaction_builder::OutputPair,
+        transaction_builder::{OutputPair, TransactionBuilderError},
         transaction_components::{
             CoreTransactionBuilder,
             KernelBuilder,
@@ -494,7 +493,10 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         change_output
             .change_encrypted_data(
                 encrypted_data,
-                change.sender_offset_key_id.as_ref().ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                change
+                    .sender_offset_key_id
+                    .as_ref()
+                    .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?,
                 self.key_manager,
             )
             .await?;

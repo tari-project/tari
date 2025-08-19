@@ -3,6 +3,7 @@
 
 use std::sync::OnceLock;
 
+use serde::{Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 
 use crate::transactions::{
@@ -24,12 +25,14 @@ pub struct RecipientDetails {
     pub recipient_address: TariAddress,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OutputPair {
     pub output: WalletOutput,
     pub kernel_nonce: TariKeyId,
     pub sender_offset_key_id: Option<TariKeyId>,
+    #[serde(skip)]
     tx_input: OnceLock<TransactionInput>,
+    #[serde(skip)]
     tx_output: OnceLock<TransactionOutput>,
 }
 
