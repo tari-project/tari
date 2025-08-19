@@ -39,11 +39,12 @@ use tari_core::{
         fee::Fee,
         tari_amount::MicroMinotari,
         transaction_components::{memo_field::MemoField, Transaction},
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
 };
 
 use crate::transaction_service::error::TransactionStorageError;
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {

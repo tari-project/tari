@@ -209,6 +209,10 @@ where KM: TransactionKeyManagerInterface
         Ok(size)
     }
 
+    pub async fn get_pre_build_change_output(&self) -> Result<Option<OutputPair>, TransactionBuilderError> {
+        Ok(self.add_change_if_required().await?.1)
+    }
+
     pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
         self.inputs
             .iter()
@@ -217,6 +221,18 @@ where KM: TransactionKeyManagerInterface
                 acc.checked_add(x)
                     .ok_or(TransactionBuilderError::TransactionAmountOverflow)
             })
+    }
+
+    pub fn inputs(&self) -> &[OutputPair] {
+        &self.inputs
+    }
+
+    pub fn recipients(&self) -> &[RecipientDetails] {
+        &self.recipients
+    }
+
+    pub fn sender_custom_outputs(&self) -> &[OutputPair] {
+        &self.sender_custom_outputs
     }
 
     pub fn get_fee_estimate(&self) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -258,7 +274,7 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
-    async fn add_change_if_required(&mut self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
+    async fn add_change_if_required(&self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.sender_custom_outputs.len() + self.recipients.len();
         let num_inputs = self.inputs.len();

@@ -114,7 +114,7 @@ where
 
         let script = push_pubkey_script(&Default::default());
         // Prepare sender part of the transaction
-        let mut stp = self
+        let tx_builder = self
             .resources
             .output_manager_service
             .prepare_transaction_to_send(
@@ -123,22 +123,14 @@ where
                 selection_criteria,
                 output_features.clone(),
                 fee_per_gram,
-                TransactionMetadata::default(),
                 script,
                 Covenant::default(),
-                MicroMinotari::zero(),
-                dest_address.clone(),
-                payment_id.clone(),
             )
             .await?;
 
-        let single_round_sender_data = stp
-            .build_single_round_message(&self.resources.transaction_key_manager_service)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
         let mut inputs = Vec::new();
-        for mut input in stp.get_spent_inputs()? {
+        for input_pair in tx_builder.inputs() {
+            let mut input = input_pair.clone();
             input.output.script_key_id = self
                 .make_key_id_export_safe(&input.output.script_key_id)
                 .await
@@ -146,7 +138,8 @@ where
             inputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, input).await?);
         }
         let mut outputs = Vec::new();
-        for mut output in stp.get_outputs()? {
+        for output_pair in tx_builder.recipients() {
+            let mut output = output_pair.output.clone();
             output.output.script_key_id = self
                 .make_key_id_export_safe(&output.output.script_key_id)
                 .await
@@ -154,7 +147,7 @@ where
             outputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, output).await?);
         }
 
-        let change_output = match stp.get_pre_finalized_full_change_output()? {
+        let change_output = match tx_builder.get_pre_build_change_output().await? {
             Some(mut change_output) => {
                 change_output.output.script_key_id = self
                     .make_key_id_export_safe(&change_output.output.script_key_id)
@@ -164,7 +157,7 @@ where
             },
             None => None,
         };
-
+        let metadata = TransactionMetadata::default();
         let info = OneSidedTransactionInfo {
             payment_id,
             recipient: PaymentRecipient {
@@ -175,8 +168,8 @@ where
             change_output,
             inputs,
             outputs,
-            metadata: single_round_sender_data.metadata,
-            sender_address: single_round_sender_data.sender_address,
+            metadata,
+            sender_address: self.resources.one_sided_tari_address.clone(),
         };
 
         self.resources

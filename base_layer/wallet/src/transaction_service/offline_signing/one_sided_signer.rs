@@ -22,33 +22,35 @@
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash, Signature, UncompressedPublicKey},
+    types::{CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, Signature, UncompressedPublicKey},
 };
-use tari_core::transactions::transaction_builder::OutputPair;
+use tari_core::transactions::transaction_builder::TransactionBuilderError;
 use tari_core::{
     one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
     transactions::{
         tari_amount::MicroMinotari,
+        transaction_builder::OutputPair,
         transaction_components::{
             CoreTransactionBuilder,
             KernelBuilder,
             Transaction,
             TransactionKernel,
             TransactionKernelVersion,
+            TransactionOutput,
             WalletOutput,
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+        transaction_protocol::TransactionMetadata,
     },
 };
 use tari_script::push_pubkey_script;
-use tari_core::transactions::transaction_components::TransactionOutput;
-use tari_core::transactions::transaction_protocol::TransactionMetadata;
-use tari_common_types::types::PrivateKey;
+
 use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
     offline_signing::models::{OneSidedTransactionInfo, SignedTransaction},
 };
+
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecipientSignedMessage {
@@ -405,7 +407,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 .output_pair
                 .sender_offset_key_id
                 .clone()
-                .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+                .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?;
             sender_offset_keys.push(output_sender_offset_key_id);
         }
 
@@ -440,7 +442,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 let sender_offset_key_id = change
                     .sender_offset_key_id
                     .clone()
-                    .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+                    .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?;
                 sender_offset_keys.push(sender_offset_key_id);
                 Some(change.output)
             },
@@ -466,7 +468,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .with_signature(Signature::new_from_schnorr(signature))
             .build()?;
         tx_builder.with_kernel(kernel);
-        let transaction = tx_builder.build().map_err(TPE::from)?;
+        let transaction = tx_builder.build()?;
         Ok((transaction, change_output))
     }
 
@@ -492,14 +494,14 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         change_output
             .change_encrypted_data(
                 encrypted_data,
-                change
-                    .sender_offset_key_id
-                    .as_ref()
-                    .ok_or_else(|| TransactionServiceError::IncompleteStateError("Missing sender offset key id".to_string()))?,
+                change.sender_offset_key_id.as_ref().ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?,
                 self.key_manager,
             )
             .await?;
-        Ok(OutputPair::new(change_output,change.kernel_nonce.clone(),change.sender_offset_key_id.clone(),
+        Ok(OutputPair::new(
+            change_output,
+            change.kernel_nonce.clone(),
+            change.sender_offset_key_id.clone(),
         ))
     }
 }

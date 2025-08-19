@@ -27,6 +27,7 @@ use tari_common_types::tari_address::TariAddressError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
+    transaction_builder::TransactionBuilderError,
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_key_manager::error::KeyManagerServiceError,
 };
@@ -51,6 +52,8 @@ pub enum OutputManagerError {
     ByteArrayError(String),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]

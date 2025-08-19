@@ -130,49 +130,6 @@ where
         }
     }
 
-    /// Get a stream of inbound Text messages
-    fn transaction_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::SenderPartialTransaction
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::SenderPartialTransaction, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionSenderMessage>)
-    }
-
-    fn transaction_reply_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::ReceiverPartialTransactionReply
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::ReceiverPartialTransactionReply, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::RecipientSignedMessage>)
-    }
-
-    fn transaction_finalized_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionFinalized
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::TransactionFinalized, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionFinalizedMessage>)
-    }
-
     fn base_node_response_stream(
         &self,
     ) -> impl Stream<Item = DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>> {
@@ -185,20 +142,6 @@ where
         self.subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<base_node_proto::BaseNodeServiceResponse>)
-    }
-
-    fn transaction_cancelled_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionCancelled
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::TransactionCancelled, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::TransactionCancelledMessage>)
     }
 }
 

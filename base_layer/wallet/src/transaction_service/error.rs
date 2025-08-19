@@ -34,6 +34,7 @@ use tari_common_types::{
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
+    transaction_builder::TransactionBuilderError,
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_key_manager::error::KeyManagerServiceError,
 };
@@ -56,6 +57,8 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Transaction protocol is not in the correct state for this operation")]
     InvalidStateError,
     #[error("Transaction is sending to a network different than ours")]

@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
@@ -31,6 +30,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
+        transaction_builder::TransactionBuilder,
         transaction_components::{
             memo_field::MemoField,
             OutputFeatures,
@@ -39,7 +39,7 @@ use tari_core::{
             WalletOutput,
             WalletOutputBuilder,
         },
-        transaction_protocol::TransactionMetadata,
+        transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
@@ -47,7 +47,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
-use tari_core::transactions::transaction_builder::TransactionBuilder;
+
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::{Balance, OutputInfoByTxId, UseOutput},
@@ -56,14 +56,13 @@ use crate::output_manager_service::{
 };
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
-pub enum OutputManagerRequest<KM> {
+pub enum OutputManagerRequest {
     GetBalance,
     GetBalancePaymentId(Vec<u8>),
     AddOutput((Box<WalletOutput>, Option<SpendingPriority>)),
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
-    GetTransactionBuilder(TransactionBuilder<KM>),
     ConfirmPendingTransaction(TxId, Option<Vec<WalletOutput>>),
     EncumberAggregateUtxo {
         tx_id: TxId,
@@ -86,7 +85,7 @@ pub enum OutputManagerRequest<KM> {
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
     },
-    PrepareToSendTransaction {
+    GetTransactionBuilder {
         tx_id: TxId,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
@@ -123,7 +122,6 @@ pub enum OutputManagerRequest<KM> {
     ScrapeWallet {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        recipient_address: TariAddress,
     },
     CreateCoinJoin {
         commitments: Vec<CompressedCommitment>,
@@ -218,9 +216,8 @@ impl fmt::Display for OutputManagerRequest {
                 expected_commitment.to_hex(),
                 output_hash
             ),
-            GetTransactionBuilder(_) => write!(f, "GetTransactionBuilder"),
             ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({v})"),
-            PrepareToSendTransaction { payment_id, .. } => write!(f, "PrepareToSendTransaction ({payment_id})"),
+            GetTransactionBuilder { payment_id, .. } => write!(f, "PrepareToSendTransaction ({payment_id})"),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
@@ -377,15 +374,16 @@ pub struct RecoveredOutput {
 }
 
 #[derive(Clone)]
-pub struct OutputManagerHandle {
-    handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+pub struct OutputManagerHandle<KM> {
+    handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>,
     event_stream_sender: OutputManagerEventSender,
 }
 
 impl<KM> OutputManagerHandle<KM>
-where KM: TransactionKeyManagerInterface{
+where KM: TransactionKeyManagerInterface
+{
     pub fn new(
-        handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+        handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>,
         event_stream_sender: OutputManagerEventSender,
     ) -> Self {
         OutputManagerHandle {
@@ -522,7 +520,7 @@ where KM: TransactionKeyManagerInterface{
     ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::PrepareToSendTransaction {
+            .call(OutputManagerRequest::GetTransactionBuilder {
                 tx_id,
                 amount,
                 selection_criteria: utxo_selection,
@@ -542,15 +540,10 @@ where KM: TransactionKeyManagerInterface{
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        recipient_address: TariAddress,
     ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScrapeWallet {
-                tx_id,
-                fee_per_gram,
-                recipient_address,
-            })
+            .call(OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram })
             .await??
         {
             OutputManagerResponse::TransactionBuilderToSend(tx_builder) => Ok(tx_builder),

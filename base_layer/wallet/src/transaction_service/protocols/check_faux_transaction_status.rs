@@ -26,6 +26,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_common_types::types::FixedHash;
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
@@ -39,12 +40,11 @@ use crate::{
     },
     OperationId,
 };
-
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
 #[allow(clippy::too_many_lines)]
-pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend>(
-    mut output_manager: OutputManagerHandle,
+pub async fn check_detected_transactions<TBackend: 'static + TransactionBackend, KM: TransactionKeyManagerInterface>(
+    mut output_manager: OutputManagerHandle<KM>,
     db: TransactionDatabase<TBackend>,
     event_publisher: TransactionEventSender,
     tip_height: u64,

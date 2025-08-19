@@ -884,12 +884,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             )?;
             // Add the change outputs to be correct
             for output in change_outputs_to_add {
-                    let new_output = NewOutputSql::new(
-                        output.clone(),
-                        Some(OutputStatus::EncumberedToBeReceived),
-                        Some(tx_id),
-                    )?;
-                    new_output.commit(&mut conn)?;
+                let new_output =
+                    NewOutputSql::new(output.clone(), Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
+                new_output.commit(&mut conn)?;
             }
 
             update_outputs_with_tx_id_and_status_to_new_status(

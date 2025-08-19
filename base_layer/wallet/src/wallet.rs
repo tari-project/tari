@@ -145,7 +145,7 @@ where THttpClientFactory: HttpClientFactory
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
-    pub output_manager_service: OutputManagerHandle,
+    pub output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle<THttpClientFactory>,
@@ -806,8 +806,8 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
 /// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
 /// using old node identities.
-async fn persist_one_sided_payment_script_for_node_identity(
-    output_manager_service: &mut OutputManagerHandle,
+async fn persist_one_sided_payment_script_for_node_identity<KM>(
+    output_manager_service: &mut OutputManagerHandle<KM>,
     spend_key: &CompressedPublicKey,
     spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {
