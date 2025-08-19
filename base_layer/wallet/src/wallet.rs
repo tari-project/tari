@@ -237,10 +237,10 @@ where
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: config.p2p.listener_self_liveness_check_interval,
-                    num_peers_per_round: 0,                                               // No random peers
-                    max_allowed_ping_failures: 0,                                         /* Peer with failed
-                                                                                           * ping-pong will never be
-                                                                                           * removed */
+                    num_peers_per_round: 0, // No random peers
+                    max_allowed_ping_failures: 0, /* Peer with failed
+                                             * ping-pong will never be
+                                             * removed */
                     ..Default::default()
                 },
                 peer_message_subscription_factory.clone(),
