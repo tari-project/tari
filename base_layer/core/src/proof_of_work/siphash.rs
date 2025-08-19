@@ -22,8 +22,8 @@
 // Parameters to the siphash block algorithm. Used by Cuckaroo but can be
 // seen as a generic way to derive a hash within a block of them.
 const SIPHASH_BLOCK_BITS: u64 = 6;
-const SIPHASH_BLOCK_SIZE: u64 = 1 << SIPHASH_BLOCK_BITS;
-const SIPHASH_BLOCK_MASK: u64 = SIPHASH_BLOCK_SIZE - 1;
+const SIPHASH_BLOCK_SIZE: usize = 1 << SIPHASH_BLOCK_BITS;
+const SIPHASH_BLOCK_MASK: u64 = SIPHASH_BLOCK_SIZE as u64 - 1;
 
 /// Utility function to compute a single siphash 2-4 based on a seed and
 /// a nonce
@@ -38,32 +38,52 @@ pub fn siphash24(v: &[u64; 4], nonce: u64) -> u64 {
 /// the resulting hash at the nonce's position.
 pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8, xor_all: bool) -> u64 {
     // beginning of the block of hashes
-    let nonce0 = nonce & !SIPHASH_BLOCK_MASK;
-    let nonce_i = nonce & SIPHASH_BLOCK_MASK;
-    #[allow(clippy::cast_possible_truncation)]
+    let edge0 = nonce & !SIPHASH_BLOCK_MASK;
+    // let nonce_i = nonce & SIPHASH_BLOCK_MASK;
     let mut nonce_hash = vec![0u64; SIPHASH_BLOCK_SIZE as usize];
 
     // repeated hashing over the whole block
     let mut siphash = SipHash24::new(v);
     for i in 0..SIPHASH_BLOCK_SIZE {
-        siphash.hash(nonce0 + i, rot_e);
-        #[allow(clippy::cast_possible_truncation)]
-        let i_usize = i as usize;
-        *nonce_hash.get_mut(i_usize).expect("Already checked") = siphash.digest();
+        siphash.hash(edge0 + i as u64, rot_e);
+        nonce_hash[i] = siphash.digest();
     }
+    let last = nonce_hash[SIPHASH_BLOCK_SIZE - 1];
+
+    // lolminer
+
+    let mut siphashb = SipHash24::new(v);
+    let last_nonce = nonce & SIPHASH_BLOCK_MASK;
+    for i in 0..=last_nonce {
+        siphashb.hash(edge0 + i, rot_e);
+    }
+    let b_hash = siphashb.digest();
+    let final_edge = b_hash ^ last;
+    final_edge
+
+    // original cuckaroo in tromps's c
+    // .....
+    // for i in 0..SIPHASH_BLOCK_MASK {
+    // nonce_hash[i as usize] ^= last;
+    // }
+    // return nonce_hash[nonce as usize & SIPHASH_BLOCK_MASK as usize];
+
+    // Grin original code
+    // .....
+
     // xor the hash at nonce_i < SIPHASH_BLOCK_MASK with some or all later hashes to force hashing the whole block
-    let mut xor: u64 = *nonce_hash.get(nonce_i as usize).expect("Already checked");
-    let xor_from = if xor_all || nonce_i == SIPHASH_BLOCK_MASK {
-        nonce_i + 1
-    } else {
-        SIPHASH_BLOCK_MASK
-    };
-    for i in xor_from..SIPHASH_BLOCK_SIZE {
-        #[allow(clippy::cast_possible_truncation)]
-        let i_usize = i as usize;
-        xor ^= *nonce_hash.get(i_usize).expect("Already checked");
-    }
-    xor
+    // let mut xor: u64 = *nonce_hash.get(nonce_i as usize).expect("Already checked");
+    // let xor_from = if xor_all || nonce_i == SIPHASH_BLOCK_MASK {
+    //     nonce_i + 1
+    // } else {
+    //     SIPHASH_BLOCK_MASK
+    // };
+    // for i in xor_from..SIPHASH_BLOCK_SIZE {
+    //     #[allow(clippy::cast_possible_truncation)]
+    //     let i_usize = i as usize;
+    //     xor ^= *nonce_hash.get(i_usize).expect("Already checked");
+    // }
+    // xor
 }
 
 /// Implements siphash 2-4 specialized for a 4 u64 array key and a u64 nonce
