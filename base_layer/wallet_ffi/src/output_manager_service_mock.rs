@@ -28,9 +28,9 @@ use minotari_wallet::output_manager_service::{
     handle::{OutputManagerRequest, OutputManagerResponse},
     service::Balance,
 };
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 
 /// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
 /// before the panic is used.
@@ -116,7 +116,10 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
-    fn handle_request(&mut self, request: OutputManagerRequest) -> Result<OutputManagerResponse<KM>, OutputManagerError> {
+    fn handle_request(
+        &mut self,
+        request: OutputManagerRequest,
+    ) -> Result<OutputManagerResponse<KM>, OutputManagerError> {
         match request {
             OutputManagerRequest::GetBalance => Ok(OutputManagerResponse::Balance(self.state.get_balance())),
             _ => Err(OutputManagerError::InvalidResponseError(format!(

@@ -898,7 +898,9 @@ pub async fn create_pre_mine_genesis_block_info(
         &CompressedPublicKey::from_secret_key(&r),
         &total_public_key,
         0.into(),
-        0,  &KernelFeatures::empty(), &None
+        0,
+        &KernelFeatures::empty(),
+        &None,
     );
     let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).map_err(|e| e.to_string())?;
     let compressed_signature = Signature::new_from_schnorr(signature);

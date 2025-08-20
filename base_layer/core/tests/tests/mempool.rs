@@ -57,6 +57,7 @@ use tari_core::{
         },
         transaction_components::{
             KernelBuilder,
+            KernelFeatures,
             OutputFeatures,
             OutputType,
             RangeProofType,
@@ -82,7 +83,7 @@ use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
-use tari_core::transactions::transaction_components::KernelFeatures;
+
 use crate::helpers::{
     block_builders::{
         chain_block,
@@ -1268,13 +1269,8 @@ async fn consensus_validation_large_tx() {
     let mut outputs = Vec::new();
     let mut offset = PrivateKey::default();
     let kernel_version = TransactionKernelVersion::get_current_version();
-    let kernel_message = TransactionKernel::build_kernel_signature_message(
-        &kernel_version,
-        fee,
-        0,
-        &KernelFeatures::empty(),
-        &None,
-    );
+    let kernel_message =
+        TransactionKernel::build_kernel_signature_message(&kernel_version, fee, 0, &KernelFeatures::empty(), &None);
     for (output, nonce_id) in wallet_outputs {
         outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
         offset = &offset +
@@ -1433,13 +1429,8 @@ async fn validation_reject_min_fee() {
     let mut agg_sig = UncompressedSignature::default();
     let mut offset = PrivateKey::default();
     let kernel_version = TransactionKernelVersion::get_current_version();
-    let kernel_message = TransactionKernel::build_kernel_signature_message(
-        &kernel_version,
-        fee,
-        0,
-        &KernelFeatures::empty(),
-        &None,
-    );
+    let kernel_message =
+        TransactionKernel::build_kernel_signature_message(&kernel_version, fee, 0, &KernelFeatures::empty(), &None);
 
     let tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
     offset = &offset +

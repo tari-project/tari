@@ -42,12 +42,11 @@ use tari_core::{
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     },
 };
-use crate::transaction_service::offline_signing::models::TransactionMetadata;
 use tari_script::push_pubkey_script;
 
 use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
-    offline_signing::models::{OneSidedTransactionInfo, SignedTransaction},
+    offline_signing::models::{OneSidedTransactionInfo, SignedTransaction, TransactionMetadata},
 };
 
 /// This is the message containing the public data that the Receiver will send back to the Sender

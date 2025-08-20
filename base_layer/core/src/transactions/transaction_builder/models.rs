@@ -72,7 +72,6 @@ impl OutputPair {
     }
 }
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct FinalizedTransaction {
     pub source_address: TariAddress,

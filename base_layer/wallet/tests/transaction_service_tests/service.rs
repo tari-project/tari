@@ -21,20 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{
-    mem::size_of,
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
+use std::{mem::size_of, path::Path, sync::Arc, time::Duration};
 
 use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{Days, Utc};
 use digest::consts::U32;
-use futures::{
-    channel::{mpsc, mpsc::Sender},
-};
+use futures::channel::{mpsc, mpsc::Sender};
 use minotari_wallet::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
@@ -55,10 +48,7 @@ use minotari_wallet::{
         sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     },
-    test_utils::{
-        make_wallet_database_memory_connection,
-        random_string,
-    },
+    test_utils::{make_wallet_database_memory_connection, random_string},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},
@@ -87,17 +77,13 @@ use tari_common_types::{
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::{
-        rpc::{mock::MockRpcServer, NamedProtocolService},
-    },
+    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
     types::CommsDHKE,
     CommsNode,
     PeerConnection,
 };
-use tari_comms_dht::outbound::mock::{
-    create_outbound_service_mock,
-};
+use tari_comms_dht::outbound::mock::create_outbound_service_mock;
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse},
@@ -150,9 +136,9 @@ use url::Url;
 
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
-    comms_and_services::{setup_comms_services},
+    comms_and_services::setup_comms_services,
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input},
+    utils::make_input,
 };
 
 async fn setup_transaction_service<P: AsRef<Path>>(
@@ -448,8 +434,6 @@ async fn setup_transaction_service_no_comms(
         wallet_db,
     }
 }
-
-
 
 #[tokio::test]
 async fn large_coin_split_transaction() {

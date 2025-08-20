@@ -198,9 +198,10 @@ impl TestParams {
     }
 
     pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> std::io::Result<usize> {
+        let temp_script = script!(PushPubKey(Box::default()));
         let output_features = OutputFeatures { ..Default::default() };
         Ok(self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
+            temp_script.map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
                 output_features.get_serialized_size()?,
         ) * num_outputs)
     }
@@ -277,7 +278,10 @@ pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, fea
         &TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &CompressedPublicKey::from_secret_key(&k),
-        fee, lock_height, &features, &None,
+        fee,
+        lock_height,
+        &features,
+        &None,
     );
     let sig = UncompressedSignature::sign_raw_uniform(&k, r, &e).unwrap();
     Signature::new_from_schnorr(sig)
@@ -298,13 +302,8 @@ pub async fn create_random_signature_from_secret_key(
         .unwrap();
     let total_excess = key_manager.get_public_key_at_key_id(&secret_key_id).await.unwrap();
     let kernel_version = TransactionKernelVersion::get_current_version();
-    let kernel_message = TransactionKernel::build_kernel_signature_message(
-        &kernel_version,
-        fee,
-        lock_height,
-        &kernel_features,
-        &None,
-    );
+    let kernel_message =
+        TransactionKernel::build_kernel_signature_message(&kernel_version, fee, lock_height, &kernel_features, &None);
     let kernel_signature = key_manager
         .get_partial_txo_kernel_signature(
             &secret_key_id,

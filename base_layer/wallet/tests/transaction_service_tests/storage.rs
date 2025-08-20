@@ -30,11 +30,7 @@ use minotari_wallet::{
     test_utils::create_consensus_constants,
     transaction_service::storage::{
         database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-        models::{
-            CompletedTransaction,
-            TxCancellationReason,
-            WalletTransaction,
-        },
+        models::{CompletedTransaction, TxCancellationReason, WalletTransaction},
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
@@ -49,12 +45,14 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        tari_amount::{MicroMinotari},
+        tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
+        transaction_builder::TransactionBuilder,
         transaction_components::{
             memo_field::{MemoField, TxType},
             OutputFeatures,
-            Transaction,         TransactionOutputVersion,
+            Transaction,
+            TransactionOutputVersion,
             WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
@@ -64,7 +62,6 @@ use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tempfile::tempdir;
-use tari_core::transactions::transaction_builder::TransactionBuilder;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let db = TransactionDatabase::new(backend);
@@ -80,7 +77,9 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     .unwrap();
     let constants = create_consensus_constants(0);
     let key_manager = create_memory_db_key_manager().unwrap();
-    let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).await.unwrap();
+    let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet)
+        .await
+        .unwrap();
     let amount = MicroMinotari::from(10_000);
     builder
         .with_fee_per_gram(MicroMinotari::from(177 / 5))
@@ -128,8 +127,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         MemoField::new_empty(),
         &key_manager,
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
     builder.with_output(output.clone(), sender_offset.key_id).await.unwrap();
     let finalized = builder.build().await.unwrap();
 
@@ -139,7 +138,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         MicroMinotari::from(23_000),
         MicroMinotari::from(5_000),
     ];
-
 
     let mut completed_txs = Vec::new();
     let tx = finalized.transaction.clone();
@@ -189,7 +187,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
 
-    for completed_tx in completed_txs.iter().take(messages.len()){
+    for completed_tx in completed_txs.iter().take(messages.len()) {
         assert_eq!(
             retrieved_completed_txs
                 .iter()

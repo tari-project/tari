@@ -1,8 +1,8 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::fmt;
-use std::fmt::Debug;
+use std::{fmt, fmt::Debug};
+
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -87,7 +87,7 @@ where KM: TransactionKeyManagerInterface
             recipient_outputs: Vec::new(),
             inputs: Vec::new(),
             custom_outputs: Vec::new(),
-            prevent_fee_gt_amount: false,
+            prevent_fee_gt_amount: true,
             tx_type: TxType::PaymentToOther,
             memo_field: None,
             lock_height: 0,
@@ -294,20 +294,22 @@ where KM: TransactionKeyManagerInterface
                     acc.checked_add(x)
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
-        total_sent +=
-            self.recipient_outputs
-                .iter()
-                .map(|o| o.output.output.value)
-                .try_fold(MicroMinotari::zero(), |acc, x| {
-                    acc.checked_add(x)
-                        .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-                })?;
+        total_sent += self.recipient_outputs.iter().map(|o| o.output.output.value).try_fold(
+            MicroMinotari::zero(),
+            |acc, x| {
+                acc.checked_add(x)
+                    .ok_or(TransactionBuilderError::TransactionAmountOverflow)
+            },
+        )?;
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-        let fee_without_change =self.get_fee_estimate()?;
-
+        let fee_without_change = self.get_fee_estimate()?;
+        let temp_script = script!(PushPubKey(Box::default()))?;
         let change_features_and_scripts_size = OutputFeatures::default()
             .get_serialized_size()
-            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?;
+            .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))? +
+            temp_script
+                .get_serialized_size()
+                .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?;
         let change_features_and_scripts_size = fee_weighting
             .weighting()
             .round_up_features_and_scripts_size(change_features_and_scripts_size);
@@ -331,7 +333,6 @@ where KM: TransactionKeyManagerInterface
                     },
                     None => 0.into(),
                 };
-
                 let change_amount = remainder_without_change.checked_sub(change_fee);
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
@@ -403,10 +404,7 @@ where KM: TransactionKeyManagerInterface
         Ok(memo)
     }
 
-    async fn build_change(
-        &self,
-        amount: MicroMinotari,
-    ) -> Result<Option<OutputPair>, TransactionBuilderError> {
+    async fn build_change(&self, amount: MicroMinotari) -> Result<Option<OutputPair>, TransactionBuilderError> {
         let (change_commitment_mask_key, change_script_key) =
             self.key_manager.get_next_commitment_mask_and_script_key().await?;
         let memo = self.create_change_memo(amount).await?;
@@ -470,13 +468,11 @@ where KM: TransactionKeyManagerInterface
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        Ok(
-            Some(OutputPair::new(
-                change_wallet_output,
-                nonce.key_id,
-                Some(sender_offset_public.key_id),
-            )),
-        )
+        Ok(Some(OutputPair::new(
+            change_wallet_output,
+            nonce.key_id,
+            Some(sender_offset_public.key_id),
+        )))
     }
 
     async fn calculate_total_nonce_and_total_public_excess(
@@ -732,22 +728,21 @@ where KM: TransactionKeyManagerInterface
             .map(|r| r.recipient_address.clone())
             .collect::<Vec<TariAddress>>();
 
-        let mut amount =
-            self.recipient_outputs
-                .iter()
-                .map(|r| r.output.output.value)
-                .try_fold(MicroMinotari::zero(), |acc, x| {
-                    acc.checked_add(x)
-                        .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-                })?;
-        amount +=
-            self.custom_outputs
-                .iter()
-                .map(|o| o.output.value)
-                .try_fold(MicroMinotari::zero(), |acc, x| {
-                    acc.checked_add(x)
-                        .ok_or(TransactionBuilderError::TransactionAmountOverflow)
-                })?;
+        let mut amount = self.recipient_outputs.iter().map(|r| r.output.output.value).try_fold(
+            MicroMinotari::zero(),
+            |acc, x| {
+                acc.checked_add(x)
+                    .ok_or(TransactionBuilderError::TransactionAmountOverflow)
+            },
+        )?;
+        amount += self
+            .custom_outputs
+            .iter()
+            .map(|o| o.output.value)
+            .try_fold(MicroMinotari::zero(), |acc, x| {
+                acc.checked_add(x)
+                    .ok_or(TransactionBuilderError::TransactionAmountOverflow)
+            })?;
         let mut sent_hashes = Vec::new();
         for recipient in &self.recipient_outputs {
             sent_hashes.push(recipient.output.tx_output(&self.key_manager).await?.hash());
@@ -778,10 +773,10 @@ where KM: TransactionKeyManagerInterface
         })
     }
 }
-//For some reason clippy picks up the debug impl as not used, and key_manager is a trait without debug, so we need to manually implement Debug for TransactionBuilder
+// For some reason clippy picks up the debug impl as not used, and key_manager is a trait without debug, so we need to
+// manually implement Debug for TransactionBuilder
 #[allow(dead_code)]
 impl<KM> Debug for TransactionBuilder<KM> {
-
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         #[derive(Debug)]
         pub struct TransactionBuilder<'a> {
@@ -817,24 +812,40 @@ impl<KM> Debug for TransactionBuilder<KM> {
             own_address,
         } = self;
 
-        fmt::Debug::fmt(&TransactionBuilder { consensus_constants, fee_per_gram, fee, recipient_outputs, inputs, custom_outputs, prevent_fee_gt_amount, tx_type, memo_field, lock_height, kernel_features, burn_commitment, own_address}, f)
+        fmt::Debug::fmt(
+            &TransactionBuilder {
+                consensus_constants,
+                fee_per_gram,
+                fee,
+                recipient_outputs,
+                inputs,
+                custom_outputs,
+                prevent_fee_gt_amount,
+                tx_type,
+                memo_field,
+                lock_height,
+                kernel_features,
+                burn_commitment,
+                own_address,
+            },
+            f,
+        )
     }
 }
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::ComAndPubSignature};
-    use tari_script::{script, ExecutionStack, TariScript};
+    use tari_common_types::key_branches::TransactionKeyManagerBranch;
+    use tari_script::{script, TariScript};
 
     use super::*;
     use crate::{
-        covenants::Covenant,
         test_helpers::{create_consensus_constants, create_consensus_rules},
         transactions::{
             tari_amount::{uT, MicroMinotari},
             test_helpers::{create_test_input, create_wallet_output_with_data, TestParams, UtxoTestParams},
             transaction_builder::TransactionBuilder,
-            transaction_components::{memo_field::MemoField, EncryptedData, OutputFeatures, WalletOutput},
+            transaction_components::{memo_field::MemoField, OutputFeatures, WalletOutputBuilder},
             transaction_key_manager::create_memory_db_key_manager,
             CryptoFactories,
         },
@@ -1053,22 +1064,23 @@ mod test {
             .await
             .unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutput::new_current_version(
+        let bob_output = WalletOutputBuilder::new(
             MicroMinotari(1200) - fee - MicroMinotari(10),
             bob_key.commitment_mask_key_id,
-            OutputFeatures::default(),
-            script.clone(),
-            ExecutionStack::default(),
-            bob_key.script_key_id,
-            bob_public_key,
-            ComAndPubSignature::default(),
-            0,
-            Covenant::default(),
-            EncryptedData::default(),
-            0.into(),
-            MemoField::new_empty(),
-            &key_manager,
         )
+        .with_features(OutputFeatures::default())
+        .with_script(script.clone())
+        .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
+        .await
+        .unwrap()
+        .with_input_data(Default::default())
+        .with_sender_offset_public_key(bob_public_key)
+        .with_script_key(bob_key.script_key_id)
+        .with_minimum_value_promise(0.into())
+        .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+        .await
+        .unwrap()
+        .try_build(&key_manager)
         .await
         .unwrap();
 
@@ -1104,7 +1116,7 @@ mod test {
         let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
             .await
             .unwrap();
-        let script = script!(Nop).unwrap();
+        let script = script!(PushPubKey(Box::default())).unwrap();
         let expected_fee = Fee::new(*consensus_constants.transaction_weight_params()).calculate(
             MicroMinotari(20),
             1,
@@ -1125,24 +1137,23 @@ mod test {
             .await
             .unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutput::new_current_version(
-            MicroMinotari(5000),
-            bob_key.commitment_mask_key_id,
-            OutputFeatures::default(),
-            script.clone(),
-            ExecutionStack::default(),
-            bob_key.script_key_id,
-            bob_public_key,
-            ComAndPubSignature::default(),
-            0,
-            Covenant::default(),
-            EncryptedData::default(),
-            0.into(),
-            MemoField::new_empty(),
-            &key_manager,
-        )
-        .await
-        .unwrap();
+
+        let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
+            .with_features(OutputFeatures::default())
+            .with_script(script.clone())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
+            .await
+            .unwrap()
+            .with_input_data(Default::default())
+            .with_sender_offset_public_key(bob_public_key)
+            .with_script_key(bob_key.script_key_id)
+            .with_minimum_value_promise(0.into())
+            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .await
+            .unwrap()
+            .try_build(&key_manager)
+            .await
+            .unwrap();
 
         builder
             .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
@@ -1190,24 +1201,22 @@ mod test {
             .await
             .unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutput::new_current_version(
-            MicroMinotari(5000),
-            bob_key.commitment_mask_key_id,
-            OutputFeatures::default(),
-            script.clone(),
-            ExecutionStack::default(),
-            bob_key.script_key_id,
-            bob_public_key,
-            ComAndPubSignature::default(),
-            0,
-            Covenant::default(),
-            EncryptedData::default(),
-            0.into(),
-            MemoField::new_empty(),
-            &key_manager,
-        )
-        .await
-        .unwrap();
+        let bob_output = WalletOutputBuilder::new(MicroMinotari(5000), bob_key.commitment_mask_key_id)
+            .with_features(OutputFeatures::default())
+            .with_script(script.clone())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
+            .await
+            .unwrap()
+            .with_input_data(Default::default())
+            .with_sender_offset_public_key(bob_public_key)
+            .with_script_key(bob_key.script_key_id)
+            .with_minimum_value_promise(0.into())
+            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .await
+            .unwrap()
+            .try_build(&key_manager)
+            .await
+            .unwrap();
 
         builder
             .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
@@ -1246,24 +1255,22 @@ mod test {
             .await
             .unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutput::new_current_version(
-            amount,
-            bob_key.commitment_mask_key_id,
-            OutputFeatures::default(),
-            script.clone(),
-            ExecutionStack::default(),
-            bob_key.script_key_id,
-            bob_public_key,
-            ComAndPubSignature::default(),
-            0,
-            Covenant::default(),
-            EncryptedData::default(),
-            0.into(),
-            MemoField::new_empty(),
-            &key_manager,
-        )
-        .await
-        .unwrap();
+        let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
+            .with_features(OutputFeatures::default())
+            .with_script(script.clone())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
+            .await
+            .unwrap()
+            .with_input_data(Default::default())
+            .with_sender_offset_public_key(bob_public_key)
+            .with_script_key(bob_key.script_key_id)
+            .with_minimum_value_promise(0.into())
+            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .await
+            .unwrap()
+            .try_build(&key_manager)
+            .await
+            .unwrap();
 
         builder
             .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
@@ -1300,24 +1307,22 @@ mod test {
             .await
             .unwrap();
         let bob_public_key = bob_sender_offset.pub_key.clone();
-        let bob_output = WalletOutput::new_current_version(
-            amount,
-            bob_key.commitment_mask_key_id,
-            OutputFeatures::default(),
-            script.clone(),
-            ExecutionStack::default(),
-            bob_key.script_key_id,
-            bob_public_key,
-            ComAndPubSignature::default(),
-            0,
-            Covenant::default(),
-            EncryptedData::default(),
-            0.into(),
-            MemoField::new_empty(),
-            &key_manager,
-        )
-        .await
-        .unwrap();
+        let bob_output = WalletOutputBuilder::new(amount, bob_key.commitment_mask_key_id)
+            .with_features(OutputFeatures::default())
+            .with_script(script.clone())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::new_empty())
+            .await
+            .unwrap()
+            .with_input_data(Default::default())
+            .with_sender_offset_public_key(bob_public_key)
+            .with_script_key(bob_key.script_key_id)
+            .with_minimum_value_promise(0.into())
+            .sign_as_sender_and_receiver_verified(&key_manager, &bob_sender_offset.key_id, &Default::default())
+            .await
+            .unwrap()
+            .try_build(&key_manager)
+            .await
+            .unwrap();
 
         builder
             .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))

@@ -270,13 +270,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let kernel_features = KernelFeatures::create_coinbase();
         // generate kernel signature
         let kernel_version = TransactionKernelVersion::get_current_version();
-        let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &kernel_version,
-            0.into(),
-            0,
-            &kernel_features,
-            &None,
-        );
+        let kernel_message =
+            TransactionKernel::build_kernel_signature_message(&kernel_version, 0.into(), 0, &kernel_features, &None);
         let public_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())

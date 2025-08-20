@@ -31,7 +31,8 @@ use crate::transactions::{
     transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
 
-//----------------------------------------  Core Transaction Builder   ----------------------------------------------------//
+//----------------------------------------  Core Transaction Builder
+//---------------------------------------- ----------------------------------------------------//
 pub struct CoreTransactionBuilder {
     body: AggregateBody,
     offset: Option<PrivateKey>,

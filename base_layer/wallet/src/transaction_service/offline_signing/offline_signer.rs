@@ -53,6 +53,7 @@ use crate::{
                 PaymentRecipient,
                 PrepareOneSidedTransactionForSigningResult,
                 SignedOneSidedTransactionResult,
+                TransactionMetadata,
             },
             one_sided_signer::OneSidedSigner,
         },
@@ -60,7 +61,6 @@ use crate::{
         storage::database::TransactionBackend,
     },
 };
-use crate::transaction_service::offline_signing::models::TransactionMetadata;
 const LOG_TARGET: &str = "wallet::transaction_service::offline_signing::offline_signer";
 
 pub struct OfflineSigner<TBackend, TWalletConnectivity, TKeyManagerInterface> {

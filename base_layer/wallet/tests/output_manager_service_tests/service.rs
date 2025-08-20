@@ -77,6 +77,7 @@ use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
 };
+
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
     data::get_temp_sqlite_database_connection,
@@ -546,7 +547,6 @@ async fn test_utxo_selection_with_chain_metadata() {
         .await
         .unwrap();
 
-
     // test that utxos with the lowest 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 7);
@@ -570,7 +570,6 @@ async fn test_utxo_selection_with_chain_metadata() {
         )
         .await
         .unwrap();
-
 
     // test that utxos with the highest spendable 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -668,7 +667,6 @@ async fn test_utxo_selection_with_tx_priority() {
         )
         .await
         .unwrap();
-
 
     // Test that the UTXOs with the lowest priority was left
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -882,18 +880,13 @@ async fn cancel_transaction() {
         _ => panic!("Value should not exist"),
     }
 
-    oms.output_manager_handle
-        .cancel_transaction(tx_id)
-        .await
-        .unwrap();
+    oms.output_manager_handle.cancel_transaction(tx_id).await.unwrap();
 
     assert_eq!(
         oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(),
         num_outputs
     );
 }
-
-
 
 #[tokio::test]
 async fn sending_transaction_persisted_while_offline() {
