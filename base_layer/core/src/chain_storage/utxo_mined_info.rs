@@ -53,9 +53,8 @@ pub struct MinedInfo {
 impl Display for MinedInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(output) = &self.output {
-            let time =
-                DateTime::<Utc>::from_timestamp(i64::try_from(output.mined_timestamp.as_u64()).unwrap_or(i64::MAX), 0)
-                    .unwrap_or(DateTime::<Utc>::MAX_UTC);
+            let time = DateTime::<Utc>::from_timestamp(i64::try_from(output.mined_timestamp).unwrap_or(i64::MAX), 0)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC);
             writeln!(
                 f,
                 "Output mined at height {} in block {} at timestamp {}",
@@ -67,9 +66,8 @@ impl Display for MinedInfo {
             writeln!(f, "Output not mined ")?;
         }
         if let Some(input) = &self.input {
-            let time =
-                DateTime::<Utc>::from_timestamp(i64::try_from(input.spent_timestamp.as_u64()).unwrap_or(i64::MAX), 0)
-                    .unwrap_or(DateTime::<Utc>::MAX_UTC);
+            let time = DateTime::<Utc>::from_timestamp(i64::try_from(input.spent_timestamp).unwrap_or(i64::MAX), 0)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC);
             writeln!(
                 f,
                 "Output spent at height {} in block {} at timestamp {}",
