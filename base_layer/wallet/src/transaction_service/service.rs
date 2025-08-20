@@ -1170,7 +1170,7 @@ where
         count: u64,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) {
-        let mut connectivity = self.resources.connectivity.clone();
+        let connectivity = self.resources.connectivity.clone();
 
         let query_base_node_fut = async move {
             let client = connectivity.obtain_base_node_wallet_rpc_client().await;

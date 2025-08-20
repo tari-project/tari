@@ -120,8 +120,12 @@ impl BaseNodeWalletClient for Client {
         }
     }
 
-    async fn is_online(&self) -> bool {
-        self.get_tip_info().await.is_ok()
+    async fn is_online(&self) -> Option<(String, String)> {
+        if let Ok(res) = self.get_tip_info().await {
+            Some((res.node_id, res.public_key))
+        } else {
+            None
+        }
     }
 
     async fn get_tip_info(&self) -> Result<TipInfoResponse, anyhow::Error> {

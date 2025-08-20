@@ -6,6 +6,7 @@ use std::cmp;
 use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use thiserror::Error;
 
@@ -64,14 +65,24 @@ pub struct Service<B> {
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
     mempool: MempoolHandle,
+    node_id: NodeId,
+    public_key: CommsPublicKey,
 }
 
 impl<B: BlockchainBackend + 'static> Service<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, state_machine: StateMachineHandle, mempool: MempoolHandle) -> Self {
+    pub fn new(
+        db: AsyncBlockchainDb<B>,
+        state_machine: StateMachineHandle,
+        mempool: MempoolHandle,
+        node_id: NodeId,
+        public_key: CommsPublicKey,
+    ) -> Self {
         Self {
             db,
             state_machine,
             mempool,
+            node_id,
+            public_key,
         }
     }
 
@@ -320,6 +331,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         Ok(TipInfoResponse {
             metadata: Some(metadata),
             is_synced,
+            node_id: self.node_id.to_hex(),
+            public_key: self.public_key.to_hex(),
         })
     }
 

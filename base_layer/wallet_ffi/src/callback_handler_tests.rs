@@ -37,7 +37,6 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus},
         types::{CompressedPublicKey, PrivateKey},
     };
-    use tari_comms_dht::event::DhtEvent;
     use tari_core::transactions::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
@@ -199,12 +198,6 @@ mod test {
         if (*status).queued_for_retry {
             lock.transaction_queued_for_retry_callback_called += 1;
         };
-        drop(lock);
-    }
-
-    unsafe extern "C" fn saf_messages_received_callback(_context: *mut c_void) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.saf_messages_received = true;
         drop(lock);
     }
 
@@ -453,7 +446,6 @@ mod test {
 
         let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
-        let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
 
         let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
         let mut oms_handle = OutputManagerHandle::new(oms_request_sender, oms_event_sender.clone());
@@ -491,7 +483,6 @@ mod test {
             oms_event_receiver,
             oms_handle,
             utxo_scanner_events,
-            dht_event_receiver,
             shutdown_signal.to_signal(),
             comms_address,
             received_tx_callback,
@@ -507,7 +498,6 @@ mod test {
             txo_validation_complete_callback,
             balance_updated_callback,
             transaction_validation_complete_callback,
-            saf_messages_received_callback,
             connectivity_status_callback,
             wallet_scanner_height_callback,
             base_node_state_changed_callback,
@@ -781,10 +771,6 @@ mod test {
             thread::sleep(Duration::from_millis(100));
         }
         assert_eq!(callback_balance_updated, 7);
-
-        dht_event_sender
-            .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
-            .unwrap();
 
         thread::sleep(Duration::from_secs(10));
 

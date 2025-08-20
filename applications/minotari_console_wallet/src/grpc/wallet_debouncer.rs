@@ -103,7 +103,12 @@ impl WalletDebouncer {
             event_monitor_started: Arc::new(AtomicBool::new(false)),
             last_scan_activity: Arc::new(AtomicU64::new(scanned_height + 1)), /* Add 1 to pass initial connectivity
                                                                                * check */
-            connection_status: Arc::new(Mutex::new(OnlineStatus::Online)),
+            connection_status: Arc::new(Mutex::new(OnlineStatus::Online {
+                latency_ms: 1234,
+                node_id: "".to_string(),
+                public_key: "".to_string(),
+                url: "".to_string(),
+            })),
         }
     }
 
@@ -293,7 +298,7 @@ impl WalletDebouncer {
     }
 
     pub async fn get_connection_status(&self) -> OnlineStatus {
-        *self.connection_status.lock().await
+        self.connection_status.lock().await.clone()
     }
 
     /// Background task that monitors connectivity proactively.
@@ -330,11 +335,16 @@ impl WalletDebouncer {
         } else {
             // Recent scanning activity indicates we're online
             trace!(target: LOG_TARGET, "Recent scanning activity detected - wallet is online");
-            OnlineStatus::Online
+            OnlineStatus::Online {
+                latency_ms: 1234,
+                node_id: "".to_string(),
+                public_key: "".to_string(),
+                url: "".to_string(),
+            }
         };
         // Update connection status
         let mut connection_status_guard = self.connection_status.lock().await;
-        *connection_status_guard = connectivity;
+        *connection_status_guard = connectivity.clone();
         connectivity
     }
 }

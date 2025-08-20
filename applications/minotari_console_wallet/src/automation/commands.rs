@@ -79,7 +79,6 @@ use tari_common_types::{
     },
     wallet_types::WalletType,
 };
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
     blocks::pre_mine::get_pre_mine_items,
     covenants::Covenant,
@@ -414,30 +413,6 @@ pub async fn coin_split(
     Ok(tx_id)
 }
 
-pub async fn discover_peer(
-    mut dht_service: DhtDiscoveryRequester,
-    dest_public_key: CompressedPublicKey,
-) -> Result<(), CommandError> {
-    let start = Instant::now();
-    println!("🌎 Peer discovery started.");
-    match dht_service
-        .discover_peer(
-            dest_public_key.clone(),
-            NodeDestination::PublicKey(Box::new(dest_public_key)),
-        )
-        .await
-    {
-        Ok(peer) => {
-            println!("⚡️ Discovery succeeded in {}ms.", start.elapsed().as_millis());
-            println!("{peer}");
-        },
-        Err(err) => {
-            println!("💀 Discovery failed: '{err:?}'");
-        },
-    }
-
-    Ok(())
-}
 // casting here is okay. If the txns per second for this primary debug tool is a bit off its okay.
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::too_many_lines)]
@@ -723,7 +698,6 @@ pub async fn command_runner(
 
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
-    let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let key_manager_service = wallet.key_manager_service.clone();
 
     let mut tx_ids = Vec::new();
@@ -745,11 +719,6 @@ pub async fn command_runner(
                     println!("{balance}");
                 },
                 Err(e) => eprintln!("GetBalance error! {e}"),
-            },
-            DiscoverPeer(args) => {
-                if let Err(e) = discover_peer(dht_service.clone(), args.dest_public_key.into()).await {
-                    eprintln!("DiscoverPeer error! {e}");
-                }
             },
             BurnMinotari(args) => {
                 match burn_tari(

@@ -29,20 +29,24 @@ use std::{
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use minotari_app_grpc::tari_rpc::{
-    self as grpc,
-    pow_algo::PowAlgos,
-    GetBlocksRequest,
-    GetNewBlockTemplateWithCoinbasesRequest,
-    GetNewBlockWithCoinbasesRequest,
-    ListHeadersRequest,
-    NewBlockCoinbase,
-    NewBlockTemplateRequest,
-    PowAlgo,
+use minotari_app_grpc::{
+    tari_rpc,
+    tari_rpc::{
+        self as grpc,
+        pow_algo::PowAlgos,
+        GetBlocksRequest,
+        GetNewBlockTemplateWithCoinbasesRequest,
+        GetNewBlockWithCoinbasesRequest,
+        ListHeadersRequest,
+        NewBlockCoinbase,
+        NewBlockTemplateRequest,
+        PowAlgo,
+    },
 };
 use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 use tari_common_types::tari_address::TariAddress;
+use tari_comms::types::CommsPublicKey;
 use tari_core::{
     blocks::Block,
     borsh::SerializedSize,
@@ -55,6 +59,7 @@ use tari_integration_tests::{
     world::NodeClient,
     TariWorld,
 };
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
@@ -107,17 +112,32 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
         },
         NodeClient::BaseNode(mut client) => client.identify(Empty {}).await.unwrap().into_inner().public_key,
     };
+    let second_client_pubkey_str = CommsPublicKey::from_canonical_bytes(&second_client_pubkey)
+        .unwrap()
+        .to_hex();
 
     for _i in 0..100 {
-        let res = match node_client {
-            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-        };
-        let res = res.into_inner();
-
-        if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
-            return;
+        if let NodeClient::Wallet(ref mut client) = node_client {
+            let res: tonic::Response<tari_rpc::ListConnectedHttpPeersResponse> =
+                client.list_connected_peers(Empty {}).await.unwrap();
+            let res = res.into_inner();
+            if res
+                .connected_peers
+                .iter()
+                .any(|p| p.public_key == second_client_pubkey_str)
+            {
+                return;
+            }
         }
+        if let NodeClient::BaseNode(ref mut client) = node_client {
+            let res: tonic::Response<tari_rpc::ListConnectedPeersResponse> =
+                client.list_connected_peers(Empty {}).await.unwrap();
+            let res = res.into_inner();
+            if res.connected_peers.iter().any(|p| p.public_key == second_client_pubkey) {
+                return;
+            }
+        }
+
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
 
@@ -129,14 +149,23 @@ async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, n
     let mut node_client = world.get_base_node_or_wallet_client(&node).await.unwrap();
     let mut connected_peers = 0;
     for _i in 0..100 {
-        let res = match node_client {
-            NodeClient::Wallet(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-            NodeClient::BaseNode(ref mut client) => client.list_connected_peers(Empty {}).await.unwrap(),
-        };
-        let res = res.into_inner();
-        connected_peers = res.connected_peers.len();
-        if res.connected_peers.len() >= num_connections {
-            return;
+        if let NodeClient::Wallet(ref mut client) = node_client {
+            let res: tonic::Response<tari_rpc::ListConnectedHttpPeersResponse> =
+                client.list_connected_peers(Empty {}).await.unwrap();
+            let res = res.into_inner();
+            connected_peers = res.connected_peers.len();
+            if res.connected_peers.len() >= num_connections {
+                return;
+            }
+        }
+        if let NodeClient::BaseNode(ref mut client) = node_client {
+            let res: tonic::Response<tari_rpc::ListConnectedPeersResponse> =
+                client.list_connected_peers(Empty {}).await.unwrap();
+            let res = res.into_inner();
+            connected_peers = res.connected_peers.len();
+            if res.connected_peers.len() >= num_connections {
+                return;
+            }
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }

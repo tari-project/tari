@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, marker::PhantomData, sync::Arc, thread};
+use std::{cmp, marker::PhantomData, sync::Arc};
 
 use blake2::Blake2b;
 use digest::consts::U32;
-use futures::executor::block_on;
 use log::*;
 use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
@@ -41,15 +40,7 @@ use tari_common_types::{
     },
     wallet_types::WalletType,
 };
-use tari_comms::{
-    multiaddr::{Error as MultiaddrError, Multiaddr},
-    tor::TorIdentity,
-    types::CommsSecretKey,
-    CommsNode,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
-use tari_comms_dht::Dht;
+use tari_comms::{types::CommsSecretKey, NodeIdentity};
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
@@ -82,11 +73,6 @@ use tari_key_manager::{
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
-    initialization,
-    initialization::P2pInitializer,
-    services::liveness::{config::LivenessConfig, LivenessInitializer},
-    PeerSeedsConfig,
-    TransportType,
 };
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -138,8 +124,6 @@ pub struct Wallet<T, U, V, TKeyManagerInterface, THttpClientFactory>
 where THttpClientFactory: HttpClientFactory
 {
     pub network: NetworkConsensus,
-    pub comms: CommsNode,
-    pub dht_service: Dht,
     pub output_manager_service: OutputManagerHandle,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
@@ -152,6 +136,8 @@ where THttpClientFactory: HttpClientFactory
     pub factories: CryptoFactories,
     wallet_type: Arc<WalletType>,
     pub config: WalletConfig,
+    pub shutdown_signal: ShutdownSignal,
+    pub node_identity: Arc<NodeIdentity>,
     _u: PhantomData<U>,
     _v: PhantomData<V>,
 }
@@ -167,7 +153,6 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn start<TKeyManagerBackend: TransactionKeyManagerBackend + 'static>(
         config: WalletConfig,
-        peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
         node_identity: Arc<NodeIdentity>,
         consensus_manager: ConsensusManager,
@@ -180,11 +165,13 @@ where
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
         wallet_type: Option<WalletType>,
-        user_agent: String,
     ) -> Result<Self, WalletError> {
         let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
-        let (publisher, subscription_factory) = pubsub_connector(buf_size);
+
+        // Note: This is a temporary solution to remove comms from the wallet. It will be removed
+        // when the Transaction Service is refactored to remove interactive transactions.
+        let (_publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
@@ -193,15 +180,7 @@ where
             "Transaction sending mechanism is {}", config.transaction_service_config.transaction_routing_mechanism
         );
         trace!(target: LOG_TARGET, "Wallet config: {config:?}");
-        let stack = StackBuilder::new(shutdown_signal)
-            .add_initializer(P2pInitializer::new(
-                config.p2p.clone(),
-                user_agent,
-                peer_seeds,
-                config.network,
-                node_identity.clone(),
-                publisher,
-            ))
+        let stack = StackBuilder::new(shutdown_signal.clone())
             .add_initializer(OutputManagerServiceInitializer::<
                 V,
                 TKeyManagerInterface,
@@ -233,17 +212,6 @@ where
                 factories.clone(),
                 wallet_database.clone(),
                 wallet_type.clone(),
-            ))
-            .add_initializer(LivenessInitializer::new(
-                LivenessConfig {
-                    auto_ping_interval: config.p2p.listener_self_liveness_check_interval,
-                    num_peers_per_round: 0, // No random peers
-                    max_allowed_ping_failures: 0, /* Peer with failed
-                                             * ping-pong will never be
-                                             * removed */
-                    ..Default::default()
-                },
-                peer_message_subscription_factory.clone(),
             ))
             .add_initializer(BaseNodeServiceInitializer::<THttpClientFactory>::new())
             .add_initializer(WalletConnectivityInitializer::<DefaultHttpClientFactory>::new(
@@ -281,55 +249,12 @@ where
             stack
         };
 
-        let mut handles = stack.build().await?;
+        let handles = stack.build().await?;
 
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
-        let comms = handles
-            .take_handle::<UnspawnedCommsNode>()
-            .expect("P2pInitializer was not added to the stack");
-        let comms = if config.p2p.transport.transport_type == TransportType::Tor {
-            let wallet_db = wallet_database.clone();
-            let node_id = comms.node_identity();
-            let moved_ts_clone = transaction_service_handle.clone();
-            let after_comms = move |identity: TorIdentity| {
-                // we do this so that we dont have to move in a mut ref and making the closure a FnMut.
-                let mut ts = moved_ts_clone.clone();
-                let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
-                if let Err(e) = wallet_db.set_tor_identity(identity) {
-                    error!(target: LOG_TARGET, "Failed to set wallet db tor identity{e:?}");
-                }
-                let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
-                if result.is_err() {
-                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{result:?}");
-                    return;
-                }
-                let address = result.unwrap();
-                if !node_id.public_addresses().contains(&address) {
-                    node_id.add_public_address(address.clone());
-                }
-                // Persist the comms node address and features after it has been spawned to capture any modifications
-                // made during comms startup. In the case of a Tor Transport the public address could
-                // have been generated
-                let _result = wallet_db.set_node_address(address);
-                thread::spawn(move || {
-                    let result = block_on(ts.restart_transaction_protocols());
-                    if result.is_err() {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not restart transaction negotiation protocols: {result:?}"
-                        );
-                    }
-                });
-            };
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
-        } else {
-            let after_comms = |_identity| {};
-            initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
-        };
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
-        let dht = handles.expect_handle::<Dht>();
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
@@ -351,12 +276,6 @@ where
             error!(target: LOG_TARGET, "{e:?}");
         })?;
 
-        wallet_database.set_node_features(comms.node_identity().features())?;
-        let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
-        if let Some(identity_sig) = identity_sig {
-            wallet_database.set_comms_identity_signature(identity_sig)?;
-        }
-
         // storing current network and version
         if let Err(e) = wallet_database
             .set_last_network_and_version(config.network.to_string(), consts::APP_VERSION_NUMBER.to_string())
@@ -366,8 +285,6 @@ where
 
         Ok(Self {
             network: config.network.into(),
-            comms,
-            dht_service: dht,
             output_manager_service: output_manager_handle,
             key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,
@@ -380,6 +297,8 @@ where
             factories,
             wallet_type,
             config,
+            shutdown_signal: shutdown_signal.clone(),
+            node_identity: node_identity.clone(),
             _u: PhantomData,
             _v: PhantomData,
         })
@@ -388,7 +307,7 @@ where
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub async fn wait_until_shutdown(self) {
-        self.comms.to_owned().wait_until_shutdown().await;
+        self.shutdown_signal.await;
     }
 
     pub async fn check_for_update(&self) -> Option<String> {
@@ -455,7 +374,7 @@ where
         let address_interactive = self.get_wallet_interactive_address().await?;
         let address_one_sided = self.get_wallet_one_sided_address().await?;
         Ok(WalletIdentity::new(
-            self.comms.node_identity(),
+            self.node_identity.clone(),
             address_interactive,
             address_one_sided,
         ))

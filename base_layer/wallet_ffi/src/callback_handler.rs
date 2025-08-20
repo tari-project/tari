@@ -54,7 +54,6 @@ use minotari_wallet::{
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
-use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::broadcast;
 
@@ -84,7 +83,6 @@ where TBackend: TransactionBackend + 'static
     callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
     callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
@@ -93,7 +91,6 @@ where TBackend: TransactionBackend + 'static
     output_manager_service_event_stream: OutputManagerEventReceiver,
     output_manager_service: OutputManagerHandle,
     utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
-    dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
     comms_address: TariAddress,
     balance_cache: Balance,
@@ -111,7 +108,6 @@ where TBackend: TransactionBackend + 'static
         output_manager_service_event_stream: OutputManagerEventReceiver,
         output_manager_service: OutputManagerHandle,
         utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
-        dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_address: TariAddress,
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut InboundTransaction),
@@ -135,7 +131,6 @@ where TBackend: TransactionBackend + 'static
         callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-        callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
         callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
@@ -194,10 +189,6 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
-            "SafMessagesReceivedCallback -> Assigning Fn:  {callback_saf_messages_received:?}"
-        );
-        info!(
-            target: LOG_TARGET,
             "ConnectivityStatusCallback -> Assigning Fn:  {callback_connectivity_status:?}"
         );
         info!(
@@ -220,7 +211,6 @@ where TBackend: TransactionBackend + 'static
             callback_txo_validation_complete,
             callback_balance_updated,
             callback_transaction_validation_complete,
-            callback_saf_messages_received,
             callback_connectivity_status,
             callback_wallet_scanned_height,
             callback_base_node_state,
@@ -229,7 +219,6 @@ where TBackend: TransactionBackend + 'static
             output_manager_service_event_stream,
             output_manager_service,
             utxo_scanner_service_events,
-            dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
             comms_address,
             balance_cache: Balance::zero(),
@@ -351,11 +340,11 @@ where TBackend: TransactionBackend + 'static
                                     ..
                                 }=> {
                                     self.scanned_height_changed(current_height);
-                                    if online_status != OnlineStatus::Online {
-                                        online_status = OnlineStatus::Online;
-                                        self.connectivity_status_changed(online_status);
+                                    if !matches!(online_status.clone(), OnlineStatus::Online { .. })  {
+                                        online_status = OnlineStatus::Online { latency_ms: 1234, node_id: "".to_string(), public_key: "".to_string(), url: "".to_string() };
+                                        self.connectivity_status_changed(online_status.clone());
                                     }
-                                    self.connectivity_status_changed(online_status);
+                                    self.connectivity_status_changed(online_status.clone());
                                     base_node_state.best_block_height = tip_height;
                                     base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
                                     self.base_node_state_changed(base_node_state);
@@ -366,9 +355,9 @@ where TBackend: TransactionBackend + 'static
                                     ..
                                 }=> {
                                 self.scanned_height_changed(final_height);
-                                    if online_status != OnlineStatus::Online {
-                                        online_status = OnlineStatus::Online;
-                                        self.connectivity_status_changed(online_status);
+                                    if !matches!(online_status.clone(), OnlineStatus::Online { .. }) {
+                                        online_status = OnlineStatus::Online { latency_ms: 1234, node_id: "".to_string(), public_key: "".to_string(), url: "".to_string()  };
+                                        self.connectivity_status_changed(online_status.clone());
                                     }
                                     base_node_state.best_block_height = final_height;
                                     base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
@@ -380,18 +369,6 @@ where TBackend: TransactionBackend + 'static
                         Err(e) => {
                             error!(target: LOG_TARGET, "Problem with utxo scanner: {e}");
                         },
-                },
-
-                result = self.dht_event_stream.recv() => {
-                    match result {
-                        Ok(msg) => {
-                            trace!(target: LOG_TARGET, "DHT Callback Handler event {msg:?}");
-                            if let DhtEvent::StoreAndForwardMessagesReceived = *msg {
-                                self.saf_messages_received_event();
-                            }
-                        },
-                        Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
-                    }
                 },
 
                  _ = shutdown_signal.wait() => {
@@ -625,20 +602,13 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn saf_messages_received_event(&mut self) {
-        debug!(target: LOG_TARGET, "Calling SAF Messages Received callback function");
-        unsafe {
-            (self.callback_saf_messages_received)(self.context.0);
-        }
-    }
-
     fn connectivity_status_changed(&mut self, status: OnlineStatus) {
         debug!(
             target: LOG_TARGET,
             "Calling Connectivity Status changed callback function"
         );
         unsafe {
-            (self.callback_connectivity_status)(self.context.0, status as u64);
+            (self.callback_connectivity_status)(self.context.0, u64::from(status.as_u8()));
         }
     }
 

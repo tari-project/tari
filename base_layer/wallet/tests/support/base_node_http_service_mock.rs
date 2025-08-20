@@ -100,7 +100,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         todo!()
     }
 
-    async fn is_online(&self) -> bool {
+    async fn is_online(&self) -> Option<(String, String)> {
         todo!()
     }
 

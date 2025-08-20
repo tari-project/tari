@@ -511,7 +511,6 @@ mod test {
         let mut pre_mine_spend_input_output_sigs = false;
         let mut make_it_rain = false;
         let mut coin_split = false;
-        let mut discover_peer = false;
         let mut export_tx = false;
         let mut import_tx = false;
         let mut whois = false;
@@ -529,7 +528,6 @@ mod test {
                 CliCommands::SendOneSidedToStealthAddress(_) => {},
                 CliCommands::MakeItRain(_) => make_it_rain = true,
                 CliCommands::CoinSplit(_) => coin_split = true,
-                CliCommands::DiscoverPeer(_) => discover_peer = true,
                 CliCommands::Whois(_) => whois = true,
                 CliCommands::ExportUtxos(_) => {},
                 CliCommands::ImportPaperWallet(_) => {},
@@ -575,7 +573,6 @@ mod test {
                 pre_mine_spend_input_output_sigs &&
                 make_it_rain &&
                 coin_split &&
-                discover_peer &&
                 whois &&
                 export_tx &&
                 import_tx

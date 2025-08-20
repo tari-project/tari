@@ -72,11 +72,12 @@
 # Number of required transaction confirmations used for UI purposes (default = 3)
 #num_required_confirmations = 3
 
-# Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 'tor.control_address' below.
-# This requires that the base node was built with the optional "libtor" feature flag. (default = true)
+# DEPRECATED: Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 4
+# DEPRECATED: 'tor.control_address' below. This requires that the base node was built with the optional "libtor"
+# DEPRECATED: feature flag. (default = true)
 #use_libtor = false
 
-# A path to the file that stores your node identity and secret key (default = "none")
+# DEPRECATED: A path to the file that stores your node identity and secret key (default = "none")
 #identity_file = "none"
 
 # Notification script file for a notifier service. Allows you to execute a script or program when these transaction

@@ -35,9 +35,17 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
-    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Self::BaseNodeClient;
+    async fn obtain_base_node_wallet_rpc_client(&self) -> Self::BaseNodeClient;
 
+    /// Get the current connectivity status of the base node.
     async fn get_connectivity_status(&self) -> OnlineStatus;
 
+    /// Get a watch receiver for the connectivity status of the base node.
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus>;
+
+    /// Get the last request latency to the base node.
+    async fn get_last_request_latency(&self) -> Option<std::time::Duration>;
+
+    /// Get the address of the currently connected base node.
+    async fn get_address(&self) -> String;
 }

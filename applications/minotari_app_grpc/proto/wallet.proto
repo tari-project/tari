@@ -703,11 +703,10 @@ service Wallet {
   //
   rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
 
-  // Returns a list of peers currently connected to the wallet.
+  // Returns a list of HTTP peers currently connected to the wallet.
   //
-  // The `ListConnectedPeers` call retrieves information about peers that the wallet is currently
-  // connected to. This includes details such as peer addresses, connection status, supported protocols,
-  // and other metadata relevant to the connection.
+  // The `ListConnectedPeers` call retrieves information about HTTP peers that the wallet is currently
+  // connected to. The response is a `ListConnectedHttpPeersResponse` containing a list of `HttpPeer` objects.
   //
   // ### Request Parameters:
   //
@@ -717,18 +716,10 @@ service Wallet {
   //
   // ### Response Fields:
   //
-  // - **connected_peers**: List of peers currently connected to the wallet.
-  //   - **public_key**: The peer's public key (bytes).
-  //   - **node_id**: The unique node ID of the peer (bytes).
-  //   - **addresses**: List of the peer's addresses (repeated Address).
-  //   - **last_connection**: The timestamp of the last connection attempt (uint64).
-  //   - **flags**: Flags associated with the peer (uint32).
-  //   - **banned_until**: The timestamp until which the peer is banned (uint64, 0 if not banned).
-  //   - **banned_reason**: The reason for banning the peer (string, empty if not banned).
-  //   - **offline_at**: The timestamp indicating when the peer went offline (uint64, 0 if online).
-  //   - **features**: The features supported by the peer (uint32).
-  //   - **supported_protocols**: List of supported protocols by the peer (repeated bytes).
-  //   - **user_agent**: The user agent advertised by the peer (string).
+  // - **connected_peers**: List of `HttpPeer` objects currently connected to the wallet.
+  //   - **url**: The connection URL (string).
+  //   - **last_latency**: The latency of the last request to this peer (`AverageLatency`).
+  //   - **is_online**: Online status of the peer (bool).
   //
   // ### Example JavaScript gRPC client usage:
   //
@@ -745,28 +736,14 @@ service Wallet {
   // {
   //   "connected_peers": [
   //     {
-  //       "public_key": "0x1234abcd...",
-  //       "node_id": "0x5678efgh...",
-  //       "addresses": [
-  //         "127.0.0.1:18080",
-  //         "192.168.1.2:18080"
-  //       ],
-  //       "last_connection": 1625493123,
-  //       "flags": 1,
-  //       "banned_until": 0,
-  //       "banned_reason": "",
-  //       "offline_at": 0,
-  //       "features": 10,
-  //       "supported_protocols": [
-  //         "protocol_v1",
-  //         "protocol_v2"
-  //       ],
-  //       "user_agent": "TariBaseNode/1.0.0"
+  //       "url": "http://127.0.0.1:18080",
+  //       "last_latency": { "value": 42 },
+  //       "is_online": true
   //     }
   //   ]
   // }
   // ```
-  rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
+  rpc ListConnectedPeers(Empty) returns (ListConnectedHttpPeersResponse);
 
   // Cancels a specific transaction by its ID.
   //
@@ -1949,4 +1926,24 @@ message SignMessageResponse {
   string signature = 1;
   // The public nonce component as hex-encoded string
   string public_nonce = 2;
+}
+
+// Response message for ListConnectedHttpPeersResponse
+message ListConnectedHttpPeersResponse {
+  // List of connected HTTP peers
+  repeated HttpPeer connected_peers = 1;
+}
+
+// The HttpPeer message represents a connected HTTP peer in the wallet.
+message HttpPeer {
+  // The connection URL
+  string url = 1;
+  // The latency of the last request to this peer in ms
+  uint64 last_latency = 2;
+  // Online status of the peer
+  bool is_online = 3;
+  // The node_id of the peer
+  string node_id = 4;
+  // The public key of the peer
+  string public_key = 5;
 }

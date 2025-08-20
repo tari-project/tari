@@ -75,11 +75,6 @@ struct OutboundTransaction;
 struct OutputFeatures;
 
 /**
- * Configuration for a comms node
- */
-struct P2pConfig;
-
-/**
  * The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
  * around the Dalek [Scalar](struct.Scalar.html) type, representing a 256-bit integer (mod the group order).
  *
@@ -123,6 +118,11 @@ struct TariSeedWords;
 struct TariUnblindedOutputs;
 
 struct TariWallet;
+
+/**
+ * A minimal configuration for the Tari wallet db
+ */
+struct TariWalletDbConfig;
 
 /**
  * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
@@ -222,8 +222,6 @@ typedef struct OutboundTransaction TariPendingOutboundTransaction;
 typedef struct InboundTransaction TariPendingInboundTransaction;
 
 typedef struct TransactionSendStatus TariTransactionSendStatus;
-
-typedef struct P2pConfig TariCommsConfig;
 
 typedef struct Balance TariBalance;
 
@@ -2748,8 +2746,8 @@ void transaction_send_status_destroy(TariTransactionSendStatus *status);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- CommsConfig ---------------------------------------------///
- * Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
+ * ----------------------------------- WalletDbConfig ------------------------------------------///
+ * Creates a TariWalletDbConfig. The result from this function is required when initializing a TariWallet.
  *
  * ## Arguments
  * `database_name` - The database name char array pointer. This is the unique name of this
@@ -2760,21 +2758,22 @@ void transaction_send_status_destroy(TariTransactionSendStatus *status);
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `*mut TariCommsConfig` - Returns a pointer to a TariCommsConfig, if any of the parameters are
+ * `*mut TariWalletDbConfig` - Returns a pointer to a TariWalletDbConfig, if any of the parameters are
  * null or a problem is encountered when constructing the NetAddress a ptr::null_mut() is returned
  *
  * # Safety
- * The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
+ * The ```comms_config_destroy``` method must be called when finished with a TariWalletDbConfig to prevent a memory
+ * leak
  */
-TariCommsConfig *comms_config_create(const char *database_name,
-                                     const char *datastore_path,
-                                     int *error_out);
+struct TariWalletDbConfig *comms_config_create(const char *database_name,
+                                               const char *datastore_path,
+                                               int *error_out);
 
 /**
- * Frees memory for a TariCommsConfig
+ * Frees memory for a TariWalletDbConfig
  *
  * ## Arguments
- * `wc` - The TariCommsConfig pointer
+ * `wc` - The TariWalletDbConfig pointer
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -2782,24 +2781,7 @@ TariCommsConfig *comms_config_create(const char *database_name,
  * # Safety
  * None
  */
-void comms_config_destroy(TariCommsConfig *wc);
-
-/**
- * This function lists the public keys of all connected peers
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
- *
- * # Safety
- * The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
- */
-struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *wallet,
-                                                        int *error_out);
+void comms_config_destroy(struct TariWalletDbConfig *wc);
 
 /**
  * Gets the length of the public keys vector
@@ -2843,7 +2825,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  *
  * ## Arguments
  * Context - a pointer to some context used by all the callbacks
- * `config` - The TariCommsConfig pointer
+ * `config` - The TariWalletDbConfig pointer
  * `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
  * pointer.
  * `log_verbosity` - how verbose should logging be as a c_int 0-5, or 11
@@ -2945,7 +2927,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
  */
 struct TariWallet *wallet_create(void *context,
-                                 TariCommsConfig *config,
+                                 struct TariWalletDbConfig *config,
                                  const char *log_path,
                                  int log_verbosity,
                                  unsigned int num_rolling_log_files,
@@ -2954,9 +2936,6 @@ struct TariWallet *wallet_create(void *context,
                                  const char *seed_passphrase,
                                  const struct TariSeedWords *seed_words,
                                  const char *network_str,
-                                 const char *dns_seeds_str,
-                                 const char *dns_seed_name_servers_str,
-                                 bool use_dns_sec,
                                  const char *http_base_node,
                                  int wallet_birthday_offset,
                                  void (*callback_received_transaction)(void *context,
@@ -2990,7 +2969,6 @@ struct TariWallet *wallet_create(void *context,
                                  void (*callback_transaction_validation_complete)(void *context,
                                                                                   uint64_t,
                                                                                   uint64_t),
-                                 void (*callback_saf_messages_received)(void *context),
                                  void (*callback_connectivity_status)(void *context, uint64_t),
                                  void (*callback_wallet_scanned_height)(void *context, uint64_t),
                                  void (*callback_base_node_state)(void *context,
@@ -3002,7 +2980,7 @@ struct TariWallet *wallet_create(void *context,
  * Retrieves the version of an app that last accessed the wallet database
  *
  * ## Arguments
- * `config` - The TariCommsConfig pointer
+ * `config` - The TariWalletDbConfig pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3012,14 +2990,14 @@ struct TariWallet *wallet_create(void *context,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-char *wallet_get_last_version(TariCommsConfig *config,
+char *wallet_get_last_version(struct TariWalletDbConfig *config,
                               int *error_out);
 
 /**
  * Retrieves the network of an app that last accessed the wallet database
  *
  * ## Arguments
- * `config` - The TariCommsConfig pointer
+ * `config` - The TariWalletDbConfig pointer
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3029,7 +3007,7 @@ char *wallet_get_last_version(TariCommsConfig *config,
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
  */
-char *wallet_get_last_network(TariCommsConfig *config,
+char *wallet_get_last_network(struct TariWalletDbConfig *config,
                               int *error_out);
 
 /**
@@ -3248,21 +3226,6 @@ bool wallet_verify_message_signature(struct TariWallet *wallet,
                                      const char *hex_sig_nonce,
                                      const char *msg,
                                      int *error_out);
-
-/**
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `TariPublicKeys` - Returns a list of all known public keys
- *
- * # Safety
- * None
- */
-struct TariPublicKeys *wallet_get_seed_peers(struct TariWallet *wallet,
-                                             int *error_out);
 
 /**
  * Gets the private view key of the wallet

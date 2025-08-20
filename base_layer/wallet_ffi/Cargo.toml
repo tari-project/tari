@@ -13,10 +13,8 @@ tari_core = { workspace = true, default-features = false, features = [
     "transactions",
 ] }
 tari_common = { workspace = true }
-tari_common_sqlite = { workspace = true }
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true, features = ["c_integration"] }
-tari_comms_dht = { workspace = true, default-features = false }
 tari_crypto = { workspace = true }
 tari_key_manager = { workspace = true }
 tari_p2p = { workspace = true }

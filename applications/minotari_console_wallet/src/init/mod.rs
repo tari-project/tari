@@ -279,8 +279,6 @@ pub async fn init_wallet(
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
     .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {e}")))?;
-    fs::create_dir_all(&config.p2p.datastore_path)
-        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {e}")))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
@@ -295,13 +293,9 @@ pub async fn init_wallet(
 
     debug!(target: LOG_TARGET, "Databases Initialized. Wallet is encrypted.",);
 
-    let node_addresses = if config.p2p.public_addresses.is_empty() {
-        match wallet_db.get_node_address()? {
-            Some(addr) => MultiaddrList::from(vec![addr]),
-            None => MultiaddrList::default(),
-        }
-    } else {
-        config.p2p.public_addresses.clone()
+    let node_addresses = match wallet_db.get_node_address()? {
+        Some(addr) => MultiaddrList::from(vec![addr]),
+        None => MultiaddrList::default(),
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
@@ -309,9 +303,6 @@ pub async fn init_wallet(
     let node_identity = setup_identity_from_db(&wallet_db, &master_seed, node_addresses.to_vec())?;
 
     let mut wallet_config = config.clone();
-    if let TransportType::Tor = config.p2p.transport.transport_type {
-        wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
-    }
 
     let consensus_manager = ConsensusManager::builder(config.network)
         .build()
@@ -322,7 +313,6 @@ pub async fn init_wallet(
     let user_agent = format!("tari/wallet/{}", consts::APP_VERSION_NUMBER);
     let mut wallet = Wallet::start(
         wallet_config,
-        peer_seeds,
         auto_update,
         node_identity,
         consensus_manager,
@@ -335,7 +325,6 @@ pub async fn init_wallet(
         shutdown_signal,
         master_seed,
         wallet_type,
-        user_agent,
     )
     .await
     .map_err(|e| match e {

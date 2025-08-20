@@ -116,7 +116,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateResponse,
 };
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface, NON_RESPONSIVE_LATENCY},
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
@@ -134,7 +134,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
+use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
@@ -205,7 +205,7 @@ impl WalletGrpcServer {
             wallet.transaction_service.clone(),
             wallet.utxo_scanner_service.clone(),
             wallet.clone(),
-            wallet.comms.shutdown_signal(),
+            wallet.shutdown_signal.clone(),
             scanned_height,
         );
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
@@ -232,10 +232,6 @@ impl WalletGrpcServer {
     fn get_output_manager_service(&self) -> OutputManagerHandle {
         self.wallet.output_manager_service.clone()
     }
-
-    fn comms(&self) -> &CommsNode {
-        &self.wallet.comms
-    }
 }
 
 #[tonic::async_trait]
@@ -257,7 +253,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let debouncer = self.debouncer.lock().await;
         let connection_status = debouncer.get_connection_status().await;
         Ok(Response::new(CheckConnectivityResponse {
-            status: connection_status as i32,
+            status: i32::from(connection_status.as_u8()),
         }))
     }
 
@@ -280,11 +276,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
-        let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
-            public_key: identity.public_key().to_vec(),
-            public_address: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
-            node_id: identity.node_id().to_vec(),
+            public_key: vec![],
+            public_address: self.wallet.wallet_connectivity.get_address().await,
+            node_id: vec![],
         }))
     }
 
@@ -425,34 +420,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             (Some(balance), scanned_height, is_initial_validation_done)
         };
 
-        let online_status = self.wallet.wallet_connectivity.get_connectivity_status().await;
-
-        let status = self
-            .comms()
-            .connectivity()
-            .get_connectivity_status()
-            .await
-            .map_err(|err| Status::internal(err.to_string()))?;
-
-        let status = if online_status == OnlineStatus::Offline {
-            ConnectivityStatus::Offline
-        } else {
-            status
-        };
-
-        let mut base_node_service = self.wallet.base_node_service.clone();
-
-        let network = Some(tari_rpc::NetworkStatusResponse {
-            status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: base_node_service
-                .get_base_node_latency()
-                .await
-                .map_err(|err| Status::internal(err.to_string()))?
-                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
-                .unwrap_or_default(),
-            num_node_connections: u32::try_from(status.num_connected_nodes())
-                .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
-        });
+        let status = self.get_network_status(Request::new(tari_rpc::Empty {})).await?;
+        let network = Some(status.into_inner());
 
         trace!(target: LOG_TARGET, "'get_state' completed in {:.2?}", start.elapsed());
         Ok(Response::new(GetStateResponse {
@@ -1091,7 +1060,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<Self::StreamTransactionEventsStream>, Status> {
         let (mut sender, receiver) = mpsc::channel(100);
 
-        let mut shutdown_signal = self.wallet.comms.shutdown_signal();
+        let mut shutdown_signal = self.wallet.shutdown_signal.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let mut transaction_service_events = self.wallet.transaction_service.get_event_stream();
 
@@ -1776,24 +1745,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        let status = self
-            .comms()
-            .connectivity()
-            .get_connectivity_status()
-            .await
-            .map_err(|err| Status::internal(err.to_string()))?;
-        let mut base_node_service = self.wallet.base_node_service.clone();
+        // This mapping is to comply to the legacy interface
+        let (status, latency) = match self.wallet.wallet_connectivity.get_connectivity_status().await {
+            OnlineStatus::Connecting => (ConnectivityStatus::Initializing, NON_RESPONSIVE_LATENCY),
+            OnlineStatus::Online { latency_ms, .. } => (ConnectivityStatus::Online(1), latency_ms),
+            OnlineStatus::Offline => (ConnectivityStatus::Offline, NON_RESPONSIVE_LATENCY),
+            OnlineStatus::Degraded { latency_ms, .. } => (ConnectivityStatus::Degraded(1), latency_ms),
+        };
 
         let resp = tari_rpc::NetworkStatusResponse {
             status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: base_node_service
-                .get_base_node_latency()
-                .await
-                .map_err(|err| Status::internal(err.to_string()))?
-                .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
-                .unwrap_or_default(),
-            num_node_connections: u32::try_from(status.num_connected_nodes())
-                .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
+            avg_latency_ms: u32::try_from(latency)
+                .map_err(|_| Status::internal("Count not convert u64 to u32".to_string()))?,
+            num_node_connections: 1,
         };
 
         Ok(Response::new(resp))
@@ -1802,41 +1766,36 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn list_connected_peers(
         &self,
         _: Request<tari_rpc::Empty>,
-    ) -> Result<Response<tari_rpc::ListConnectedPeersResponse>, Status> {
-        let mut connectivity = self.comms().connectivity();
-        let peer_manager = self.comms().peer_manager();
-        let connected_peers = connectivity
-            .get_active_connections()
-            .await
-            .map_err(|err| Status::internal(err.to_string()))?;
+    ) -> Result<Response<tari_rpc::ListConnectedHttpPeersResponse>, Status> {
+        let url = self.wallet.wallet_connectivity.get_address().await;
+        let (is_online, last_latency, node_id, public_key) =
+            match self.wallet.wallet_connectivity.get_connectivity_status().await {
+                OnlineStatus::Connecting | OnlineStatus::Offline => {
+                    (false, NON_RESPONSIVE_LATENCY, "".to_string(), "".to_string())
+                },
+                OnlineStatus::Online {
+                    latency_ms,
+                    node_id,
+                    public_key,
+                    ..
+                } |
+                OnlineStatus::Degraded {
+                    latency_ms,
+                    node_id,
+                    public_key,
+                    ..
+                } => (true, latency_ms, node_id, public_key),
+            };
 
-        let node_ids = connected_peers
-            .iter()
-            .map(|c| c.peer_node_id())
-            .cloned()
-            .collect::<Vec<_>>();
-        let peers = peer_manager
-            .get_peers_by_node_ids(&node_ids)
-            .await
-            .map_err(|err| Status::internal(err.to_string()))?;
-        if peers.len() != node_ids.len() {
-            let mut error_response = Vec::new();
-            node_ids.iter().for_each(|node_id| {
-                if !peers.iter().any(|p| p.node_id == *node_id) {
-                    warn!(target: LOG_TARGET, "Peer '{node_id}' not found");
-                    error_response.push(format!("'{node_id}'"));
-                }
-            });
-            if !error_response.is_empty() {
-                return Err(Status::not_found(format!(
-                    "Peer(s) not found: {}",
-                    error_response.join(", ")
-                )));
-            }
-        }
-
-        let resp = tari_rpc::ListConnectedPeersResponse {
-            connected_peers: peers.into_iter().map(Into::into).collect(),
+        let peer = tari_rpc::HttpPeer {
+            url,
+            last_latency,
+            is_online,
+            node_id,
+            public_key,
+        };
+        let resp = tari_rpc::ListConnectedHttpPeersResponse {
+            connected_peers: vec![peer],
         };
 
         Ok(Response::new(resp))
@@ -2464,7 +2423,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             message.message.len()
         );
 
-        let secret = self.wallet.comms.node_identity().secret_key().clone();
+        let secret = self.wallet.node_identity.secret_key().clone();
         let message_str =
             String::from_utf8(message.message).map_err(|_| Status::invalid_argument("Message must be valid UTF-8"))?;
 
