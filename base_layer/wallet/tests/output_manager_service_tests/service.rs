@@ -49,7 +49,6 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    tari_address::TariAddress,
     transaction::TxId,
     types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput},
 };
@@ -67,7 +66,6 @@ use tari_core::{
             TariKeyId,
             TransactionKeyManagerInterface,
         },
-        transaction_protocol::{TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
     },
@@ -335,12 +333,8 @@ async fn test_utxo_selection_no_chain_metadata() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap_err();
@@ -365,24 +359,18 @@ async fn test_utxo_selection_no_chain_metadata() {
     backend.mark_outputs_as_unspent(unspent).unwrap();
 
     // but we have no chain state so the lowest maturity should be used
-    let stp = oms
+    let _tx_builder = oms
         .prepare_transaction_to_send(
             TxId::new_random(),
             amount,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
-    assert!(stp.get_tx_id().is_ok());
-
     // test that lowest 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 8);
@@ -473,12 +461,8 @@ async fn test_utxo_selection_with_chain_metadata() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap_err();
@@ -549,23 +533,19 @@ async fn test_utxo_selection_with_chain_metadata() {
     assert!(!found, "An unspendable utxo was selected");
 
     // test transactions
-    let stp = oms
+    let _tx_builder = oms
         .prepare_transaction_to_send(
             TxId::new_random(),
             amount,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
-    assert!(stp.get_tx_id().is_ok());
+
 
     // test that utxos with the lowest 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -578,23 +558,19 @@ async fn test_utxo_selection_with_chain_metadata() {
     }
 
     // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
-    let stp = oms
+    let _tx_builder = oms
         .prepare_transaction_to_send(
             TxId::new_random(),
             6 * amount,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
-    assert!(stp.get_tx_id().is_ok());
+
 
     // test that utxos with the highest spendable 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -680,23 +656,19 @@ async fn test_utxo_selection_with_tx_priority() {
     assert_eq!(utxos[2].wallet_output.spending_key_id, uo_low_2.spending_key_id);
 
     // test transactions
-    let stp = oms
+    let _tx_builder = oms
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroMinotari::from(1000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
-    assert!(stp.get_tx_id().is_ok());
+
 
     // Test that the UTXOs with the lowest priority was left
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -734,12 +706,8 @@ async fn send_not_enough_funds() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
     {
@@ -794,7 +762,7 @@ async fn send_no_change() {
         .mark_outputs_as_unspent(vec![(uo_2.hash(&oms.key_manager_handle).await.unwrap(), true)])
         .unwrap();
 
-    let stp = oms
+    let _tx_builder = oms
         .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
@@ -802,17 +770,12 @@ async fn send_no_change() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             TariScript::default(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
 
-    assert_eq!(stp.get_amount_to_self().unwrap(), MicroMinotari::from(0));
     assert_eq!(
         oms.output_manager_handle
             .get_balance()
@@ -869,12 +832,8 @@ async fn send_not_enough_for_change() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             fee_per_gram,
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
     {
@@ -903,20 +862,17 @@ async fn cancel_transaction() {
         unspent.push((uo.hash(&oms.key_manager_handle).await.unwrap(), true));
     }
     backend.mark_outputs_as_unspent(unspent).unwrap();
-    let stp = oms
+    let tx_id = TxId::new_random();
+    let _tx_builder = oms
         .output_manager_handle
         .prepare_transaction_to_send(
-            TxId::new_random(),
+            tx_id,
             MicroMinotari::from(1000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -927,7 +883,7 @@ async fn cancel_transaction() {
     }
 
     oms.output_manager_handle
-        .cancel_transaction(stp.get_tx_id().unwrap())
+        .cancel_transaction(tx_id)
         .await
         .unwrap();
 
@@ -983,12 +939,8 @@ async fn sending_transaction_persisted_while_offline() {
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
@@ -1009,26 +961,22 @@ async fn sending_transaction_persisted_while_offline() {
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(0));
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
-    let stp = oms
+    let tx_id = TxId::new_random();
+    let _tx_builder = oms
         .output_manager_handle
         .prepare_transaction_to_send(
-            TxId::new_random(),
+            tx_id,
             MicroMinotari::from(1000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
             MicroMinotari::from(4),
-            TransactionMetadata::default(),
             script!(Nop).unwrap(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
         )
         .await
         .unwrap();
-    let sender_tx_id = stp.get_tx_id().unwrap();
     oms.output_manager_handle
-        .confirm_pending_transaction(sender_tx_id, None)
+        .confirm_pending_transaction(tx_id, None)
         .await
         .unwrap();
 

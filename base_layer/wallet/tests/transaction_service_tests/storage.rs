@@ -32,8 +32,6 @@ use minotari_wallet::{
         database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
         models::{
             CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
             TxCancellationReason,
             WalletTransaction,
         },
@@ -51,21 +49,15 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        tari_amount::{uT, MicroMinotari},
+        tari_amount::{MicroMinotari},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             memo_field::{MemoField, TxType},
             OutputFeatures,
-            RangeProofType,
-            Transaction,
-            TransactionOutput,
-            TransactionOutputVersion,
+            Transaction,         TransactionOutputVersion,
             WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::sender::TransactionSenderMessage,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     },
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
@@ -75,7 +67,7 @@ use tempfile::tempdir;
 use tari_core::transactions::transaction_builder::TransactionBuilder;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
-    let mut db = TransactionDatabase::new(backend);
+    let db = TransactionDatabase::new(backend);
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
         script!(Nop).unwrap(),
@@ -96,16 +88,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_input(input)
         .await
         .unwrap();
-        // .with_recipient_data(
-        //     script!(Nop).unwrap(),
-        //     Default::default(),
-        //     Covenant::default(),
-        //     MicroMinotari::zero(),
-        //     amount,
-        //     TariAddress::default(),
-        // )
-        // .await
-        // .unwrap();
 
     let commitment_mask_key = key_manager
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
@@ -129,12 +111,12 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         )
         .await
         .unwrap();
-    let mut output = WalletOutput::new(
+    let output = WalletOutput::new(
         TransactionOutputVersion::get_current_version(),
         amount,
         commitment_mask_key.key_id.clone(),
         Default::default(),
-        script!(Nop),
+        script!(Nop).unwrap(),
         inputs!(public_script_key),
         script_key_id,
         sender_offset.pub_key.clone(),
@@ -207,23 +189,23 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();
     assert_eq!(retrieved_completed_txs.len(), 2 * messages.len());
 
-    for i in 0..messages.len() {
+    for completed_tx in completed_txs.iter().take(messages.len()){
         assert_eq!(
             retrieved_completed_txs
                 .iter()
-                .find(|tx| tx.tx_id == completed_txs[i].tx_id)
+                .find(|tx| tx.tx_id == completed_tx.tx_id)
                 .unwrap(),
             &CompletedTransaction {
-                tx_id: completed_txs[i].tx_id,
-                ..completed_txs[i].clone()
+                tx_id: completed_tx.tx_id,
+                ..completed_tx.clone()
             }
         );
         assert_eq!(
             retrieved_completed_txs
                 .iter()
-                .find(|tx| tx.tx_id == completed_txs[i].tx_id)
+                .find(|tx| tx.tx_id == completed_tx.tx_id)
                 .unwrap(),
-            &completed_txs[i]
+            completed_tx
         );
     }
 
@@ -283,12 +265,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found cancelled completed tx");
     }
-    let address = TariAddress::new_dual_address_with_default_features(
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        Network::LocalNet,
-    )
-    .unwrap();
 
     // Transactions with empty kernel signatures should not be returned with this method, as those will be considered
     // as faux transactions (imported or one-sided)

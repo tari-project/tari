@@ -65,7 +65,6 @@ use tari_core::{
             TransactionKernelVersion,
         },
         transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::TransactionMetadata,
         CryptoFactories,
     },
     tx,
@@ -83,7 +82,7 @@ use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
-
+use tari_core::transactions::transaction_components::KernelFeatures;
 use crate::helpers::{
     block_builders::{
         chain_block,
@@ -1268,14 +1267,13 @@ async fn consensus_validation_large_tx() {
     let mut agg_sig = UncompressedSignature::default();
     let mut outputs = Vec::new();
     let mut offset = PrivateKey::default();
-    let tx_meta = TransactionMetadata::new(fee, 0);
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_message = TransactionKernel::build_kernel_signature_message(
         &kernel_version,
-        tx_meta.fee,
-        tx_meta.lock_height,
-        &tx_meta.kernel_features,
-        &tx_meta.burn_commitment,
+        fee,
+        0,
+        &KernelFeatures::empty(),
+        &None,
     );
     for (output, nonce_id) in wallet_outputs {
         outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
@@ -1292,7 +1290,7 @@ async fn consensus_validation_large_tx() {
                 &CompressedPublicKey::new_from_pk(pub_excess.clone()),
                 &kernel_version,
                 &kernel_message,
-                &tx_meta.kernel_features,
+                &KernelFeatures::empty(),
                 TxoStage::Output,
             )
             .await
@@ -1313,7 +1311,7 @@ async fn consensus_validation_large_tx() {
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
             &kernel_version,
             &kernel_message,
-            &tx_meta.kernel_features,
+            &KernelFeatures::empty(),
             TxoStage::Input,
         )
         .await
@@ -1324,7 +1322,7 @@ async fn consensus_validation_large_tx() {
         .with_fee(fee)
         .with_lock_height(0)
         .with_excess(&CompressedCommitment::from_public_key(pub_excess))
-        .with_features(tx_meta.kernel_features)
+        .with_features(KernelFeatures::empty())
         .with_signature(Signature::new_from_schnorr(agg_sig))
         .build()
         .unwrap();
@@ -1434,14 +1432,13 @@ async fn validation_reject_min_fee() {
 
     let mut agg_sig = UncompressedSignature::default();
     let mut offset = PrivateKey::default();
-    let tx_meta = TransactionMetadata::new(fee, 0);
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_message = TransactionKernel::build_kernel_signature_message(
         &kernel_version,
-        tx_meta.fee,
-        tx_meta.lock_height,
-        &tx_meta.kernel_features,
-        &tx_meta.burn_commitment,
+        fee,
+        0,
+        &KernelFeatures::empty(),
+        &None,
     );
 
     let tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
@@ -1458,7 +1455,7 @@ async fn validation_reject_min_fee() {
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
             &kernel_version,
             &kernel_message,
-            &tx_meta.kernel_features,
+            &KernelFeatures::empty(),
             TxoStage::Output,
         )
         .await
@@ -1478,7 +1475,7 @@ async fn validation_reject_min_fee() {
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
             &kernel_version,
             &kernel_message,
-            &tx_meta.kernel_features,
+            &KernelFeatures::empty(),
             TxoStage::Input,
         )
         .await
@@ -1489,7 +1486,7 @@ async fn validation_reject_min_fee() {
         .with_fee(fee)
         .with_lock_height(0)
         .with_excess(&CompressedCommitment::from_public_key(pub_excess))
-        .with_features(tx_meta.kernel_features)
+        .with_features(KernelFeatures::empty())
         .with_signature(Signature::new_from_schnorr(agg_sig))
         .build()
         .unwrap();

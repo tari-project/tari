@@ -938,43 +938,6 @@ where
             input_selection.num_selected()
         );
 
-        // let (change_commitment_mask_key, change_script_key) = self
-        //     .resources
-        //     .key_manager
-        //     .get_next_commitment_mask_and_script_key()
-        //     .await?;
-        // builder.with_change_data(
-        //     script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
-        //     ExecutionStack::default(),
-        //     change_script_key.key_id,
-        //     change_commitment_mask_key.key_id,
-        //     Covenant::default(),
-        //     self.resources.interactive_tari_address.clone(),
-        // );
-
-        // If a change output was created add it to the pending_outputs list.
-        // let mut change_output = Vec::<DbWalletOutput>::new();
-        // if input_selection.requires_change_output() {
-        //     let wallet_output = stp.get_pre_finalized_change_output()?.ok_or_else(|| {
-        //         OutputManagerError::BuildError(
-        //             "There should be a change output metadata signature available".to_string(),
-        //         )
-        //     })?;
-        //     change_output.push(
-        //         DbWalletOutput::from_wallet_output(
-        //             wallet_output,
-        //             &self.resources.key_manager,
-        //             None,
-        //             OutputSource::default(),
-        //             Some(tx_id),
-        //             None,
-        //         )
-        //         .await?,
-        //     );
-        // }
-
-        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
-        // store them until the transaction times out OR is confirmed
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), vec![])?;

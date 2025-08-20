@@ -518,7 +518,6 @@ mod test {
         for command in commands {
             match command {
                 CliCommands::GetBalance => get_balance = true,
-                CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
                 CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
                 CliCommands::PreMineStart(_) => pre_mine_spend_session_info = true,
