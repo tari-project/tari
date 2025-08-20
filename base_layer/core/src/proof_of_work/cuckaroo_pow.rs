@@ -83,7 +83,7 @@ pub enum CuckarooVerificationError {
 
 fn determine_sip_hash(mining_hash: &[u8], nonce: u64) -> Vec<u8> {
     let mut hasher = Blake2b::<U32>::new();
-    hasher.update(&nonce.to_be_bytes());
+    hasher.update(nonce.to_be_bytes());
     hasher.update(mining_hash);
     hasher.finalize_fixed().to_vec()
 }
@@ -186,7 +186,7 @@ fn cuckaroo_result_inner(
     // Replace the Blake2bVar hasher with Blake2b (fixed size)
     let mut hasher = Blake2b::<U32>::new();
 
-    hasher.update(&packed_edge_data);
+    hasher.update(packed_edge_data);
     let res = hasher.finalize_fixed().to_vec();
 
     Ok(res)
@@ -276,7 +276,7 @@ fn generate_edges(
         }
 
         // Use false here, to match original cuckaroo
-        let edge = siphash_block(siphash_keys, *nonces.get(i).expect("Already checked"), 21, false);
+        let edge = siphash_block(siphash_keys, *nonces.get(i).expect("Already checked"), 21);
         let u = edge & node_mask;
         let v = (edge >> 32) & node_mask;
 
