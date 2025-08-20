@@ -1768,7 +1768,7 @@ where
                 amount,
                 covenant,
                 payment_id,
-                input_selection.fee_without_change,
+                input_selection.as_final_fee(),
             )
             .await?;
 

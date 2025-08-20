@@ -47,9 +47,9 @@ pub struct TransactionBuilder<KM> {
     key_manager: KM,
     fee_per_gram: Option<MicroMinotari>,
     fee: MicroMinotari,
-    recipients: Vec<RecipientDetails>,
+    recipient_outputs: Vec<RecipientDetails>,
     inputs: Vec<OutputPair>,
-    sender_custom_outputs: Vec<OutputPair>,
+    custom_outputs: Vec<OutputPair>,
     prevent_fee_gt_amount: bool,
     tx_type: TxType,
     memo_field: Option<MemoField>,
@@ -82,9 +82,9 @@ where KM: TransactionKeyManagerInterface
             key_manager,
             fee_per_gram: None,
             fee: MicroMinotari::zero(),
-            recipients: Vec::new(),
+            recipient_outputs: Vec::new(),
             inputs: Vec::new(),
-            sender_custom_outputs: Vec::new(),
+            custom_outputs: Vec::new(),
             prevent_fee_gt_amount: false,
             tx_type: TxType::PaymentToOther,
             memo_field: None,
@@ -148,7 +148,7 @@ where KM: TransactionKeyManagerInterface
             output: recipient_output,
             recipient_address,
         };
-        self.recipients.push(recipient_details);
+        self.recipient_outputs.push(recipient_details);
         Ok(self)
     }
 
@@ -178,7 +178,7 @@ where KM: TransactionKeyManagerInterface
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let pair = OutputPair::new(output, nonce.key_id, Some(sender_offset_key_id));
-        self.sender_custom_outputs.push(pair);
+        self.custom_outputs.push(pair);
         Ok(self)
     }
 
@@ -191,14 +191,14 @@ where KM: TransactionKeyManagerInterface
     fn get_total_features_and_scripts_size_for_outputs(&self) -> Result<usize, TransactionBuilderError> {
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         let mut size = 0;
-        for o in &self.sender_custom_outputs {
+        for o in &self.custom_outputs {
             size += fee_weighting.weighting().round_up_features_and_scripts_size(
                 o.output
                     .features_and_scripts_byte_size()
                     .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e.to_string()))?,
             );
         }
-        for recipient in &self.recipients {
+        for recipient in &self.recipient_outputs {
             size += fee_weighting.weighting().round_up_features_and_scripts_size(
                 recipient
                     .output
@@ -228,16 +228,16 @@ where KM: TransactionKeyManagerInterface
         &self.inputs
     }
 
-    pub fn recipients(&self) -> &[RecipientDetails] {
-        &self.recipients
+    pub fn recipient_outputs(&self) -> &[RecipientDetails] {
+        &self.recipient_outputs
     }
 
-    pub fn sender_custom_outputs(&self) -> &[OutputPair] {
-        &self.sender_custom_outputs
+    pub fn custom_outputs(&self) -> &[OutputPair] {
+        &self.custom_outputs
     }
 
     pub fn get_fee_estimate(&self) -> Result<MicroMinotari, TransactionBuilderError> {
-        let num_outputs = self.sender_custom_outputs.len() + self.recipients.len();
+        let num_outputs = self.custom_outputs.len() + self.recipient_outputs.len();
         let num_inputs = self.inputs.len();
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
         Ok(match self.fee_per_gram {
@@ -260,7 +260,7 @@ where KM: TransactionKeyManagerInterface
         if self.fee_per_gram.is_none() && self.fee == MicroMinotari::zero() {
             return Err(TransactionBuilderError::FeeNotSet);
         }
-        if self.recipients.is_empty() && self.sender_custom_outputs.is_empty() {
+        if self.recipient_outputs.is_empty() && self.custom_outputs.is_empty() {
             return Err(TransactionBuilderError::NoRecipients);
         }
         if self.inputs.is_empty() {
@@ -269,16 +269,13 @@ where KM: TransactionKeyManagerInterface
         if self.inputs.len() > MAX_TRANSACTION_INPUTS {
             return Err(TransactionBuilderError::ExceedsMaxInputs(MAX_TRANSACTION_INPUTS));
         }
-        if self.recipients.len() + self.sender_custom_outputs.len() > MAX_TRANSACTION_OUTPUTS {
+        if self.recipient_outputs.len() + self.custom_outputs.len() > MAX_TRANSACTION_OUTPUTS {
             return Err(TransactionBuilderError::ExceedsMaxOutputs(MAX_TRANSACTION_OUTPUTS));
         }
         Ok(())
     }
 
     async fn add_change_if_required(&self) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
-        // The number of outputs excluding a possible residual change output
-        let num_outputs = self.sender_custom_outputs.len() + self.recipients.len();
-        let num_inputs = self.inputs.len();
         let total_being_spent =
             self.inputs
                 .iter()
@@ -288,7 +285,7 @@ where KM: TransactionKeyManagerInterface
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
         let mut total_sent =
-            self.sender_custom_outputs
+            self.custom_outputs
                 .iter()
                 .map(|o| o.output.value)
                 .try_fold(MicroMinotari::zero(), |acc, x| {
@@ -296,7 +293,7 @@ where KM: TransactionKeyManagerInterface
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
         total_sent +=
-            self.recipients
+            self.recipient_outputs
                 .iter()
                 .map(|o| o.output.output.value)
                 .try_fold(MicroMinotari::zero(), |acc, x| {
@@ -304,20 +301,7 @@ where KM: TransactionKeyManagerInterface
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
         let fee_weighting = Fee::new(*self.consensus_constants.transaction_weight_params());
-        let fee_without_change = match self.fee_per_gram {
-            Some(fee_per_gram) => {
-                let features_and_scripts_size_without_change =
-                    self.get_total_features_and_scripts_size_for_outputs()?;
-                fee_weighting.calculate(
-                    fee_per_gram,
-                    1,
-                    num_inputs,
-                    num_outputs,
-                    features_and_scripts_size_without_change,
-                )
-            },
-            None => self.fee,
-        };
+        let fee_without_change =self.get_fee_estimate()?;
 
         let change_features_and_scripts_size = OutputFeatures::default()
             .get_serialized_size()
@@ -337,22 +321,22 @@ where KM: TransactionKeyManagerInterface
                     sent: combined_sent,
                 })
             },
-            Some(MicroMinotari(0)) => (MicroMinotari(0), None),
-            Some(v) => {
+            Some(MicroMinotari(0)) => (fee_without_change, None),
+            Some(remainder_without_change) => {
                 let change_fee = match self.fee_per_gram {
                     Some(fee_per_gram) => {
                         fee_weighting.calculate(fee_per_gram, 0, 0, 1, change_features_and_scripts_size)
                     },
-                    None => self.fee,
+                    None => 0.into(),
                 };
 
-                let change_amount = v.checked_sub(change_fee);
+                let change_amount = remainder_without_change.checked_sub(change_fee);
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
-                    None => (fee_without_change + v, None),
-                    Some(MicroMinotari(0)) => (fee_without_change + v, None),
-                    Some(v) => self.build_change(v).await?,
+                    None => (fee_without_change + remainder_without_change, None),
+                    Some(MicroMinotari(0)) => (fee_without_change + remainder_without_change, None),
+                    Some(v) => (fee_without_change + change_fee, self.build_change(v).await?),
                 }
             },
         };
@@ -386,7 +370,7 @@ where KM: TransactionKeyManagerInterface
         .map_err(TransactionBuilderError::InvalidMemo)?;
 
         // we only set for the first output, otherwise the extra data gets too large
-        if let Some(recipient) = self.recipients.first() {
+        if let Some(recipient) = self.recipient_outputs.first() {
             memo.transaction_info_set_amount(recipient.output.output.value);
             match memo.get_type() {
                 TxType::PaymentToOther => memo
@@ -409,11 +393,8 @@ where KM: TransactionKeyManagerInterface
                 .map_err(TransactionBuilderError::InvalidMemo)?;
         }
         let mut sent_hashes = Vec::new();
-        for recipient in &self.recipients {
+        for recipient in &self.recipient_outputs {
             sent_hashes.push(recipient.output.tx_output(&self.key_manager).await?.hash());
-        }
-        for output in &self.sender_custom_outputs {
-            sent_hashes.push(output.tx_output(&self.key_manager).await?.hash());
         }
         memo.transaction_info_set_sent_output_hashes(sent_hashes)
             .map_err(TransactionBuilderError::InvalidMemo)?;
@@ -423,7 +404,7 @@ where KM: TransactionKeyManagerInterface
     async fn build_change(
         &self,
         amount: MicroMinotari,
-    ) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
+    ) -> Result<Option<OutputPair>, TransactionBuilderError> {
         let (change_commitment_mask_key, change_script_key) =
             self.key_manager.get_next_commitment_mask_and_script_key().await?;
         let memo = self.create_change_memo(amount).await?;
@@ -487,14 +468,13 @@ where KM: TransactionKeyManagerInterface
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
-        Ok((
-            amount,
+        Ok(
             Some(OutputPair::new(
                 change_wallet_output,
                 nonce.key_id,
                 Some(sender_offset_public.key_id),
             )),
-        ))
+        )
     }
 
     async fn calculate_total_nonce_and_total_public_excess(
@@ -517,7 +497,7 @@ where KM: TransactionKeyManagerInterface
                     .await?
                     .to_public_key()?;
         }
-        for output in &self.sender_custom_outputs {
+        for output in &self.custom_outputs {
             public_nonce = public_nonce +
                 self.key_manager
                     .get_public_key_at_key_id(&output.kernel_nonce)
@@ -530,7 +510,7 @@ where KM: TransactionKeyManagerInterface
                     .to_public_key()?;
         }
 
-        for output in &self.recipients {
+        for output in &self.recipient_outputs {
             public_nonce = public_nonce +
                 self.key_manager
                     .get_public_key_at_key_id(&output.output.kernel_nonce)
@@ -585,11 +565,11 @@ where KM: TransactionKeyManagerInterface
         for input in &self.inputs {
             core_tx_builder.add_input(input.tx_input(&self.key_manager).await?.clone());
         }
-        for output in &self.sender_custom_outputs {
+        for output in &self.custom_outputs {
             core_tx_builder.add_output(output.tx_output(&self.key_manager).await?);
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &self.recipients {
+        for recipient in &self.recipient_outputs {
             let output = recipient.output.tx_output(&self.key_manager).await?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
@@ -640,7 +620,7 @@ where KM: TransactionKeyManagerInterface
             script_keys.push(input.output.script_key_id.clone());
         }
 
-        for output in &self.sender_custom_outputs {
+        for output in &self.custom_outputs {
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -667,7 +647,7 @@ where KM: TransactionKeyManagerInterface
             sender_offset_keys.push(sender_offset_key_id);
         }
 
-        for output in &self.recipients {
+        for output in &self.recipient_outputs {
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -745,13 +725,13 @@ where KM: TransactionKeyManagerInterface
         let tx = core_tx_builder.build()?;
 
         let destination_addresses = self
-            .recipients
+            .recipient_outputs
             .iter()
             .map(|r| r.recipient_address.clone())
             .collect::<Vec<TariAddress>>();
 
         let mut amount =
-            self.recipients
+            self.recipient_outputs
                 .iter()
                 .map(|r| r.output.output.value)
                 .try_fold(MicroMinotari::zero(), |acc, x| {
@@ -759,7 +739,7 @@ where KM: TransactionKeyManagerInterface
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
         amount +=
-            self.sender_custom_outputs
+            self.custom_outputs
                 .iter()
                 .map(|o| o.output.value)
                 .try_fold(MicroMinotari::zero(), |acc, x| {
@@ -767,11 +747,11 @@ where KM: TransactionKeyManagerInterface
                         .ok_or(TransactionBuilderError::TransactionAmountOverflow)
                 })?;
         let mut sent_hashes = Vec::new();
-        for recipient in &self.recipients {
+        for recipient in &self.recipient_outputs {
             sent_hashes.push(recipient.output.tx_output(&self.key_manager).await?.hash());
         }
         let mut received_hashes = Vec::new();
-        for output in &self.sender_custom_outputs {
+        for output in &self.custom_outputs {
             received_hashes.push(output.tx_output(&self.key_manager).await?.hash());
         }
         let change_output_hash = match &change_output {
@@ -956,7 +936,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn zero_recipients() {
+    async fn zero_recipient_outputs() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let p1 = TestParams::new(&key_manager).await;
         let p2 = TestParams::new(&key_manager).await;
@@ -1056,9 +1036,9 @@ mod test {
         let finalized = builder.build().await.unwrap();
 
         let tx = finalized.transaction;
-        assert_eq!(tx.body.kernels()[0].fee, fee + MicroMinotari(10)); // Check the twist above
+        assert_eq!(tx.body.kernels().first().unwrap().fee, fee + MicroMinotari(10)); // Check the twist above
         assert_eq!(tx.body.inputs().len(), 1);
-        assert_eq!(tx.body.inputs()[0].commitment(), utxo.commitment());
+        assert_eq!(tx.body.inputs().first().unwrap().commitment(), utxo.commitment());
         assert_eq!(tx.body.outputs().len(), 1);
         assert!(tx.body.outputs().first().unwrap().verify_metadata_signature().is_ok());
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
@@ -1127,7 +1107,7 @@ mod test {
         // Transaction should be complete
         let finalized = builder.build().await.unwrap();
         let tx = finalized.transaction;
-        assert_eq!(tx.body.kernels()[0].fee, expected_fee);
+        assert_eq!(tx.body.kernels().first().unwrap().fee, expected_fee);
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.outputs().len(), 2);
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);

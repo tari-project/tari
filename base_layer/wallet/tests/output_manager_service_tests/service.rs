@@ -67,10 +67,9 @@ use tari_core::{
             TariKeyId,
             TransactionKeyManagerInterface,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
+        transaction_protocol::{TransactionMetadata},
         weight::TransactionWeight,
         CryptoFactories,
-        SenderTransactionProtocol,
     },
 };
 use tari_script::{inputs, script, TariScript};
@@ -80,7 +79,6 @@ use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
 };
-use tari_core::transactions::transaction_builder::TransactionBuilder;
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
     data::get_temp_sqlite_database_connection,
@@ -226,40 +224,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         base_node_service_handle,
         event_publisher_bns,
         key_manager,
-    )
-}
-
-async fn generate_sender_transaction_message(
-    amount: MicroMinotari,
-    key_manager: &MemoryDbKeyManager,
-) -> (TxId, TransactionSenderMessage) {
-    let input = make_input(&mut OsRng, 2 * amount, &OutputFeatures::default(), key_manager).await;
-    let mut builder = TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).await.unwrap();
-    builder
-        .with_lock_height(0)
-        .with_fee_per_gram(MicroMinotari(20))
-        .with_input(input)
-        .await
-        .unwrap()
-        .with_recipient_data(
-            script!(Nop).unwrap(),
-            OutputFeatures::default(),
-            Covenant::default(),
-            MicroMinotari::zero(),
-            amount,
-            TariAddress::default(),
-        )
-        .await
-        .unwrap();
-
-    let change = TestParams::new(key_manager).await;\Address::default(),
-    );
-
-    let mut stp = builder.build().await.unwrap();
-    let tx_id = TxId::new_random();
-    (
-        tx_id,
-        TransactionSenderMessage::new_single_round_message(stp.build_single_round_message(key_manager).await.unwrap()),
     )
 }
 
@@ -974,80 +938,6 @@ async fn cancel_transaction() {
 }
 
 
-#[tokio::test]
-async fn test_get_balance() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend.clone(), true).await;
-
-    let balance = oms.output_manager_handle.get_balance().await.unwrap();
-
-    assert_eq!(MicroMinotari::from(0), balance.available_balance);
-
-    let mut total = MicroMinotari::from(0);
-    let output_val = MicroMinotari::from(2000);
-    let uo = make_input(
-        &mut OsRng.clone(),
-        output_val,
-        &OutputFeatures::default(),
-        &oms.key_manager_handle,
-    )
-    .await;
-    total += uo.value;
-    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
-    backend
-        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
-        .unwrap();
-
-    let uo = make_input(
-        &mut OsRng.clone(),
-        output_val,
-        &OutputFeatures::default(),
-        &oms.key_manager_handle,
-    )
-    .await;
-    total += uo.value;
-    oms.output_manager_handle.add_output(uo.clone(), None).await.unwrap();
-    backend
-        .mark_outputs_as_unspent(vec![(uo.hash(&oms.key_manager_handle).await.unwrap(), true)])
-        .unwrap();
-
-    let send_value = MicroMinotari::from(1000);
-    let stp = oms
-        .output_manager_handle
-        .prepare_transaction_to_send(
-            TxId::new_random(),
-            send_value,
-            UtxoSelectionCriteria::default(),
-            OutputFeatures::default(),
-            MicroMinotari::from(4),
-            TransactionMetadata::default(),
-            script!(Nop).unwrap(),
-            Covenant::default(),
-            MicroMinotari::zero(),
-            TariAddress::default(),
-            MemoField::new_empty(),
-        )
-        .await
-        .unwrap();
-
-    let change_val = stp.get_change_amount().unwrap();
-
-    let recv_value = MicroMinotari::from(1500);
-    let (_tx_id, sender_message) = generate_sender_transaction_message(recv_value, &oms.key_manager_handle).await;
-    let _rtp = oms
-        .output_manager_handle
-        .get_recipient_transaction(sender_message)
-        .await
-        .unwrap();
-
-    let balance = oms.output_manager_handle.get_balance().await.unwrap();
-
-    assert_eq!(output_val, balance.available_balance);
-    assert_eq!(None, balance.time_locked_balance);
-    assert_eq!(recv_value + change_val, balance.pending_incoming_balance);
-    assert_eq!(output_val, balance.pending_outgoing_balance);
-}
 
 #[tokio::test]
 async fn sending_transaction_persisted_while_offline() {

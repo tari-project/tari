@@ -51,22 +51,27 @@ impl OutputPair {
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
-        match self.tx_input.get() {
-            Some(input) => Ok(input.clone()),
-            None => Ok(self.output.to_transaction_input(key_manager).await?),
+        if let Some(input) = self.tx_input.get() {
+            return Ok(input.clone());
         }
+        let input = self.output.to_transaction_input(key_manager).await?;
+        let _ = self.tx_input.set(input.clone());
+        Ok(input)
     }
 
     pub async fn tx_output<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionOutput, TransactionError> {
-        match self.tx_output.get() {
-            Some(output) => Ok(output.clone()),
-            None => Ok(self.output.to_transaction_output(key_manager).await?),
+        if let Some(output) = self.tx_output.get() {
+            return Ok(output.clone());
         }
+        let output = self.output.to_transaction_output(key_manager).await?;
+        let _ = self.tx_output.set(output.clone());
+        Ok(output)
     }
 }
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FinalizedTransaction {

@@ -261,7 +261,7 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
-    /// This will allow the receipient to sign the burn commitment
+    /// This will allow the recipient to sign the burn commitment
     pub fn with_burn_commitment(&mut self, commitment: Option<CompressedCommitment>) -> &mut Self {
         self.burn_commitment = commitment;
         self

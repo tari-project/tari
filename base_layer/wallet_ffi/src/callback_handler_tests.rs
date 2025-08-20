@@ -56,7 +56,7 @@ mod test {
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
-
+    use tari_core::transactions::transaction_key_manager::MemoryDbKeyManager;
     use crate::{
         callback_handler::{CallbackHandler, Context},
         ffi_basenode_state::TariBaseNodeState,
@@ -472,7 +472,7 @@ mod test {
         let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
 
         let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
-        let mut oms_handle = OutputManagerHandle::new(oms_request_sender, oms_event_sender.clone());
+        let mut oms_handle = OutputManagerHandle::<MemoryDbKeyManager>::new(oms_request_sender, oms_event_sender.clone());
 
         let shutdown_signal = Shutdown::new();
         let mut mock_output_manager_service =

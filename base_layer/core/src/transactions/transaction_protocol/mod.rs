@@ -82,7 +82,7 @@ impl From<ByteArrayError> for TransactionProtocolError {
     }
 }
 
-// /// Transaction metadata, this includes all the fields that needs to be signed on the kernel
+/// Transaction metadata, this includes all the fields that needs to be signed on the kernel
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction

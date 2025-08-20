@@ -174,7 +174,7 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_a().to_hex(),
             ),
             ScrapeWallet { tx_id, fee_per_gram } => {
-                write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram}")
+                write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram})")
             },
             EncumberAggregateUtxo {
                 tx_id,
