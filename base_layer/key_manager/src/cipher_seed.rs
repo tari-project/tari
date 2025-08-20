@@ -231,7 +231,7 @@ impl CipherSeed {
         }
 
         // We only support one version right now
-        let version = encrypted_seed[0];
+        let version = *encrypted_seed.first().ok_or(KeyManagerError::InvalidData)?;
         if version != CIPHER_SEED_VERSION {
             return Err(KeyManagerError::VersionMismatch);
         }
@@ -307,7 +307,10 @@ impl CipherSeed {
         )
         .chain(salt)
         .finalize();
-        let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
+        let encryption_nonce = encryption_nonce
+            .as_ref()
+            .get(..size_of::<Nonce>())
+            .expect("Index should exist");
 
         // Encrypt/decrypt the data
         let mut cipher = ChaCha20::new(
@@ -358,7 +361,9 @@ impl CipherSeed {
                 .chain(salt)
                 .chain(mac_key.reveal())
                 .finalize()
-                .as_ref()[..CIPHER_SEED_MAC_BYTES]
+                .as_ref()
+                .get(..CIPHER_SEED_MAC_BYTES)
+                .expect("Index should exist")
                 .to_vec(),
         )
     }
@@ -371,7 +376,10 @@ impl CipherSeed {
         )
         .chain(salt)
         .finalize();
-        let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];
+        let argon2_salt = argon2_salt
+            .as_ref()
+            .get(..ARGON2_SALT_BYTES)
+            .expect("Index should exist");
 
         // Run Argon2 with enough output to accommodate both keys, so we only run it once
         // We use the recommended OWASP parameters for this:
@@ -445,6 +453,7 @@ impl Mnemonic<CipherSeed> for CipherSeed {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::str::FromStr;
 
     use chrono::{DateTime, TimeZone, Utc};
@@ -585,7 +594,7 @@ mod test {
             .expect("Couldn't convert CipherSeed to Mnemonic");
         match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
-            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
+            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {e}"),
         }
         // Language known
         let mnemonic_seed = CipherSeed::from_mnemonic_with_language(&mnemonic_seq, MnemonicLanguage::Japanese, None)
@@ -623,7 +632,7 @@ mod test {
             .expect("Couldn't convert CipherSeed to Mnemonic");
         match CipherSeed::from_mnemonic(&mnemonic_seq, Some(SafePassword::from_str("Passphrase").unwrap())) {
             Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
-            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
+            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {e}"),
         }
 
         let mnemonic_seq = seed

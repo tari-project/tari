@@ -144,17 +144,17 @@ impl Display for StateEvent {
         match self {
             Initialized(..) => write!(f, "Initialized"),
             BlocksSynchronized => write!(f, "Synchronised Blocks"),
-            HeadersSynchronized(peer, result) => write!(f, "Headers Synchronized from peer `{}` ({:?})", peer, result),
-            HeaderSyncFailed(err) => write!(f, "Header Synchronization Failed ({})", err),
+            HeadersSynchronized(peer, result) => write!(f, "Headers Synchronized from peer `{peer}` ({result:?})"),
+            HeaderSyncFailed(err) => write!(f, "Header Synchronization Failed ({err})"),
             ProceedToHorizonSync(_) => write!(f, "Proceed to horizon sync"),
             ProceedToBlockSync(_) => write!(f, "Proceed to block sync"),
             HorizonStateSynchronized => write!(f, "Horizon State Synchronized"),
             HorizonStateSyncFailure => write!(f, "Horizon State Synchronization Failed"),
             BlockSyncFailed => write!(f, "Block Synchronization Failed"),
-            FallenBehind(s) => write!(f, "Fallen behind main chain - {}", s),
+            FallenBehind(s) => write!(f, "Fallen behind main chain - {s}"),
             NetworkSilence => write!(f, "Network Silence"),
             Continue => write!(f, "Continuing"),
-            FatalError(e) => write!(f, "Fatal Error - {}", e),
+            FatalError(e) => write!(f, "Fatal Error - {e}"),
             UserQuit => write!(f, "User Termination"),
         }
     }
@@ -249,7 +249,7 @@ impl StateInfo {
                 sync_peer.node_id().short_str(),
                 sync_peer
                     .latency()
-                    .map(|l| format!(", Latency: {:.2?}", l))
+                    .map(|l| format!(", Latency: {l:.2?}"))
                     .unwrap_or_else(|| "".to_string())
             ),
             HeaderSync(None) => "Starting header sync".to_string(),
@@ -274,7 +274,7 @@ impl StateInfo {
                     )
                 }
             },
-            SyncFailed(details) => format!("Sync failed: {}", details),
+            SyncFailed(details) => format!("Sync failed: {details}"),
         }
     }
 
@@ -308,13 +308,13 @@ impl Display for StateInfo {
         use StateInfo::*;
         match self {
             StartUp => write!(f, "Node starting up"),
-            Connecting(sync_peer) => write!(f, "Connecting to {}", sync_peer),
-            HeaderSync(Some(info)) => write!(f, "Synchronizing block headers: {}", info),
+            Connecting(sync_peer) => write!(f, "Connecting to {sync_peer}"),
+            HeaderSync(Some(info)) => write!(f, "Synchronizing block headers: {info}"),
             HeaderSync(None) => write!(f, "Synchronizing block headers: Starting"),
-            HorizonSync(info) => write!(f, "Synchronizing horizon state: {}", info),
-            BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
-            Listening(info) => write!(f, "Listening: {}", info),
-            SyncFailed(details) => write!(f, "Sync failed: {}", details),
+            HorizonSync(info) => write!(f, "Synchronizing horizon state: {info}"),
+            BlockSync(info) => write!(f, "Synchronizing blocks: {info}"),
+            Listening(info) => write!(f, "Listening: {info}"),
+            SyncFailed(details) => write!(f, "Sync failed: {details}"),
         }
     }
 }
@@ -386,11 +386,11 @@ impl BlockSyncInfo {
             (self.local_height as f64 / self.tip_height as f64 * 100.0).floor(),
             self.sync_peer
                 .items_per_second()
-                .map(|bps| format!(" {:.2?} {}/s", bps, item))
+                .map(|bps| format!(" {bps:.2?} {item}/s"))
                 .unwrap_or_default(),
             self.sync_peer
                 .calc_avg_latency()
-                .map(|avg| format!(", latency: {:.2?}", avg))
+                .map(|avg| format!(", latency: {avg:.2?}"))
                 .unwrap_or_default(),
         )
     }

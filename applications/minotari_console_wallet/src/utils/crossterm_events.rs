@@ -81,7 +81,7 @@ impl CrosstermEvents {
                     },
                     Ok(false) => {},
                     Err(e) => {
-                        error!(target: LOG_TARGET, "Internal error in crossterm events: {}", e);
+                        error!(target: LOG_TARGET, "Internal error in crossterm events: {e}");
                     },
                 }
                 if last_tick.elapsed() >= config.tick_rate {

@@ -118,8 +118,8 @@ impl ExecutableFinder {
 
     /// Find executable in current directory
     fn find_in_current_directory(&self) -> McpResult<PathBuf> {
-        let current_dir = env::current_dir()
-            .map_err(|e| McpError::config_error(format!("Cannot access current directory: {}", e)))?;
+        let current_dir =
+            env::current_dir().map_err(|e| McpError::config_error(format!("Cannot access current directory: {e}")))?;
 
         let candidate = current_dir.join(&self.executable_name);
         self.validate_executable(&candidate)
@@ -190,7 +190,7 @@ impl ExecutableFinder {
             use std::os::unix::fs::PermissionsExt;
             let metadata = path
                 .metadata()
-                .map_err(|e| McpError::config_error(format!("Cannot read file metadata: {}", e)))?;
+                .map_err(|e| McpError::config_error(format!("Cannot read file metadata: {e}")))?;
 
             let permissions = metadata.permissions();
             if permissions.mode() & 0o111 == 0 {
@@ -233,10 +233,7 @@ impl ExecutableFinder {
                     )))
                 }
             },
-            Err(e) => Err(McpError::config_error(format!(
-                "Cannot execute --version command: {}",
-                e
-            ))),
+            Err(e) => Err(McpError::config_error(format!("Cannot execute --version command: {e}"))),
         }
     }
 
@@ -249,7 +246,7 @@ impl ExecutableFinder {
         summary.push("- Relative paths (./target/release, ./target/debug, etc.)".to_string());
 
         for build_dir in &self.build_directories {
-            summary.push(format!("- Build directory: {}", build_dir));
+            summary.push(format!("- Build directory: {build_dir}"));
         }
 
         for search_path in &self.search_paths {

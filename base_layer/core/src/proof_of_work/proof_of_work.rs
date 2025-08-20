@@ -92,7 +92,7 @@ mod test {
     #[test]
     fn display() {
         let pow = ProofOfWork::default();
-        assert_eq!(&format!("{}", pow), "Mining algorithm: Sha3\nPow data: \n");
+        assert_eq!(&format!("{pow}"), "Mining algorithm: Sha3\nPow data: \n");
     }
 
     #[test]

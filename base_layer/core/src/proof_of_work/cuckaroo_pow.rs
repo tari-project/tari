@@ -40,10 +40,8 @@ use std::{
     num::NonZeroUsize,
 };
 
-use blake2::{
-    digest::{Update, VariableOutput},
-    Blake2bVar,
-};
+use blake2::{Blake2b, Digest};
+use digest::{consts::U32, FixedOutput};
 use thiserror::Error;
 
 use crate::{
@@ -83,6 +81,13 @@ pub enum CuckarooVerificationError {
     DifficultyError(#[from] DifficultyError),
 }
 
+fn determine_sip_hash(mining_hash: &[u8], nonce: u64) -> Vec<u8> {
+    let mut hasher = Blake2b::<U32>::new();
+    hasher.update(nonce.to_be_bytes());
+    hasher.update(mining_hash);
+    hasher.finalize_fixed().to_vec()
+}
+
 pub fn cuckaroo_result(
     header: &BlockHeader,
     required_cycle_length: u8,
@@ -91,40 +96,51 @@ pub fn cuckaroo_result(
     let pow = header.pow.to_bytes();
     let required_cycle_length = NonZeroUsize::try_from(required_cycle_length as usize)
         .map_err(|_| CuckarooVerificationError::UnsupportedCycleLength)?;
-
     let packed_size = required_cycle_length.get() * edge_bits as usize;
-    let packed_bytes = (packed_size + 7) / 8;
-
+    let packed_bytes = packed_size.div_ceil(8);
     if pow.is_empty() || pow.len() < 1 + packed_bytes {
         return Err(CuckarooVerificationError::PowDataTooShort);
     }
     // First byte must be 3 for Cuckaroo
-    if pow[0] != 3 {
+    if *pow.first().expect("Already checked") != 3 {
         return Err(CuckarooVerificationError::BlockHeaderInvalidPowAlgorithm);
     }
-    let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
-    hasher.update(&header.nonce.to_le_bytes());
-    hasher.update(header.mining_hash().as_slice());
-    let mut blob = vec![0u8; hasher.output_size()];
-    hasher
-        .finalize_variable(&mut blob)
-        .expect("Infallible because we've set the output size");
+    let pow_data = pow.get(1..).expect("Already checked");
+    cuckaroo_result_inner(
+        header.mining_hash().as_slice(),
+        header.nonce,
+        pow_data,
+        required_cycle_length,
+        edge_bits,
+    )
+}
 
-    let pow_data = &pow[1..];
+fn cuckaroo_result_inner(
+    header_before_nonce: &[u8],
+    nonce: u64,
+    packed_edge_data: &[u8],
+    required_cycle_length: NonZeroUsize,
+    edge_bits: u8,
+) -> Result<Vec<u8>, CuckarooVerificationError> {
+    let packed_size = required_cycle_length.get() * edge_bits as usize;
+    let packed_bytes = packed_size.div_ceil(8);
+
+    let blob = determine_sip_hash(header_before_nonce, nonce);
+
     // Data after <required_cycle_length * edge_bits> is padding, it must be zero
-    for &byte in &pow_data[packed_bytes..] {
+    for &byte in packed_edge_data.get(packed_bytes..).expect("Already checked") {
         if byte != 0 {
             return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
     }
 
-    let nonces = unpack_nonces(pow_data, edge_bits, required_cycle_length.get())?;
+    let nonces = unpack_nonces(packed_edge_data, edge_bits, required_cycle_length.get())?;
     // There might be extra padding at  the end of the nonces.
 
     // This should not happen because unpack_nonces should return the correct
     // length, but here for completeness
     if nonces.len() > required_cycle_length.get() {
-        for n in &nonces[required_cycle_length.get()..] {
+        for n in nonces.get(required_cycle_length.get()..).expect("Already checked") {
             if *n != 0 {
                 return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
             }
@@ -132,31 +148,47 @@ pub fn cuckaroo_result(
     }
 
     let siphash_keys = [
-        u64::from_le_bytes(blob[0..8].try_into().unwrap()),
-        u64::from_le_bytes(blob[8..16].try_into().unwrap()),
-        u64::from_le_bytes(blob[16..24].try_into().unwrap()),
-        u64::from_le_bytes(blob[24..32].try_into().unwrap()),
+        u64::from_le_bytes(
+            blob.get(0..8)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
+        u64::from_le_bytes(
+            blob.get(8..16)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
+        u64::from_le_bytes(
+            blob.get(16..24)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
+        u64::from_le_bytes(
+            blob.get(24..32)
+                .expect("Already checked")
+                .try_into()
+                .expect("Cannot fail"),
+        ),
     ];
     // // Generate the hasher.
     verify(&siphash_keys, &nonces, required_cycle_length, edge_bits)?;
 
-    // nonces must be sorted, so we just hash them
-    let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
+    // Replace the Blake2bVar hasher with Blake2b (fixed size)
+    let mut hasher = Blake2b::<U32>::new();
 
-    for nonce in &nonces {
-        hasher.update(&nonce.to_le_bytes());
-    }
-    let mut res = vec![0u8; hasher.output_size()];
-    hasher
-        .finalize_variable(&mut res)
-        .expect("Infallible because we've set the output size");
+    hasher.update(packed_edge_data);
+    let res = hasher.finalize_fixed().to_vec();
 
     Ok(res)
 }
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing)]
 fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
-    let mut target = vec![0u8; (uncompressed.len() * bit_width as usize + 7) / 8];
+    let mut target = vec![0u8; (uncompressed.len() * bit_width as usize).div_ceil(8)];
     let mut compressed = target.as_mut_slice();
     let mut mini_buffer = 0u64;
     let mut remaining = 64;
@@ -201,7 +233,7 @@ fn unpack_nonces(pow: &[u8], edge_bits: u8, expected_length: usize) -> Result<Ve
         }
     }
 
-    for n in &nonces[expected_length..] {
+    for n in nonces.get(expected_length..).expect("Already checked") {
         if *n != 0 {
             return Err(CuckarooVerificationError::PowDataContainsNonZeroPadding);
         }
@@ -215,25 +247,36 @@ fn verify(
     cycle_length: NonZeroUsize,
     edge_bits: u8,
 ) -> Result<(), CuckarooVerificationError> {
+    let uvs = generate_edges(siphash_keys, edge_bits, cycle_length, nonces)?;
+    // Verify the cycle from the edges
+    verify_from_edges(&uvs, cycle_length)
+}
+
+fn generate_edges(
+    siphash_keys: &[u64; 4],
+    edge_bits: u8,
+    cycle_length: NonZeroUsize,
+    nonces: &[u64],
+) -> Result<Vec<(u64, u64)>, CuckarooVerificationError> {
     let node_mask = (1u64 << edge_bits) - 1;
     let mut uvs = Vec::with_capacity(cycle_length.get());
     for i in 0..cycle_length.get() {
-        if nonces[i] > node_mask {
+        if *nonces.get(i).expect("Already checked") > node_mask {
             return Err(CuckarooVerificationError::NonceTooLarge);
         }
-        if i > 0 && nonces[i] <= nonces[i - 1] {
+        if i > 0 && *nonces.get(i).expect("Already checked") <= *nonces.get(i - 1).expect("Already checked") {
             return Err(CuckarooVerificationError::NoncesNotAscending);
         }
 
-        let edge = siphash_block(siphash_keys, nonces[i], 21, true);
+        // Use false here, to match original cuckaroo
+        let edge = siphash_block(siphash_keys, *nonces.get(i).expect("Already checked"), 21);
         let u = edge & node_mask;
         let v = (edge >> 32) & node_mask;
 
         uvs.push((u, v));
     }
 
-    // Verify the cycle from the edges
-    verify_from_edges(&uvs, cycle_length)
+    Ok(uvs)
 }
 
 fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: NonZeroUsize) -> Result<(), CuckarooVerificationError> {
@@ -278,13 +321,13 @@ fn verify_from_edges(uvs: &[(u64, u64)], cycle_length: NonZeroUsize) -> Result<(
             return Err(CuckarooVerificationError::CycleDidNotUseAllEdges);
         }
         visited_nodes.insert(current);
-        let neighbors = &graph[&current];
+        let neighbors = graph.get(&current).expect("Already checked");
 
         // Choose next that is not the previous node
-        let next = if Some(neighbors[0]) == previous {
-            neighbors[1]
+        let next = if Some(*neighbors.first().expect("Already checked")) == previous {
+            *neighbors.get(1).expect("Already checked")
         } else {
-            neighbors[0]
+            *neighbors.first().expect("Already checked")
         };
 
         let edge_key = if current < next {
@@ -324,6 +367,7 @@ pub fn cuckaroo_difficulty(
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
 
     use super::*;
 
@@ -492,47 +536,179 @@ mod test {
     }
 
     #[test]
+    fn test_header_hash() {
+        let header_before_blake =
+            hex::decode("4dbfee3eb7b9a6a27d2a4a8d754eb77cc5493006945c1246e50e9beb4de5ffa5").unwrap();
+
+        assert_eq!(header_before_blake.len(), 32);
+        let xn = hex::decode("9d589ed597ed42d1").unwrap();
+        let nonce: u64 = u64::from_be_bytes(xn.try_into().expect("Cannot fail"));
+
+        let hash = determine_sip_hash(&header_before_blake, nonce.into());
+        assert_eq!(
+            hex::encode(hash),
+            "49b48f77df94943cf3a422c5a0b528c737cc38a7b6c36076e81abcede5b2be3a"
+        );
+    }
+
+    #[test]
+    fn test_unpack_example() {
+        let packed_nonces = hex::decode("ab3c742104de5808220f0ebd1d24e2a279489c9fa8c9264f754181433226655286c69a08f166e523283813e5eceabbec042598193013a34cd966601e064d5f3dbb911efe39536e7847f3180071865023e18c6c1c627696aece2ff401938abacc8ed2f446b8ba71785b074a086d36d1d61d638dc0eab156b8883214cbff9962f199b96c92349df3d1d7b647ed0cdf6dfde1e49077bcfb74b503").unwrap();
+        let res = unpack_nonces(&packed_nonces, 29, 42).unwrap();
+        assert_eq!(res, vec![
+            24394923, 46592033, 58968194, 71842682, 75995694, 81022926, 97860763, 105410600, 106063142, 138729012,
+            150559164, 170291280, 197045966, 202539638, 206356582, 215689620, 218504800, 232385274, 243238820,
+            250666150, 268537652, 296239928, 296891268, 315542595, 338677422, 341088271, 346272558, 359697897,
+            364349211, 377758979, 391857369, 403811427, 408334826, 413242437, 413564914, 426980322, 433277222,
+            460056825, 473150750, 473935291, 477597924, 497788893
+        ]);
+    }
+
+    #[test]
+    fn test_edge_generation_example1() {
+        let edge_nonce = vec![24394923];
+        let sip_hash_keys = hex::decode("a216826b5d2752ccf129eef73e1e02a6b56d13195d7998e6b04d02a136b88f4f").unwrap();
+        let sip_hash_keys = [
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(0..8)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(8..16)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(16..24)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(24..32)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+        ];
+        let res = generate_edges(&sip_hash_keys, 29, NonZeroUsize::new(1).unwrap(), &edge_nonce).unwrap();
+        // assert_eq!(res, vec![(193904592, 244315134)]);
+        assert_eq!(res, vec![(259523165, 501211281)]);
+    }
+
+    #[test]
+    fn test_edge_generation_example2() {
+        let edge_nonces: Vec<u64> = vec![
+            24394923, 46592033, 58968194, 71842682, 75995694, 81022926, 97860763, 105410600, 106063142, 138729012,
+            150559164, 170291280, 197045966, 202539638, 206356582, 215689620, 218504800, 232385274, 243238820,
+            250666150, 268537652, 296239928, 296891268, 315542595, 338677422, 341088271, 346272558, 359697897,
+            364349211, 377758979, 391857369, 403811427, 408334826, 413242437, 413564914, 426980322, 433277222,
+            460056825, 473150750, 473935291, 477597924, 497788893,
+        ];
+
+        let sip_hash_keys = hex::decode("a216826b5d2752ccf129eef73e1e02a6b56d13195d7998e6b04d02a136b88f4f").unwrap();
+        let sip_hash_keys = [
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(0..8)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(8..16)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(16..24)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(24..32)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+        ];
+        let res = generate_edges(&sip_hash_keys, 29, NonZeroUsize::new(42).unwrap(), &edge_nonces).unwrap();
+        assert_eq!(res, vec![
+            (259523165, 501211281),
+            (157516326, 386490295),
+            (163049712, 357352750),
+            (527359151, 457953146),
+            (43269845, 334867286),
+            (43269845, 341998749),
+            (450586946, 355116366),
+            (117672975, 137509934),
+            (269707614, 87839857),
+            (117672975, 78269931),
+            (139445939, 87839857),
+            (157516326, 306322638),
+            (58908345, 390892394),
+            (269707614, 36056555),
+            (101786071, 18252563),
+            (527359151, 482342291),
+            (356633100, 306322638),
+            (216244743, 373890488),
+            (81971272, 357352750),
+            (521344355, 341998749),
+            (424927616, 534790392),
+            (302985768, 390892394),
+            (81971272, 386490295),
+            (90433930, 262615890),
+            (424927616, 10110110),
+            (259523165, 18252563),
+            (163049712, 482342291),
+            (101786071, 334867286),
+            (58908345, 228032021),
+            (216244743, 262615890),
+            (444797260, 137509934),
+            (90433930, 78269931),
+            (521344355, 228032021),
+            (302985768, 469085984),
+            (356633100, 469085984),
+            (139445939, 534790392),
+            (242580855, 373890488),
+            (242580855, 501211281),
+            (450586946, 36056555),
+            (45078436, 457953146),
+            (444797260, 355116366),
+            (45078436, 10110110)
+        ]);
+    }
+
+    #[test]
     fn test_solution() {
-        let header = hex::decode("935ea63832b08fe75ce3ee7801e800139957e709f38b0ba513d4231e00ca4d6c").unwrap();
+        let header_before_blake =
+            hex::decode("4dbfee3eb7b9a6a27d2a4a8d754eb77cc5493006945c1246e50e9beb4de5ffa5").unwrap();
 
-        let nonce_bytes = hex::decode("000001c3").unwrap();
-        let nonce = u32::from_le_bytes(nonce_bytes.as_slice().try_into().unwrap()) as u64;
-        let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
-        hasher.update(&nonce.to_le_bytes());
-        hasher.update(header.as_slice());
-        let mut blob = vec![0u8; hasher.output_size()];
-        hasher
-            .finalize_variable(&mut blob)
-            .expect("Infallible because we've set the output size");
-        let siphash_keys = [
-            u64::from_le_bytes(blob[0..8].try_into().unwrap()),
-            u64::from_le_bytes(blob[8..16].try_into().unwrap()),
-            u64::from_le_bytes(blob[16..24].try_into().unwrap()),
-            u64::from_le_bytes(blob[24..32].try_into().unwrap()),
-        ];
+        let xn = hex::decode("9d589ed597ed42d0").unwrap();
+        let nonce: u64 = u64::from_be_bytes(xn.try_into().expect("Cannot fail"));
+        let packed_edge_data = hex::decode("ab3c742104de5808220f0ebd1d24e2a279489c9fa8c9264f754181433226655286c69a08f166e523283813e5eceabbec042598193013a34cd966601e064d5f3dbb911efe39536e7847f3180071865023e18c6c1c627696aece2ff401938abacc8ed2f446b8ba71785b074a086d36d1d61d638dc0eab156b8883214cbff9962f199b96c92349df3d1d7b647ed0cdf6dfde1e49077bcfb74b503").unwrap();
 
-        let nonces = [
-            "142cf04a", "0f41a5a2", "116d7b9f", "0710dcdf", "03500464", "06c8d06e", "138b8d6f", "1b33704a", "18ec789a",
-            "1f8cf1f5", "00b091fc", "081b39ca", "16237ad0", "018cfa11", "042af3ad", "176689fe", "1bae17bb", "1f55f90a",
-            "19a98291", "0e3e48da", "0d5e6c48", "06c6de56", "0624ddc6", "0a04a5e0", "039f9998", "053316ad", "126df8e6",
-            "1848c32f", "0f0e94df", "0d565b02", "111619d9", "0a901346", "1bacf7f2", "17af46dc", "1c5efce6", "03c6b589",
-            "1c14205d", "0a6efdd9", "190b0fe8", "1801bf1e", "1cd9e943", "1de05eb2",
-        ];
-        let nonces = nonces
-            .iter()
-            .map(|s| u32::from_le_bytes(hex::decode(s).unwrap().try_into().unwrap()))
-            .collect::<Vec<_>>();
-        let edge_bits = 29;
-        let node_mask = (1u64 << edge_bits) - 1;
-        let mut uvs = vec![];
-        for (i, nonce) in nonces.iter().enumerate() {
-            let edge = siphash_block(&siphash_keys, *nonce as u64, 21, true);
-            let u = edge & node_mask;
-            let v = (edge >> 32) & node_mask;
-            uvs.push((u, v));
-        }
-
-        dbg!("uvs: {:?}", uvs);
-        todo!();
+        let res = cuckaroo_result_inner(
+            &header_before_blake,
+            nonce,
+            &packed_edge_data,
+            NonZeroUsize::new(42).unwrap(),
+            29,
+        )
+        .unwrap();
+        let expected = hex::decode("06d52b90ccfd4db1a52cc133a46dac0dc4577343c1a27d200865a81d717a60e1").unwrap();
+        assert_eq!(hex::encode(res), hex::encode(expected));
     }
 }

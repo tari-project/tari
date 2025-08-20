@@ -73,7 +73,7 @@ impl McpTool for GetNetworkStatusTool {
             .clone()
             .get_network_status(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {e}")))?
             .into_inner();
 
         let status = if response.num_node_connections >= 8 {
@@ -125,6 +125,7 @@ impl ListConnectedPeersTool {
     }
 }
 
+#[allow(clippy::indexing_slicing)]
 #[async_trait::async_trait]
 impl McpTool for ListConnectedPeersTool {
     fn name(&self) -> &str {
@@ -155,7 +156,7 @@ impl McpTool for ListConnectedPeersTool {
             .clone()
             .list_connected_peers(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to list connected peers: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to list connected peers: {e}")))?
             .into_inner();
 
         let connected_peers: Vec<Value> = response
@@ -249,6 +250,7 @@ impl GetAllPeersTool {
     }
 }
 
+#[allow(clippy::indexing_slicing)]
 #[async_trait::async_trait]
 impl McpTool for GetAllPeersTool {
     fn name(&self) -> &str {
@@ -288,7 +290,7 @@ impl McpTool for GetAllPeersTool {
             .clone()
             .get_peers(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get peers: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get peers: {e}")))?
             .into_inner();
 
         let mut all_peers = Vec::new();
@@ -297,7 +299,7 @@ impl McpTool for GetAllPeersTool {
         while let Some(peer_response) = response_stream
             .message()
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read peer stream: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to read peer stream: {e}")))?
         {
             if count >= limit {
                 break;
@@ -366,7 +368,7 @@ impl McpTool for GetAllPeersTool {
                 "limit_applied": limit,
                 "results_truncated": count >= limit,
                 "note": if count >= limit {
-                    format!("Results limited to {} peers. Use limit parameter to adjust.", limit)
+                    format!("Results limited to {limit} peers. Use limit parameter to adjust.")
                 } else {
                     "All known peers returned".to_string()
                 }
@@ -417,7 +419,7 @@ impl McpTool for GetNodeIdentityTool {
             .clone()
             .identify(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -476,7 +478,7 @@ impl McpTool for NetworkDiagnosticsTool {
             .clone()
             .get_network_status(status_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get network status: {e}")))?
             .into_inner();
 
         // Get connected peers
@@ -486,7 +488,7 @@ impl McpTool for NetworkDiagnosticsTool {
             .clone()
             .list_connected_peers(peers_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get connected peers: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get connected peers: {e}")))?
             .into_inner();
 
         // Get node identity
@@ -496,7 +498,7 @@ impl McpTool for NetworkDiagnosticsTool {
             .clone()
             .identify(identity_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get node identity: {e}")))?
             .into_inner();
 
         // Analyze network health
@@ -533,8 +535,7 @@ impl McpTool for NetworkDiagnosticsTool {
         }
         if banned_peers > 0 {
             recommendations.push(format!(
-                "{} banned peers detected - this may indicate network issues",
-                banned_peers
+                "{banned_peers} banned peers detected - this may indicate network issues"
             ));
         }
         if peer_count == 0 {

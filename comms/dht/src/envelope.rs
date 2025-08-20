@@ -331,7 +331,7 @@ impl Display for NodeDestination {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             NodeDestination::Unknown => write!(f, "Unknown"),
-            NodeDestination::PublicKey(public_key) => write!(f, "PublicKey({})", public_key),
+            NodeDestination::PublicKey(public_key) => write!(f, "PublicKey({public_key})"),
         }
     }
 }

@@ -78,7 +78,7 @@ impl McpResource for TransactionInfoResource {
             return Err(McpError::invalid_request("Hash cannot be empty"));
         }
 
-        Ok(format!("transaction/{}", hash))
+        Ok(format!("transaction/{hash}"))
     }
 
     async fn read(&self) -> McpResult<Value> {

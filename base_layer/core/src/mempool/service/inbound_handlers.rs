@@ -60,7 +60,7 @@ impl MempoolInboundHandlers {
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
     pub async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
-        trace!(target: LOG_TARGET, "Handling remote request: {}", request);
+        trace!(target: LOG_TARGET, "Handling remote request: {request}");
         use MempoolRequest::{GetFeePerGramStats, GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
         match request {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
@@ -76,8 +76,7 @@ impl MempoolInboundHandlers {
                     .to_hex();
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction ({}) submitted using request.",
-                    first_tx_kernel_excess_sig,
+                    "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
                 Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
             },
@@ -105,7 +104,7 @@ impl MempoolInboundHandlers {
             first_tx_kernel_excess_sig,
             source_peer
                 .as_ref()
-                .map(|p| format!("remote peer: {}", p))
+                .map(|p| format!("remote peer: {p}"))
                 .unwrap_or_else(|| "local services".to_string())
         );
         self.submit_transaction(tx, source_peer).await?;
@@ -118,7 +117,7 @@ impl MempoolInboundHandlers {
         tx: Transaction,
         source_peer: Option<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
-        trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
+        trace!(target: LOG_TARGET, "submit_transaction: {tx}");
 
         let tx = Arc::new(tx);
         let tx_storage = self.mempool.has_transaction(tx.clone()).await?;
@@ -130,7 +129,7 @@ impl MempoolInboundHandlers {
         if tx_storage.is_stored() {
             debug!(
                 target: LOG_TARGET,
-                "Mempool already has transaction: {}.", kernel_excess_sig
+                "Mempool already has transaction: {kernel_excess_sig}"
             );
             return Ok(tx_storage);
         }
@@ -146,13 +145,13 @@ impl MempoolInboundHandlers {
 
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction inserted into mempool: {}, pool: {}.", kernel_excess_sig, tx_storage
+                    "Transaction inserted into mempool: {kernel_excess_sig}, pool: {tx_storage}"
                 );
                 // propagate the tx if it was accepted to the unconfirmed pool
                 if matches!(tx_storage, TxStorageResponse::UnconfirmedPool) {
                     debug!(
                         target: LOG_TARGET,
-                        "Propagate transaction ({}) to network.", kernel_excess_sig,
+                        "Propagate transaction ({kernel_excess_sig}) to network."
                     );
                     self.outbound_service
                         .propagate_tx(tx, source_peer.into_iter().collect())

@@ -448,7 +448,7 @@ impl ConnectionManager {
             conn_pools.insert(service_name.clone(), connections);
         }
 
-        log::info!("Added service {} to connection manager", service_name);
+        log::info!("Added service {service_name} to connection manager");
         Ok(())
     }
 
@@ -474,8 +474,7 @@ impl ConnectionManager {
             let state = breaker.get_state();
             if matches!(state, CircuitBreakerState::Open) {
                 return Err(McpError::service_unavailable(format!(
-                    "Circuit breaker is OPEN for service: {}",
-                    service_name
+                    "Circuit breaker is OPEN for service: {service_name}"
                 )));
             }
         }
@@ -498,7 +497,7 @@ impl ConnectionManager {
                 // No circuit breaker configured, execute directly
                 request
                     .await
-                    .map_err(|e| McpError::service_error(format!("Request failed for {}: {}", service_name, e)))
+                    .map_err(|e| McpError::service_error(format!("Request failed for {service_name}: {e}")))
             },
         }
     }
@@ -519,8 +518,7 @@ impl ConnectionManager {
         }
 
         Err(McpError::connection_failed(format!(
-            "No healthy connections available for service: {}",
-            service_name
+            "No healthy connections available for service: {service_name}"
         )))
     }
 
@@ -538,16 +536,15 @@ impl ConnectionManager {
                 .await
             {
                 Ok(channel) => {
-                    let managed_conn = ManagedConnection::new(channel, format!("{}#{}", endpoint_url, i));
+                    let managed_conn = ManagedConnection::new(channel, format!("{endpoint_url}#{i}"));
                     connections.push(managed_conn);
                 },
                 Err(e) => {
-                    log::warn!("Failed to create connection {}: {}", i, e);
+                    log::warn!("Failed to create connection {i}: {e}");
                     // Don't fail completely if some connections succeeded
                     if connections.is_empty() && i == 2 {
                         return Err(McpError::connection_failed(format!(
-                            "Failed to create any connections to {}: {}",
-                            endpoint_url, e
+                            "Failed to create any connections to {endpoint_url}: {e}"
                         )));
                     }
                 },
@@ -599,13 +596,13 @@ impl ConnectionManager {
             let cleaned = initial_count - conn_list.len();
 
             if cleaned > 0 {
-                log::debug!("Cleaned up {} idle connections for service: {}", cleaned, service_name);
+                log::debug!("Cleaned up {cleaned} idle connections for service: {service_name}");
                 total_cleaned += cleaned;
             }
         }
 
         if total_cleaned > 0 {
-            log::info!("Total idle connections cleaned up: {}", total_cleaned);
+            log::info!("Total idle connections cleaned up: {total_cleaned}");
         }
     }
 
@@ -628,7 +625,7 @@ impl ConnectionManager {
                     let cleaned = initial_count - conn_list.len();
 
                     if cleaned > 0 {
-                        log::debug!("Maintenance: Cleaned {} idle connections for {}", cleaned, service_name);
+                        log::debug!("Maintenance: Cleaned {cleaned} idle connections for {service_name}");
                     }
                 }
             }

@@ -134,10 +134,7 @@ pub async fn send_finalized_transaction_message_direct(
                 // Send a Store and Forward (SAF) regardless.
                 info!(
                     target: LOG_TARGET,
-                    "Direct Send finalize result was {}. Sending SAF for TxId: {} to recipient with Public Key: {}",
-                    direct_send_result,
-                    tx_id,
-                    destination_public_key,
+                    "Direct Send finalize result was {direct_send_result}. Sending SAF for TxId: {tx_id} to recipient with Public Key: {destination_public_key}"
                 );
                 if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
                     store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
@@ -152,7 +149,7 @@ pub async fn send_finalized_transaction_message_direct(
             SendMessageResponse::Failed(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Finalized Transaction Send Direct for TxID {} failed: {}", tx_id, err
+                    "Finalized Transaction Send Direct for TxID {tx_id} failed: {err}"
                 );
                 if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
                     store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
@@ -179,7 +176,7 @@ pub async fn send_finalized_transaction_message_direct(
                     Ok(SendMessageResponse::Queued(send_states)) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Discovery of {} completed for TxID: {}", destination_public_key, tx_id
+                            "Discovery of {destination_public_key} completed for TxID: {tx_id}"
                         );
                         direct_send_result = wait_on_dial(
                             send_states,
@@ -193,20 +190,20 @@ pub async fn send_finalized_transaction_message_direct(
 
                     Ok(SendMessageResponse::Failed(e)) => warn!(
                         target: LOG_TARGET,
-                        "Failed to send message ({}) Discovery failed for TxId: {}", e, tx_id
+                        "Failed to send message ({e}) Discovery failed for TxId: {tx_id}"
                     ),
                     Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
-                            "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
+                            "Error waiting for Discovery while sending message to TxId: {tx_id} {e:?}"
                         );
                     },
                 }
             },
         },
         Err(e) => {
-            warn!(target: LOG_TARGET, "Direct Finalized Transaction Send failed: {:?}", e);
+            warn!(target: LOG_TARGET, "Direct Finalized Transaction Send failed: {e:?}");
         },
     }
     if !direct_send_result && !store_and_forward_send_result {
@@ -242,7 +239,7 @@ async fn send_transaction_finalized_message_store_and_forward(
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
-                "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e
+                "Sending Finalized Transaction (TxId: {tx_id}) to neighbours for Store and Forward failed: {e:?}"
             );
             return Ok(false);
         },

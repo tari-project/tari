@@ -382,8 +382,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
             } else if mid_height == right_height {
                 trace!(
                     target: LOG_TARGET,
-                    "requested_epoch_time: {}, selected height: {}",
-                    epoch_time, right_height
+                    "requested_epoch_time: {epoch_time}, selected height: {right_height}"
                 );
                 return Ok(right_height);
             } else if epoch_time <= mid_header.timestamp.as_u64() {

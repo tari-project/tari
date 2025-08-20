@@ -51,7 +51,7 @@ pub async fn wait_on_dial(
             if failed.is_empty() {
                 warn!(
                     target: LOG_TARGET,
-                    "Direct Send process for {} TX_ID: {} timed out", message, tx_id
+                    "Direct Send process for {message} TX_ID: {tx_id} timed out"
                 );
             } else {
                 warn!(
@@ -59,19 +59,19 @@ pub async fn wait_on_dial(
                     "Direct Send process for {} TX_ID: {} and Message {} was unsuccessful and no message was sent",
                     message,
                     tx_id,
-                    failed[0]
+                    failed.first().expect("Failed message should exist")
                 );
             }
             false
         } else {
             info!(
                 target: LOG_TARGET,
-                "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent[0]
+                "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent.first().expect("Sent message should exist")
             );
             true
         }
     } else {
-        warn!(target: LOG_TARGET, "{} Send Direct for TxID: {} failed", message, tx_id);
+        warn!(target: LOG_TARGET, "{message} Send Direct for TxID: {tx_id} failed");
         false
     }
 }

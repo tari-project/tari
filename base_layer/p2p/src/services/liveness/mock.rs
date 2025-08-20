@@ -121,7 +121,7 @@ impl LivenessMock {
         #[allow(clippy::enum_glob_use)]
         use LivenessRequest::*;
         let (req, reply) = req.split();
-        trace!(target: LOG_TARGET, "LivenessMock received request {:?}", req);
+        trace!(target: LOG_TARGET, "LivenessMock received request {req:?}");
         self.mock_state.add_request_call(req.clone());
         match req {
             SendPing(_) => {

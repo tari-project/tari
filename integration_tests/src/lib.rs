@@ -72,7 +72,7 @@ pub async fn wait_for_service(port: u64) {
         }
 
         if attempts >= max_tries {
-            panic!("Service on port {} never started", port);
+            panic!("Service on port {port} never started");
         }
 
         tokio::time::sleep(Duration::from_millis(250)).await;

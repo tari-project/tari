@@ -56,8 +56,14 @@ impl FeePriority {
         let age_priority = (u64::MAX - insert_epoch).to_be_bytes();
 
         let mut priority = vec![0u8; 8 + 8 + 64];
-        priority[..8].copy_from_slice(&fee_priority[..]);
-        priority[8..16].copy_from_slice(&age_priority[..]);
+        priority
+            .get_mut(..8)
+            .expect("Already checked")
+            .copy_from_slice(&fee_priority[..]);
+        priority
+            .get_mut(8..16)
+            .expect("Already checked")
+            .copy_from_slice(&age_priority[..]);
         // Use the aggregate signature and nonce.
         // If a transaction has many kernels, unless they are all identical, the fee priority will be different.
         let mut agg_sig = PrivateKey::default();
@@ -66,8 +72,14 @@ impl FeePriority {
             agg_nonce = agg_nonce + tx.excess_sig.get_compressed_public_nonce().to_public_key()?;
             agg_sig = agg_sig + tx.excess_sig.get_signature();
         }
-        priority[16..48].copy_from_slice(agg_sig.as_bytes());
-        priority[48..80].copy_from_slice(agg_nonce.as_bytes());
+        priority
+            .get_mut(16..48)
+            .expect("Already checked")
+            .copy_from_slice(agg_sig.as_bytes());
+        priority
+            .get_mut(48..80)
+            .expect("Already checked")
+            .copy_from_slice(agg_nonce.as_bytes());
         Ok(Self(priority))
     }
 }

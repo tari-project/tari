@@ -32,29 +32,29 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     let mut addr_iter = addr.iter();
     let network_proto = addr_iter
         .next()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid address '{}'", addr)))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid address '{addr}'")))?;
     let transport_proto = addr_iter
         .next()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid address '{}'", addr)))?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid address '{addr}'")))?;
 
     if addr_iter.next().is_some() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("Invalid address '{}'", addr),
+            format!("Invalid address '{addr}'"),
         ));
     }
 
     match (network_proto, transport_proto) {
         (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
-            let addr = format!("{}:{}", domain, port);
+            let addr = format!("{domain}:{port}");
             addr.to_socket_addrs()
-                .map_err(|_e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{}'", domain)))?
+                .map_err(|_e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{domain}'")))?
                 .next()
                 .map_or_else(
                     || {
                         Err(io::Error::new(
                             io::ErrorKind::InvalidInput,
-                            format!("Invalid domain '{}'", domain),
+                            format!("Invalid domain '{domain}'"),
                         ))
                     },
                     Ok,
@@ -64,7 +64,7 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
         (Protocol::Ip6(host), Protocol::Tcp(port)) => Ok((host, port).into()),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("Invalid address '{}'", addr),
+            format!("Invalid address '{addr}'"),
         )),
     }
 }

@@ -70,7 +70,7 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
                     excess_sigs: excess_sigs.into_iter().map(|sig| sig.to_vec()).collect(),
                 }),
             ),
-            e => Err(format!("{} request is not supported", e)),
+            e => Err(format!("{e} request is not supported")),
         }
     }
 }

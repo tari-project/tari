@@ -627,8 +627,8 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
-            cuckaroo_cycle_length: 0,
-            cuckaroo_edge_bits: 0,
+            cuckaroo_cycle_length: 42,
+            cuckaroo_edge_bits: 29,
         };
 
         let mut con2 = consensus_constants1.clone();
@@ -653,7 +653,7 @@ impl ConsensusConstants {
         con2.proof_of_work = algos;
 
         let mut con3 = con2.clone();
-        con3.effective_from_height = 80_000;
+        con3.effective_from_height = 82_000;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
@@ -1090,6 +1090,11 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    pub fn with_valid_blockchain_version_range(mut self, range: RangeInclusive<u16>) -> Self {
+        self.consensus.valid_blockchain_version_range = range;
+        self
+    }
+
     pub fn build(self) -> ConsensusConstants {
         self.consensus
     }
@@ -1097,6 +1102,7 @@ impl ConsensusConstantsBuilder {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use std::convert::TryFrom;
 
     use crate::{

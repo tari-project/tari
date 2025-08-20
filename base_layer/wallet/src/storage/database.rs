@@ -101,7 +101,7 @@ impl DbKey {
             DbKey::CommsAddress => "CommsAddress".to_string(),
             DbKey::CommsFeatures => "NodeFeatures".to_string(),
             DbKey::TorId => "TorId".to_string(),
-            DbKey::ClientKey(k) => format!("ClientKey.{}", k),
+            DbKey::ClientKey(k) => format!("ClientKey.{k}"),
             DbKey::BaseNodeChainMetadata => "BaseNodeChainMetadata".to_string(),
             DbKey::EncryptedMainKey => "EncryptedMainKey".to_string(),
             DbKey::SecondaryKeySalt => "SecondaryKeySalt".to_string(),
@@ -400,22 +400,22 @@ where T: WalletBackend + 'static
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::MasterSeed(k) => f.write_str(&format!("MasterSeed: {:?}", k)),
-            DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {:?}", v)),
+            DbValue::MasterSeed(k) => f.write_str(&format!("MasterSeed: {k:?}")),
+            DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {v:?}")),
             DbValue::ValueCleared => f.write_str("ValueCleared"),
             DbValue::CommsFeatures(_) => f.write_str("Node features"),
             DbValue::CommsAddress(_) => f.write_str("Comms Address"),
-            DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
-            DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
-            DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {:?}", k)),
-            DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {}", s)),
-            DbValue::SecondaryKeyVersion(v) => f.write_str(&format!("SecondaryKeyVersion: {}", v)),
-            DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {}", h)),
-            DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
+            DbValue::TorId(v) => f.write_str(&format!("Tor ID: {v}")),
+            DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{v}")),
+            DbValue::EncryptedMainKey(k) => f.write_str(&format!("EncryptedMainKey: {k:?}")),
+            DbValue::SecondaryKeySalt(s) => f.write_str(&format!("SecondaryKeySalt: {s}")),
+            DbValue::SecondaryKeyVersion(v) => f.write_str(&format!("SecondaryKeyVersion: {v}")),
+            DbValue::SecondaryKeyHash(h) => f.write_str(&format!("SecondaryKeyHash: {h}")),
+            DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {b}")),
             DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
-            DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {}", network)),
-            DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {}", version)),
-            DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {:?}", wallet_type)),
+            DbValue::LastAccessedNetwork(network) => f.write_str(&format!("LastAccessedNetwork: {network}")),
+            DbValue::LastAccessedVersion(version) => f.write_str(&format!("LastAccessedVersion: {version}")),
+            DbValue::WalletType(wallet_type) => f.write_str(&format!("WalletType: {wallet_type:?}")),
         }
     }
 }
@@ -436,12 +436,13 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageErro
         req.to_key_string(),
         res
     );
-    error!(target: LOG_TARGET, "{}", msg);
+    error!(target: LOG_TARGET, "{msg}");
     Err(WalletStorageError::UnexpectedResult(msg))
 }
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::SafePassword;
@@ -457,7 +458,7 @@ mod test {
     fn test_database_crud() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{}{}", db_folder, db_name), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
 
         let passphrase = SafePassword::from("my secret lovely passphrase");
         let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());

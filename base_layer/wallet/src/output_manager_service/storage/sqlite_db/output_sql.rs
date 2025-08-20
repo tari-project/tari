@@ -147,7 +147,7 @@ impl OutputSql {
         // filtering by OutputStatus
         query = match q.status.len() {
             0 => query,
-            1 => query.filter(outputs::status.eq(q.status[0] as i32)),
+            1 => query.filter(outputs::status.eq(*q.status.first().expect("Already checked") as i32)),
             _ => query.filter(outputs::status.eq_any::<Vec<i32>>(q.status.into_iter().map(|s| s as i32).collect())),
         };
 
@@ -155,7 +155,7 @@ impl OutputSql {
         if !q.commitments.is_empty() {
             query = match q.commitments.len() {
                 0 => query,
-                1 => query.filter(outputs::commitment.eq(q.commitments[0].to_vec())),
+                1 => query.filter(outputs::commitment.eq(q.commitments.first().expect("Already checked").to_vec())),
                 _ => query.filter(
                     outputs::commitment.eq_any::<Vec<Vec<u8>>>(q.commitments.into_iter().map(|c| c.to_vec()).collect()),
                 ),
@@ -237,7 +237,7 @@ impl OutputSql {
             UtxoSelectionFilter::SpecificOutputs { commitments } => {
                 query = match commitments.len() {
                     0 => query,
-                    1 => query.filter(outputs::commitment.eq(commitments[0].to_vec())),
+                    1 => query.filter(outputs::commitment.eq(commitments.first().expect("Already checked").to_vec())),
                     _ => query.filter(
                         outputs::commitment.eq_any::<Vec<Vec<u8>>>(commitments.iter().map(|c| c.to_vec()).collect()),
                     ),
@@ -524,13 +524,12 @@ impl OutputSql {
             .collect::<Vec<_>>()
             .join(", ");
         let query = sql_query(format!(
-            "SELECT COUNT(*) as count FROM outputs WHERE commitment IN ({})",
-            placeholders
+            "SELECT COUNT(*) as count FROM outputs WHERE commitment IN ({placeholders})"
         ));
         let query_result = query.load::<CountQueryResult>(conn)?;
         let commitments_len = i64::try_from(commitments.len())
             .map_err(|e| OutputManagerStorageError::ConversionError { reason: e.to_string() })?;
-        Ok(query_result[0].count == commitments_len)
+        Ok(query_result.first().expect("Already checked").count == commitments_len)
     }
 
     /// Return the available, time locked, pending incoming and pending outgoing balance
@@ -901,13 +900,13 @@ impl OutputSql {
     pub fn to_db_wallet_output(self) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let features: OutputFeatures =
             serde_json::from_str(&self.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
-                reason: format!("Could not convert json into OutputFeatures:{}", s),
+                reason: format!("Could not convert json into OutputFeatures:{s}"),
             })?;
 
         let covenant = BorshDeserialize::deserialize(&mut self.covenant.as_bytes()).map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+                "Could not create Covenant from stored bytes ({e}), They might be encrypted"
             );
             OutputManagerStorageError::ConversionError {
                 reason: "Covenant could not be converted from bytes".to_string(),
@@ -926,10 +925,10 @@ impl OutputSql {
             TariKeyId::from_str(&self.spending_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Could not create spending key id from stored string ({})", e
+                    "Could not create spending key id from stored string ({e})"
                 );
                 OutputManagerStorageError::ConversionError {
-                    reason: format!("Spending key id could not be converted from string ({})", e),
+                    reason: format!("Spending key id could not be converted from string ({e})"),
                 }
             })?,
             features,
@@ -938,10 +937,10 @@ impl OutputSql {
             TariKeyId::from_str(&self.script_private_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Could not create script private key id from stored string ({})", e
+                    "Could not create script private key id from stored string ({e})"
                 );
                 OutputManagerStorageError::ConversionError {
-                    reason: format!("Script private key id could not be converted from string ({})", e),
+                    reason: format!("Script private key id could not be converted from string ({e})"),
                 }
             })?,
             CompressedPublicKey::from_vec(&self.sender_offset_public_key).map_err(|_| {
@@ -1015,7 +1014,7 @@ impl OutputSql {
         let hash = match <Vec<u8> as TryInto<FixedHash>>::try_into(self.hash) {
             Ok(v) => v,
             Err(e) => {
-                error!(target: LOG_TARGET, "Malformed output hash: {}", e);
+                error!(target: LOG_TARGET, "Malformed output hash: {e}");
                 return Err(OutputManagerStorageError::ConversionError {
                     reason: "Malformed output hash".to_string(),
                 });
@@ -1023,7 +1022,7 @@ impl OutputSql {
         };
         let spending_priority = SpendingPriority::try_from(self.spending_priority as u32).map_err(|e| {
             OutputManagerStorageError::ConversionError {
-                reason: format!("Could not convert spending priority from i32: {}", e),
+                reason: format!("Could not convert spending priority from i32: {e}"),
             }
         })?;
         let mined_in_block = match self.mined_in_block {

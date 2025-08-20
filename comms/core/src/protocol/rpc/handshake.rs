@@ -107,7 +107,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => {
-                info!(target: LOG_TARGET, "Error during handshake: {}", err);
+                info!(target: LOG_TARGET, "Error during handshake: {err}");
                 Err(err.into())
             },
             Ok(None) => {

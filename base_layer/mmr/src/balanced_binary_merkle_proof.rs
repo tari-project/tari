@@ -156,22 +156,29 @@ where D: Digest
             hash_map.clear();
             for (index, proof) in proofs.iter().enumerate() {
                 // If this path was already joined ignore it.
-                if !join_indices[index] && proof.path.len() > height as usize {
-                    let parent = (indices[index] - 1) >> 1;
+                if !join_indices.get(index).expect("Index should expect") && proof.path.len() > height as usize {
+                    let parent = (indices.get(index).expect("Index should expect") - 1) >> 1;
                     if let Some(other_proof_idx) = hash_map.insert(parent, index) {
-                        join_indices[index] = true;
+                        *join_indices.get_mut(index).expect("Index should expect") = true;
                         // The other proof doesn't need a hash, it needs an index to this hash
-                        *paths[other_proof_idx].first_mut().unwrap() =
-                            MergedBalancedBinaryMerkleIndexOrHash::Index(index as u64);
+                        *paths
+                            .get_mut(other_proof_idx)
+                            .expect("should exist")
+                            .first_mut()
+                            .unwrap() = MergedBalancedBinaryMerkleIndexOrHash::Index(index as u64);
                     } else {
-                        paths[index].insert(
+                        paths.get_mut(index).expect("should exist").insert(
                             0,
                             MergedBalancedBinaryMerkleIndexOrHash::Hash(
-                                proof.path[proof.path.len() - 1 - height as usize].clone(),
+                                proof
+                                    .path
+                                    .get(proof.path.len() - 1 - height as usize)
+                                    .expect("Should exist")
+                                    .clone(),
                             ),
                         );
                     }
-                    indices[index] = parent;
+                    *indices.get_mut(index).expect("Should exits") = parent;
                 }
             }
         }
@@ -207,11 +214,11 @@ where D: Digest
             let hashes = computed_hashes.clone();
             let mut dangling_paths = HashSet::new();
             for (index, leaf) in computed_hashes.iter_mut().enumerate().rev() {
-                if self.heights[index] <= height {
+                if *self.heights.get(index).expect("Should exist") <= height {
                     continue;
                 }
 
-                let Some(hash_or_index) = self.paths[index].pop() else {
+                let Some(hash_or_index) = self.paths.get_mut(index).expect("Should exist").pop() else {
                     // Check if we already joined with other path.
                     if !consumed.contains(&index) {
                         // If the path ended, it's going to be merged to some other path.
@@ -246,13 +253,14 @@ where D: Digest
                     MergedBalancedBinaryMerkleIndexOrHash::Hash(ref hash) => hash,
                 };
                 // Left (2k + 1) or right (2k) sibling?
-                if self.node_indices[index] & 1 == 1 {
+                if self.node_indices.get(index).expect("Should exist") & 1 == 1 {
                     *leaf = hash_together::<D>(leaf, hash);
                 } else {
                     *leaf = hash_together::<D>(hash, leaf);
                 }
                 // Parent
-                self.node_indices[index] = (self.node_indices[index] - 1) >> 1;
+                *self.node_indices.get_mut(index).expect("Should exist") =
+                    (*self.node_indices.get(index).expect("Should exist") - 1) >> 1;
             }
             if !dangling_paths.is_empty() {
                 // Something path ended, but it's not joined with any other path.
@@ -263,12 +271,17 @@ where D: Digest
             // If the proof is valid then all but one paths will be consumed by other paths.
             return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
         }
-        Ok(computed_hashes[0] == *root)
+        Ok(computed_hashes
+            .first()
+            .ok_or(BalancedBinaryMerkleProofError::BadProofSemantics)? ==
+            root)
     }
 }
 
 #[cfg(test)]
 mod test {
+
+    #![allow(clippy::indexing_slicing)]
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};

@@ -98,7 +98,7 @@ impl Controller {
             Err(ref e) if e.kind() == ErrorKind::BrokenPipe => Err(Error::Connection("broken pipe".to_string())),
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
             Err(e) => {
-                error!(target: LOG_TARGET, "Communication error with stratum server: {}", e);
+                error!(target: LOG_TARGET, "Communication error with stratum server: {e}");
                 Err(Error::Connection("broken pipe".to_string()))
             },
         }
@@ -106,7 +106,7 @@ impl Controller {
 
     fn send_message(&mut self, message: &str) -> Result<(), Error> {
         let stream = self.stream()?;
-        debug!(target: LOG_TARGET_FILE, "sending request: {}", message);
+        debug!(target: LOG_TARGET_FILE, "sending request: {message}");
         stream.write_all(message.as_bytes())?;
         stream.write_all(b"\n")?;
         stream.flush()?;
@@ -174,7 +174,7 @@ impl Controller {
     fn send_message_submit(&mut self, job_id: u64, hash: String, nonce: u64) -> Result<(), Error> {
         debug!(
             target: LOG_TARGET,
-            "Submitting share with hash {} and nonce {}", hash, nonce
+            "Submitting share with hash {hash} and nonce {nonce}"
         );
         let params_in = types::submit_params::SubmitParams {
             id: self.last_request_id.to_string(),
@@ -294,11 +294,11 @@ impl Controller {
                     }
                     return Ok(());
                 } else {
-                    debug!(target: LOG_TARGET_FILE, "RPC Response: {:?}", rpc_response);
+                    debug!(target: LOG_TARGET_FILE, "RPC Response: {rpc_response:?}");
                 };
             },
             None => {
-                error!(target: LOG_TARGET, "RPC error: {:?}", res);
+                error!(target: LOG_TARGET, "RPC error: {res:?}");
             },
         }
         Ok(())
@@ -327,11 +327,11 @@ impl Controller {
                             self.server_url,
                             server_retry_interval.as_secs()
                         );
-                        warn!("{}", status);
+                        warn!("{status}");
                         self.stream = None;
                     } else {
                         let status = format!("Connection Status: Connected to server at {}.", self.server_url);
-                        info!(target: LOG_TARGET, "{}", status);
+                        info!(target: LOG_TARGET, "{status}");
                     }
                     next_server_retry = Instant::now() + server_retry_interval;
                     if self.stream.is_none() {
@@ -352,41 +352,41 @@ impl Controller {
                         Ok(Some(m)) => {
                             // figure out what kind of message,
                             // and dispatch appropriately
-                            debug!(target: LOG_TARGET_FILE, "Received message: {}", m);
+                            debug!(target: LOG_TARGET_FILE, "Received message: {m}");
                             // Deserialize to see what type of object it is
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
                                 // Is this a response or request?
-                                if v["method"] == "job" {
+                                if v.get("method").expect("Already checked") == "job" {
                                     // this is a request
                                     match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
-                                        Err(e) => error!(target: LOG_TARGET, "Error parsing request {} : {:?}", m, e),
+                                        Err(e) => error!(target: LOG_TARGET, "Error parsing request {m} : {e:?}"),
                                         Ok(request) => {
                                             if let Err(err) = self.handle_request(request) {
-                                                error!(target: LOG_TARGET, "Error handling request {} : :{:?}", m, err)
+                                                error!(target: LOG_TARGET, "Error handling request {m} : :{err:?}")
                                             }
                                         },
                                     }
                                 } else {
                                     // this is a response
                                     match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
-                                        Err(e) => error!(target: LOG_TARGET, "Error parsing response {} : {:?}", m, e),
+                                        Err(e) => error!(target: LOG_TARGET, "Error parsing response {m} : {e:?}"),
                                         Ok(response) => {
                                             if let Err(err) = self.handle_response(response) {
-                                                error!(target: LOG_TARGET, "Error handling response {} : :{:?}", m, err)
+                                                error!(target: LOG_TARGET, "Error handling response {m} : :{err:?}")
                                             }
                                         },
                                     }
                                 }
                                 continue;
                             } else {
-                                error!(target: LOG_TARGET, "Error parsing message: {}", m)
+                                error!(target: LOG_TARGET, "Error parsing message: {m}")
                             }
                         },
                         Ok(None) => {
                             // noop, nothing to read for this interval
                         },
                         Err(e) => {
-                            error!(target: LOG_TARGET, "Error reading message: {:?}", e);
+                            error!(target: LOG_TARGET, "Error reading message: {e:?}");
                             self.stream = None;
                             continue;
                         },
@@ -397,7 +397,7 @@ impl Controller {
 
             // Talk to the miner algorithm
             while let Some(message) = self.rx.try_iter().next() {
-                debug!(target: LOG_TARGET_FILE, "Client received message: {:?}", message);
+                debug!(target: LOG_TARGET_FILE, "Client received message: {message:?}");
                 let result = match message {
                     types::client_message::ClientMessage::FoundSolution(job_id, hash, nonce) => {
                         self.send_message_submit(job_id, hash, nonce)
@@ -409,7 +409,7 @@ impl Controller {
                     },
                 };
                 if let Err(e) = result {
-                    error!(target: LOG_TARGET, "Mining Controller Error {:?}", e);
+                    error!(target: LOG_TARGET, "Mining Controller Error {e:?}");
                     self.stream = None;
                 }
             }

@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![allow(clippy::indexing_slicing)]
 use log::trace;
 use minotari_wallet::{error::WalletError, util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
 use tari_common::exit_codes::{ExitCode, ExitError};
@@ -125,14 +126,14 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_control_key(&mut self, c: char) {
-        trace!(target: LOG_TARGET, "on_control_key: {}", c);
+        trace!(target: LOG_TARGET, "on_control_key: {c}");
         if c == 'q' {
             self.should_quit = true;
         }
     }
 
     pub fn on_key(&mut self, c: char) {
-        trace!(target: LOG_TARGET, "on_key: {}", c);
+        trace!(target: LOG_TARGET, "on_key: {c}");
         match c {
             '\t' => {
                 self.tabs.next();

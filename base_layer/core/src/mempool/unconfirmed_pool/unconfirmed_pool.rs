@@ -152,7 +152,7 @@ impl UnconfirmedPool {
 
         debug!(
             target: LOG_TARGET,
-            "Inserted transaction {} into unconfirmed pool:", prioritized_tx
+            "Inserted transaction {prioritized_tx} into unconfirmed pool:"
         );
         self.tx_by_key.insert(new_key, prioritized_tx);
 
@@ -510,7 +510,7 @@ impl UnconfirmedPool {
 
         let mut highest_transaction = self
             .tx_by_key
-            .get(&keys[0])
+            .get(keys.first().expect("Already checked"))
             .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
         for key in keys.iter().skip(1) {
             let transaction = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
@@ -860,6 +860,7 @@ impl UnconfirmedPool {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
     use tari_common_types::tari_address::TariAddress;
     use tari_script::{ExecutionStack, TariScript};

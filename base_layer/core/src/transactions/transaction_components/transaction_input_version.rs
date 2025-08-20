@@ -32,7 +32,7 @@ impl TryFrom<u8> for TransactionInputVersion {
         match value {
             0 => Ok(TransactionInputVersion::V0),
             1 => Ok(TransactionInputVersion::V1),
-            v => Err(format!("Unknown input version {}!", v)),
+            v => Err(format!("Unknown input version {v}!")),
         }
     }
 }

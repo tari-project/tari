@@ -58,10 +58,10 @@ impl CommandContext {
         for output in v.block().body.outputs() {
             if output.commitment() == &commitment {
                 let payref = generate_payment_reference(v.hash(), &output.hash());
-                println!("Payref for output: {}", payref);
+                println!("Payref for output: {payref}");
                 let mined_info = self.node_service.fetch_mined_info_by_payref(&payref).await?;
                 println!("---- Mined info ----");
-                println!("{}", mined_info);
+                println!("{mined_info}");
             }
         }
 

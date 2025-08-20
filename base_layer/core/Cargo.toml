@@ -27,7 +27,6 @@ ledger = ["minotari_ledger_wallet_comms"]
 metrics = ["tari_metrics"]
 sqlite-bundled = ["tari_common_sqlite/bundled"]
 
-
 [dependencies]
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }

@@ -41,7 +41,7 @@ impl CommandContext {
     pub async fn reset_offline_non_wallet_peers(&self) -> Result<(), Error> {
         let num_updated = self.comms.peer_manager().reset_offline_non_wallet_peers().await?;
 
-        println!("{} peer(s) were unmarked as offline.", num_updated);
+        println!("{num_updated} peer(s) were unmarked as offline.");
         Ok(())
     }
 }

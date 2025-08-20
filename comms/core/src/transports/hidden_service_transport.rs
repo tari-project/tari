@@ -68,8 +68,7 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
         let transport = hs_ctl.initialize_transport().await.map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Error initializing hidden transport service stack{}",
-                e
+                "Error initializing hidden transport service stack{e}"
             );
             io::Error::other(e.to_string())
         })?;
@@ -89,8 +88,7 @@ impl<F: Fn(TorIdentity)> HiddenServiceTransport<F> {
         let hidden_service = hs_ctl.create_hidden_service().await.map_err(|err| {
             error!(
                 target: LOG_TARGET,
-                "Error creating hidden service: {}",
-                err
+                "Error creating hidden service: {err}"
             );
             io::Error::other(err.to_string())
         })?;

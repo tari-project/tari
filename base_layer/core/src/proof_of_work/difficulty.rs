@@ -121,7 +121,7 @@ impl From<Difficulty> for u64 {
 impl fmt::Display for Difficulty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let formatted = self.0.to_formatted_string(&Locale::en);
-        write!(f, "{}", formatted)
+        write!(f, "{formatted}")
     }
 }
 
@@ -149,7 +149,7 @@ mod test {
     #[test]
     fn test_format() {
         let d = Difficulty::from_u64(1_000_000).unwrap();
-        assert_eq!("1,000,000", format!("{}", d));
+        assert_eq!("1,000,000", format!("{d}"));
     }
 
     #[test]

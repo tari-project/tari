@@ -48,7 +48,7 @@ impl Feature {
 
     pub fn issue_url(&self) -> String {
         match self.tracking_issue {
-            Some(n) => format!("https://github.com/tari-project/tari/issues/{}", n),
+            Some(n) => format!("https://github.com/tari-project/tari/issues/{n}"),
             None => "None".into(),
         }
     }

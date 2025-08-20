@@ -129,11 +129,11 @@ impl Display for StateEvent {
         match self {
             Initialized => write!(f, "Initialized"),
             InitialPeersSufficient => write!(f, "InitialPeersSufficient (skipping seed bootstrap)"),
-            BeginDiscovery(params) => write!(f, "BeginDiscovery({})", params),
+            BeginDiscovery(params) => write!(f, "BeginDiscovery({params})"),
             Ready => write!(f, "Ready"),
             Idle => write!(f, "Idle"),
-            DiscoveryComplete(stats) => write!(f, "DiscoveryComplete({})", stats),
-            Errored(err) => write!(f, "Errored({})", err),
+            DiscoveryComplete(stats) => write!(f, "DiscoveryComplete({stats})"),
+            Errored(err) => write!(f, "Errored({err})"),
             OnConnectMode => write!(f, "OnConnectMode"),
             Shutdown => write!(f, "Shutdown"),
         }
@@ -200,8 +200,8 @@ impl NetworkDiscoveryContext {
 
         info!(
             target: LOG_TARGET,
-            "[DHT BOOTSTRAP] Bootstrap method determined: {}",
-            method
+            "[DHT BOOTSTRAP] Bootstrap method determined: {method}"
+
         );
 
         // Publish event to inform base node of bootstrap method
@@ -241,18 +241,14 @@ impl NetworkDiscoveryContext {
             Ok(_) => {
                 info!(
                     target: LOG_TARGET,
-                    "[DHT EVENT PUBLISH] Successfully published DhtEvent::{} to {} receiver(s)",
-                    event_name,
-                    num_receivers
+                    "[DHT EVENT PUBLISH] Successfully published DhtEvent::{event_name} to {num_receivers} receiver(s)",
                 );
             },
             Err(e) => {
                 error!(
                     target: LOG_TARGET,
-                    "[DHT EVENT PUBLISH] Failed to publish DhtEvent::{}: {}. Receivers: {}",
-                    event_name,
-                    e,
-                    num_receivers
+                    "[DHT EVENT PUBLISH] Failed to publish DhtEvent::{event_name}: {e}. Receivers: {num_receivers}"
+
                 );
             },
         }
@@ -319,7 +315,7 @@ impl DhtNetworkDiscovery {
         let config = &self.config().network_discovery;
         debug!(
             target: LOG_TARGET,
-            "Transition triggered from current state `{}` by event `{}`", current_state, next_event
+            "Transition triggered from current state `{current_state}` by event `{next_event}`"
         );
 
         // Remember if current state is SeedStrap for error handling
@@ -377,6 +373,7 @@ impl DhtNetworkDiscovery {
             (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
             (State::Ready(_), StateEvent::Idle) => State::Waiting(config.idle_period.into()),
             (State::OnConnect(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
+            (State::Waiting(_), StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (_, StateEvent::Shutdown) => State::Shutdown,
             (_state, StateEvent::Errored(err)) => {
                 error!(
@@ -388,7 +385,7 @@ impl DhtNetworkDiscovery {
                 if was_seed_strap {
                     warn!(
                         target: LOG_TARGET,
-                        "SeedStrap failed with error: {}. Marking bootstrap complete anyway to prevent UI deadlock.", err
+                        "SeedStrap failed with error: {err}. Marking bootstrap complete anyway to prevent UI deadlock."
                     );
                     self.context.complete_bootstrap(BootstrapMethod::SeedStrap).await;
                 }
@@ -398,7 +395,7 @@ impl DhtNetworkDiscovery {
             (state, event) => {
                 debug!(
                     target: LOG_TARGET,
-                    "No state transition for event `{}`. The current state is `{}`", event, state
+                    "No state transition for event `{event}`. The current state is `{state}`"
                 );
                 state
             },

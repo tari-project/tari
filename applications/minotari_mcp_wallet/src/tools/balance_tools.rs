@@ -84,7 +84,7 @@ impl McpTool for GetBalanceTool {
         let response = client
             .get_balance(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
             .into_inner();
 
         // Calculate total balance and percentages
@@ -168,7 +168,7 @@ impl McpTool for GetUnspentAmountsTool {
         let response = client
             .get_unspent_amounts(request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {e}")))?
             .into_inner();
 
         Ok(json!({
@@ -234,7 +234,7 @@ impl McpTool for BalanceAnalysisTool {
         let balance_response = client
             .get_balance(balance_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
             .into_inner();
 
         // Get unspent amounts
@@ -243,7 +243,7 @@ impl McpTool for BalanceAnalysisTool {
         let unspent_response = client2
             .get_unspent_amounts(unspent_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get unspent amounts: {e}")))?
             .into_inner();
 
         let requested_amount = params.get("requested_amount").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -295,8 +295,7 @@ impl McpTool for BalanceAnalysisTool {
                 recommendations.push("No funds available for spending".to_string());
             } else {
                 recommendations.push(format!(
-                    "Requested amount ({} µT) exceeds available balance ({} µT)",
-                    requested_amount, liquid_balance
+                    "Requested amount ({requested_amount} µT) exceeds available balance ({liquid_balance} µT)"
                 ));
             }
         }
@@ -455,7 +454,7 @@ impl McpTool for BalanceMonitorTool {
         let balance_response = client
             .get_balance(balance_request)
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {}", e)))?
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to get balance: {e}")))?
             .into_inner();
 
         let total_balance = balance_response.available_balance +

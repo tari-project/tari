@@ -502,7 +502,7 @@ impl PeerConnectionActor {
                     match maybe_request {
                         Some(request) => self.handle_request(request).await,
                         None => {
-                            debug!(target: LOG_TARGET, "[{}] All peer connection handles dropped closing the connection", self);
+                            debug!(target: LOG_TARGET, "[{self}] All peer connection handles dropped closing the connection");
                             break;
                         }
                     }
@@ -674,7 +674,7 @@ impl PeerConnectionActor {
                         e
                     );
                 },
-                e => trace!(target: LOG_TARGET, "On disconnect: ({})", e),
+                e => trace!(target: LOG_TARGET, "On disconnect: ({e})"),
             }
         }
 

@@ -201,7 +201,7 @@ where
             target: LOG_TARGET,
             "Transaction sending mechanism is {}", config.transaction_service_config.transaction_routing_mechanism
         );
-        trace!(target: LOG_TARGET, "Wallet config: {:?}", config);
+        trace!(target: LOG_TARGET, "Wallet config: {config:?}");
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
@@ -263,20 +263,20 @@ where
                 config
                     .http_server_url
                     .parse()
-                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{}", e)))?,
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{e}")))?,
                 config
                     .fallback_http_server_url
                     .parse()
-                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{}", e)))?,
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{e}")))?,
             ))
             .add_initializer(UtxoScannerServiceInitializer::<T, TKeyManagerInterface>::new(
                 wallet_database.clone(),
                 config.network,
                 config.birthday_offset,
                 Url::parse(&config.http_server_url)
-                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{}", e)))?,
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("base node URL is invalid:{e}")))?,
                 Url::parse(&config.fallback_http_server_url)
-                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{}", e)))?,
+                    .map_err(|e| WalletError::InvalidHttpNodeUrl(format!("fallback seed URL is invalid:{e}")))?,
                 config.scanning_interval,
             ));
 
@@ -309,11 +309,11 @@ where
                 let mut ts = moved_ts_clone.clone();
                 let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
                 if let Err(e) = wallet_db.set_tor_identity(identity) {
-                    error!(target: LOG_TARGET, "Failed to set wallet db tor identity{:?}", e);
+                    error!(target: LOG_TARGET, "Failed to set wallet db tor identity{e:?}");
                 }
                 let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
                 if result.is_err() {
-                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
+                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{result:?}");
                     return;
                 }
                 let address = result.unwrap();
@@ -329,7 +329,7 @@ where
                     if result.is_err() {
                         warn!(
                             target: LOG_TARGET,
-                            "Could not restart transaction negotiation protocols: {:?}", result
+                            "Could not restart transaction negotiation protocols: {result:?}"
                         );
                     }
                 });
@@ -361,9 +361,8 @@ where
             spend_key.key_id,
         )
         .await
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "{:?}", e);
-            e
+        .inspect_err(|e| {
+            error!(target: LOG_TARGET, "{e:?}");
         })?;
 
         wallet_database.set_node_features(comms.node_identity().features())?;
@@ -376,7 +375,7 @@ where
         if let Err(e) = wallet_database
             .set_last_network_and_version(config.network.to_string(), consts::APP_VERSION_NUMBER.to_string())
         {
-            warn!("failed to store network and version: {:#?}", e);
+            warn!("failed to store network and version: {e:#?}");
         }
 
         Ok(Self {

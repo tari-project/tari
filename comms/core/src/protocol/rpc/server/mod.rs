@@ -395,7 +395,7 @@ where
                         let num_to_remove = session_info.len() - max + 1;
                         for _ in 0..num_to_remove {
                             let info = session_info.remove(0);
-                            info!(target: LOG_TARGET, "Culling oldest RPC session for peer `{}`", node_id);
+                            info!(target: LOG_TARGET, "Culling oldest RPC session for peer `{node_id}`");
                             let _ = info.peer_watch.send(());
                         }
                         Ok(session_info.len())
@@ -434,7 +434,7 @@ where
     fn on_session_complete(&mut self, node_id: &NodeId, stream_id: Id) {
         if let Some(session_info) = self.sessions.get_mut(node_id) {
             if let Some(info) = session_info.iter_mut().find(|info| info.stream_id == stream_id) {
-                info!(target: LOG_TARGET, "Session complete for {} (stream id {})", node_id, stream_id);
+                info!(target: LOG_TARGET, "Session complete for {node_id} (stream id {stream_id})");
                 let _ = info.peer_watch.send(());
             };
             session_info.retain(|info| info.stream_id != stream_id);
@@ -489,7 +489,7 @@ where
             Ok(num_sessions) => {
                 info!(
                     target: LOG_TARGET,
-                    "NEW SESSION for {} ({} currently active) ", node_id, num_sessions
+                    "NEW SESSION for {node_id} ({num_sessions} currently active) "
                 );
             },
 
@@ -506,7 +506,7 @@ where
         let version = handshake.perform_server_handshake().await?;
         debug!(
             target: LOG_TARGET,
-            "Server negotiated RPC v{} with client node `{}`", version, node_id
+            "Server negotiated RPC v{version} with client node `{node_id}`"
         );
         let stream_id = framed.stream_id();
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(());
@@ -529,13 +529,13 @@ where
                 #[cfg(feature = "metrics")]
                 num_sessions.inc();
                 service.start().await;
-                info!(target: LOG_TARGET, "END OF SESSION for {} ", node_id_clone,);
+                info!(target: LOG_TARGET, "END OF SESSION for {node_id_clone} ");
                 #[cfg(feature = "metrics")]
                 num_sessions.dec();
 
                 (node_id_clone, stream_id)
             })
-            .map_err(|e| RpcServerError::MaximumSessionsReached(format!("{:?}", e)))?;
+            .map_err(|e| RpcServerError::MaximumSessionsReached(format!("{e:?}")))?;
 
         self.tasks.push(handle);
         let mut peer_stop = vec![SessionInfo {
@@ -555,7 +555,7 @@ where
             if info.iter().filter(|session| session.stream_id == stream_id).count() > 1 {
                 warn!(
                     target: LOG_TARGET,
-                    "Stream ID {} already in use for peer {}. This should not happen.", stream_id, node_id
+                    "Stream ID {stream_id} already in use for peer {node_id}. This should not happen."
                 );
             }
         }
@@ -937,8 +937,7 @@ where
                     None => {
                         error!(target: LOG_TARGET, "Client send MALFORMED flags: {}", u8_bits);
                         return Poll::Ready(Some(RpcServerError::ProtocolError(format!(
-                            "invalid message flag, does not match any flags ({})",
-                            u8_bits
+                            "invalid message flag, does not match any flags ({u8_bits})"
                         ))));
                     },
                 };

@@ -88,7 +88,7 @@ where V: DeserializeOwned
         v: &[u8],
     ) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
         let prefix_len = key_prefix.len();
-        if k.len() < prefix_len || k[..prefix_len] != *key_prefix {
+        if k.len() < prefix_len || *k.get(..prefix_len).expect("Cannot fail") != *key_prefix {
             return Ok(None);
         }
         let val = deserialize::<V>(v)?;
@@ -209,13 +209,10 @@ pub trait FromKeyBytes {
 impl FromKeyBytes for u64 {
     fn from_key_bytes(bytes: &[u8]) -> Result<Self, ChainStorageError>
     where Self: Sized {
-        if bytes.len() != 8 {
-            return Err(ChainStorageError::FromKeyBytesFailed(
-                "Invalid byte length for u64 key".to_string(),
-            ));
-        }
         let mut buf = [0u8; 8];
-        buf.copy_from_slice(&bytes[..8]);
+        buf.copy_from_slice(bytes.get(..8).ok_or(ChainStorageError::FromKeyBytesFailed(
+            "Invalid byte length for u64 key".to_string(),
+        ))?);
         Ok(u64::from_be_bytes(buf))
     }
 }
@@ -255,6 +252,7 @@ fn convert_result_kv<K: FromKeyBytes, V: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
 
+    #![allow(clippy::indexing_slicing)]
     use super::*;
     use crate::chain_storage::{
         lmdb_db::lmdb::{lmdb_get_prefix_cursor, lmdb_insert},

@@ -90,7 +90,7 @@ impl McpTool for SubmitBlockTool {
 
         // Convert hex to bytes
         let _block_bytes = hex::decode(&block_hex)
-            .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Invalid hex encoding: {e}")))?;
 
         // Parse block (this would need proper block parsing)
         // For now, we'll create a placeholder block structure
@@ -103,7 +103,7 @@ impl McpTool for SubmitBlockTool {
         let response = self.grpc_client.clone()
             .submit_block(block)  // Submit the block directly
             .await
-            .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit block: {}", e)))?;
+            .map_err(|e| McpError::tool_execution_failed(format!("Failed to submit block: {e}")))?;
 
         let response = response.into_inner();
 

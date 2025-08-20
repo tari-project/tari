@@ -66,7 +66,7 @@ impl McpResource for NetworkStatusResource {
         let version_response = client
             .get_version(Empty {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get version: {}", e)))?;
+            .map_err(|e| McpError::resource_access_failed(format!("Failed to get version: {e}")))?;
 
         let version = version_response.into_inner();
 

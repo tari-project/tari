@@ -111,7 +111,7 @@ impl HeaderSyncState {
                     return StateEvent::Continue;
                 }
             },
-            Err(e) => return StateEvent::FatalError(format!("{}", e)),
+            Err(e) => return StateEvent::FatalError(format!("{e}")),
         }
 
         let mut synchronizer = HeaderSynchronizer::new(
@@ -191,12 +191,12 @@ impl HeaderSyncState {
                 });
                 match err {
                     BlockHeaderSyncError::SyncFailedAllPeers => {
-                        error!(target: LOG_TARGET, "Header sync failed with all peers. Error: {}", err);
-                        warn!(target: LOG_TARGET, "{}. Continuing...", err);
+                        error!(target: LOG_TARGET, "Header sync failed with all peers. Error: {err}");
+                        warn!(target: LOG_TARGET, "{err}. Continuing..." );
                         StateEvent::Continue
                     },
                     _ => {
-                        debug!(target: LOG_TARGET, "Header sync failed: {}", err);
+                        debug!(target: LOG_TARGET, "Header sync failed: {err}");
                         StateEvent::HeaderSyncFailed(err.to_string())
                     },
                 }

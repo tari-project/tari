@@ -45,13 +45,13 @@ pub async fn handle<T: BlockchainBackend + 'static>(
         .get_tip_info()
         .await
         .map_err(|e| {
-            error!(target: LOG_TARGET, "Failed to get tip info: {}", e);
-            anyhow::anyhow!("Failed to get tip info: {}", e)
+            error!(target: LOG_TARGET, "Failed to get tip info: {e}");
+            anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
     let res = match mempool_service.submit_transaction(transaction).await {
         Ok(response) => {
-            debug!(target: LOG_TARGET, "Transaction submitted successfully: {:?}", response);
+            debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
             match response {
                 TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
                     accepted: true,
@@ -89,7 +89,7 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             }
         },
         Err(e) => {
-            return Err(anyhow::anyhow!("Failed to submit transaction: {}", e));
+            return Err(anyhow::anyhow!("Failed to submit transaction: {e}"));
         },
     };
     Ok(res)

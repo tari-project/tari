@@ -43,14 +43,14 @@ pub fn get_custom_base_node_peer_from_db(wallet: &WalletSqlite) -> Option<Peer> 
     {
         Ok(val) => val,
         Err(e) => {
-            warn!(target: LOG_TARGET, "Problem reading from wallet database: {}", e);
+            warn!(target: LOG_TARGET, "Problem reading from wallet database: {e}");
             return None;
         },
     };
     let custom_base_node_peer_address = match wallet.db.get_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string()) {
         Ok(val) => val,
         Err(e) => {
-            warn!(target: LOG_TARGET, "Problem reading from wallet database: {}", e);
+            warn!(target: LOG_TARGET, "Problem reading from wallet database: {e}");
             return None;
         },
     };

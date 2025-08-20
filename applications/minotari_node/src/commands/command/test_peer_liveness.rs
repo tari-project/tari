@@ -106,7 +106,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
         let start = Instant::now();
         for _ in 0..5 {
             if self.dial_peer(node_id.clone()).await.is_ok() {
-                println!("🏓 Peer ({}, {}) dialed successfully", node_id, public_key);
+                println!("🏓 Peer ({node_id}, {public_key}) dialed successfully");
                 let liveness = self.liveness.clone();
                 task::spawn(async move {
                     ping_peer_liveness(liveness, node_id, public_key, tx).await;
@@ -189,12 +189,12 @@ fn print_results_to_console(
     } else {
         println!("❌ Peer is unresponsive");
     }
-    println!("  Date Time:     {}", date_time);
-    println!("  Public Key:    {}", public_key);
-    println!("  Node ID:       {}", node_id);
-    println!("  Address:       {}", address);
-    println!("  Result:        {:?}", responsive);
-    println!("  Test Duration: {:.2?}", test_duration);
+    println!("  Date Time:     {date_time}");
+    println!("  Public Key:    {public_key}");
+    println!("  Node ID:       {node_id}");
+    println!("  Address:       {address}");
+    println!("  Result:        {responsive:?}");
+    println!("  Test Duration: {test_duration:.2?}");
     println!();
 }
 
@@ -206,7 +206,7 @@ async fn ping_peer_liveness(
 ) {
     let mut liveness_events = liveness.get_event_stream();
     if let Ok(nonce) = liveness.send_ping(node_id.clone()).await {
-        println!("🏓 Pinging peer ({}, {}) with nonce {} ...", node_id, public_key, nonce);
+        println!("🏓 Pinging peer ({node_id}, {public_key}) with nonce {nonce} ...");
         for _ in 0..5 {
             match liveness_events.recv().await {
                 Ok(event) => {
@@ -225,7 +225,7 @@ async fn ping_peer_liveness(
                     }
                 },
                 Err(e) => {
-                    println!("🏓 Ping peer ({}, {}) gave error: {}", node_id, public_key, e);
+                    println!("🏓 Ping peer ({node_id}, {public_key}) gave error: {e}");
                 },
             }
         }
@@ -272,15 +272,14 @@ async fn print_to_file(
             file_content.push_str("Date Time,Public Key,Address,Result,Test Duration\n");
         }
         file_content.push_str(&format!(
-            "{},{},{},{},{:.2?}",
-            date_time, public_key, address, test_result, test_duration
+            "{date_time},{public_key},{address},{test_result},{test_duration:.2?}"
         ));
-        match writeln!(file, "{}", file_content) {
+        match writeln!(file, "{file_content}") {
             Ok(_) => {
                 println!("📝 Test result written to file: {}", file_path.display());
             },
             Err(e) => {
-                println!("❌ Error writing test result to file: {}", e);
+                println!("❌ Error writing test result to file: {e}");
             },
         }
     }

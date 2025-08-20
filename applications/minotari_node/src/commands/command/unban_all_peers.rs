@@ -41,11 +41,11 @@ impl CommandContext {
     pub async fn unban_all_peers(&self) -> Result<(), Error> {
         match self.comms.peer_manager().unban_all_peers().await {
             Ok(num_peers) => {
-                println!("Unbanned {} peer(s) from node", num_peers);
+                println!("Unbanned {num_peers} peer(s) from node");
                 Ok(())
             },
             Err(err) => {
-                println!("Failed to unban all peers: {}", err);
+                println!("Failed to unban all peers: {err}");
                 Err(err.into())
             },
         }

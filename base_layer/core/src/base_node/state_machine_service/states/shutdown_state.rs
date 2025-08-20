@@ -33,7 +33,7 @@ pub struct Shutdown {
 
 impl Shutdown {
     pub fn with_reason(reason: String) -> Self {
-        info!(target: LOG_TARGET, "Node shutdown state: {}", reason);
+        info!(target: LOG_TARGET, "Node shutdown state: {reason}");
         Self { reason }
     }
 }

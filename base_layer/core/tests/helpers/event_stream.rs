@@ -30,7 +30,7 @@ pub async fn event_stream_next<T: Clone>(stream: &mut broadcast::Receiver<T>, ti
         item = stream.recv() => match item {
             Ok(item) => Some(item),
             Err(broadcast::error::RecvError::Closed) => None,
-            Err(broadcast::error::RecvError::Lagged(n)) => panic!("Lagged events channel {}", n),
+            Err(broadcast::error::RecvError::Lagged(n)) => panic!("Lagged events channel {n}"),
         },
         _ = time::sleep(timeout) => None
     }

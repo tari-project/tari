@@ -75,11 +75,9 @@ impl<const MAX: usize> MaxSizeBytes<MAX> {
     }
 
     pub fn from_bytes_truncate<T: AsRef<[u8]>>(bytes: T) -> Self {
-        let b = bytes.as_ref();
-        let len = cmp::min(b.len(), MAX);
-        Self {
-            inner: b[..len].to_vec(),
-        }
+        let mut b = bytes.as_ref().to_vec();
+        b.truncate(cmp::min(b.len(), MAX));
+        Self { inner: b }
     }
 
     pub fn max_size(&self) -> usize {

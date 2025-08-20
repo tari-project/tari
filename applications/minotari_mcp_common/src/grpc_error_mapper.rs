@@ -474,7 +474,7 @@ impl GrpcErrorMapper {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        format!("err_{}", timestamp)
+        format!("err_{timestamp}")
     }
 }
 
@@ -559,6 +559,7 @@ pub mod error_utils {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use super::*;
 
     #[test]
@@ -579,7 +580,7 @@ mod tests {
 
         let mcp_error = mapper.to_mcp_error(&status, "get_balance");
         // The error should contain the operation name and error code
-        let error_msg = format!("{:?}", mcp_error);
+        let error_msg = format!("{mcp_error:?}");
         assert!(error_msg.contains("get_balance"));
         assert!(error_msg.contains("INVALID_PARAMETERS"));
     }

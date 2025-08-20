@@ -68,13 +68,16 @@ impl BaseNodePeerManager {
         self.peer_list
             .get(self.current_peer_index)
             .cloned()
-            .unwrap_or(self.peer_list[0].clone())
+            .unwrap_or(self.peer_list.first().expect("No peer").clone())
     }
 
     /// Get the next peer in the list
     pub fn get_next_peer(&mut self) -> Peer {
         self.current_peer_index = (self.current_peer_index + 1) % self.peer_list.len();
-        self.peer_list[self.current_peer_index].clone()
+        self.peer_list
+            .get(self.current_peer_index)
+            .expect("Cannot fail")
+            .clone()
     }
 
     /// Get the base node peer manager state

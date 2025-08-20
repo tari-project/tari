@@ -271,7 +271,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 Ok(vn.activation_epoch <= end_epoch)
             },
             None => {
-                debug!(target: LOG_TARGET, "Validator node not found in store: {}, checking exit queue", public_key);
+                debug!(target: LOG_TARGET, "Validator node not found in store: {public_key}, checking exit queue");
                 let key = create_exit_queue_prefix_key(sidechain_id, end_epoch);
                 let mut cursor = self.exit_queue_read_cursor()?;
                 cursor.seek_range(&key)?;
@@ -308,7 +308,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                         continue;
                     }
                     if key_epoch <= end_epoch.as_u64() {
-                        debug!(target: LOG_TARGET, "Found validator node in exit queue (exit applied): {} (exit: {}, end: {})", public_key, key_epoch, end_epoch);
+                        debug!(target: LOG_TARGET, "Found validator node in exit queue (exit applied): {public_key} (exit: {key_epoch}, end: {end_epoch})");
                         return Ok(false);
                     }
 
@@ -316,11 +316,11 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                         .current()?
                         .expect("Cursor is not at a valid position in is_vn_active");
 
-                    debug!(target: LOG_TARGET, "Found validator node in exit queue: {} (exit: {}, end: {})", public_key, key_epoch, end_epoch);
+                    debug!(target: LOG_TARGET, "Found validator node in exit queue: {public_key} (exit: {key_epoch}, end: {end_epoch})");
                     return Ok(v.activation_epoch <= end_epoch);
                 }
 
-                debug!(target: LOG_TARGET, "Validator node not found in exit queue: {}", public_key);
+                debug!(target: LOG_TARGET, "Validator node not found in exit queue: {public_key}");
                 Ok(false)
             },
         }
@@ -388,7 +388,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             }
 
             while let Some((key, vn)) = cursor.next()? {
-                if key[..PK_SIZE] != *sidechain_bytes {
+                if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))? != sidechain_bytes
+                {
                     // No further entries for this sidechain
                     break;
                 }
@@ -574,8 +577,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
     ) -> Result<BTreeSet<ValidatorNodeEntry>, ChainStorageError> {
         if end_epoch < start_epoch {
             return Err(ChainStorageError::InvalidQuery(format!(
-                "get_vn_set: End epoch is less than start epoch: {} < {}",
-                end_epoch, start_epoch
+                "get_vn_set: End epoch is less than start epoch: {end_epoch} < {start_epoch}"
             )));
         }
 
@@ -593,7 +595,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let sidechain_bytes = sid_as_slice(sidechain_pk);
         let mut nodes = BTreeSet::new();
         while let Some((key, vn)) = cursor.next()? {
-            if key[..PK_SIZE] != *sidechain_bytes {
+            if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
+                "Key bytes for output hash are too short".to_string(),
+            ))? != sidechain_bytes
+            {
                 // No further entries for this sidechain
                 break;
             }
@@ -627,7 +632,10 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             let mut keys = Vec::with_capacity(num_keys);
             let sidechain_bytes = sid_as_slice(sidechain_pk);
             while let Some((key, pk)) = cursor.next_dup()? {
-                if key[..PK_SIZE] != *sidechain_bytes {
+                if *key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))? != *sidechain_bytes
+                {
                     // No further entries for this sidechain
                     break;
                 }
@@ -648,8 +656,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 ChainStorageError::DataInconsistencyDetected {
                     function: "ValidatorNodeStore::get_activating_in_epoch",
                     details: format!(
-                        "Validator node in db_validator_activation_queue but not found in store for public key {}",
-                        key
+                        "Validator node in db_validator_activation_queue but not found in store for public key {key}"
                     ),
                 }
             })?;
@@ -674,7 +681,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let sidechain_bytes = sid_as_slice(sidechain_pk);
         let mut validators = BTreeSet::new();
         while let Some(key) = cursor.next_key()? {
-            debug!(target: LOG_TARGET, "exit queue key: {}", key);
+            debug!(target: LOG_TARGET, "exit queue key: {key}");
             let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
             let sid = sections
                 .next()
@@ -695,7 +702,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     details: "Malformed exit queue key".to_string(),
                 })?;
             if rec_epoch != epoch.as_u64() {
-                debug!(target: LOG_TARGET, "No further entries for this epoch {}, last rec epoch {}", epoch, rec_epoch);
+                debug!(target: LOG_TARGET, "No further entries for this epoch {epoch}, last rec epoch {rec_epoch}");
                 // No further entries for this epoch
                 break;
             }
@@ -732,7 +739,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         let mut exit_count = 0;
         let mut exit_epoch = epoch;
         while let Some(key) = cursor.next_key()? {
-            trace!(target: LOG_TARGET, "exit queue key: {}", key);
+            trace!(target: LOG_TARGET, "exit queue key: {key}");
             let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
             let sid = sections
                 .next()
@@ -812,9 +819,13 @@ fn create_exit_queue_key(
 fn create_exit_queue_prefix_key<B: ByteArray>(sidechain_pk: Option<&B>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
     let mut buf = [0u8; PK_SIZE + U64_SIZE];
     if let Some(pk) = sidechain_pk {
-        buf[..PK_SIZE].copy_from_slice(pk.as_bytes());
+        buf.get_mut(..PK_SIZE)
+            .expect("Should exists")
+            .copy_from_slice(pk.as_bytes());
     }
-    buf[PK_SIZE..].copy_from_slice(&epoch.to_be_bytes());
+    buf.get_mut(PK_SIZE..)
+        .expect("Should exists")
+        .copy_from_slice(&epoch.to_be_bytes());
     buf
 }
 
@@ -826,9 +837,13 @@ fn create_activation_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEp
 fn create_vn_store_prefix_key(sidechain_pk: Option<&CompressedPublicKey>, epoch: VnEpoch) -> [u8; PK_SIZE + U64_SIZE] {
     let mut buf = [0u8; PK_SIZE + U64_SIZE];
     if let Some(pk) = sidechain_pk {
-        buf[..PK_SIZE].copy_from_slice(pk.as_bytes());
+        buf.get_mut(..PK_SIZE)
+            .expect("Should exists")
+            .copy_from_slice(pk.as_bytes());
     }
-    buf[PK_SIZE..].copy_from_slice(&epoch.to_be_bytes());
+    buf.get_mut(PK_SIZE..)
+        .expect("Should exists")
+        .copy_from_slice(&epoch.to_be_bytes());
     buf
 }
 
@@ -838,6 +853,7 @@ fn sid_as_slice(sidechain_pk: Option<&CompressedPublicKey>) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
     use lmdb_zero::db;
     use tari_common_types::types::CompressedCommitment;
     use tari_test_utils::unpack_enum;

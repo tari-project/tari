@@ -48,7 +48,7 @@ impl ContactsLivenessData {
         unsafe {
             ptr = ffi_import::liveness_data_get_public_key(self.ptr, &mut error);
             if error > 0 {
-                println!("liveness_data_get_public_key error {}", error);
+                println!("liveness_data_get_public_key error {error}");
                 panic!("liveness_data_get_public_key error");
             }
         }
@@ -61,7 +61,7 @@ impl ContactsLivenessData {
         unsafe {
             latency = ffi_import::liveness_data_get_latency(self.ptr, &mut error);
             if error > 0 {
-                println!("liveness_data_get_latency error {}", error);
+                println!("liveness_data_get_latency error {error}");
                 panic!("liveness_data_get_latency error");
             }
         }
@@ -74,7 +74,7 @@ impl ContactsLivenessData {
         unsafe {
             ptr = ffi_import::liveness_data_get_last_seen(self.ptr, &mut error);
             if error > 0 {
-                println!("liveness_data_get_last_seen error {}", error);
+                println!("liveness_data_get_last_seen error {error}");
                 panic!("liveness_data_get_last_seen error");
             }
         }
@@ -87,7 +87,7 @@ impl ContactsLivenessData {
         unsafe {
             message_type = ffi_import::liveness_data_get_message_type(self.ptr, &mut error);
             if error > 0 {
-                println!("liveness_data_get_message_type error {}", error);
+                println!("liveness_data_get_message_type error {error}");
                 panic!("liveness_data_get_message_type error");
             }
         }
@@ -100,7 +100,7 @@ impl ContactsLivenessData {
         unsafe {
             ptr = ffi_import::liveness_data_get_online_status(self.ptr, &mut error);
             if error > 0 {
-                println!("liveness_data_get_online_status error {}", error);
+                println!("liveness_data_get_online_status error {error}");
                 panic!("liveness_data_get_online_status error");
             }
         }

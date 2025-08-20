@@ -106,7 +106,7 @@ impl Miner {
             .map(|i| {
                 (
                     thread::Builder::new()
-                        .name(format!("cpu-miner-{}", i))
+                        .name(format!("cpu-miner-{i}"))
                         .stack_size(STACK_SIZE),
                     i,
                 )
@@ -162,11 +162,18 @@ impl Stream for Miner {
         let report = match sel.try_select() {
             Ok(oper) => {
                 let idx = oper.index();
-                match oper.recv(&self.channels[idx]) {
+                let channel = match self.channels.get(idx) {
+                    Some(channel) => channel,
+                    None => {
+                        error!(target: LOG_TARGET, "Channel index {idx} out of bounds");
+                        return Poll::Ready(None);
+                    },
+                };
+                match oper.recv(channel) {
                     Ok(report) => report,
                     Err(_) => {
                         // Received error would mean thread is disconnected already
-                        trace!("Thread {} disconnected.", idx);
+                        trace!("Thread {idx} disconnected.");
                         return Poll::Ready(None);
                     },
                 }
@@ -201,17 +208,14 @@ pub fn mining_task(
     let mut hasher = match BlockHeaderSha3::new(header, vm_key, rx_factory) {
         Ok(hasher) => hasher,
         Err(err) => {
-            let err = format!(
-                "Miner {} on {} failed to create hasher: {:?}",
-                miner, mining_algorithm, err
-            );
-            error!(target: LOG_TARGET, "{}", err);
+            let err = format!("Miner {miner} on {mining_algorithm} failed to create hasher: {err:?}");
+            error!(target: LOG_TARGET, "{err}");
             panic_any(err);
         },
     };
     hasher.random_nonce();
     // We're mining over here!
-    trace!(target: LOG_TARGET, "Mining thread {} started for {}", miner, mining_algorithm);
+    trace!(target: LOG_TARGET, "Mining thread {miner} started for {mining_algorithm}");
     // Mining work
     loop {
         let hashed = if hasher.rx_factory.is_some() {
@@ -223,11 +227,8 @@ pub fn mining_task(
         let difficulty = match hashed {
             Ok(difficulty) => difficulty,
             Err(err) => {
-                let err = format!(
-                    "Miner {} failed to calculate difficulty on {}: {:?}",
-                    miner, mining_algorithm, err
-                );
-                error!(target: LOG_TARGET, "{}", err);
+                let err = format!("Miner {miner} failed to calculate difficulty on {mining_algorithm}: {err:?}");
+                error!(target: LOG_TARGET, "{err}");
                 panic_any(err);
             },
         };
@@ -246,7 +247,7 @@ pub fn mining_task(
                 header: Some(hasher.create_header()),
                 target_difficulty,
             }) {
-                error!(target: LOG_TARGET, "Miner {} on {} failed to send report: {}", miner, mining_algorithm, err);
+                error!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
             }
             // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
             // new job
@@ -254,7 +255,7 @@ pub fn mining_task(
                 waker.wake_by_ref();
             } else {
                 waker.wake();
-                trace!(target: LOG_TARGET, "Mining thread {} on {} stopped", miner, mining_algorithm);
+                trace!(target: LOG_TARGET, "Mining thread {miner} on {mining_algorithm} stopped");
                 return;
             }
         }
@@ -274,9 +275,9 @@ pub fn mining_task(
                 target_difficulty,
             });
             waker.wake_by_ref();
-            trace!(target: LOG_TARGET, "Reporting from {} on {} result {:?}", miner, mining_algorithm, res);
+            trace!(target: LOG_TARGET, "Reporting from {miner} on {mining_algorithm} result {res:?}");
             if let Err(TrySendError::Disconnected(_)) = res {
-                info!(target: LOG_TARGET, "Mining thread {} on {} disconnected", miner, mining_algorithm);
+                info!(target: LOG_TARGET, "Mining thread {miner} on {mining_algorithm} disconnected");
                 return;
             }
             if !(share_mode) {

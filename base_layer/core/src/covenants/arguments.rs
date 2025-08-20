@@ -236,16 +236,16 @@ impl Display for CovenantArg {
         #[allow(clippy::enum_glob_use)]
         use CovenantArg::*;
         match self {
-            Hash(hash) => write!(f, "Hash({})", hash),
+            Hash(hash) => write!(f, "Hash({hash})"),
             PublicKey(public_key) => write!(f, "PublicKey({})", public_key.to_hex()),
             Commitment(commitment) => write!(f, "Commitment({})", commitment.to_hex()),
             TariScript(_) => write!(f, "TariScript(...)"),
             Covenant(_) => write!(f, "Covenant(...)"),
-            Uint(v) => write!(f, "Uint({})", v),
+            Uint(v) => write!(f, "Uint({v})"),
             OutputField(field) => write!(f, "OutputField({})", field.as_byte()),
             OutputFields(fields) => write!(f, "OutputFields({} field(s))", fields.len()),
             Bytes(bytes) => write!(f, "Bytes({} byte(s))", bytes.len()),
-            OutputType(output_type) => write!(f, "OutputType({})", output_type),
+            OutputType(output_type) => write!(f, "OutputType({output_type})"),
         }
     }
 }

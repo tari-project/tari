@@ -54,7 +54,7 @@ impl HorizonSyncInfo {
                 sync_peer.node_id(),
                 sync_peer
                     .items_per_second()
-                    .map(|kps| format!(" ({:.2?} kernels/s)", kps))
+                    .map(|kps| format!(" ({kps:.2?} kernels/s)"))
                     .unwrap_or_default(),
                 sync_peer.latency().unwrap_or_default()
             ),
@@ -70,7 +70,7 @@ impl HorizonSyncInfo {
                 sync_peer.node_id(),
                 sync_peer
                     .items_per_second()
-                    .map(|kps| format!(" ({:.2?} outputs/s)", kps))
+                    .map(|kps| format!(" ({kps:.2?} outputs/s)"))
                     .unwrap_or_default(),
                 sync_peer.latency().unwrap_or_default()
             ),
@@ -83,7 +83,7 @@ impl Display for HorizonSyncInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         writeln!(f, "Syncing horizon state from the following peers:")?;
         for peer in &self.sync_peers {
-            writeln!(f, "{}", peer)?;
+            writeln!(f, "{peer}")?;
         }
 
         match self.status.clone() {

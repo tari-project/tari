@@ -50,7 +50,7 @@ impl CommandContext {
         // We need to check every header, but not every block.
         let horizon_height = meta.pruned_height_at_given_chain_tip(height);
         while height > 0 {
-            print!("{}", height);
+            print!("{height}");
             io::stdout().flush().await?;
             // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
             if height > horizon_height {
@@ -58,7 +58,7 @@ impl CommandContext {
                     Err(err) => {
                         // We need to check the data itself, as FetchMatchingBlocks will suppress any error, only
                         // logging it.
-                        log::error!(target: LOG_TARGET, "{}", err);
+                        log::error!(target: LOG_TARGET, "{err}");
                         missing_blocks.push(height);
                     },
                     Ok(Some(_)) => {},
@@ -75,10 +75,10 @@ impl CommandContext {
         }
         println!("Complete");
         for missing_block in missing_blocks {
-            println!("Missing block at height: {}", missing_block);
+            println!("Missing block at height: {missing_block}");
         }
         for missing_header_height in missing_headers {
-            println!("Missing header at height: {}", missing_header_height)
+            println!("Missing header at height: {missing_header_height}")
         }
         Ok(())
     }

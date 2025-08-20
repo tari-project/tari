@@ -279,7 +279,7 @@ async fn run() {
 
 async fn log_timing<R, F: Future<Output = R>>(name: &str, fut: F) -> R {
     let t = Instant::now();
-    println!("'{}' is running...", name);
+    println!("'{name}' is running...");
     let ret = fut.await;
     let elapsed = t.elapsed();
     println!("'{}' completed in {:.2}s", name, elapsed.as_secs_f32());

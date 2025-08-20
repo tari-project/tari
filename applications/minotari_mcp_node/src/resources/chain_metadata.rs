@@ -65,7 +65,7 @@ impl McpResource for ChainMetadataResource {
         let response = client
             .get_tip_info(Empty {})
             .await
-            .map_err(|e| McpError::resource_access_failed(format!("Failed to get chain metadata: {}", e)))?;
+            .map_err(|e| McpError::resource_access_failed(format!("Failed to get chain metadata: {e}")))?;
 
         let tip_info = response.into_inner();
 

@@ -74,9 +74,9 @@ impl ParameterConverter for GetBlocksConverter {
                         None => {
                             return Err(ConversionError::InvalidParameterType {
                                 method: method_name.to_string(),
-                                param: format!("heights[{}]", index),
+                                param: format!("heights[{index}]"),
                                 expected: "unsigned integer".to_string(),
-                                actual: format!("{:?}", height_value),
+                                actual: format!("{height_value:?}"),
                             })
                         },
                     }
@@ -98,9 +98,9 @@ impl ParameterConverter for GetBlocksConverter {
                 if !height_value.is_u64() {
                     return Err(ConversionError::InvalidParameterType {
                         method: method_name.to_string(),
-                        param: format!("heights[{}]", index),
+                        param: format!("heights[{index}]"),
                         expected: "unsigned integer".to_string(),
-                        actual: format!("{:?}", height_value),
+                        actual: format!("{height_value:?}"),
                     });
                 }
             }

@@ -1,6 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+#![allow(clippy::indexing_slicing)]
 use std::fs;
 
 use log::*;
@@ -342,8 +343,7 @@ impl BurnTab {
                                 Err(e) => {
                                     self.error_message = Some(format!(
                                         "Error sending burn transaction (with a claim public key \
-                                         provided):\n{}\nPress Enter to continue.",
-                                        e
+                                         provided):\n{e}\nPress Enter to continue."
                                     ))
                                 },
                                 Ok(_) => {
@@ -361,8 +361,7 @@ impl BurnTab {
                             match Handle::current().block_on(app_state.delete_burnt_proof(proof_id)) {
                                 Err(e) => {
                                     self.error_message = Some(format!(
-                                        "Failed to delete burnt proof (id={}):\n{}\nPress Enter to continue.",
-                                        proof_id, e
+                                        "Failed to delete burnt proof (id={proof_id}):\n{e}\nPress Enter to continue."
                                     ))
                                 },
                                 Ok(_) => {
@@ -526,7 +525,7 @@ impl<B: Backend> Component<B> for BurnTab {
             let status = match (*rx.borrow()).clone() {
                 UiTransactionBurnStatus::Initiated => "Initiated",
                 UiTransactionBurnStatus::Error(e) => {
-                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                    self.error_message = Some(format!("Error sending transaction: {e}, Press Enter to continue."));
                     return;
                 },
                 UiTransactionBurnStatus::TransactionComplete((
@@ -543,7 +542,7 @@ impl<B: Backend> Component<B> for BurnTab {
                 f,
                 area,
                 "Please Wait".to_string(),
-                format!("Transaction Burn Status: {}", status),
+                format!("Transaction Burn Status: {status}"),
                 Color::Green,
                 120,
                 10,

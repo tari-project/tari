@@ -207,12 +207,12 @@ where B: BlockchainBackend + 'static
             let after_comms = move |identity: TorIdentity| {
                 let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
                 if let Err(e) = identity_management::save_as_json(&tor_id_path, &identity) {
-                    error!(target: LOG_TARGET, "Failed to save tor identity{:?}", e);
+                    error!(target: LOG_TARGET, "Failed to save tor identity{e:?}");
                 }
-                trace!(target: LOG_TARGET, "resave the tor identity {:?}", identity);
+                trace!(target: LOG_TARGET, "resave the tor identity {identity:?}");
                 let result: Result<Multiaddr, MultiaddrError> = address_string.parse();
                 if result.is_err() {
-                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{:?}", result);
+                    error!(target: LOG_TARGET, "Failed to parse tor identity as multiaddr{result:?}");
                     return;
                 }
                 let address = result.unwrap();
@@ -220,7 +220,7 @@ where B: BlockchainBackend + 'static
                     node_id.add_public_address(address);
                 }
                 if let Err(e) = identity_management::save_as_json(&node_id_path, &*node_id) {
-                    error!(target: LOG_TARGET, "Failed to save node identity identity{:?}", e);
+                    error!(target: LOG_TARGET, "Failed to save node identity identity{e:?}");
                 }
             };
             initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone(), after_comms).await
@@ -297,7 +297,7 @@ where B: BlockchainBackend + 'static
             Err(error) => {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to start wallet http server: {:?}", error
+                    "Failed to start wallet http server: {error:?}"
                 );
             },
         }

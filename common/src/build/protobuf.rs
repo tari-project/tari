@@ -124,7 +124,7 @@ impl ProtobufCompiler {
     fn hash_file_contents<P: AsRef<Path>>(&self, file_path: P) -> Result<Vec<u8>, String> {
         let mut file = File::open(file_path).unwrap();
         let mut file_hash = Sha256::default();
-        io::copy(&mut file, &mut file_hash).map_err(|err| format!("Failed to hash file: '{}'", err))?;
+        io::copy(&mut file, &mut file_hash).map_err(|err| format!("Failed to hash file: '{err}'"))?;
         Ok(file_hash.finalize().to_vec())
     }
 
@@ -184,14 +184,14 @@ impl ProtobufCompiler {
 
         let tmp_out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("tmp_protos");
         fs::create_dir_all(&tmp_out_dir)
-            .map_err(|err| format!("Failed to create temporary out dir because '{}'", err))?;
+            .map_err(|err| format!("Failed to create temporary out dir because '{err}'"))?;
 
         config.out_dir(tmp_out_dir.clone());
 
         config.compile_protos(&protos, &self.include_paths).map_err(|err| {
             // Side effect - print the error to stderr
-            eprintln!("\n{}", err);
-            format!("{}", err)
+            eprintln!("\n{err}");
+            format!("{err}")
         })?;
 
         if self.do_rustfmt {
@@ -200,7 +200,7 @@ impl ProtobufCompiler {
 
         self.compare_and_move(&tmp_out_dir, &out_dir);
 
-        fs::remove_dir_all(&tmp_out_dir).map_err(|err| format!("Failed to remove temporary dir: {}", err))?;
+        fs::remove_dir_all(&tmp_out_dir).map_err(|err| format!("Failed to remove temporary dir: {err}"))?;
 
         if self.emit_rerun_if_changed_directives {
             protos.iter().chain(include_protos.iter()).for_each(|p| {
