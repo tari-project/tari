@@ -443,10 +443,7 @@ impl Serialize for TariAddress {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         if serializer.is_human_readable() {
-            match self {
-                TariAddress::Dual(inner) => serializer.serialize_str(&inner.to_base58()),
-                TariAddress::Single(inner) => serializer.serialize_str(&inner.to_base58()),
-            }
+            serializer.serialize_str(&self.to_base58())
         } else {
             serializer.serialize_bytes(&self.to_vec())
         }
@@ -537,70 +534,6 @@ impl<'de> Deserialize<'de> for TariAddress {
     }
 }
 
-pub mod tari_address_json_bs58 {
-    use std::fmt;
-
-    use serde::{
-        de::{Error, Visitor},
-        Deserializer,
-        Serializer,
-    };
-
-    use crate::tari_address::TariAddress;
-
-    /// Serializes a [`TariAddress`] to a base58 string or a binary array.
-    pub fn serialize<S>(address: &TariAddress, ser: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        if ser.is_human_readable() {
-            ser.serialize_str(&address.to_base58())
-        } else {
-            ser.serialize_bytes(&address.to_vec())
-        }
-    }
-
-    /// Serializes a [`TariAddress`] from a base58 string or a binary array.
-    pub fn deserialize<'de, D>(de: D) -> Result<TariAddress, D::Error>
-    where D: Deserializer<'de> {
-        let visitor = Base58Visitor::default();
-        if de.is_human_readable() {
-            de.deserialize_string(visitor)
-        } else {
-            de.deserialize_bytes(visitor)
-        }
-    }
-    #[derive(Default)]
-    struct Base58Visitor {}
-
-    impl<'de> Visitor<'de> for Base58Visitor {
-        type Value = TariAddress;
-
-        fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-            fmt.write_str("Expecting a binary array or Base58 string")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where E: Error {
-            let address = TariAddress::from_base58(v).map_err(|e| E::custom(e.to_string()))?;
-            Ok(address)
-        }
-
-        fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-        where E: Error {
-            self.visit_str(&v)
-        }
-
-        fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-        where E: Error {
-            TariAddress::from_bytes(v).map_err(|e| E::custom(e.to_string()))
-        }
-
-        fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
-        where E: Error {
-            self.visit_bytes(v)
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
@@ -609,6 +542,99 @@ mod test {
 
     use super::*;
     use crate::{dammsum::compute_checksum, types::PrivateKey};
+
+    #[test]
+    fn compare_serializers() {
+        // Test previous implementation of TariAddress base58 serialization with the new one
+        pub mod tari_address_json_bs58 {
+            use std::fmt;
+
+            use serde::{
+                de::{Error, Visitor},
+                Deserializer,
+                Serializer,
+            };
+
+            use crate::tari_address::TariAddress;
+            /// Serializes a [`TariAddress`] to a base58 string or a binary array.
+            pub fn serialize<S>(address: &TariAddress, ser: S) -> Result<S::Ok, S::Error>
+            where S: Serializer {
+                if ser.is_human_readable() {
+                    ser.serialize_str(&address.to_base58())
+                } else {
+                    ser.serialize_bytes(&address.to_vec())
+                }
+            }
+            /// Serializes a [`TariAddress`] from a base58 string or a binary array.
+            pub fn deserialize<'de, D>(de: D) -> Result<TariAddress, D::Error>
+            where D: Deserializer<'de> {
+                let visitor = Base58Visitor::default();
+                if de.is_human_readable() {
+                    de.deserialize_string(visitor)
+                } else {
+                    de.deserialize_bytes(visitor)
+                }
+            }
+            #[derive(Default)]
+            struct Base58Visitor {}
+            impl<'de> Visitor<'de> for Base58Visitor {
+                type Value = TariAddress;
+
+                fn expecting(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+                    fmt.write_str("Expecting a binary array or Base58 string")
+                }
+
+                fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+                where E: Error {
+                    let address = TariAddress::from_base58(v).map_err(|e| E::custom(e.to_string()))?;
+                    Ok(address)
+                }
+
+                fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
+                where E: Error {
+                    self.visit_str(&v)
+                }
+
+                fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
+                where E: Error {
+                    TariAddress::from_bytes(v).map_err(|e| E::custom(e.to_string()))
+                }
+
+                fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>
+                where E: Error {
+                    self.visit_bytes(v)
+                }
+            }
+        }
+
+        #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+        struct PreviousSerialization {
+            #[serde(with = "tari_address_json_bs58")]
+            recipient_address: TariAddress,
+        }
+        let previous_serialization = PreviousSerialization {
+            recipient_address: TariAddress::default(),
+        };
+
+        #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+        struct NewSerialization {
+            recipient_address: TariAddress,
+        }
+        let new_serialization = NewSerialization {
+            recipient_address: TariAddress::default(),
+        };
+
+        let previous_serialization = serde_json::to_string(&previous_serialization).unwrap();
+        let new_serialization = serde_json::to_string(&new_serialization).unwrap();
+        assert_eq!(previous_serialization, new_serialization);
+
+        let previous_deserialized = serde_json::from_str::<PreviousSerialization>(&previous_serialization).unwrap();
+        let new_deserialized = serde_json::from_str::<NewSerialization>(&new_serialization).unwrap();
+        assert_eq!(
+            previous_deserialized.recipient_address,
+            new_deserialized.recipient_address
+        );
+    }
 
     #[test]
     fn test_serialize_deserialize_dual_address() {
