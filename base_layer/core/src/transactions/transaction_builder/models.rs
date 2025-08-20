@@ -55,7 +55,7 @@ impl OutputPair {
             return Ok(input.clone());
         }
         let input = self.output.to_transaction_input(key_manager).await?;
-        let _ = self.tx_input.set(input.clone());
+        let _unused = self.tx_input.set(input.clone());
         Ok(input)
     }
 
@@ -67,7 +67,7 @@ impl OutputPair {
             return Ok(output.clone());
         }
         let output = self.output.to_transaction_output(key_manager).await?;
-        let _ = self.tx_output.set(output.clone());
+        let _unused = self.tx_output.set(output.clone());
         Ok(output)
     }
 }

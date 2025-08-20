@@ -351,11 +351,7 @@ async fn setup_transaction_service_no_comms(
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);
     let transaction_service_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-    let (transaction_send_message_channel, tx_receiver) = mpsc::channel(20);
-    let (transaction_ack_message_channel, tx_ack_receiver) = mpsc::channel(20);
-    let (transaction_finalize_message_channel, tx_finalized_receiver) = mpsc::channel(20);
     let (base_node_response_message_channel, base_node_response_receiver) = mpsc::channel(20);
-    let (transaction_cancelled_message_channel, tx_cancelled_receiver) = mpsc::channel(20);
 
     let outbound_service_mock_state = mock_outbound_service.get_state();
     task::spawn(mock_outbound_service.run());
@@ -448,7 +444,6 @@ async fn setup_transaction_service_no_comms(
         wallet_db.clone(),
         ts_request_receiver,
         base_node_response_receiver,
-        tx_cancelled_receiver,
         output_manager_service_handle.clone(),
         key_manager.clone(),
         outbound_message_requester,

@@ -138,7 +138,7 @@ where
             inputs.push(MarshalOutputPair::marshal(&self.resources.transaction_key_manager_service, input).await?);
         }
         let mut outputs = Vec::new();
-        for output_pair in tx_builder.recipients() {
+        for output_pair in tx_builder.recipient_outputs() {
             let mut output = output_pair.output.clone();
             output.output.script_key_id = self
                 .make_key_id_export_safe(&output.output.script_key_id)
