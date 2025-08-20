@@ -14,8 +14,6 @@ use crate::transactions::{
 pub mod proto;
 pub mod recipient;
 pub mod sender;
-// pub mod single_receiver;
-// pub mod transaction_initializer;
 use tari_common_types::types::CompressedCommitment;
 
 use crate::transactions::{tari_amount::*, transaction_components::KernelFeatures};
@@ -114,8 +112,3 @@ impl TransactionMetadata {
         }
     }
 }
-// #[derive(Derivative, Clone)]
-// #[derivative(Debug)]
-// pub struct RecoveryData {
-//     pub encryption_key: PrivateKey,
-// }

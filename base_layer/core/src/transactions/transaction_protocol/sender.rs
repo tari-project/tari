@@ -105,19 +105,6 @@ pub(super) struct RawTransactionInfo {
     /// The senders address
     pub sender_address: TariAddress,
 }
-// impl RawTransactionInfo {
-//     pub fn add_recipient_signed_message(&mut self, msg: RecipientSignedMessage) {
-//         let received_output = msg.output;
-//         self.recipient_partial_kernel_excess = msg.public_spend_key;
-//         self.recipient_partial_kernel_signature = msg.partial_signature;
-//         self.recipient_partial_kernel_offset = msg.offset;
-//         if self.metadata.kernel_features.is_burned() {
-//             self.metadata.burn_commitment = Some(received_output.commitment.clone());
-//         }
-//
-//         self.recipient_output = Some(received_output);
-//     }
-// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SingleRoundSenderData {

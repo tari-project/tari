@@ -1537,29 +1537,6 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())
             .await?;
-        // .with_sender_address(self.resources.one_sided_tari_address.clone())
-        // .with_recipient_data(
-        //     script!(PushPubKey(Box::default()))?,
-        //     output_features,
-        //     Covenant::default(),
-        //     minimum_value_promise,
-        //     amount,
-        //     recipient_address.clone(),
-        // )
-        // .await?
-        // .with_change_data(
-        //     script!(PushPubKey(Box::default()))?,
-        //     ExecutionStack::default(),
-        //     TariKeyId::default(),
-        //     TariKeyId::default(),
-        //     Covenant::default(),
-        //     self.resources.one_sided_tari_address.clone(),
-        // )
-        //     // .with_payment_id(payment_id.clone());
-        // let mut stp = builder
-        //     .build()
-        //     .await
-        //     .map_err(|e| OutputManagerError::BuildError(e.message))?;
         let sender_offset_private_key_id_self = self
             .resources
             .key_manager
@@ -1647,20 +1624,6 @@ where
             .await?;
 
         let finalized = tx_builder.build().await?;
-        // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
-        // signatures are not yet complete.
-        // let rtp = ReceiverTransactionProtocol::new(
-        //     sender_message,
-        //     output,
-        //     &self.resources.key_manager,
-        //     &self.resources.consensus_constants.clone(),
-        // )
-        // .await;
-        // let recipient_reply = rtp.get_signed_data()?.clone();
-        // stp.add_presigned_recipient_info(recipient_reply)?;
-        // stp.finalize(&self.resources.key_manager)
-        //     .await
-        //     .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {tx_id}");
         let fee = finalized.fee;
         let tx = finalized.transaction;

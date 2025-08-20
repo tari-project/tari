@@ -70,7 +70,6 @@ pub mod offline_signing;
 pub mod protocols;
 pub mod service;
 pub mod storage;
-// pub mod tasks;
 mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
