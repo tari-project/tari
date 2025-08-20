@@ -21,9 +21,9 @@
 
 // Parameters to the siphash block algorithm. Used by Cuckaroo but can be
 // seen as a generic way to derive a hash within a block of them.
-const SIPHASH_BLOCK_BITS: u64 = 6;
-const SIPHASH_BLOCK_SIZE: usize = 1 << SIPHASH_BLOCK_BITS;
-const SIPHASH_BLOCK_MASK: u64 = SIPHASH_BLOCK_SIZE as u64 - 1;
+const SIPHASH_BLOCK_BITS: usize = 6;
+const SIPHASH_BLOCK_SIZE: usize = 1usize << SIPHASH_BLOCK_BITS;
+const SIPHASH_BLOCK_MASK: u64 = (SIPHASH_BLOCK_SIZE as u64) - 1;
 
 /// Utility function to compute a single siphash 2-4 based on a seed and
 /// a nonce
