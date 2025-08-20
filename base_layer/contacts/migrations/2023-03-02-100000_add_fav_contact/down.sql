@@ -1,1 +1,0 @@
-ALTER TABLE contacts drop favourite;

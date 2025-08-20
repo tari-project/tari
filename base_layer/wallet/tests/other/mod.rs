@@ -40,12 +40,6 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{ DhtConfig};
-use tari_contacts::contacts_service::{
-    handle::ContactsLivenessEvent,
-    service::ContactMessageType,
-    storage::sqlite_db::ContactsServiceSqliteDatabase,
-    types::Contact,
-};
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
@@ -163,7 +157,7 @@ async fn create_wallet(
         .join(database_name)
         .with_extension("db");
 
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, key_manager_backend) =
         initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
@@ -175,7 +169,6 @@ async fn create_wallet(
         p2p: comms_config,
         transaction_service_config,
         network: NETWORK,
-        contacts_auto_ping_interval: Duration::from_secs(5),
         ..Default::default()
     };
 
@@ -199,7 +192,6 @@ async fn create_wallet(
         output_db,
         transaction_backend,
         output_manager_backend,
-        contacts_backend,
         key_manager_backend,
         shutdown_signal,
         master_seed,
@@ -316,23 +308,6 @@ async fn test_wallet() {
         }
     }
     assert!(received_reply);
-
-    let mut contacts = Vec::new();
-    for i in 0..2 {
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new_single_address_with_interactive_only(public_key, Network::LocalNet);
-
-        contacts.push(Contact::new(random::string(8), address, None, None, false));
-
-        alice_wallet
-            .contacts_service
-            .upsert_contact(contacts[i].clone())
-            .await
-            .unwrap();
-    }
-
-    let got_contacts = alice_wallet.contacts_service.get_contacts().await.unwrap();
-    assert_eq!(contacts, got_contacts);
 
     // Test applying and removing encryption
     let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("db");
@@ -720,7 +695,6 @@ async fn test_import_utxo() {
         OutputManagerDatabase::new(output_manager_backend.clone()),
         TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone()),
         output_manager_backend,
-        ContactsServiceSqliteDatabase::init(connection.clone()),
         KeyManagerSqliteDatabase::init(connection.clone(), cipher.clone()),
         shutdown.to_signal(),
         CipherSeed::new(),
@@ -835,138 +809,4 @@ async fn test_recovery_birthday() {
 
     let db_birthday = wallet.db.get_wallet_birthday().unwrap();
     assert_eq!(birthday, db_birthday);
-}
-
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn test_contacts_service_liveness() {
-    let mut shutdown_a = Shutdown::new();
-    let mut shutdown_b = Shutdown::new();
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
-    let factories = CryptoFactories::default();
-    let alice_db_tempdir = tempdir().unwrap();
-    let bob_db_tempdir = tempdir().unwrap();
-    // network used by create wallet is local net
-    let network = Network::LocalNet;
-    let mut alice_wallet = create_wallet(
-        alice_db_tempdir.path(),
-        "alice_db",
-        consensus_manager.clone(),
-        factories.clone(),
-        shutdown_a.to_signal(),
-        "alice and bob safe passphrase".to_string().into(),
-        None,
-    )
-    .await
-    .unwrap();
-    let alice_identity = alice_wallet.comms.node_identity();
-    let alice_address = TariAddress::new_single_address_with_interactive_only(alice_identity.public_key().clone(), network);
-
-    let mut bob_wallet = create_wallet(
-        bob_db_tempdir.path(),
-        "bob_db",
-        consensus_manager.clone(),
-        factories,
-        shutdown_b.to_signal(),
-        "bob unique safe passphrase".to_string().into(),
-        None,
-    )
-    .await
-    .unwrap();
-    let bob_identity = (*bob_wallet.comms.node_identity()).clone();
-    let bob_address = TariAddress::new_single_address_with_interactive_only(bob_identity.public_key().clone(), network);
-
-    alice_wallet
-        .comms
-        .peer_manager()
-        .add_or_update_peer(bob_identity.to_peer())
-        .await
-        .unwrap();
-    let contact_bob = Contact::new(random::string(8), bob_address.clone(), None, None, false);
-    alice_wallet.contacts_service.upsert_contact(contact_bob).await.unwrap();
-
-    bob_wallet
-        .comms
-        .peer_manager()
-        .add_or_update_peer(alice_identity.to_peer())
-        .await
-        .unwrap();
-    let contact_alice = Contact::new(random::string(8), alice_address.clone(), None, None, false);
-    bob_wallet.contacts_service.upsert_contact(contact_alice).await.unwrap();
-
-    alice_wallet
-        .comms
-        .connectivity()
-        .dial_peer(bob_identity.node_id().clone())
-        .await
-        .unwrap();
-
-    let mut liveness_event_stream_alice = alice_wallet.contacts_service.get_contacts_liveness_event_stream();
-    let delay = sleep(Duration::from_secs(15));
-    tokio::pin!(delay);
-    let mut ping_count = 0;
-    let mut pong_count = 0;
-    loop {
-        tokio::select! {
-            event = liveness_event_stream_alice.recv() => {
-                if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
-                    if data.address() == &bob_address{
-                        assert_eq!(data.node_id(), bob_identity.node_id());
-                        match data.message_type()  {
-                            ContactMessageType::Ping  => {
-                                ping_count += 1;
-                            }
-                            ContactMessageType::Pong => {
-                                pong_count += 1;
-                            }
-                            _ => {}
-                        }
-                    }
-                    if ping_count > 1 && pong_count > 1 {
-                        break;
-                    }
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(ping_count > 1);
-    assert!(pong_count > 1);
-
-    let mut liveness_event_stream_bob = bob_wallet.contacts_service.get_contacts_liveness_event_stream();
-    let timeout = sleep(Duration::from_secs(50));
-    tokio::pin!(timeout);
-    let mut ping_count = 0;
-    let mut pong_count = 0;
-    loop {
-        tokio::select! {
-            event = liveness_event_stream_bob.recv() => {
-                if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
-                    if data.address() == &alice_address{
-                        assert_eq!(data.node_id(), alice_identity.node_id());
-                        if data.message_type() == ContactMessageType::Ping {
-                            ping_count += 1;
-                        } else if data.message_type() == ContactMessageType::Pong {
-                            pong_count += 1;
-                        } else {}
-                    }
-                    if ping_count > 1 && pong_count > 1 {
-                        break;
-                    }
-                }
-            },
-            () = &mut timeout => {
-                break;
-            },
-        }
-    }
-    assert!(ping_count > 1);
-    assert!(pong_count > 1);
-
-    shutdown_a.trigger();
-    shutdown_b.trigger();
-    alice_wallet.wait_until_shutdown().await;
-    bob_wallet.wait_until_shutdown().await;
 }

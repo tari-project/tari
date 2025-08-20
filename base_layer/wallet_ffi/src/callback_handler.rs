@@ -35,7 +35,7 @@
 //! request_key is used to identify which request this callback references and a result of true means it was successful
 //! and false that the process timed out and new one will be started
 
-use std::{ffi::c_void, ops::Deref, sync::Arc};
+use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::{
@@ -55,7 +55,6 @@ use minotari_wallet::{
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
-use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
 use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::broadcast;
@@ -84,7 +83,6 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_send_result: unsafe extern "C" fn(context: *mut c_void, u64, *mut TransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_contacts_liveness_data_updated: unsafe extern "C" fn(context: *mut c_void, *mut ContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
@@ -100,7 +98,6 @@ where TBackend: TransactionBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
     comms_address: TariAddress,
     balance_cache: Balance,
-    contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
 }
 
 impl<TBackend, TKeyManagerInterface> CallbackHandler<TBackend, TKeyManagerInterface>
@@ -120,7 +117,6 @@ where
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_address: TariAddress,
-        contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
         callback_received_transaction: unsafe extern "C" fn(context: *mut c_void, *mut InboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction),
@@ -140,7 +136,6 @@ where
         callback_transaction_send_result: unsafe extern "C" fn(context: *mut c_void, u64, *mut TransactionSendStatus),
         callback_transaction_cancellation: unsafe extern "C" fn(context: *mut c_void, *mut CompletedTransaction, u64),
         callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-        callback_contacts_liveness_data_updated: unsafe extern "C" fn(context: *mut c_void, *mut ContactsLivenessData),
         callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
@@ -194,10 +189,6 @@ where
         );
         info!(
             target: LOG_TARGET,
-            "ContactsLivenessDataUpdatedCallback -> Assigning Fn:  {callback_contacts_liveness_data_updated:?}"
-        );
-        info!(
-            target: LOG_TARGET,
             "BalanceUpdatedCallback -> Assigning Fn:  {callback_balance_updated:?}"
         );
         info!(
@@ -230,7 +221,6 @@ where
             callback_transaction_send_result,
             callback_transaction_cancellation,
             callback_txo_validation_complete,
-            callback_contacts_liveness_data_updated,
             callback_balance_updated,
             callback_transaction_validation_complete,
             callback_saf_messages_received,
@@ -246,7 +236,6 @@ where
             shutdown_signal: Some(shutdown_signal),
             comms_address,
             balance_cache: Balance::zero(),
-            contacts_liveness_events,
         }
     }
 
@@ -408,25 +397,6 @@ where
                     }
                 },
 
-                event = self.contacts_liveness_events.recv() => {
-                    match event {
-                        Ok(liveness_event) => {
-                            match liveness_event.deref() {
-                                ContactsLivenessEvent::StatusUpdated(data) => {
-                                    trace!(target: LOG_TARGET,
-                                        "Contacts Liveness Service Callback Handler event 'StatusUpdated'"
-                                    );
-                                    self.trigger_contacts_refresh(data.deref().clone());
-                                }
-                                ContactsLivenessEvent::NetworkSilence => {},
-                            }
-                        }
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            warn!(target: LOG_TARGET, "Missed {n} from Output Manager Service events");
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {}
-                    }
-                }
                  _ = shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
                     break;
@@ -509,18 +479,6 @@ where
             Err(e) => {
                 error!(target: LOG_TARGET, "Could not obtain balance ({e:?})");
             },
-        }
-    }
-
-    fn trigger_contacts_refresh(&mut self, data: ContactsLivenessData) {
-        debug!(
-            target: LOG_TARGET,
-            "Calling Contacts Liveness Data Updated callback function for contact {}",
-            data.address(),
-        );
-        let boxing = Box::into_raw(Box::new(data));
-        unsafe {
-            (self.callback_contacts_liveness_data_updated)(self.context.0, boxing);
         }
     }
 
