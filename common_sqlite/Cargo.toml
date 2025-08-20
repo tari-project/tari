@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[features]
+bundled = ["libsqlite3-sys/bundled"]
+
 [dependencies]
 tari_utilities = { workspace = true }
 
@@ -25,5 +28,10 @@ serde_json = "1.0.133"
 thiserror = "1.0.26"
 tokio = { version = "1.44", features = ["sync", "macros", "rt"] }
 lazy_static = "1.5.0"
+libsqlite3-sys = { version = "0.25.1", optional = true }
 
 [dev-dependencies]
+
+
+[package.metadata.cargo-machete]
+ignored = ["libsqlite3-sys"]
