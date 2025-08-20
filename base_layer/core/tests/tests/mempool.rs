@@ -374,13 +374,13 @@ async fn test_retrieve() {
 
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![outputs[1][0].value /2], fee: 30*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![outputs[1][1].value /2], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![outputs[1][2].value /2], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![outputs[1][3].value /2], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![outputs[1][4].value /2], fee: 2*uT, lock: 2, features: OutputFeatures::default()),
         // will get rejected as its time-locked
-        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![outputs[1][5].value /2], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
             features: OutputFeatures{
@@ -395,6 +395,7 @@ async fn test_retrieve() {
         }),
     ];
     let (tx, utxos) = schema_to_transaction(&txs, &key_manager).await;
+
     for t in &tx {
         mempool.insert(t.clone()).await.unwrap();
     }
@@ -430,12 +431,16 @@ async fn test_retrieve() {
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
     assert_eq!(stats.reorg_txs, 5);
+    let retrieved_txs = mempool.retrieve(u64::MAX).await.unwrap();
+    assert!(retrieved_txs.contains(&tx[3]));
+    assert!(retrieved_txs.contains(&tx[4]));
+
     // Create transactions wih time-locked inputs
     // Only one will be allowed into the mempool as the one still as a maturity lock on the input.
     let txs = vec![
-        txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][12].clone()], to: vec![outputs[2][12].value /2], fee: 80*uT, lock: 0, features: OutputFeatures::default()),
         // account for change output
-        txn_schema!(from: vec![outputs[2][8].clone()], to: vec![], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][15].clone()], to: vec![outputs[2][15].value /2], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (tx2, _) = schema_to_transaction(&txs, &key_manager).await;
     for t in &tx2 {
@@ -445,14 +450,14 @@ async fn test_retrieve() {
     // Top 2 txs are tx[3] (fee/g = 50) and tx2[1] (fee/g = 40). tx2[0] (fee/g = 80) is still not matured.
     let weight = tx[3].calculate_weight(weighting).expect("Failed to calculate weight") +
         tx2[1].calculate_weight(weighting).expect("Failed to calculate weight");
-    let retrieved_txs = mempool.retrieve(weight).await.unwrap();
+    let retrieved_txs2 = mempool.retrieve(weight).await.unwrap();
     let stats = mempool.stats().await.unwrap();
 
     assert_eq!(stats.unconfirmed_txs, 3);
     assert_eq!(stats.reorg_txs, 5);
-    assert_eq!(retrieved_txs.len(), 2);
-    assert!(retrieved_txs.contains(&tx[3]));
-    assert!(retrieved_txs.contains(&tx2[1]));
+    assert_eq!(retrieved_txs2.len(), 2);
+    assert!(retrieved_txs2.contains(&tx[3]));
+    assert!(retrieved_txs2.contains(&tx2[1]));
 }
 
 #[tokio::test]
@@ -968,12 +973,11 @@ async fn test_reorg() {
     .await
     .unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
-
     // "Mine" block 2
     let schemas = vec![
-        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][0].clone()], to: vec![outputs[1][0].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![outputs[1][1].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![outputs[1][2].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (txns2, utxos) = schema_to_transaction(&schemas, &key_manager).await;
     outputs.push(utxos);
@@ -990,9 +994,9 @@ async fn test_reorg() {
 
     // "Mine" block 3
     let schemas = vec![
-        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![outputs[2][0].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![outputs[2][1].value/2], fee: 25*uT, lock: 5, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![outputs[2][1].value/2], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (txns3, utxos) = schema_to_transaction(&schemas, &key_manager).await;
     outputs.push(utxos);

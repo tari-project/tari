@@ -883,12 +883,12 @@ mod test {
     async fn test_find_duplicate_input() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let tx1 = Arc::new(
-            tx!(MicroMinotari(5000), fee: MicroMinotari(50), inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5000), fee: MicroMinotari(5), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinotari(5000), fee: MicroMinotari(50), inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5000), fee: MicroMinotari(5), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
@@ -1056,32 +1056,32 @@ mod test {
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(50), inputs:2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(5), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(20), inputs:3, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(2), inputs:3, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx3 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(100), inputs:2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(1), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx4 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(30), inputs:4, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(3), inputs:4, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx5 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(50), inputs:3, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(5), inputs:3, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx6 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(75), inputs:2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(7), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );

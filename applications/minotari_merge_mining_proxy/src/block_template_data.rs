@@ -260,7 +260,7 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_block_template_repository() {
         let btr = BlockTemplateRepository::new();
         let block_template = create_block_template_data();

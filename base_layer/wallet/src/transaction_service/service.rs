@@ -1971,7 +1971,6 @@ where
             .await?;
         tx_builder.with_tx_type(TxType::Burn);
         tx_builder.with_kernel_features(KernelFeatures::create_burn());
-
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
         let (commitment_mask_key, _) = self
@@ -2076,10 +2075,6 @@ where
 
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
-        self.resources
-            .output_manager_service
-            .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
-            .await?;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service

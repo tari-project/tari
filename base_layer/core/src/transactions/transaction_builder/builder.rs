@@ -8,7 +8,14 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::{TariAddress, TariAddressFeatures},
-    types::{CompressedCommitment, CompressedPublicKey, Signature, UncompressedPublicKey, UncompressedSignature},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        Signature,
+        UncompressedPublicKey,
+        UncompressedSignature,
+    },
 };
 use tari_script::{script, ExecutionStack};
 
@@ -556,7 +563,7 @@ where KM: TransactionKeyManagerInterface
 
         let mut script_keys = Vec::new();
         let mut sender_offset_keys = Vec::new();
-        let mut offset = Default::default();
+        let mut offset = PrivateKey::default();
         let mut signature = UncompressedSignature::default();
 
         let kernel_version = TransactionKernelVersion::get_current_version();

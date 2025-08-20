@@ -30,7 +30,13 @@ use minotari_wallet::{
     test_utils::create_consensus_constants,
     transaction_service::storage::{
         database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-        models::{CompletedTransaction, TxCancellationReason, WalletTransaction},
+        models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
+        },
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
@@ -56,6 +62,8 @@ use tari_core::{
             WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     },
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
@@ -64,7 +72,7 @@ use tari_test_utils::random;
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
-    let db = TransactionDatabase::new(backend);
+    let mut db = TransactionDatabase::new(backend);
     let key_manager = create_memory_db_key_manager().unwrap();
     let input = create_wallet_output_with_data(
         script!(Nop).unwrap(),
@@ -139,8 +147,140 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         MicroMinotari::from(5_000),
     ];
 
+    let mut outbound_txs = Vec::new();
+
+    for i in 0..messages.len() {
+        let tx_id = TxId::from(i + 10);
+        let address = TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        )
+        .unwrap();
+        outbound_txs.push(OutboundTransaction {
+            tx_id,
+            destination_address: address,
+            amount: amounts[i],
+            fee: finalized.fee,
+            sender_protocol: SenderTransactionProtocol::new_placeholder(),
+            status: TransactionStatus::Pending,
+            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            timestamp: Utc::now(),
+            cancelled: false,
+            direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
+            sent_output_hashes: vec![],
+        });
+        assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
+
+        db.add_pending_outbound_transaction(outbound_txs[i].tx_id, outbound_txs[i].clone())
+            .unwrap();
+
+        assert!(db.transaction_exists(tx_id).unwrap(), "TxId should exist");
+    }
+
+    let retrieved_outbound_txs = db.get_pending_outbound_transactions().unwrap();
+    assert_eq!(outbound_txs.len(), messages.len());
+    for i in outbound_txs.iter().take(messages.len()) {
+        let retrieved_outbound_tx = db.get_pending_outbound_transaction(i.tx_id).unwrap();
+        assert_eq!(&retrieved_outbound_tx, i);
+        assert_eq!(retrieved_outbound_tx.send_count, 0);
+        assert!(retrieved_outbound_tx.last_send_timestamp.is_none());
+        assert!(retrieved_outbound_txs.iter().any(|tx| tx == i));
+    }
+
+    db.increment_send_count(outbound_txs[0].tx_id).unwrap();
+    let retrieved_outbound_tx = db.get_pending_outbound_transaction(outbound_txs[0].tx_id).unwrap();
+    assert_eq!(retrieved_outbound_tx.send_count, 1);
+    assert!(retrieved_outbound_tx.last_send_timestamp.is_some());
+
+    let any_outbound_tx = db.get_any_transaction(outbound_txs[0].tx_id).unwrap().unwrap();
+    if let WalletTransaction::PendingOutbound(tx) = any_outbound_tx {
+        assert_eq!(tx, retrieved_outbound_tx);
+    } else {
+        panic!("Should have found outbound tx");
+    }
+
+    let messages = ["Hey!", "Yo!", "Sup!"];
+    let amounts = [
+        MicroMinotari::from(10_000),
+        MicroMinotari::from(23_000),
+        MicroMinotari::from(5_000),
+    ];
+    let mut inbound_txs = Vec::new();
+
+    for i in 0..messages.len() {
+        let address = TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        )
+        .unwrap();
+        let tx_id = TxId::from(i);
+        inbound_txs.push(InboundTransaction {
+            tx_id,
+            source_address: address,
+            amount: amounts[i],
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
+            status: TransactionStatus::Pending,
+            payment_id: MemoField::open_from_string(messages[i], TxType::PaymentToOther),
+            timestamp: Utc::now(),
+            cancelled: false,
+            direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
+            received_output_hashes: vec![],
+        });
+        assert!(!db.transaction_exists(tx_id).unwrap(), "TxId should not exist");
+        db.add_pending_inbound_transaction(tx_id, inbound_txs[i].clone())
+            .unwrap();
+        assert!(db.transaction_exists(tx_id).unwrap(), "TxId should exist");
+    }
+
+    let retrieved_inbound_txs = db.get_pending_inbound_transactions().unwrap();
+    assert_eq!(inbound_txs.len(), messages.len());
+    for i in inbound_txs.iter().take(messages.len()) {
+        let retrieved_tx = retrieved_inbound_txs.iter().find(|tx| tx.tx_id == i.tx_id).unwrap();
+        assert_eq!(&retrieved_tx, &i);
+        assert_eq!(retrieved_tx.send_count, 0);
+        assert!(retrieved_tx.last_send_timestamp.is_none());
+    }
+
+    db.increment_send_count(inbound_txs[0].tx_id).unwrap();
+    let retrieved_inbound_tx = db.get_pending_inbound_transaction(inbound_txs[0].tx_id).unwrap();
+    assert_eq!(retrieved_inbound_tx.send_count, 1);
+    assert!(retrieved_inbound_tx.last_send_timestamp.is_some());
+
+    let any_inbound_tx = db.get_any_transaction(inbound_txs[0].tx_id).unwrap().unwrap();
+    if let WalletTransaction::PendingInbound(tx) = any_inbound_tx {
+        assert_eq!(tx, retrieved_inbound_tx);
+    } else {
+        panic!("Should have found inbound tx");
+    }
+
+    let inbound_address = db
+        .get_pending_transaction_counterparty_address_by_tx_id(inbound_txs[0].tx_id)
+        .unwrap();
+    assert_eq!(inbound_address, inbound_txs[0].source_address);
+
+    assert!(db
+        .get_pending_transaction_counterparty_address_by_tx_id(100u64.into())
+        .is_err());
+
+    let outbound_address = db
+        .get_pending_transaction_counterparty_address_by_tx_id(outbound_txs[0].tx_id)
+        .unwrap();
+    assert_eq!(outbound_address, outbound_txs[0].destination_address);
+
     let mut completed_txs = Vec::new();
-    let tx = finalized.transaction.clone();
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![],
+        PrivateKey::random(&mut OsRng),
+        PrivateKey::random(&mut OsRng),
+    );
 
     for i in 0..messages.len() {
         let source_address = TariAddress::new_dual_address_with_default_features(
@@ -156,10 +296,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         )
         .unwrap();
         completed_txs.push(CompletedTransaction {
-            tx_id: TxId::new_random(),
+            tx_id: outbound_txs[i].tx_id,
             source_address,
             destination_address: dest_address,
-            amount: amounts[i],
+            amount: outbound_txs[i].amount,
             fee: MicroMinotari::from(200),
             transaction: tx.clone(),
             status: match i {
@@ -182,6 +322,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             change_output_hashes: vec![],
             received_output_hashes: vec![],
         });
+        db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
+            .unwrap();
+        db.complete_inbound_transaction(inbound_txs[i].tx_id, CompletedTransaction {
+            tx_id: inbound_txs[i].tx_id,
+            ..completed_txs[i].clone()
+        })
+        .unwrap();
     }
 
     let retrieved_completed_txs = db.get_completed_transactions(None, None, None, 0).unwrap();

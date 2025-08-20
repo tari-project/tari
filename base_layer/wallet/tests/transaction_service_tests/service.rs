@@ -565,7 +565,6 @@ async fn single_transaction_burn_tari() {
             shutdown.to_signal(),
         )
         .await;
-
     let initial_wallet_value = 25000.into();
     let uo1 = make_input(
         &mut OsRng,
