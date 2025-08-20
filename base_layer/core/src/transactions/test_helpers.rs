@@ -64,7 +64,6 @@ use crate::{
             TransactionKeyManagerWrapper,
             TxoStage,
         },
-        transaction_protocol::TransactionMetadata,
         weight::TransactionWeight,
     },
 };
@@ -274,12 +273,11 @@ pub fn create_random_signature(
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
 pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, features: KernelFeatures) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+    let e = TransactionKernel::build_kernel_signature_challenge(
         &TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &CompressedPublicKey::from_secret_key(&k),
-        &tx_meta,
+        fee, lock_height, &features, &None,
     );
     let sig = UncompressedSignature::sign_raw_uniform(&k, r, &e).unwrap();
     Signature::new_from_schnorr(sig)
@@ -294,7 +292,6 @@ pub async fn create_random_signature_from_secret_key(
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
 ) -> (CompressedPublicKey, Signature) {
-    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, kernel_features);
     let total_nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
@@ -303,10 +300,10 @@ pub async fn create_random_signature_from_secret_key(
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_message = TransactionKernel::build_kernel_signature_message(
         &kernel_version,
-        tx_meta.fee,
-        tx_meta.lock_height,
-        &tx_meta.kernel_features,
-        &tx_meta.burn_commitment,
+        fee,
+        lock_height,
+        &kernel_features,
+        &None,
     );
     let kernel_signature = key_manager
         .get_partial_txo_kernel_signature(

@@ -36,7 +36,6 @@ use tari_core::{
             OutputFeatures,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::TransactionMetadata,
     },
 };
 use tari_script::push_pubkey_script;
@@ -61,7 +60,7 @@ use crate::{
         storage::database::TransactionBackend,
     },
 };
-
+use crate::transaction_service::offline_signing::models::TransactionMetadata;
 const LOG_TARGET: &str = "wallet::transaction_service::offline_signing::offline_signer";
 
 pub struct OfflineSigner<TBackend, TWalletConnectivity, TKeyManagerInterface> {

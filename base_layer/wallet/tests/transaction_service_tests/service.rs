@@ -315,15 +315,8 @@ pub struct TransactionServiceNoCommsInterface {
     output_manager_service_handle: OutputManagerHandle<MemoryDbKeyManager>,
     key_manager_handle: MemoryDbKeyManager,
     outbound_service_mock_state: OutboundServiceMockState,
-    transaction_send_message_channel:
-        Sender<DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>>,
-    transaction_ack_message_channel: Sender<DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>>,
-    transaction_finalize_message_channel:
-        Sender<DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>>,
     _base_node_response_message_channel:
         Sender<DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>>,
-    transaction_cancelled_message_channel:
-        Sender<DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>>,
     _shutdown: Shutdown,
     _mock_rpc_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     base_node_identity: Arc<NodeIdentity>,
@@ -467,11 +460,7 @@ async fn setup_transaction_service_no_comms(
         output_manager_service_handle,
         key_manager_handle: key_manager,
         outbound_service_mock_state,
-        transaction_send_message_channel,
-        transaction_ack_message_channel,
-        transaction_finalize_message_channel,
         _base_node_response_message_channel: base_node_response_message_channel,
-        transaction_cancelled_message_channel,
         _shutdown: shutdown,
         _mock_rpc_server: mock_rpc_server,
         base_node_identity: node_identity,

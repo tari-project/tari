@@ -40,9 +40,9 @@ use tari_core::{
             WalletOutputBuilder,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-        transaction_protocol::TransactionMetadata,
     },
 };
+use crate::transaction_service::offline_signing::models::TransactionMetadata;
 use tari_script::push_pubkey_script;
 
 use crate::transaction_service::{

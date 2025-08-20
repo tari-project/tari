@@ -64,7 +64,6 @@ use crate::{
             TransactionKeyManagerInterface,
             TxoStage,
         },
-        transaction_protocol::TransactionMetadata,
     },
 };
 
@@ -269,15 +268,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let range_proof_type = self.range_proof_type.ok_or(CoinbaseBuildError::MissingRangeProofType)?;
 
         let kernel_features = KernelFeatures::create_coinbase();
-        let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
         // generate kernel signature
         let kernel_version = TransactionKernelVersion::get_current_version();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &kernel_version,
-            metadata.fee,
-            metadata.lock_height,
-            &metadata.kernel_features,
-            &metadata.burn_commitment,
+            0.into(),
+            0,
+            &kernel_features,
+            &None,
         );
         let public_nonce = self
             .key_manager
@@ -298,7 +296,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 &public_commitment_mask_key,
                 &kernel_version,
                 &kernel_message,
-                &metadata.kernel_features,
+                &kernel_features,
                 TxoStage::Output,
             )
             .await?;

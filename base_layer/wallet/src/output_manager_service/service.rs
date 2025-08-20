@@ -69,7 +69,6 @@ use tari_core::{
             WalletOutputBuilder,
         },
         transaction_key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::TransactionMetadata,
         CryptoFactories,
     },
 };
@@ -2671,13 +2670,10 @@ where
             self.resources.network,
         )
         .await?;
-        let tx_meta = TransactionMetadata::default();
         builder
             .with_fee_per_gram(fee_per_gram)
             .with_memo(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_lock_height(tx_meta.lock_height)
-            .with_kernel_features(tx_meta.kernel_features);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in &src_outputs {
             builder.with_input(uo.wallet_output.clone()).await?;
