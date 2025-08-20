@@ -7,5 +7,5 @@ pub use error::TransactionBuilderError;
 mod models;
 pub use models::{FinalizedTransaction, OutputPair, RecipientDetails};
 
-mod transaction_builder;
-pub use transaction_builder::TransactionBuilder;
+mod builder;
+pub use builder::TransactionBuilder;

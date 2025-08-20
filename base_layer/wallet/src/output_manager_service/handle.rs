@@ -293,7 +293,7 @@ pub enum OutputManagerResponse<KM> {
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
-    TransactionBuilderToSend(TransactionBuilder<KM>),
+    TransactionBuilderToSend(Box<TransactionBuilder<KM>>),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
     UnspentOutputs(Vec<DbWalletOutput>),
@@ -523,7 +523,7 @@ where KM: TransactionKeyManagerInterface
             })
             .await??
         {
-            OutputManagerResponse::TransactionBuilderToSend(stp) => Ok(stp),
+            OutputManagerResponse::TransactionBuilderToSend(stp) => Ok(*stp),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -538,7 +538,7 @@ where KM: TransactionKeyManagerInterface
             .call(OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram })
             .await??
         {
-            OutputManagerResponse::TransactionBuilderToSend(tx_builder) => Ok(tx_builder),
+            OutputManagerResponse::TransactionBuilderToSend(tx_builder) => Ok(*tx_builder),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

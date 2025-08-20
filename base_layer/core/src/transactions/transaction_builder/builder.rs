@@ -52,7 +52,7 @@ pub struct TransactionBuilder<KM> {
     sender_custom_outputs: Vec<OutputPair>,
     prevent_fee_gt_amount: bool,
     tx_type: TxType,
-    payment_id: Option<MemoField>,
+    memo_field: Option<MemoField>,
     lock_height: u64,
     kernel_features: KernelFeatures,
     burn_commitment: Option<CompressedCommitment>,
@@ -87,7 +87,7 @@ where KM: TransactionKeyManagerInterface
             sender_custom_outputs: Vec::new(),
             prevent_fee_gt_amount: false,
             tx_type: TxType::PaymentToOther,
-            payment_id: None,
+            memo_field: None,
             lock_height: 0,
             kernel_features: KernelFeatures::empty(),
             burn_commitment: None,
@@ -122,8 +122,8 @@ where KM: TransactionKeyManagerInterface
 
     /// Sets the payment id for the transaction. This is used to identify the transaction and is included in the
     /// transaction metadata.
-    pub fn with_payment_id(&mut self, payment_id: MemoField) -> &mut Self {
-        self.payment_id = Some(payment_id);
+    pub fn with_memo(&mut self, memo: MemoField) -> &mut Self {
+        self.memo_field = Some(memo);
         self
     }
 
@@ -370,56 +370,43 @@ where KM: TransactionKeyManagerInterface
         Ok((fee, change))
     }
 
-    async fn build_change(
-        &self,
-        amount: MicroMinotari,
-    ) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
-        let (change_commitment_mask_key, change_script_key) =
-            self.key_manager.get_next_commitment_mask_and_script_key().await?;
-
-        let sender_offset_public = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
-        let script = script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?;
-        let input_data = ExecutionStack::default();
-        let mut payment_id = MemoField::new_transaction_info(
+    async fn create_change_memo(&self, amount: MicroMinotari) -> Result<MemoField, TransactionBuilderError> {
+        let mut memo = MemoField::new_transaction_info(
             TariAddress::default(),
             MicroMinotari::default(),
             amount,
             true,
             self.tx_type,
             Vec::new(),
-            self.payment_id
+            self.memo_field
                 .as_ref()
                 .map(|pay_id| pay_id.payment_id_as_bytes())
                 .unwrap_or_default(),
         )
-        .map_err(|e| TransactionBuilderError::InvalidSerializedSize(e))?;
+        .map_err(TransactionBuilderError::InvalidMemo)?;
 
         // we only set for the first output, otherwise the extra data gets too large
         if let Some(recipient) = self.recipients.first() {
-            payment_id.transaction_info_set_amount(recipient.output.output.value);
-            match payment_id.get_type() {
-                TxType::PaymentToOther => payment_id
+            memo.transaction_info_set_amount(recipient.output.output.value);
+            match memo.get_type() {
+                TxType::PaymentToOther => memo
                     .transaction_info_set_address(recipient.recipient_address.clone())
-                    .map_err(|e| TransactionBuilderError::InvalidMemo(e))?,
+                    .map_err(TransactionBuilderError::InvalidMemo)?,
                 TxType::PaymentToSelf |
                 TxType::CoinSplit |
                 TxType::CoinJoin |
                 TxType::ValidatorNodeRegistration |
                 TxType::CodeTemplateRegistration |
                 TxType::ClaimAtomicSwap |
-                TxType::HtlcAtomicSwapRefund => payment_id
+                TxType::HtlcAtomicSwapRefund => memo
                     .transaction_info_set_address(self.own_address.clone())
-                    .map_err(|e| TransactionBuilderError::InvalidMemo(e))?,
+                    .map_err(TransactionBuilderError::InvalidMemo)?,
                 _ => {},
             }
         } else {
-            payment_id.transaction_info_set_amount(amount);
-            payment_id
-                .transaction_info_set_address(self.own_address.clone())
-                .map_err(|e| TransactionBuilderError::InvalidMemo(e))?;
+            memo.transaction_info_set_amount(amount);
+            memo.transaction_info_set_address(self.own_address.clone())
+                .map_err(TransactionBuilderError::InvalidMemo)?;
         }
         let mut sent_hashes = Vec::new();
         for recipient in &self.recipients {
@@ -428,18 +415,28 @@ where KM: TransactionKeyManagerInterface
         for output in &self.sender_custom_outputs {
             sent_hashes.push(output.tx_output(&self.key_manager).await?.hash());
         }
-        payment_id
-            .transaction_info_set_sent_output_hashes(sent_hashes)
-            .map_err(|e| TransactionBuilderError::InvalidMemo(e))?;
+        memo.transaction_info_set_sent_output_hashes(sent_hashes)
+            .map_err(TransactionBuilderError::InvalidMemo)?;
+        Ok(memo)
+    }
+
+    async fn build_change(
+        &self,
+        amount: MicroMinotari,
+    ) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
+        let (change_commitment_mask_key, change_script_key) =
+            self.key_manager.get_next_commitment_mask_and_script_key().await?;
+        let memo = self.create_change_memo(amount).await?;
+        let sender_offset_public = self
+            .key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await?;
+        let script = script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?;
+        let input_data = ExecutionStack::default();
 
         let encrypted_data = self
             .key_manager
-            .encrypt_data_for_recovery(
-                &change_commitment_mask_key.key_id,
-                None,
-                amount.as_u64(),
-                payment_id.clone(),
-            )
+            .encrypt_data_for_recovery(&change_commitment_mask_key.key_id, None, amount.as_u64(), memo.clone())
             .await?;
 
         let minimum_value_promise = MicroMinotari::zero();
@@ -482,7 +479,7 @@ where KM: TransactionKeyManagerInterface
             covenant,
             encrypted_data,
             minimum_value_promise,
-            payment_id,
+            memo,
             &self.key_manager,
         )
         .await?;
@@ -568,6 +565,7 @@ where KM: TransactionKeyManagerInterface
     }
 
     /// Build the transaction. This will return an error if the transaction is invalid.
+    #[allow(clippy::too_many_lines)]
     pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
@@ -737,7 +735,7 @@ where KM: TransactionKeyManagerInterface
 
         let kernel = KernelBuilder::new()
             .with_fee(total_fee)
-            .with_features(self.kernel_features.clone())
+            .with_features(self.kernel_features)
             .with_lock_height(self.lock_height)
             .with_burn_commitment(self.burn_commitment.clone())
             .with_excess(&excess)
@@ -786,7 +784,7 @@ where KM: TransactionKeyManagerInterface
             amount,
             fee: total_fee,
             transaction: tx,
-            payment_id: self.payment_id.unwrap_or_default(),
+            payment_id: self.memo_field.unwrap_or_default(),
             change: change_output.map(|o| o.output),
             sent_outputs,
             // Hashes of outputs being sent to others (excluding change)
@@ -796,5 +794,515 @@ where KM: TransactionKeyManagerInterface
             // Hashes of change outputs (for reference)
             change_output_hashes: change_output_hash,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::{key_branches::TransactionKeyManagerBranch, types::ComAndPubSignature};
+    use tari_script::{script, ExecutionStack, TariScript};
+
+    use super::*;
+    use crate::{
+        covenants::Covenant,
+        test_helpers::{create_consensus_constants, create_consensus_rules},
+        transactions::{
+            tari_amount::{uT, MicroMinotari},
+            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams, UtxoTestParams},
+            transaction_builder::TransactionBuilder,
+            transaction_components::{memo_field::MemoField, EncryptedData, OutputFeatures, WalletOutput},
+            transaction_key_manager::create_memory_db_key_manager,
+            CryptoFactories,
+        },
+        validation::transaction::TransactionInternalConsistencyValidator,
+    };
+
+    /// Hit the edge case where our change isn't enough to cover the cost of an extra output
+    #[tokio::test]
+    #[allow(clippy::identity_op)]
+    async fn change_edge_case() {
+        // Create some inputs
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let p = TestParams::new(&key_manager).await;
+        let constants = create_consensus_constants(0);
+        let weighting = constants.transaction_weight_params();
+        let tx_fee = Fee::new(*weighting).calculate(1.into(), 1, 1, 1, 0);
+        let fee_for_change_output = weighting.params().output_weight * uT;
+        // fee == 340, output = 80
+        // outputs weight: 1060, kernel weight: 10, input weight: 9, output weight: 53,
+
+        // Pay out so that I should get change, but not enough to pay for the output
+        let input = create_test_input(
+            // one under the amount required to pay the fee for a change output
+            2000 * uT + tx_fee + fee_for_change_output - 1 * uT,
+            0,
+            &key_manager,
+            vec![],
+            None,
+        )
+        .await;
+        let output = p
+            .create_output(
+                UtxoTestParams {
+                    value: 2000 * uT,
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .await
+            .unwrap();
+        // Start the builder
+        let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        builder
+            .with_lock_height(0)
+            .with_output(output, p.sender_offset_key_id)
+            .await
+            .unwrap()
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_fee_per_gram(MicroMinotari(1))
+            .with_prevent_fee_gt_amount(false);
+        let result = builder.build().await.unwrap();
+        assert_eq!(
+            result.transaction.body.kernels().first().unwrap().lock_height,
+            0,
+            "Lock height"
+        );
+        assert_eq!(result.fee, tx_fee + fee_for_change_output - 1 * uT, "Fee");
+        assert_eq!(
+            result.transaction.body.kernels().first().unwrap().fee,
+            tx_fee + fee_for_change_output - 1 * uT,
+            "Fee"
+        );
+        assert_eq!(result.transaction.body.outputs().len(), 1, "There should be 1 output");
+        assert_eq!(result.transaction.body.inputs().len(), 1, "There should be 1 input");
+    }
+
+    #[tokio::test]
+    async fn too_many_inputs() {
+        // Create some inputs
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let p = TestParams::new(&key_manager).await;
+
+        let output = create_wallet_output_with_data(
+            script!(Nop).unwrap(),
+            OutputFeatures::default(),
+            &p,
+            MicroMinotari(500),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+        let constants = create_consensus_constants(0);
+        // Start the builder
+        let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        builder
+            .with_lock_height(0)
+            .with_output(output, p.sender_offset_key_id)
+            .await
+            .unwrap()
+            .with_fee_per_gram(MicroMinotari(2));
+        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager, vec![], None).await;
+        for _ in 0..=MAX_TRANSACTION_INPUTS {
+            builder.with_input(input_base.clone()).await.unwrap();
+        }
+        let _err = builder.build().await.unwrap_err();
+        // this needs a refactor to get in, we cannot enable partialeq TransactionBuilderError
+        // assert_eq!(err, TransactionBuilderError::ExceedsMaxInputs(MAX_TRANSACTION_INPUTS));
+    }
+
+    #[tokio::test]
+    async fn not_enough_funds() {
+        // Create some inputs
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let p = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![], None).await;
+        let script = script!(Nop).unwrap();
+        let output = create_wallet_output_with_data(
+            script.clone(),
+            OutputFeatures::default(),
+            &p,
+            MicroMinotari(400),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+        // Start the builder
+        let constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        builder
+            .with_lock_height(0)
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_output(output, p.sender_offset_key_id.clone())
+            .await
+            .unwrap()
+            .with_fee_per_gram(MicroMinotari(1));
+        let _err = builder.build().await.unwrap_err();
+
+        // this needs a refactor to get in, we cannot enable partialeq TransactionBuilderError
+        // assert_eq!(err, TransactionBuilderError::SpendingMoreThanAvailable {
+        //     available: MicroMinotari(400),
+        //     sent: MicroMinotari(400)
+        // });
+    }
+
+    #[tokio::test]
+    async fn zero_recipients() {
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let p1 = TestParams::new(&key_manager).await;
+        let p2 = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
+                .await
+                .unwrap();
+        let script = TariScript::default();
+        let output_features = OutputFeatures::default();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(2))
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_output(
+                create_wallet_output_with_data(
+                    script.clone(),
+                    output_features.clone(),
+                    &p1,
+                    MicroMinotari(500),
+                    &key_manager,
+                )
+                .await
+                .unwrap(),
+                p1.sender_offset_key_id.clone(),
+            )
+            .await
+            .unwrap()
+            .with_output(
+                create_wallet_output_with_data(script, output_features, &p2, MicroMinotari(400), &key_manager)
+                    .await
+                    .unwrap(),
+                p2.sender_offset_key_id.clone(),
+            )
+            .await
+            .unwrap();
+        let finalized = builder.build().await.unwrap();
+        let tx = finalized.transaction;
+        let rules = create_consensus_rules();
+        let factories = CryptoFactories::default();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    async fn single_recipient_no_change() {
+        let rules = create_consensus_rules();
+        let factories = CryptoFactories::default();
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let bob_key = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
+        let utxo = input.to_transaction_input(&key_manager).await.unwrap();
+        let script = script!(Nop).unwrap();
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        let fee_per_gram = MicroMinotari(4);
+        let fee = Fee::new(*consensus_constants.transaction_weight_params()).calculate(fee_per_gram, 1, 1, 1, 0);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_input(input)
+            .await
+            .unwrap();
+        let bob_sender_offset = key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await
+            .unwrap();
+        let bob_public_key = bob_sender_offset.pub_key.clone();
+        let bob_output = WalletOutput::new_current_version(
+            MicroMinotari(1200) - fee - MicroMinotari(10),
+            bob_key.commitment_mask_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            ComAndPubSignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+            MemoField::new_empty(),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
+        builder
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .await
+            .unwrap();
+
+        let finalized = builder.build().await.unwrap();
+
+        let tx = finalized.transaction;
+        assert_eq!(tx.body.kernels()[0].fee, fee + MicroMinotari(10)); // Check the twist above
+        assert_eq!(tx.body.inputs().len(), 1);
+        assert_eq!(tx.body.inputs()[0].commitment(), utxo.commitment());
+        assert_eq!(tx.body.outputs().len(), 1);
+        assert!(tx.body.outputs().first().unwrap().verify_metadata_signature().is_ok());
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn single_recipient_with_change() {
+        let rules = create_consensus_rules();
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let factories = CryptoFactories::default();
+        // Alice's parameters
+        let alice_key = TestParams::new(&key_manager).await;
+        // Bob's parameters
+        let bob_key = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None).await;
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        let script = script!(Nop).unwrap();
+        let expected_fee = Fee::new(*consensus_constants.transaction_weight_params()).calculate(
+            MicroMinotari(20),
+            1,
+            1,
+            2,
+            alice_key
+                .get_size_for_default_features_and_scripts(2)
+                .expect("Failed to get size for default features and scripts"),
+        );
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .await
+            .unwrap();
+        let bob_sender_offset = key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await
+            .unwrap();
+        let bob_public_key = bob_sender_offset.pub_key.clone();
+        let bob_output = WalletOutput::new_current_version(
+            MicroMinotari(5000),
+            bob_key.commitment_mask_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            ComAndPubSignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+            MemoField::new_empty(),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
+        builder
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .await
+            .unwrap();
+        // Transaction should be complete
+        let finalized = builder.build().await.unwrap();
+        let tx = finalized.transaction;
+        assert_eq!(tx.body.kernels()[0].fee, expected_fee);
+        assert_eq!(tx.body.inputs().len(), 1);
+        assert_eq!(tx.body.outputs().len(), 2);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    async fn single_recipient_multiple_inputs_with_change() {
+        let rules = create_consensus_rules();
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let factories = CryptoFactories::default();
+        // Bob's parameters
+        let bob_key = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None).await;
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        let script = script!(Nop).unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_input(input2)
+            .await
+            .unwrap()
+            .with_input(input3)
+            .await
+            .unwrap();
+        let bob_sender_offset = key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await
+            .unwrap();
+        let bob_public_key = bob_sender_offset.pub_key.clone();
+        let bob_output = WalletOutput::new_current_version(
+            MicroMinotari(5000),
+            bob_key.commitment_mask_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            ComAndPubSignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+            MemoField::new_empty(),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
+        builder
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .await
+            .unwrap();
+        let finalized = builder.build().await.unwrap();
+
+        let tx = finalized.transaction;
+        assert_eq!(tx.body.inputs().len(), 3);
+        assert_eq!(tx.body.outputs().len(), 2);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    async fn disallow_fee_larger_than_amount() {
+        // Alice's parameters
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
+        let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
+        let script = script!(Nop).unwrap();
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
+                .await
+                .unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_input(input)
+            .await
+            .unwrap();
+
+        let bob_key = TestParams::new(&key_manager).await;
+        let bob_sender_offset = key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await
+            .unwrap();
+        let bob_public_key = bob_sender_offset.pub_key.clone();
+        let bob_output = WalletOutput::new_current_version(
+            amount,
+            bob_key.commitment_mask_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            ComAndPubSignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+            MemoField::new_empty(),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
+        builder
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .await
+            .unwrap();
+        let _err = builder.build().await.unwrap_err();
+
+        // this needs a refactor to get in, we cannot enable partialeq TransactionBuilderError
+        // assert_eq!(err, TransactionBuilderError::FeeGreaterThanAmount);
+    }
+
+    #[tokio::test]
+    async fn allow_fee_larger_than_amount() {
+        // Alice's parameters
+        let key_manager = create_memory_db_key_manager().unwrap();
+        let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
+        let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
+        let script = script!(Nop).unwrap();
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
+                .await
+                .unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_prevent_fee_gt_amount(false);
+
+        let bob_key = TestParams::new(&key_manager).await;
+        let bob_sender_offset = key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await
+            .unwrap();
+        let bob_public_key = bob_sender_offset.pub_key.clone();
+        let bob_output = WalletOutput::new_current_version(
+            amount,
+            bob_key.commitment_mask_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            ComAndPubSignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+            MemoField::new_empty(),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
+        builder
+            .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
+            .await
+            .unwrap();
+        // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
+        match builder.build().await {
+            Ok(_) => {},
+            Err(e) => panic!("Unexpected error: {e:?}"),
+        };
     }
 }

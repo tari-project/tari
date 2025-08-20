@@ -33,12 +33,13 @@ use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
+use tari_core::transactions::transaction_key_manager::MemoryDbKeyManager;
 
 const LOG_TARGET: &str = "wallet::output_manager_service_mock";
 
 pub fn make_output_manager_service_mock(
     shutdown_signal: ShutdownSignal,
-) -> (OutputManagerServiceMock, OutputManagerHandle) {
+) -> (OutputManagerServiceMock, OutputManagerHandle<MemoryDbKeyManager>) {
     let (sender, receiver) = reply_channel::unbounded();
     let (publisher, _) = broadcast::channel(100);
     let output_manager_handle = OutputManagerHandle::new(sender, publisher.clone());
@@ -48,7 +49,7 @@ pub fn make_output_manager_service_mock(
 
 pub struct OutputManagerServiceMock {
     _event_publisher: Sender<Arc<OutputManagerEvent>>,
-    request_stream: Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+    request_stream: Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse<MemoryDbKeyManager>, OutputManagerError>>>,
     shutdown_signal: ShutdownSignal,
     state: OutputManagerMockState,
 }
@@ -56,7 +57,7 @@ pub struct OutputManagerServiceMock {
 impl OutputManagerServiceMock {
     pub fn new(
         event_publisher: Sender<Arc<OutputManagerEvent>>,
-        request_stream: Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+        request_stream: Receiver<OutputManagerRequest, Result<OutputManagerResponse<MemoryDbKeyManager>, OutputManagerError>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
@@ -93,7 +94,7 @@ impl OutputManagerServiceMock {
     fn handle_request(
         &self,
         request: OutputManagerRequest,
-        reply_tx: oneshot::Sender<Result<OutputManagerResponse, OutputManagerError>>,
+        reply_tx: oneshot::Sender<Result<OutputManagerResponse<MemoryDbKeyManager>, OutputManagerError>>,
     ) {
         info!(target: LOG_TARGET, "Handling Request: {request}");
         match request {

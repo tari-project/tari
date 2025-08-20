@@ -479,7 +479,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let mut payment_id = change.output.payment_id.clone();
         payment_id
             .transaction_info_set_sent_output_hashes(vec![output_hash])
-            .map_err(|e| TransactionServiceError::OneSidedTransactionError(e))?;
+            .map_err(TransactionBuilderError::InvalidMemo)?;
         let encrypted_data = self
             .key_manager
             .encrypt_data_for_recovery(

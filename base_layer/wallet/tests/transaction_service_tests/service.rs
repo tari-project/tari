@@ -187,7 +187,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     shutdown_signal: ShutdownSignal,
 ) -> (
     TransactionServiceHandle,
-    OutputManagerHandle,
+    OutputManagerHandle<MemoryDbKeyManager>,
     CommsNode,
     WalletConnectivityHandle<MockHttpClientFactory>,
     MemoryDbKeyManager,
@@ -293,7 +293,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         .await
         .unwrap();
 
-    let output_manager_handle = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
+    let output_manager_handle = handles.expect_handle::<OutputManagerHandle<MemoryDbKeyManager>>();
     let key_manager_handle = handles.expect_handle::<MemoryDbKeyManager>();
     let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
     let connectivity_service_handle = handles.expect_handle::<WalletConnectivityHandle<MockHttpClientFactory>>();
@@ -312,7 +312,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 /// is constructed without a comms layer, base node etc
 pub struct TransactionServiceNoCommsInterface {
     transaction_service_handle: TransactionServiceHandle,
-    output_manager_service_handle: OutputManagerHandle,
+    output_manager_service_handle: OutputManagerHandle<MemoryDbKeyManager>,
     key_manager_handle: MemoryDbKeyManager,
     outbound_service_mock_state: OutboundServiceMockState,
     transaction_send_message_channel:

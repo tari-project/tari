@@ -862,22 +862,19 @@ impl UnconfirmedPool {
 mod test {
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
-    use tari_common_types::tari_address::TariAddress;
-    use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
-        covenants::Covenant,
         test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
         transactions::{
             aggregated_body::AggregateBody,
             fee::Fee,
             tari_amount::MicroMinotari,
             test_helpers::{TestParams, UtxoTestParams},
+            transaction_builder::TransactionBuilder,
             transaction_key_manager::create_memory_db_key_manager,
             weight::TransactionWeight,
-            SenderTransactionProtocol,
         },
         tx,
     };
@@ -983,20 +980,12 @@ mod test {
         let (tx2, inputs, _) =
             tx!(INPUT_AMOUNT, fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
 
-        let mut stx_builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+        let mut tx_builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet)
+                .await
+                .unwrap();
 
-        let change = TestParams::new(&key_manager).await;
-        stx_builder
-            .with_lock_height(0)
-            .with_fee_per_gram(5.into())
-            .with_change_data(
-                TariScript::default(),
-                ExecutionStack::default(),
-                change.script_key_id.clone(),
-                change.commitment_mask_key_id.clone(),
-                Covenant::default(),
-                TariAddress::default(),
-            );
+        tx_builder.with_lock_height(0).with_fee_per_gram(5.into());
 
         let test_params = TestParams::new(&key_manager).await;
         // Double spend the input from tx2 in tx3
@@ -1022,7 +1011,7 @@ mod test {
             )
             .await
             .unwrap();
-        stx_builder
+        tx_builder
             .with_input(double_spend_input)
             .await
             .unwrap()
@@ -1030,10 +1019,9 @@ mod test {
             .await
             .unwrap();
 
-        let mut stx_protocol = stx_builder.build().await.unwrap();
-        stx_protocol.finalize(&key_manager).await.unwrap();
+        let finalized = tx_builder.build().await.expect("Failed to finalize transaction");
 
-        let tx3 = stx_protocol.get_transaction().unwrap().clone();
+        let tx3 = finalized.transaction;
 
         let tx1 = Arc::new(tx1);
         let tx2 = Arc::new(tx2);

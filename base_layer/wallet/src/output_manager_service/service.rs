@@ -364,7 +364,7 @@ where
                     covenant,
                 )
                 .await
-                .map(OutputManagerResponse::TransactionBuilderToSend),
+                .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
@@ -431,7 +431,7 @@ where
             OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram } => self
                 .scrape_wallet(tx_id, fee_per_gram)
                 .await
-                .map(OutputManagerResponse::TransactionBuilderToSend),
+                .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
 
             OutputManagerRequest::PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
@@ -1039,7 +1039,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(false)
             .with_kernel_features(KernelFeatures::empty())
-            .with_payment_id(payment_id);
+            .with_memo(payment_id);
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone()).await?;
@@ -1286,24 +1286,7 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())
             .await?
-            // .with_recipient_data(
-            //     push_pubkey_script(recipient_address.public_spend_key()),
-            //     output_features,
-            //     Covenant::default(),
-            //     minimum_value_promise,
-            //     amount,
-            //     recipient_address.clone(),
-            // )
-            // .await?
-            // .with_change_data(
-            //     script!(PushPubKey(Box::default()))?,
-            //     ExecutionStack::default(),
-            //     TariKeyId::default(),
-            //     TariKeyId::default(),
-            //     Covenant::default(),
-            //     self.resources.interactive_tari_address.clone(),
-            // )
-            .with_payment_id(payment_id);
+            .with_memo(payment_id);
         let sender_offset_private_key_id_self = self
             .resources
             .key_manager
@@ -2227,7 +2210,7 @@ where
         )
         .await?;
         tx_builder
-            .with_payment_id(MemoField::open_from_string(
+            .with_memo(MemoField::open_from_string(
                 &format!("Coin split transaction, {accumulated_amount} into {number_of_splits} outputs"),
                 TxType::CoinSplit,
             ))
@@ -2394,7 +2377,7 @@ where
             TxType::CoinSplit,
         );
         tx_builder
-            .with_payment_id(payment_id.clone())
+            .with_memo(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2621,7 +2604,7 @@ where
         )
         .await?;
         tx_builder
-            .with_payment_id(payment_id.clone())
+            .with_memo(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2691,7 +2674,7 @@ where
         let tx_meta = TransactionMetadata::default();
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_payment_id(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
+            .with_memo(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
             .with_kernel_features(tx_meta.kernel_features);
@@ -2769,7 +2752,7 @@ where
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_payment_id(MemoField::open_from_string(
+                    .with_memo(MemoField::open_from_string(
                         "SHA-XTR atomic swap",
                         TxType::ClaimAtomicSwap,
                     ))
@@ -2836,7 +2819,7 @@ where
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_payment_id(MemoField::open_from_string(
+            .with_memo(MemoField::open_from_string(
                 "SHA-XTR atomic refund",
                 TxType::HtlcAtomicSwapRefund,
             ))

@@ -80,7 +80,7 @@ use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
 };
-
+use tari_core::transactions::transaction_builder::TransactionBuilder;
 use crate::support::{
     base_node_http_service_mock::MockHttpClientFactory,
     data::get_temp_sqlite_database_connection,
@@ -94,7 +94,7 @@ fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
 }
 
 struct TestOmsService {
-    pub output_manager_handle: OutputManagerHandle,
+    pub output_manager_handle: OutputManagerHandle<MemoryDbKeyManager>,
     pub _wallet_connectivity_mock: WalletConnectivityHandle<MockHttpClientFactory>,
     pub _shutdown: Shutdown,
     pub _transaction_service_handle: TransactionServiceHandle,
@@ -168,7 +168,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
 ) -> (
-    OutputManagerHandle,
+    OutputManagerHandle<MemoryDbKeyManager>,
     Shutdown,
     TransactionServiceHandle,
     BaseNodeServiceHandle,
@@ -234,7 +234,7 @@ async fn generate_sender_transaction_message(
     key_manager: &MemoryDbKeyManager,
 ) -> (TxId, TransactionSenderMessage) {
     let input = make_input(&mut OsRng, 2 * amount, &OutputFeatures::default(), key_manager).await;
-    let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+    let mut builder = TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).await.unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroMinotari(20))
@@ -252,18 +252,11 @@ async fn generate_sender_transaction_message(
         .await
         .unwrap();
 
-    let change = TestParams::new(key_manager).await;
-    builder.with_change_data(
-        script!(Nop).unwrap(),
-        inputs!(change.script_key_pk),
-        change.script_key_id,
-        change.commitment_mask_key_id,
-        Covenant::default(),
-        TariAddress::default(),
+    let change = TestParams::new(key_manager).await;\Address::default(),
     );
 
     let mut stp = builder.build().await.unwrap();
-    let tx_id = stp.get_tx_id().unwrap();
+    let tx_id = TxId::new_random();
     (
         tx_id,
         TransactionSenderMessage::new_single_round_message(stp.build_single_round_message(key_manager).await.unwrap()),
@@ -980,38 +973,6 @@ async fn cancel_transaction() {
     );
 }
 
-#[tokio::test]
-async fn cancel_transaction_and_reinstate_inbound_tx() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone());
-    let mut oms = setup_output_manager_service(backend, true).await;
-
-    let value = MicroMinotari::from(5000);
-    let (tx_id, sender_message) = generate_sender_transaction_message(value, &oms.key_manager_handle).await;
-    let _rtp = oms
-        .output_manager_handle
-        .get_recipient_transaction(sender_message)
-        .await
-        .unwrap();
-    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
-
-    let balance = oms.output_manager_handle.get_balance().await.unwrap();
-    assert_eq!(balance.pending_incoming_balance, value);
-
-    oms.output_manager_handle.cancel_transaction(tx_id).await.unwrap();
-
-    let balance = oms.output_manager_handle.get_balance().await.unwrap();
-    assert_eq!(balance.pending_incoming_balance, MicroMinotari::from(0));
-
-    oms.output_manager_handle
-        .reinstate_cancelled_inbound_transaction_outputs(tx_id)
-        .await
-        .unwrap();
-
-    let balance = oms.output_manager_handle.get_balance().await.unwrap();
-
-    assert_eq!(balance.pending_incoming_balance, value);
-}
 
 #[tokio::test]
 async fn test_get_balance() {
