@@ -85,10 +85,10 @@ pub struct WalletConfig {
     /// The main wallet password
     #[serde(deserialize_with = "deserialize_safe_password_option")]
     pub password: Option<SafePassword>,
-    /// The auto ping interval to use for contacts liveness data
+    /// DEPRECATED: The auto ping interval to use for contacts liveness data
     #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
-    /// How long a contact may be not seen before being determined to be offline
+    /// DEPRECATED: How long a contact may be not seen before being determined to be offline
     pub contacts_online_ping_window: usize,
     /// When running the console wallet in command mode, how long to wait for sent transactions.
     #[serde(with = "serializers::seconds")]
@@ -162,8 +162,8 @@ impl Default for WalletConfig {
             db_file: PathBuf::from_str("db/console_wallet.db").unwrap(),
             db_connection_pool_size: 16, // Note: Do not reduce this default number
             password: None,
-            contacts_auto_ping_interval: Duration::from_secs(30),
-            contacts_online_ping_window: 30,
+            contacts_auto_ping_interval: Duration::from_secs(30), // DEPRECATED
+            contacts_online_ping_window: 30,                      // DEPRECATED
             command_send_wait_stage: TransactionStage::Broadcast,
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,

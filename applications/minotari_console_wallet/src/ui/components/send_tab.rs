@@ -22,9 +22,9 @@ use tui::{
 use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{
-    components::{balance::Balance, contacts_tab::ContactsTab, Component, KeyHandled},
+    components::{balance::Balance, Component, KeyHandled},
     state::{AppState, UiTransactionSendStatus},
-    widgets::{draw_dialog, WindowedListState},
+    widgets::draw_dialog,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::send_tab ";
@@ -32,7 +32,6 @@ const LOG_TARGET: &str = "wallet::console_wallet::send_tab ";
 pub struct SendTab {
     balance: Balance,
     send_input_mode: SendInputMode,
-    show_contacts: bool,
     to_field: String,
     payment_id_field: String,
     amount_field: String,
@@ -41,7 +40,6 @@ pub struct SendTab {
     error_message: Option<String>,
     success_message: Option<String>,
     offline_message: Option<String>,
-    contacts_list_state: WindowedListState,
     send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
     confirmation_dialog: Option<ConfirmationDialogType>,
     selected_unique_id: Option<Vec<u8>>,
@@ -54,7 +52,6 @@ impl SendTab {
         Self {
             balance: Balance::new(),
             send_input_mode: SendInputMode::None,
-            show_contacts: false,
             to_field: String::new(),
             payment_id_field: String::new(),
             amount_field: String::new(),
@@ -63,7 +60,6 @@ impl SendTab {
             error_message: None,
             success_message: None,
             offline_message: None,
-            contacts_list_state: WindowedListState::new(),
             send_result_watch: None,
             confirmation_dialog: None,
             selected_unique_id: None,
@@ -108,8 +104,6 @@ impl SendTab {
             Span::raw(" to edit "),
             Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" field, "),
-            Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select a contact, "),
             Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
             Span::styled("Payment-id", Style::default().add_modifier(Modifier::BOLD)),
@@ -206,38 +200,6 @@ impl SendTab {
                 vert_chunks[3].y + 1,
             ),
         }
-    }
-
-    fn draw_contacts<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
-    where B: Backend {
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            "Contacts",
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-        ));
-        f.render_widget(block, area);
-        let list_areas = Layout::default()
-            .constraints([Constraint::Length(1), Constraint::Min(42)].as_ref())
-            .margin(1)
-            .split(area);
-
-        let instructions = Paragraph::new(Spans::from(vec![
-            Span::raw(" Use "),
-            Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to choose a contact, "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select."),
-        ]))
-        .wrap(Wrap { trim: true });
-        f.render_widget(instructions, list_areas[0]);
-        self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-        let mut list_state = self
-            .contacts_list_state
-            .update_list_state((list_areas[1].height as usize).saturating_sub(3));
-        let window = self.contacts_list_state.get_start_end();
-        let windowed_view = app_state.get_contacts_slice(window.0, window.1);
-
-        let column_list = ContactsTab::create_column_view(windowed_view);
-        column_list.render(f, list_areas[1], &mut list_state);
     }
 
     #[allow(clippy::too_many_lines)]
@@ -373,24 +335,6 @@ impl SendTab {
 
         KeyHandled::NotHandled
     }
-
-    fn on_key_show_contacts(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
-        if self.show_contacts && c == '\n' {
-            if let Some(c) = self
-                .contacts_list_state
-                .selected()
-                .and_then(|i| app_state.get_contact(i))
-                .cloned()
-            {
-                self.to_field = c.address;
-                self.send_input_mode = SendInputMode::Amount;
-                self.show_contacts = false;
-            }
-            return KeyHandled::Handled;
-        }
-
-        KeyHandled::NotHandled
-    }
 }
 
 impl<B: Backend> Component<B> for SendTab {
@@ -410,10 +354,6 @@ impl<B: Backend> Component<B> for SendTab {
 
         self.balance.draw(f, areas[0], app_state);
         self.draw_send_form(f, areas[1], app_state);
-
-        if self.show_contacts {
-            self.draw_contacts(f, areas[2], app_state);
-        };
 
         let rx_option = self.send_result_watch.take();
         if let Some(rx) = rx_option {
@@ -504,14 +444,7 @@ impl<B: Backend> Component<B> for SendTab {
             return;
         }
 
-        if self.on_key_show_contacts(c, app_state) == KeyHandled::Handled {
-            return;
-        }
-
         match c {
-            'c' => {
-                self.show_contacts = !self.show_contacts;
-            },
             't' => self.send_input_mode = SendInputMode::To,
             'a' => {
                 self.send_input_mode = SendInputMode::Amount;
@@ -546,11 +479,8 @@ impl<B: Backend> Component<B> for SendTab {
         }
     }
 
-    fn on_up(&mut self, app_state: &mut AppState) {
-        if self.show_contacts {
-            self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-            self.contacts_list_state.previous();
-        } else if self.send_input_mode == SendInputMode::Amount {
+    fn on_up(&mut self, _app_state: &mut AppState) {
+        if self.send_input_mode == SendInputMode::Amount {
             let index = self.table_state.selected().unwrap_or_default();
             if index == 0 {
                 self.table_state.select(None);
@@ -560,20 +490,16 @@ impl<B: Backend> Component<B> for SendTab {
         }
     }
 
-    fn on_down(&mut self, app_state: &mut AppState) {
-        if self.show_contacts {
-            self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-            self.contacts_list_state.next();
-        } else if self.send_input_mode == SendInputMode::Amount {
+    fn on_down(&mut self, _app_state: &mut AppState) {
+        if self.send_input_mode == SendInputMode::Amount {
             self.table_state.select(None);
         } else {
             // dont care
         }
     }
 
-    fn on_esc(&mut self, _: &mut AppState) {
+    fn on_esc(&mut self, _app_state: &mut AppState) {
         self.send_input_mode = SendInputMode::None;
-        self.show_contacts = false;
     }
 
     fn on_backspace(&mut self, _app_state: &mut AppState) {

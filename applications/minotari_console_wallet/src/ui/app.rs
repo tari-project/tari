@@ -37,7 +37,6 @@ use crate::{
         components::{
             base_node::BaseNode,
             burn_tab::BurnTab,
-            contacts_tab::ContactsTab,
             events_component::EventsComponent,
             log_tab::LogTab,
             menu::Menu,
@@ -106,7 +105,6 @@ impl<B: Backend> App<B> {
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Burn".into(), Box::new(BurnTab::new(&app_state)))
             .add("Templates".into(), Box::new(RegisterTemplateTab::new(&app_state)))
-            .add("Contacts".into(), Box::new(ContactsTab::new()))
             .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));

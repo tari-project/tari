@@ -52,7 +52,6 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::WalletType,
 };
-use tari_contacts::contacts_service::types::Contact;
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
@@ -77,7 +76,6 @@ use crate::{
             wallet_event_monitor::WalletEventMonitor,
         },
         ui_burnt_proof::UiBurntProof,
-        ui_contact::UiContact,
         ui_error::UiError,
     },
 };
@@ -146,14 +144,6 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
-        let mut inner = self.inner.write().await;
-        inner.refresh_contacts_state().await?;
-        drop(inner);
-        self.update_cache().await;
-        Ok(())
-    }
-
     pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_burnt_proofs_state().await?;
@@ -185,47 +175,12 @@ impl AppState {
         }
     }
 
-    pub async fn upsert_contact(&mut self, alias: String, tari_emoji: String) -> Result<(), UiError> {
-        let mut inner = self.inner.write().await;
-
-        let address = TariAddress::from_str(&tari_emoji)?;
-
-        let contact = Contact::new(alias, address, None, None, false);
-        inner.wallet.contacts_service.upsert_contact(contact).await?;
-
-        inner.refresh_contacts_state().await?;
-        drop(inner);
-        self.update_cache().await;
-        Ok(())
-    }
-
     // Return alias or pub key if the contact is not in the list.
     pub fn get_alias(&self, address_string: String) -> String {
         if address_string == TariAddress::default().to_base58() {
             return "Offline payment".to_string();
         }
-
-        match self
-            .cached_data
-            .contacts
-            .iter()
-            .find(|&contact| contact.address.eq(&address_string))
-        {
-            Some(contact) => contact.alias.clone(),
-            None => address_string,
-        }
-    }
-
-    pub async fn delete_contact(&mut self, tari_emoji: String) -> Result<(), UiError> {
-        let mut inner = self.inner.write().await;
-        let address = TariAddress::from_str(&tari_emoji)?;
-
-        inner.wallet.contacts_service.remove_contact(address).await?;
-
-        inner.refresh_contacts_state().await?;
-        drop(inner);
-        self.update_cache().await;
-        Ok(())
+        address_string
     }
 
     pub async fn delete_burnt_proof(&mut self, proof_id: u32) -> Result<(), UiError> {
@@ -416,26 +371,6 @@ impl AppState {
 
     pub fn get_burnt_proof_by_index(&self, idx: usize) -> Option<&UiBurntProof> {
         self.cached_data.burnt_proofs.get(idx)
-    }
-
-    pub fn get_contacts(&self) -> &[UiContact] {
-        self.cached_data.contacts.as_slice()
-    }
-
-    pub fn get_contact(&self, index: usize) -> Option<&UiContact> {
-        if index < self.cached_data.contacts.len() {
-            Some(&self.cached_data.contacts[index])
-        } else {
-            None
-        }
-    }
-
-    pub fn get_contacts_slice(&self, start: usize, end: usize) -> &[UiContact] {
-        if self.cached_data.contacts.is_empty() || start > end || end > self.cached_data.contacts.len() {
-            return &[];
-        }
-
-        &self.cached_data.contacts[start..end]
     }
 
     pub fn get_burnt_proofs_slice(&self, start: usize, end: usize) -> &[UiBurntProof] {
@@ -843,31 +778,6 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
-        let db_contacts = self.wallet.contacts_service.get_contacts().await?;
-        let mut ui_contacts: Vec<UiContact> = vec![];
-        for contact in db_contacts {
-            // A contact's online status is a function of current time and can therefore not be stored in a database
-            let online_status = self
-                .wallet
-                .contacts_service
-                .get_contact_online_status(contact.clone())
-                .await?;
-            ui_contacts.push(UiContact::from(contact.clone()).with_online_status(format!("{online_status}")));
-        }
-
-        ui_contacts.sort_by(|a, b| {
-            a.alias
-                .partial_cmp(&b.alias)
-                .expect("Should be able to compare contact aliases")
-        });
-
-        self.data.contacts = ui_contacts;
-        self.refresh_network_id().await?;
-        self.updated = true;
-        Ok(())
-    }
-
     pub async fn refresh_burnt_proofs_state(&mut self) -> Result<(), UiError> {
         let db_burnt_proofs = self.wallet.db.fetch_burnt_proofs()?;
         let mut ui_proofs: Vec<UiBurntProof> = vec![];
@@ -884,40 +794,6 @@ impl AppStateInner {
         ui_proofs.sort_by(|a, b| a.burned_at.cmp(&b.burned_at));
 
         self.data.burnt_proofs = ui_proofs;
-        self.updated = true;
-        Ok(())
-    }
-
-    pub async fn refresh_network_id(&mut self) -> Result<(), UiError> {
-        let wallet_id = self.wallet.get_wallet_id().await?;
-        let qr_link = format!(
-            "tari://{}/transactions/send?tariAddress={}",
-            wallet_id.network(),
-            wallet_id.address_interactive.to_base58()
-        );
-        let code = QrCode::new(qr_link).unwrap();
-        let image = code
-            .render::<unicode::Dense1x2>()
-            .dark_color(unicode::Dense1x2::Dark)
-            .light_color(unicode::Dense1x2::Light)
-            .build()
-            .lines()
-            .skip(1)
-            .fold("".to_string(), |acc, l| format!("{acc}{l}\n"));
-        let identity = MyIdentity {
-            tari_address_one_sided: wallet_id.address_one_sided.clone(),
-            network_address: wallet_id
-                .node_identity
-                .public_addresses()
-                .iter()
-                .map(|a| a.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
-            qr_code: image,
-            node_id: wallet_id.node_identity.node_id().to_string(),
-            public_key: wallet_id.node_identity.public_key().to_string(),
-        };
-        self.data.my_identity = identity;
         self.updated = true;
         Ok(())
     }
@@ -1095,7 +971,6 @@ struct AppStateData {
     completed_txs: Vec<CompletedTransactionInfo>,
     confirmations: HashMap<TxId, u64>,
     my_identity: MyIdentity,
-    contacts: Vec<UiContact>,
     burnt_proofs: Vec<UiBurntProof>,
     balance: Balance,
     base_node_state: BaseNodeState,
@@ -1151,7 +1026,6 @@ impl AppStateData {
             completed_txs: Vec::new(),
             confirmations: HashMap::new(),
             my_identity: identity,
-            contacts: Vec::new(),
             burnt_proofs: vec![],
             balance: Balance::zero(),
             base_node_state: BaseNodeState::default(),

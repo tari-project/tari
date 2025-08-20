@@ -24,7 +24,6 @@ A Model Context Protocol (MCP) server that provides AI agents with secure access
 #### Resources (Data Access)
 - **simple_balance**: Current balance information
 - **transaction_list**: Recent transactions
-- **address_book**: Known addresses and contacts
 
 #### Prompts (AI Guidance)
 - **balance_check**: Complete wallet overview guidance

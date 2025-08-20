@@ -81,7 +81,6 @@ struct TariPrivateKey;
 struct Balance;
 
 // Collection types
-struct TariContacts;
 struct TariPublicKeys;
 struct TariSeedWords;
 
@@ -126,7 +125,6 @@ TariWallet* wallet_create(
     void (*callback_transaction_send_result)(uint64_t, TariTransactionSendStatus*),
     void (*callback_transaction_cancellation)(TariCompletedTransaction*),
     void (*callback_txo_validation_complete)(uint64_t, uint64_t),
-    void (*callback_contacts_liveness_data_updated)(TariContactsLivenessData*),
     void (*callback_balance_updated)(Balance*),
     void (*callback_transaction_validation_complete)(uint64_t, uint8_t),
     void (*callback_saf_messages_received)(),
@@ -306,34 +304,6 @@ uint64_t wallet_coin_split(
     uint64_t fee_per_gram,         // Fee rate
     char* msg,                     // Split message
     uint64_t lock_height,          // Lock height (0 for immediate)
-    int* error_out
-);
-```
-
-### Contact Management Functions
-
-**wallet_upsert_contact**
-```c
-bool wallet_upsert_contact(
-    TariWallet* wallet,
-    TariContact* contact,
-    int* error_out
-);
-```
-
-**wallet_remove_contact**
-```c
-bool wallet_remove_contact(
-    TariWallet* wallet,
-    TariContact* contact,
-    int* error_out
-);
-```
-
-**wallet_get_contacts**
-```c
-TariContacts* wallet_get_contacts(
-    TariWallet* wallet,
     int* error_out
 );
 ```

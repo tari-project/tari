@@ -78,9 +78,6 @@ audit-as-crates-io = true
 [policy.tari_comms_rpc_macros]
 audit-as-crates-io = true
 
-[policy.tari_contacts]
-audit-as-crates-io = true
-
 [policy.tari_core]
 audit-as-crates-io = true
 
@@ -2784,10 +2781,6 @@ criteria = "safe-to-deploy"
 
 
 [[exemptions.tari_comms_rpc_macros]]
-version = "*"
-criteria = "safe-to-deploy"
-
-[[exemptions.tari_contacts]]
 version = "*"
 criteria = "safe-to-deploy"
 

@@ -4248,7 +4248,6 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_features",
@@ -4264,7 +4263,6 @@ dependencies = [
  "tokio",
  "tonic 0.13.1",
  "tui",
- "unicode-segmentation",
  "unicode-width",
  "url",
  "zxcvbn",
@@ -4596,7 +4594,6 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_key_manager",
@@ -4641,7 +4638,6 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_contacts",
  "tari_core",
  "tari_crypto",
  "tari_features",
@@ -7802,40 +7798,6 @@ dependencies = [
  "tari_test_utils",
  "tokio",
  "tower-service",
-]
-
-[[package]]
-name = "tari_contacts"
-version = "5.0.0-pre.3"
-dependencies = [
- "chrono",
- "diesel",
- "diesel_migrations",
- "futures 0.3.31",
- "log",
- "num-derive 0.4.2",
- "num-traits",
- "prost 0.13.4",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "tari_common",
- "tari_common_sqlite",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_crypto",
- "tari_max_size",
- "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_test_utils",
- "tari_utilities",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tower 0.4.13",
- "uuid",
 ]
 
 [[package]]
