@@ -129,8 +129,8 @@ mod test {
 
     #[test]
     fn hash_block() {
-        assert_eq!(siphash_block(&[1, 2, 3, 4], 10, 21, false), 1182162244994096396);
-        assert_eq!(siphash_block(&[1, 2, 3, 4], 123, 21, false), 11303676240481718781);
-        assert_eq!(siphash_block(&[9, 7, 6, 7], 12, 21, false), 4886136884237259030);
+        assert_eq!(siphash_block(&[1, 2, 3, 4], 10, 21), 1182162244994096396);
+        assert_eq!(siphash_block(&[1, 2, 3, 4], 123, 21), 11303676240481718781);
+        assert_eq!(siphash_block(&[9, 7, 6, 7], 12, 21), 4886136884237259030);
     }
 }
