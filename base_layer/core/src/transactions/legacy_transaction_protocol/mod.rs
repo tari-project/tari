@@ -11,9 +11,10 @@ use crate::transactions::{
     transaction_components::TransactionError,
     transaction_key_manager::error::KeyManagerServiceError,
 };
-pub mod proto;
 pub mod recipient;
 pub mod sender;
+pub use recipient::ReceiverTransactionProtocol;
+pub use sender::SenderTransactionProtocol;
 use tari_common_types::types::CompressedCommitment;
 
 use crate::transactions::{tari_amount::*, transaction_components::KernelFeatures};

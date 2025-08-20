@@ -2604,6 +2604,7 @@ mod test {
         types::{CompressedPublicKey, PrivateKey, Signature},
     };
     use tari_core::transactions::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_builder::TransactionBuilder,
@@ -2613,8 +2614,6 @@ mod test {
             Transaction,
         },
         transaction_key_manager::create_memory_db_key_manager,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_script::script;

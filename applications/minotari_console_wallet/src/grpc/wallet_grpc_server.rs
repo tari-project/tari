@@ -139,6 +139,7 @@ use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsN
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
+        legacy_transaction_protocol::recipient::RecipientState,
         tari_amount::MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
@@ -146,7 +147,6 @@ use tari_core::{
             UnblindedOutput,
         },
         transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::recipient::RecipientState,
     },
 };
 use tari_crypto::hash_domain;

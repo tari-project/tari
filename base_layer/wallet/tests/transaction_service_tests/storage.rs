@@ -51,6 +51,7 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_builder::TransactionBuilder,
@@ -62,8 +63,6 @@ use tari_core::{
             WalletOutput,
         },
         transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     },
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;

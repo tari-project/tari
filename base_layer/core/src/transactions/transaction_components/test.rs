@@ -38,6 +38,7 @@ use crate::{
     consensus::ConsensusManager,
     transactions::{
         aggregated_body::AggregateBody,
+        legacy_transaction_protocol::TransactionProtocolError,
         tari_amount::{uT, T},
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
@@ -51,7 +52,6 @@ use crate::{
             create_memory_db_key_manager_with_range_proof_size,
             TransactionKeyManagerInterface,
         },
-        transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
     txn_schema,

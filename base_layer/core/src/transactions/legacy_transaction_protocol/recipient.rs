@@ -29,8 +29,8 @@ use tari_common_types::{
 };
 
 use crate::transactions::{
+    legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError},
     transaction_components::TransactionOutput,
-    transaction_protocol::{TransactionMetadata, TransactionProtocolError},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

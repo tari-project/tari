@@ -22,8 +22,7 @@ pub mod transaction_components;
 mod format_currency;
 pub use format_currency::format_currency;
 
-pub mod transaction_protocol;
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+pub mod legacy_transaction_protocol;
 
 pub mod weight;
 

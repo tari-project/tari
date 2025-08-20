@@ -34,6 +34,7 @@ use tari_script::TariScript;
 use crate::{
     covenants::Covenant,
     transactions::{
+        legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE},
         tari_amount::*,
         transaction_components::{
             memo_field::MemoField,
@@ -45,7 +46,6 @@ use crate::{
             WalletOutput,
         },
         transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE},
     },
 };
 
