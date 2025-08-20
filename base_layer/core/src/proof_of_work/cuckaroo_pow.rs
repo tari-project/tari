@@ -125,13 +125,6 @@ fn cuckaroo_result_inner(
     let packed_size = required_cycle_length.get() * edge_bits as usize;
     let packed_bytes = packed_size.div_ceil(8);
 
-    // let mut hasher = Blake2bVar::new(32).expect("Could not create Blake2bVar hasher");
-    // hasher.update(&header.nonce.to_le_bytes());
-    // hasher.update(header.mining_hash().as_slice());
-    // let mut blob = vec![0u8; hasher.output_size()];
-    // hasher
-    // .finalize_variable(&mut blob)
-    // .expect("Infallible because we've set the output size");
     let blob = determine_sip_hash(header_before_nonce, nonce);
 
     // Data after <required_cycle_length * edge_bits> is padding, it must be zero
