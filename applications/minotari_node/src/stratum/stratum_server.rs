@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, path::MAIN_SEPARATOR, time::Duration};
+use std::{io::Cursor, marker::PhantomData, path::MAIN_SEPARATOR, sync::Arc, time::Duration};
 
 use anyhow::Error;
 use log::{debug, info, warn};
@@ -21,8 +21,11 @@ use crate::stratum::{
     block_template_repository::DefaultBlockTemplateRepository,
     job_repository_service::{JobRepositoryClient, JobRepositoryService},
     memory_job_repository::MemoryJobRepository,
+    multi_stratum_stream_adapter::MultiVersionStratumStreamAdapter,
+    stream_adapter::StratumStreamAdapter,
     tari_sha3x_stratum_handler::TariSha3xStratumHandler,
     LatestBlockBroadcastReceiver,
+    StratumRequest,
 };
 
 const LOG_TARGET: &str = "minotari::base_node::stratum::server";
@@ -219,7 +222,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 
                                                                         // Handle the request based on its type
                                                                         match request {
-                                                                            StratumRequest::Login { id, login, pass, agent, algo } => {
+                                                                            StratumRequest::Login { id, login, address, pass, agent, algo, worker: _worker } => {
 
                                                                                 // let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
                                                                                 let login_parts = login.split("=").collect::<Vec<_>>();
@@ -248,7 +251,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     continue;
                                                                                 }
 
-                                                                                let response = handler.login(id.clone(), login_address,  &algo, pass, agent, login_difficulty).await;
+                                                                                let response = handler.login(id.clone(), login_address, address,  &algo, pass, agent, login_difficulty).await;
                                                                                 match response {
                                                                                     Ok(resp) => {
                                                                                         info!(target: LOG_TARGET, "Handled login request with id: {}", id);
@@ -446,6 +449,7 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         &self,
         id: String,
         login: String,
+        address: String,
         algo: &[String],
         pass: String,
         agent: String,
@@ -526,221 +530,4 @@ pub(crate) struct NotifyResponse {
 pub(crate) struct SubmitResponse {
     pub id: String,
     pub result: bool,
-}
-
-pub trait StratumStreamAdapter {
-    fn try_convert(line: String) -> anyhow::Result<StratumRequest>;
-}
-
-pub struct NiceHashStyleStatumStreamAdapter {}
-
-impl StratumStreamAdapter for NiceHashStyleStatumStreamAdapter {
-    fn try_convert(line: String) -> anyhow::Result<StratumRequest> {
-        let json: serde_json::Value = serde_json::from_str(&line)?;
-        let method = json["method"]
-            .as_str()
-            .ok_or(anyhow::anyhow!("Json missing method field"))?;
-        let id = json["id"]
-            .as_i64()
-            .ok_or(anyhow::anyhow!("Invalid JSON. Json missing id field"))?
-            .to_string();
-        match method {
-            "login" => {
-                let params = json["params"]
-                    .as_object()
-                    .ok_or(anyhow::anyhow!("Invalid JSON.params missing"))?;
-                let login = params["login"]
-                    .as_str()
-                    .ok_or(anyhow::anyhow!("Invalid JSON. login missing"))?
-                    .to_string();
-                let pass = params["pass"]
-                    .as_str()
-                    .ok_or(anyhow::anyhow!("Invalid JSON. pass missing"))?
-                    .to_string();
-                let agent = params["agent"]
-                    .as_str()
-                    .ok_or(anyhow::anyhow!("Invalid JSON. agent missing"))?
-                    .to_string();
-                let algo = params["algo"]
-                    .as_array()
-                    .ok_or(anyhow::anyhow!("Invalid JSON. algo missing"))?
-                    .iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect::<Vec<_>>();
-
-                Ok(StratumRequest::Login {
-                    id,
-                    login,
-                    pass,
-                    agent,
-                    algo,
-                })
-            },
-            "submit" => {
-                let params = json["params"].as_object().ok_or(anyhow::anyhow!("Invalid JSON"))?;
-                let job_id = params["job_id"]
-                    .as_str()
-                    .ok_or(anyhow::anyhow!("Invalid JSON. job_id missing"))?
-                    .to_string();
-                let nonce = params["nonce"]
-                    .as_str()
-                    .ok_or(anyhow::anyhow!("Invalid JSON. nonce missing"))?
-                    .to_string();
-                let result = params["result"]
-                    .as_str()
-                    .ok_or(anyhow::anyhow!("Invalid JSON. result missing"))?
-                    .to_string();
-                Ok(StratumRequest::Submit {
-                    id,
-                    job_id,
-                    nonce,
-                    result,
-                })
-            },
-            _ => Err(anyhow::anyhow!("Unknown method")),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum StratumRequest {
-    Login {
-        id: String,
-        login: String,
-        pass: String,
-        agent: String,
-        algo: Vec<String>,
-    },
-    Submit {
-        id: String,
-        job_id: String,
-        nonce: String,
-        result: String,
-    },
-    Subscribe {
-        id: String,
-        agent: String,
-        // address: String,
-        // worker: Option<String>,
-    },
-    Authorize {
-        id: String,
-        login: String,
-        is_solo: bool,
-        worker_name: Option<String>,
-        pass: String,
-    },
-    ExtraNonceSubscribe {
-        id: String,
-    },
-}
-
-impl StratumRequest {
-    pub fn id(&self) -> &str {
-        match self {
-            StratumRequest::Login { id, .. } => id.as_str(),
-            StratumRequest::Submit { id, .. } => id.as_str(),
-            StratumRequest::Subscribe { id, .. } => id.as_str(),
-            StratumRequest::Authorize { id, .. } => id.as_str(),
-            StratumRequest::ExtraNonceSubscribe { id } => id.as_str(),
-        }
-    }
-}
-
-struct StratumV1StreamAdapter {}
-
-impl StratumStreamAdapter for StratumV1StreamAdapter {
-    fn try_convert(line: String) -> anyhow::Result<StratumRequest> {
-        let json: serde_json::Value = serde_json::from_str(&line)?;
-        let method = json["method"]
-            .as_str()
-            .ok_or(anyhow::anyhow!("Json missing method field"))?;
-        let id = json["id"]
-            .as_i64()
-            .ok_or(anyhow::anyhow!("Invalid JSON. Json missing id field"))?
-            .to_string();
-        match method {
-            "mining.subscribe" => {
-                dbg!("here");
-                let params = json["params"]
-                    .as_array()
-                    .ok_or(anyhow::anyhow!("Invalid JSON.params missing"))?;
-                let agent = params.get(0);
-                let agent = agent.and_then(|v| v.as_str()).map(|s| s.to_string());
-
-                // let address_and_worker = params
-                //     .get(1)
-                //     .and_then(|v| v.as_str())
-                //     .ok_or(anyhow::anyhow!("Invalid JSON. address missing"))?
-                //     .to_string();
-                // let address_parts = address_and_worker.split('.').collect::<Vec<_>>();
-                // let address = address_parts[0].to_string();
-                // let worker = if address_parts.len() > 1 {
-                //     Some(address_parts[1].to_string())
-                // } else {
-                //     None
-                // };
-                Ok(StratumRequest::Subscribe {
-                    id,
-                    agent: agent.unwrap_or_default(),
-                    // address,
-                    // worker,
-                })
-            },
-            "mining.authorize" => {
-                let params = json["params"]
-                    .as_array()
-                    .ok_or(anyhow::anyhow!("Invalid JSON.params missing"))?;
-                let login = params
-                    .get(0)
-                    .and_then(|v| v.as_str())
-                    .ok_or(anyhow::anyhow!("Invalid JSON. login missing"))?
-                    .to_string();
-                let (worker_name, mut login) = if login.contains(".") {
-                    let parts: Vec<&str> = login.split('.').collect();
-                    (Some(parts[1].to_string()), parts[0].to_string())
-                } else {
-                    (None, login)
-                };
-                let is_solo = if login.starts_with("solo:") {
-                    login = login.replace("solo:", "");
-                    true
-                } else {
-                    false
-                };
-                let pass = params
-                    .get(1)
-                    .and_then(|v| v.as_str())
-                    .ok_or(anyhow::anyhow!("Invalid JSON. pass missing"))?
-                    .to_string();
-                Ok(StratumRequest::Authorize {
-                    id,
-                    login,
-                    is_solo,
-                    pass,
-                    worker_name,
-                })
-            },
-            "mining.extranonce.subscribe" => Ok(StratumRequest::ExtraNonceSubscribe { id }),
-
-            _ => Err(anyhow::anyhow!("Unknown method")),
-        }
-    }
-}
-
-struct MultiVersionStratumStreamAdapter {}
-
-impl StratumStreamAdapter for MultiVersionStratumStreamAdapter {
-    fn try_convert(line: String) -> anyhow::Result<StratumRequest> {
-        dbg!("converting line: {}", &line);
-        // Try NiceHash style first
-        if let Ok(request) = NiceHashStyleStatumStreamAdapter::try_convert(line.clone()) {
-            dbg!("here");
-            Ok(request)
-        } else {
-            dbg!("here2");
-            // Fallback to Stratum V1 style
-            StratumV1StreamAdapter::try_convert(line)
-        }
-    }
 }

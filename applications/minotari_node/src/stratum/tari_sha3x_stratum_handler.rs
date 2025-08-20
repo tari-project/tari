@@ -60,20 +60,21 @@ impl<
 {
     async fn login(
         &self,
-        id: String,
-        login: String,
+        _id: String,
+        _login: String,
+        address: String,
         algo: &[String],
         pass: String,
         agent: String,
         endpoint_difficulty: u64,
     ) -> anyhow::Result<LoginResponse> {
         // Handle login request
-        let address = TariAddress::from_str(&login)?;
+        let address = TariAddress::from_str(&address)?;
 
         let is_solo = true;
         let main_algo;
         if algo.is_empty() {
-            main_algo = "sha3x".to_string();
+            main_algo = "cuckaroo".to_string();
         } else if algo.len() == 1 {
             main_algo = algo[0].clone();
         } else if algo.iter().any(|a| a.as_str() == "rx/0") {
