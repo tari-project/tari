@@ -53,18 +53,20 @@ mod test {
     use blake2::Blake2b;
     use digest::{consts::U32, Update};
     use tari_crypto::hashing::DomainSeparation;
-
     use tari_transaction_key_manager::create_memory_db_key_manager;
+
     use super::*;
     use crate::{
         covenant,
-        transaction_components::covenants::{
-            filters::test::setup_filter_test,
-            test::{create_input, make_sample_sidechain_feature},
-            BaseLayerCovenantsDomain,
-            COVENANTS_FIELD_HASHER_LABEL,
+        transaction_components::{
+            covenants::{
+                filters::test::setup_filter_test,
+                test::{create_input, make_sample_sidechain_feature},
+                BaseLayerCovenantsDomain,
+                COVENANTS_FIELD_HASHER_LABEL,
+            },
+            OutputFeatures,
         },
-        transaction_components::OutputFeatures,
     };
 
     #[tokio::test]

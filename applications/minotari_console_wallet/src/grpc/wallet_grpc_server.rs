@@ -135,17 +135,15 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
-use tari_core::{
-    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
-    transactions::{
-        legacy_transaction_protocol::recipient::RecipientState,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-            UnblindedOutput,
-        },
-        transaction_key_manager::TransactionKeyManagerInterface,
+use tari_core::transactions::legacy_transaction_protocol::recipient::RecipientState;
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, ConsensusManager},
+    key_manager::TransactionKeyManagerInterface,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -162,7 +160,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
-
+use tari_crypto::hash_domain;
 // Domain separator for signing arbitrary messages with a wallet secret key
 hash_domain!(
     WalletMessageSigningDomain,

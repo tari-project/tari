@@ -215,7 +215,7 @@ mod test {
     use tari_test_utils::unpack_enum;
 
     use super::*;
-    use crate::{test_helpers, test_helpers::TestParams, crypto_factories::CryptoFactories};
+    use crate::{crypto_factories::CryptoFactories, test_helpers, test_helpers::TestParams};
 
     mod is_all_unique_and_sorted {
         use super::*;
@@ -283,12 +283,13 @@ mod test {
 
     mod check_coinbase_maturity {
 
+        use tari_transaction_key_manager::create_memory_db_key_manager;
+
         use super::*;
         use crate::{
             aggregated_body::AggregateBody,
             transaction_components::{RangeProofType, TransactionError},
         };
-        use tari_transaction_key_manager::create_memory_db_key_manager;
 
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
@@ -297,12 +298,9 @@ mod test {
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let key_manager = create_memory_db_key_manager().unwrap();
-            let coinbase = test_helpers::create_coinbase_wallet_output(
-                &test_params,
-                height,
-                None,
-                RangeProofType::RevealedValue,
-            ).await;
+            let coinbase =
+                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue)
+                    .await;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 

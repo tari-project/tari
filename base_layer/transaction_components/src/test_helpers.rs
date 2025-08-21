@@ -30,6 +30,7 @@ use tari_common_types::{
 };
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
+
 use crate::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
@@ -37,10 +38,10 @@ use crate::{
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     tari_amount::MicroMinotari,
+    transaction_builder::FinalizedTransaction,
     transaction_components::{
         covenants::Covenant,
         memo_field::MemoField,
-        transaction_metadata::TransactionMetadata,
         CoinBaseExtra,
         KernelBuilder,
         KernelFeatures,
@@ -56,11 +57,10 @@ use crate::{
         WalletOutputBuilder,
     },
     weight::TransactionWeight,
+    TransactionBuilder,
 };
 
-
-pub async fn create_test_input
-<KM: TransactionKeyManagerInterface>(
+pub async fn create_test_input<KM: TransactionKeyManagerInterface>(
     amount: MicroMinotari,
     maturity: u64,
     key_manager: &KM,
@@ -102,9 +102,7 @@ pub struct TestParams {
 }
 
 impl TestParams {
-    pub async fn new<KM: TransactionKeyManagerInterface>(
-        key_manager: &KM,
-    ) -> TestParams {
+    pub async fn new<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TestParams {
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let sender_offset = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -184,9 +182,10 @@ impl TestParams {
     }
 
     pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> std::io::Result<usize> {
+        let temp_script = script!(PushPubKey(Box::default()));
         let output_features = OutputFeatures { ..Default::default() };
         Ok(self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
+            temp_script.map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
                 output_features.get_serialized_size()?,
         ) * num_outputs)
     }
@@ -259,12 +258,14 @@ pub fn create_random_signature(
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
 pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, features: KernelFeatures) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+    let e = TransactionKernel::build_kernel_signature_challenge(
         &TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &CompressedPublicKey::from_secret_key(&k),
-        &tx_meta,
+        fee,
+        lock_height,
+        &features,
+        &None,
     );
     let sig = UncompressedSignature::sign_raw_uniform(&k, r, &e).unwrap();
     Signature::new_from_schnorr(sig)
@@ -279,20 +280,14 @@ pub async fn create_random_signature_from_secret_key<KM: TransactionKeyManagerIn
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
 ) -> (CompressedPublicKey, Signature) {
-    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, kernel_features);
     let total_nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
     let total_excess = key_manager.get_public_key_at_key_id(&secret_key_id).await.unwrap();
     let kernel_version = TransactionKernelVersion::get_current_version();
-    let kernel_message = TransactionKernel::build_kernel_signature_message(
-        &kernel_version,
-        tx_meta.fee,
-        tx_meta.lock_height,
-        &tx_meta.kernel_features,
-        &tx_meta.burn_commitment,
-    );
+    let kernel_message =
+        TransactionKernel::build_kernel_signature_message(&kernel_version, fee, lock_height, &kernel_features, &None);
     let kernel_signature = key_manager
         .get_partial_txo_kernel_signature(
             &secret_key_id,
@@ -416,7 +411,7 @@ macro_rules! tx {
 #[macro_export]
 macro_rules! txn_schema {
     (from: $inputs:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {{
-        $crate::test_helpers::TransactionSchema {
+        $crate::transactions::test_helpers::TransactionSchema {
             from: $inputs.clone(),
             to: $outputs.clone(),
             to_outputs: vec![],
@@ -461,7 +456,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            features: $crate::transaction_components::OutputFeatures::default(),
+            features: $crate::transactions::transaction_components::OutputFeatures::default(),
             input_version: None,
             output_version: None
         )
@@ -477,7 +472,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee: 5.into(),
             lock:0,
-            features: $crate::transaction_components::OutputFeatures::default(),
+            features: $crate::transactions::transaction_components::OutputFeatures::default(),
             input_version: Some($input_version),
             output_version: Some($output_version)
         )
@@ -616,43 +611,28 @@ pub async fn create_wallet_outputs<KM: TransactionKeyManagerInterface>(
 /// Create an unconfirmed transaction for testing with a valid fee, unique excess_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 pub async fn create_transaction_with<KM: TransactionKeyManagerInterface>(
-    _lock_height: u64,
-    _fee_per_gram: MicroMinotari,
-    _inputs: Vec<WalletOutput>,
-    _outputs: Vec<(WalletOutput, TariKeyId)>,
-    _key_manager: &KM,
+    lock_height: u64,
+    fee_per_gram: MicroMinotari,
+    inputs: Vec<WalletOutput>,
+    outputs: Vec<(WalletOutput, TariKeyId)>,
+    key_manager: &KM,
 ) -> Transaction {
-    // let rules = ConsensusManager::builder(Network::LocalNet).build();
-    // let constants = rules.consensus_constants(0).clone();
-    // let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    // let change = TestParams::new(key_manager).await;
-    // stx_builder
-    //     .with_lock_height(lock_height)
-    //     .with_fee_per_gram(fee_per_gram)
-    //     .with_kernel_features(KernelFeatures::empty())
-    //     .with_change_data(
-    //         TariScript::default(),
-    //         ExecutionStack::default(),
-    //         change.script_key_id,
-    //         change.commitment_mask_key_id,
-    //         Covenant::default(),
-    //         TariAddress::default(),
-    //     );
-    // for input in inputs {
-    //     stx_builder.with_input(input).await.unwrap();
-    // }
-    //
-    // for (output, script_offset_key_id) in outputs {
-    //     stx_builder.with_output(output, script_offset_key_id).await.unwrap();
-    // }
-    //
-    // let mut stx_protocol = stx_builder.build().await.unwrap();
-    // stx_protocol.finalize(key_manager).await.unwrap();
-    //
-    // stx_protocol.into_transaction().unwrap()
-    Transaction::new(
-        Vec::new(), Vec::new(), Vec::new(), PrivateKey::default(), PrivateKey::default()
-    )
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let constants = rules.consensus_constants(0).clone();
+    let mut tx_builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+        .await
+        .unwrap();
+    tx_builder.with_lock_height(lock_height).with_fee_per_gram(fee_per_gram);
+    for input in inputs {
+        tx_builder.with_input(input).await.unwrap();
+    }
+
+    for (output, script_offset_key_id) in outputs {
+        tx_builder.with_output(output, script_offset_key_id).await.unwrap();
+    }
+    let finalized = tx_builder.build().await.unwrap();
+
+    finalized.transaction
 }
 
 /// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
@@ -660,21 +640,111 @@ pub async fn create_transaction_with<KM: TransactionKeyManagerInterface>(
 /// This is obviously less efficient, but is offered as a convenience.
 /// The output features will be applied to every output
 pub async fn spend_utxos<KM: TransactionKeyManagerInterface>(
-    _schema: TransactionSchema,
-    _key_manager: &KM,
+    schema: TransactionSchema,
+    key_manager: &KM,
 ) -> (Transaction, Vec<WalletOutput>) {
-    //let (mut stx_protocol, mut outputs) = create_stx_protocol(schema, key_manager).await;
-    // stx_protocol.finalize(key_manager).await.unwrap();
-    // let txn = stx_protocol.get_transaction().unwrap().clone();
-    // let change_output = stx_protocol.get_finalized_change_output().unwrap().unwrap();
-    // outputs.push(change_output);
-    let tx = Transaction::new(
-        Vec::new(), Vec::new(), Vec::new(), PrivateKey::default(), PrivateKey::default()
-    );
-    (tx, Vec::new())
+    let (finalized_tx, mut outputs) = create_test_transaction(schema, key_manager).await;
+    let txn = finalized_tx.transaction.clone();
+    if let Some(change) = &finalized_tx.change {
+        outputs.push(change.clone());
+    }
+    (txn, outputs)
 }
 
+#[allow(clippy::too_many_lines)]
+pub async fn create_test_transaction<KM: TransactionKeyManagerInterface>(
+    schema: TransactionSchema,
+    key_manager: &KM,
+) -> (FinalizedTransaction, Vec<WalletOutput>) {
+    let mut outputs = Vec::with_capacity(schema.to.len());
+    let builder = create_test_transaction_internal(schema, key_manager, &mut outputs).await;
 
+    let finalized_tx = builder.build().await.unwrap();
+    (finalized_tx, outputs)
+}
+
+#[allow(clippy::too_many_lines)]
+async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
+    schema: TransactionSchema,
+    key_manager: &KM,
+    outputs: &mut Vec<WalletOutput>,
+) -> TransactionBuilder<KM> {
+    let constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let mut tx_builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+        .await
+        .unwrap();
+    tx_builder
+        .with_lock_height(schema.lock_height)
+        .with_fee_per_gram(schema.fee);
+
+    for tx_input in &schema.from {
+        tx_builder.with_input(tx_input.clone()).await.unwrap();
+    }
+    for val in schema.to {
+        let commitment_mask = key_manager
+            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
+            .await
+            .unwrap();
+        let sender_offset = key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await
+            .unwrap();
+        let script_key_id = TariKeyId::Derived {
+            key: (&commitment_mask.key_id).into(),
+        };
+        let script_public_key = key_manager.get_public_key_at_key_id(&script_key_id).await.unwrap();
+        let input_data = match &schema.input_data {
+            Some(data) => data.clone(),
+            None => inputs!(script_public_key),
+        };
+        let version = schema.output_version.unwrap_or_default();
+        let output = WalletOutputBuilder::new(val, commitment_mask.key_id)
+            .with_features(schema.features.clone())
+            .with_script(schema.script.clone())
+            .encrypt_data_for_recovery(key_manager, None, MemoField::new_empty())
+            .await
+            .unwrap()
+            .with_input_data(input_data)
+            .with_covenant(schema.covenant.clone())
+            .with_version(version)
+            .with_sender_offset_public_key(sender_offset.pub_key)
+            .with_script_key(script_key_id.clone())
+            .sign_as_sender_and_receiver(key_manager, &sender_offset.key_id)
+            .await
+            .unwrap()
+            .try_build(key_manager)
+            .await
+            .unwrap();
+
+        outputs.push(output.clone());
+        tx_builder.with_output(output, sender_offset.key_id).await.unwrap();
+    }
+    for mut utxo in schema.to_outputs {
+        let sender_offset = key_manager
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+            .await
+            .unwrap();
+        let metadata_message = TransactionOutput::metadata_signature_message(&utxo);
+        utxo.metadata_signature = key_manager
+            .get_metadata_signature(
+                &utxo.spending_key_id,
+                &utxo.value.into(),
+                &sender_offset.key_id,
+                &utxo.version,
+                &metadata_message,
+                utxo.features.range_proof_type,
+            )
+            .await
+            .unwrap();
+
+        tx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
+    }
+
+    tx_builder
+}
 
 pub async fn create_coinbase_kernel<KM: TransactionKeyManagerInterface>(
     commitment_mask_key_id: &TariKeyId,
@@ -812,8 +882,4 @@ pub async fn schema_to_transaction<KM: TransactionKeyManagerInterface>(
     }
 
     (txs, utxos)
-}
-
-pub fn new_public_key() -> CompressedPublicKey {
-    CompressedPublicKey::random_keypair(&mut OsRng).1
 }

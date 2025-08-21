@@ -21,16 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::TxId,
+    types::{CompressedCommitment, FixedHash},
+};
 use tari_transaction_components::{
     tari_amount::MicroMinotari,
-    transaction_components::{
-        memo_field::MemoField,
-        transaction_metadata::TransactionMetadata,
-        OutputFeatures,
-        Transaction,
-        WalletOutput,
-    },
+    transaction_components::{memo_field::MemoField, KernelFeatures, OutputFeatures, Transaction, WalletOutput},
 };
 
 use crate::transaction_service::{

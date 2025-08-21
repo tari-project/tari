@@ -20,16 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_components::covenants::{
+use tari_transaction_key_manager::MemoryDbKeyManager;
+
+use crate::transaction_components::{
+    covenants::{
         context::CovenantContext,
         test::{create_context, create_outputs},
         Covenant,
     },
-        transaction_components::{TransactionInput, TransactionOutput},
-
+    TransactionInput,
+    TransactionOutput,
 };
-use tari_transaction_key_manager::{MemoryDbKeyManager};
 
 /// Create a covenant context and outputs for testing a filter with a given covenant, input and block height. The
 /// outputs are default random and modified by closure parameter `output_mod: F` (anonymous function) before it is

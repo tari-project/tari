@@ -382,21 +382,23 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        transaction_components::covenants::test::{create_input, create_outputs, make_sample_sidechain_feature},
-            transaction_components::{OutputFeatures, OutputType, SpentOutput},
         test_helpers::UtxoTestParams,
+        transaction_components::{
+            covenants::test::{create_input, create_outputs, make_sample_sidechain_feature},
+            OutputFeatures,
+            OutputType,
+            SpentOutput,
+        },
     };
 
     mod output_field {
         use super::*;
 
         mod is_eq {
-            use super::*;
-            use crate::{
-                tari_amount::MicroMinotari,
-                transaction_components::RangeProofType,
-            };
             use tari_transaction_key_manager::create_memory_db_key_manager;
+
+            use super::*;
+            use crate::{tari_amount::MicroMinotari, transaction_components::RangeProofType};
 
             #[tokio::test]
             async fn it_returns_true_if_eq() {
@@ -491,8 +493,9 @@ mod test {
         }
 
         mod is_eq_input {
-            use super::*;
             use tari_transaction_key_manager::create_memory_db_key_manager;
+
+            use super::*;
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
@@ -562,8 +565,9 @@ mod test {
     }
 
     mod output_fields {
-        use super::*;
         use tari_transaction_key_manager::create_memory_db_key_manager;
+
+        use super::*;
 
         mod construct_challenge_from {
             use digest::Update;

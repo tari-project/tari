@@ -416,7 +416,11 @@ mod test {
     use serial_test::serial;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
     use tari_mmr::pruned_hashset::PrunedHashSet;
-    use tari_transaction_components::{aggregated_body::AggregateBody, transaction_components::TransactionOutput};
+    use tari_transaction_components::{
+        aggregated_body::AggregateBody,
+        crypto_factories::CryptoFactories,
+        transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, TransactionOutput},
+    };
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -431,10 +435,6 @@ mod test {
         KernelMmr,
         PrunedInputMmr,
         PrunedOutputMmr,
-    };
-    use tari_transaction_components::{
-        transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
-        crypto_factories::CryptoFactories,
     };
     #[test]
     #[serial]

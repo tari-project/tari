@@ -192,14 +192,14 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use borsh::{BorshDeserialize, BorshSerialize};
     use tari_transaction_key_manager::create_memory_db_key_manager;
-    use crate::covenant;
 
     use crate::{
+        covenant,
+        test_helpers::UtxoTestParams,
         transaction_components::covenants::{
             test::{create_input, create_outputs},
             Covenant,
         },
-        test_helpers::UtxoTestParams,
     };
 
     #[tokio::test]

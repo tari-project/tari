@@ -80,16 +80,17 @@ mod test {
     use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
     use tari_script::script;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     use tari_utilities::hex::Hex;
 
     use super::*;
     use crate::{
         covenant,
-        transaction_components::covenants::test::{create_context, create_input, create_outputs},
-        transaction_components::OutputType,
+        transaction_components::{
+            covenants::test::{create_context, create_input, create_outputs},
+            OutputType,
+        },
     };
-
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_uint() {

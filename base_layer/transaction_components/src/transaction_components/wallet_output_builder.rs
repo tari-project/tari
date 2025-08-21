@@ -352,9 +352,9 @@ impl WalletOutputBuilder {
 #[cfg(test)]
 mod test {
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn test_try_build() {

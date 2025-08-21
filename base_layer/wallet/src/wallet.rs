@@ -54,11 +54,6 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::Dht;
-use tari_contacts::contacts_service::{
-    handle::ContactsServiceHandle,
-    storage::database::ContactsBackend,
-    ContactsServiceInitializer,
-};
 use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
@@ -84,6 +79,7 @@ use tari_transaction_components::{
         TariKeyId,
         TransactionKeyManagerBackend,
         TransactionKeyManagerInitializer,
+        TransactionKeyManagerInterface,
     },
     tari_amount::MicroMinotari,
     transaction_components::{

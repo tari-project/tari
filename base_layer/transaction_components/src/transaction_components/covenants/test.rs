@@ -22,19 +22,19 @@
 
 use std::convert::TryInto;
 
+use tari_transaction_key_manager::MemoryDbKeyManager;
 
-use tari_transaction_key_manager::{MemoryDbKeyManager};
 use crate::{
-    transaction_components::covenants::{context::CovenantContext, Covenant},
-        test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::{
-            BuildInfo,
-            CodeTemplateRegistration,
-            SideChainFeature,
-            SideChainFeatureData,
-            TemplateType,
-            TransactionInput,
-            TransactionOutput,
+    test_helpers::{TestParams, UtxoTestParams},
+    transaction_components::{
+        covenants::{context::CovenantContext, Covenant},
+        BuildInfo,
+        CodeTemplateRegistration,
+        SideChainFeature,
+        SideChainFeatureData,
+        TemplateType,
+        TransactionInput,
+        TransactionOutput,
     },
 };
 

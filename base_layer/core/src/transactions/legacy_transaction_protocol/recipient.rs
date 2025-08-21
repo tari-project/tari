@@ -27,12 +27,9 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedPublicKey, PrivateKey, Signature},
 };
+use tari_transaction_components::transaction_components::TransactionOutput;
 
-use crate::transactions::{
-    legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError},
-    transaction_components::TransactionOutput,
-};
-
+use crate::transactions::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum RecipientState {

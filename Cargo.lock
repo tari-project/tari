@@ -8028,7 +8028,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_components"
-version = "5.0.0-pre.3"
+version = "5.0.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8075,7 +8075,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_key_manager"
-version = "5.0.0-pre.3"
+version = "5.0.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",

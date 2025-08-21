@@ -50,7 +50,6 @@ mod common;
 
 #[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;
-use tari_transaction_components::helpers::borsh;
 
 #[cfg(feature = "base_node")]
 mod domain_hashing {

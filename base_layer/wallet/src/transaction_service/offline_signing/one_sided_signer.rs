@@ -24,25 +24,23 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, Signature, UncompressedPublicKey},
 };
-use tari_core::transactions::transaction_protocol::{
-    recipient::RecipientSignedMessage,
-    sender::OutputPair,
-    TransactionProtocolError as TPE,
-};
 use tari_script::push_pubkey_script;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
     tari_amount::MicroMinotari,
+    transaction_builder::OutputPair,
     transaction_components::{
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+        CoreTransactionBuilder,
         KernelBuilder,
         Transaction,
-        TransactionBuilder,
         TransactionKernel,
         TransactionKernelVersion,
+        TransactionOutput,
         WalletOutput,
         WalletOutputBuilder,
     },
+    TransactionBuilderError,
 };
 
 use crate::transaction_service::{

@@ -46,13 +46,16 @@ impl Filter for FieldsPreservedFilter {
 mod test {
     #![allow(clippy::indexing_slicing)]
 
+    use tari_transaction_key_manager::create_memory_db_key_manager;
+
     use super::*;
     use crate::{
         covenant,
-        transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
-        transaction_components::OutputType,
+        transaction_components::{
+            covenants::{filters::test::setup_filter_test, test::create_input},
+            OutputType,
+        },
     };
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_outputs_that_match_input_fields() {

@@ -22,7 +22,6 @@
 
 #![allow(clippy::indexing_slicing)]
 use rand::rngs::OsRng;
-use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_common::configuration::Network;
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_crypto::{
@@ -33,26 +32,30 @@ use tari_crypto::{
 };
 use tari_script::{inputs, script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
-use tari_transaction_key_manager::create_memory_db_key_manager_with_range_proof_size;
+use tari_transaction_key_manager::{
+    create_memory_db_key_manager,
+    create_memory_db_key_manager_with_range_proof_size,
+    MemoryDbKeyManager,
+};
+
 use super::*;
 use crate::{
+    aggregated_body::AggregateBody,
     consensus::ConsensusManager,
-        aggregated_body::AggregateBody,
-        legacy_transaction_protocol::TransactionProtocolError,
-        tari_amount::{uT, T},
-        test_helpers,
-        test_helpers::{TestParams, UtxoTestParams},
-        transaction_components::{
-            covenants::Covenant,
-            memo_field::MemoField,
-            transaction_output::batch_verify_range_proofs,
-            OutputFeatures,
-        },
-        crypto_factories::CryptoFactories,
+    crypto_factories::CryptoFactories,
+    legacy_transaction_protocol::TransactionProtocolError,
+    tari_amount::{uT, T},
+    test_helpers,
+    test_helpers::{TestParams, UtxoTestParams},
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::MemoField,
+        transaction_output::batch_verify_range_proofs,
+        OutputFeatures,
+    },
     txn_schema,
-    validation::{transaction::TransactionInternalConsistencyValidator},
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
     let key_manager = create_memory_db_key_manager().unwrap();
@@ -583,8 +586,8 @@ mod validate_internal_consistency {
     use super::*;
     use crate::{
         covenant,
+        test_helpers::{create_transaction_with, create_wallet_outputs},
         transaction_components::covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
-            test_helpers::{create_transaction_with, create_wallet_outputs},
     };
 
     async fn test_case(

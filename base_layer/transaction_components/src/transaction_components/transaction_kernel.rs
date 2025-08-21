@@ -40,7 +40,7 @@ use super::TransactionKernelVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     tari_amount::MicroMinotari,
-    transaction_components::{transaction_metadata::TransactionMetadata, KernelFeatures, TransactionError},
+    transaction_components::{KernelFeatures, TransactionError},
 };
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and

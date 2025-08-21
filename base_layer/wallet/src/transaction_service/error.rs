@@ -33,7 +33,6 @@ use tari_common_types::{
 };
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::transaction_protocol::TransactionProtocolError;
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_script::ScriptError;
@@ -41,6 +40,7 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
     key_manager::error::KeyManagerServiceError,
     transaction_components::{EncryptedDataError, TransactionError},
+    TransactionBuilderError,
 };
 use tari_utilities::ByteArrayError;
 use thiserror::Error;

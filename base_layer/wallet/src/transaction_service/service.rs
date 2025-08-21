@@ -57,17 +57,7 @@ use tari_common_types::{
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::{
-    proto::base_node as base_node_proto,
-    transactions::{
-        transaction_protocol::{
-            proto::protocol as proto,
-            recipient::RecipientSignedMessage,
-            sender::TransactionSenderMessage,
-        },
-        ReceiverTransactionProtocol,
-    },
-};
+use tari_core::proto::base_node as base_node_proto;
 use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
@@ -94,7 +84,6 @@ use tari_transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-        transaction_metadata::TransactionMetadata,
         BuildInfo,
         CodeTemplateRegistration,
         EncryptedData,

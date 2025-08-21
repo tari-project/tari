@@ -46,12 +46,6 @@ struct CompressedCommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSe
  */
 struct CompressedKey_RistrettoPublicKey;
 
-struct Contact;
-
-struct ContactsLivenessData;
-
-struct ContactsServiceHandle;
-
 struct EmojiSet;
 
 struct FeePerGramStat;

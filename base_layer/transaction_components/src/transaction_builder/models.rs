@@ -6,7 +6,8 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 
-use crate::transactions::{
+use crate::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
@@ -16,7 +17,6 @@ use crate::transactions::{
         TransactionOutput,
         WalletOutput,
     },
-    transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
 };
 
 #[derive(Clone, Debug, PartialEq)]

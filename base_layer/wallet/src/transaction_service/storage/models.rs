@@ -33,7 +33,7 @@ use tari_common_types::{
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, CompressedCommitment, FixedHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{ReceiverTransactionProtocol, SenderTransactionProtocol};
+use tari_core::transactions::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
 use tari_transaction_components::{
     consensus::ConsensusConstants,
     fee::Fee,

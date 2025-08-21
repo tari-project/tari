@@ -17,9 +17,11 @@ pub mod fee;
 pub mod key_manager;
 pub mod tari_amount;
 pub mod tari_proof_of_work;
+pub mod test_helpers;
+pub mod transaction_builder;
 pub mod transaction_components;
 pub mod validation;
-pub mod test_helpers;
+pub use transaction_builder::{TransactionBuilder, TransactionBuilderError};
 
 mod format_currency;
 pub use format_currency::format_currency;

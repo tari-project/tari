@@ -42,11 +42,10 @@ use tari_core::{
     test_helpers::blockchain::create_test_blockchain_db,
     validation::mocks::MockValidator,
 };
-
-use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
 use tempfile::tempdir;
 use tokio::{

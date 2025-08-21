@@ -20,31 +20,29 @@ use tari_common_types::{
 use tari_script::{script, ExecutionStack};
 
 use crate::{
-    borsh::SerializedSize,
     consensus::ConsensusConstants,
-    covenants::Covenant,
-    transactions::{
-        fee::Fee,
-        tari_amount::MicroMinotari,
-        transaction_builder::{
-            error::TransactionBuilderError,
-            models::{FinalizedTransaction, OutputPair, RecipientDetails},
-        },
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoreTransactionBuilder,
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-            MAX_TRANSACTION_INPUTS,
-            MAX_TRANSACTION_OUTPUTS,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    fee::Fee,
+    helpers::borsh::SerializedSize,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    tari_amount::MicroMinotari,
+    transaction_builder::{
+        error::TransactionBuilderError,
+        models::{FinalizedTransaction, OutputPair, RecipientDetails},
+    },
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        CoreTransactionBuilder,
+        KernelBuilder,
+        KernelFeatures,
+        OutputFeatures,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
+        MAX_TRANSACTION_INPUTS,
+        MAX_TRANSACTION_OUTPUTS,
     },
 };
 

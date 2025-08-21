@@ -44,6 +44,8 @@ impl Filter for OutputHashEqFilter {
 
 #[cfg(test)]
 mod test {
+    use tari_transaction_key_manager::create_memory_db_key_manager;
+
     use super::*;
     use crate::{
         covenant,
@@ -52,7 +54,6 @@ mod test {
             test::{create_input, create_outputs},
         },
     };
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_output_with_specific_hash() {

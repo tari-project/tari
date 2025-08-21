@@ -138,7 +138,6 @@ use tari_common_types::{
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::{DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
-use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{ByteArray, Hidden},

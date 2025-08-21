@@ -30,7 +30,6 @@ use tari_common_types::{
     tari_address::TariAddressError,
 };
 use tari_comms::{multiaddr, peer_manager::PeerManagerError};
-use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},

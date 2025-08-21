@@ -47,14 +47,13 @@ use crate::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-        transaction_metadata::TransactionMetadata,
         CoinBaseExtra,
+        CoreTransactionBuilder,
         KernelBuilder,
         KernelFeatures,
         OutputFeatures,
         RangeProofType,
         Transaction,
-        TransactionBuilder,
         TransactionError,
         TransactionKernel,
         TransactionKernelVersion,
@@ -521,11 +520,11 @@ mod test {
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         crypto_factories::CryptoFactories,
         tari_amount::uT,
+        test_helpers::TestParams,
         transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
         CoinbaseBuilder,
     };
-    use crate::test_helpers::TestParams;
 
     fn get_builder() -> (
         CoinbaseBuilder<MemoryDbKeyManager>,

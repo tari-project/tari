@@ -37,36 +37,27 @@ use tari_common_types::{
 };
 use tari_crypto::keys::SecretKey as SkTrait;
 use tari_script::{script, ExecutionStack};
-use tari_utilities::ByteArray;
-
-use crate::{
-    one_sided::public_key_to_output_encryption_key,
-    transactions::{
-        tari_amount::{MicroMinotari, Minotari},
-        transaction_components::{
-            memo_field::MemoField,
-            CoinBaseExtra,
-            KernelFeatures,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            SecretTransactionKeyManagerInterface,
-            TransactionKeyManagerInterface,
-        },
+use tari_transaction_components::{
+    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    tari_amount::{MicroMinotari, Minotari},
+    transaction_components::{
+        memo_field::MemoField,
+        one_sided::public_key_to_output_encryption_key,
+        CoinBaseExtra,
+        KernelFeatures,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutputBuilder,
     },
 };
 use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
-
 /// The average amount of blocks per day based on the target block time
 pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
 

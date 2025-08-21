@@ -525,11 +525,11 @@ mod test {
     use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
     use tari_script::script;
     use tari_transaction_key_manager::create_memory_db_key_manager;
+
     use super::*;
     use crate::{
-        transaction_components::covenants::Covenant,
-            test_helpers,
-            transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion},
+        test_helpers,
+        transaction_components::{covenants::Covenant, KernelFeatures, OutputFeatures, TransactionInputVersion},
     };
 
     mod check_lock_height {
@@ -656,17 +656,17 @@ mod test {
 
             let key_manager = create_memory_db_key_manager().unwrap();
             let mut outputs = Vec::new();
-            for _ in 0 ..10{
-                    let (o, _, _) = test_helpers::create_utxo(
-                        100.into(),
-                        &key_manager,
-                        &OutputFeatures::create_burn_output(),
-                        &script!(Nop).unwrap(),
-                        &Covenant::default(),
-                        0.into(),
-                    )
-                        .await;
-                    outputs.push(o);
+            for _ in 0..10 {
+                let (o, _, _) = test_helpers::create_utxo(
+                    100.into(),
+                    &key_manager,
+                    &OutputFeatures::create_burn_output(),
+                    &script!(Nop).unwrap(),
+                    &Covenant::default(),
+                    0.into(),
+                )
+                .await;
+                outputs.push(o);
             }
 
             while is_all_unique_and_sorted(&outputs) {

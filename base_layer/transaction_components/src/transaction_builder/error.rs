@@ -6,10 +6,10 @@ use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::transactions::{
+use crate::{
+    key_manager::error::KeyManagerServiceError,
     tari_amount::MicroMinotari,
     transaction_components::TransactionError,
-    transaction_key_manager::error::KeyManagerServiceError,
 };
 
 #[derive(Debug, Error)]

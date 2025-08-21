@@ -42,11 +42,6 @@ use tari_common_types::{
     },
 };
 use tari_comms::types::CommsDHKE;
-use tari_core::transactions::{
-    transaction_protocol::sender::TransactionSenderMessage,
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
-};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{
     inputs,
@@ -75,7 +70,6 @@ use tari_transaction_components::{
             shared_secret_to_output_encryption_key,
             shared_secret_to_output_spending_key,
         },
-        transaction_metadata::TransactionMetadata,
         EncryptedData,
         KernelFeatures,
         OutputFeatures,
@@ -87,6 +81,7 @@ use tari_transaction_components::{
         WalletOutput,
         WalletOutputBuilder,
     },
+    TransactionBuilder,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::Mutex, time::Instant};

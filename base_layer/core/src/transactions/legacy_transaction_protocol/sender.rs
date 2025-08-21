@@ -28,26 +28,23 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedCommitment},
 };
-pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
-
-use crate::{
-    covenants::Covenant,
-    transactions::{
-        legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE},
-        tari_amount::*,
-        transaction_components::{
-            memo_field::MemoField,
-            OutputFeatures,
-            Transaction,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::*,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::MemoField,
+        OutputFeatures,
+        Transaction,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
     },
 };
+
+use crate::transactions::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

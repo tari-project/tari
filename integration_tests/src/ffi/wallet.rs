@@ -29,7 +29,6 @@ use std::{
 
 use callbacks::Callbacks;
 use libc::{c_ulonglong, c_void};
-use tari_common_types::tari_address::TariAddress;
 use tari_transaction_components::transaction_components::memo_field::MemoField;
 
 use super::{

@@ -30,7 +30,6 @@ use tari_comms::{
     multiaddr,
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
-use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use tari_transaction_components::{

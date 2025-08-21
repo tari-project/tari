@@ -52,13 +52,13 @@ impl Filter for OrFilter {
 mod test {
     #![allow(clippy::indexing_slicing)]
     use tari_script::script;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{
         covenant,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_filters_outputset_using_union() {

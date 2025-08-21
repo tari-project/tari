@@ -131,14 +131,16 @@ mod test {
     use tari_common_types::types::FixedHash;
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::{to_hex, Hex};
-    use crate::covenant;
 
     use super::*;
-    use crate::transaction_components::covenants::{
-        arguments::CovenantArg,
-        byte_codes::ARG_OUTPUT_FIELD,
-        fields::OutputField,
-        filters::CovenantFilter,
+    use crate::{
+        covenant,
+        transaction_components::covenants::{
+            arguments::CovenantArg,
+            byte_codes::ARG_OUTPUT_FIELD,
+            fields::OutputField,
+            filters::CovenantFilter,
+        },
     };
 
     #[test]

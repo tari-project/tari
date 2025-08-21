@@ -34,7 +34,6 @@ use tari_transaction_components::{
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        transaction_metadata::TransactionMetadata,
         OutputFeatures,
     },
 };
