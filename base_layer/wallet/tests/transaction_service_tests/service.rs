@@ -82,7 +82,6 @@ use tari_comms::{
     types::CommsDHKE,
     PeerConnection,
 };
-use tari_comms_dht::outbound::mock::create_outbound_service_mock;
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse},
@@ -285,14 +284,11 @@ async fn setup_transaction_service_no_comms(
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (output_manager_service_event_publisher, _) = broadcast::channel(200);
-    let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock();
 
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);
     let transaction_service_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
     let (base_node_response_message_channel, base_node_response_receiver) = mpsc::channel(20);
-
-    task::spawn(mock_outbound_service.run());
 
     let service = BaseNodeWalletRpcMockService::new();
     let base_node_rpc_mock_state = service.get_state();
@@ -384,7 +380,6 @@ async fn setup_transaction_service_no_comms(
         base_node_response_receiver,
         output_manager_service_handle.clone(),
         key_manager.clone(),
-        outbound_message_requester,
         wallet_connectivity_service_mock.clone(),
         event_publisher,
         node_identity.clone(),

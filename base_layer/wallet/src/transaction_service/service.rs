@@ -56,7 +56,6 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
-use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
@@ -200,7 +199,6 @@ where
         base_node_response_stream: BNResponseStream,
         output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
         core_key_manager_service: TKeyManagerInterface,
-        outbound_message_service: OutboundMessageRequester,
         connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
@@ -235,7 +233,6 @@ where
             db: db.clone(),
             output_manager_service,
             transaction_key_manager_service: core_key_manager_service,
-            outbound_message_service,
             connectivity,
             event_publisher: event_publisher.clone(),
             interactive_tari_address,
@@ -3448,7 +3445,6 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
     pub transaction_key_manager_service: TKeyManagerInterface,
-    pub outbound_message_service: OutboundMessageRequester,
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
     pub interactive_tari_address: TariAddress,
