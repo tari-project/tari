@@ -72,7 +72,6 @@ mod transaction_input;
 mod transaction_input_version;
 mod transaction_kernel;
 mod transaction_kernel_version;
-pub mod transaction_metadata;
 pub mod transaction_output;
 mod transaction_output_version;
 mod unblinded_output;
