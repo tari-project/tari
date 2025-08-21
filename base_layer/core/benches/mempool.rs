@@ -35,16 +35,16 @@ mod benches {
     use criterion::{criterion_group, Criterion};
     use tari_common::configuration::Network;
     use tari_core::{
-        consensus::ConsensusManager,
+        consensus::BaseConsensusManager,
         mempool::{Mempool, MempoolConfig},
         test_helpers::blockchain::create_new_blockchain,
-        transactions::{
-            tari_amount::{uT, T},
-            transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
-            CryptoFactories,
-        },
-        tx,
         validation::transaction::TransactionFullValidator,
+    };
+    use tari_transaction_components::{
+        crypto_factories::CryptoFactories,
+        tari_amount::{uT, T},
+        transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
+        tx,
     };
     use tari_transaction_key_manager::create_memory_db_key_manager;
     use tokio::runtime::Runtime;
@@ -68,7 +68,7 @@ mod benches {
     pub fn mempool_perf_test(c: &mut Criterion) {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let db = create_new_blockchain();
 
         let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db, rules.clone());

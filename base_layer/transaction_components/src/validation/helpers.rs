@@ -251,8 +251,6 @@ mod test {
         }
     }
 
-
-
     mod check_coinbase_maturity {
 
         use super::*;
@@ -269,11 +267,17 @@ mod test {
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let key_manager = create_memory_key_manager().unwrap();
-            let coinbase =
-                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue,&key_manager)
-                    .await;
+            let coinbase = test_helpers::create_coinbase_wallet_output(
+                &test_params,
+                height,
+                None,
+                RangeProofType::RevealedValue,
+                &key_manager,
+            )
+            .await;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
+            let coinbase_kernel =
+                test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -289,12 +293,18 @@ mod test {
             let key_manager = create_memory_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase =
-                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue, &key_manager)
-                    .await;
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(
+                &test_params,
+                height,
+                None,
+                RangeProofType::RevealedValue,
+                &key_manager,
+            )
+            .await;
             coinbase.features.maturity = 0;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
+            let coinbase_kernel =
+                test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -317,12 +327,14 @@ mod test {
                 &test_params,
                 height,
                 None,
-                RangeProofType::BulletProofPlus, &key_manager
+                RangeProofType::BulletProofPlus,
+                &key_manager,
             )
             .await;
             coinbase.value = 123.into();
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
+            let coinbase_kernel =
+                test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();

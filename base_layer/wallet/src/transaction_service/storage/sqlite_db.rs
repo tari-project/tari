@@ -2601,10 +2601,16 @@ mod test {
         encryption::Encryptable,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus, TxId},
-        types::{CompressedPublicKey, PrivateKey, Signature},
+        types::{CompressedPublicKey, CompressedSignature, PrivateKey},
     };
-    use tari_core::transactions::{
-        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
+    use tari_core::transactions::legacy_transaction_protocol::{
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    };
+    use tari_crypto::keys::SecretKey as SecretKeyTrait;
+    use tari_script::script;
+    use tari_test_utils::random::string;
+    use tari_transaction_components::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_builder::TransactionBuilder,
@@ -2614,9 +2620,6 @@ mod test {
             Transaction,
         },
     };
-    use tari_crypto::keys::SecretKey as SecretKeyTrait;
-    use tari_script::script;
-    use tari_test_utils::random::string;
     use tari_transaction_key_manager::create_memory_db_key_manager;
     use tempfile::tempdir;
 
@@ -2882,7 +2885,10 @@ mod test {
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -2916,7 +2922,10 @@ mod test {
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -3160,7 +3169,7 @@ mod test {
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],
-            transaction_signature: Signature::default(),
+            transaction_signature: CompressedSignature::default(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -3297,7 +3306,7 @@ mod test {
                 sent_output_hashes: vec![],
                 received_output_hashes: vec![],
                 change_output_hashes: vec![],
-                transaction_signature: Signature::default(),
+                transaction_signature: CompressedSignature::default(),
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
@@ -3440,7 +3449,7 @@ mod test {
                 sent_output_hashes: vec![],
                 received_output_hashes: vec![],
                 change_output_hashes: vec![],
-                transaction_signature: Signature::default(),
+                transaction_signature: CompressedSignature::default(),
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,

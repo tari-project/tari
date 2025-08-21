@@ -29,7 +29,7 @@ use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     key_manager::TariKeyId,
     tari_amount::{uT, T},
@@ -51,12 +51,15 @@ use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
     blocks::BlockValidationError,
+    consensus::BaseConsensusManager,
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     validation::{BlockBodyValidator, ValidationError},
 };
-use crate::consensus::BaseConsensusManager;
 
-async fn setup_with_rules(rules: BaseConsensusManager, check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
+async fn setup_with_rules(
+    rules: BaseConsensusManager,
+    check_rangeproof: bool,
+) -> (TestBlockchain, BlockBodyFullValidator) {
     let blockchain = TestBlockchain::create(rules.clone()).await;
     let validator = BlockBodyFullValidator::new(rules, check_rangeproof);
     (blockchain, validator)
@@ -391,7 +394,7 @@ async fn it_checks_txo_sort_order() {
 
 #[tokio::test]
 async fn it_limits_the_script_byte_size() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -417,7 +420,7 @@ async fn it_limits_the_script_byte_size() {
 
 #[tokio::test]
 async fn it_limits_the_encrypted_data_byte_size() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -434,7 +437,7 @@ async fn it_limits_the_encrypted_data_byte_size() {
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let mut outputs = txs[0].body.outputs().clone();
-    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 250]);
+    outputs[0].encrypted_data = EncryptedData::from_bytes(&vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 250]).unwrap();
     txs[0].body = AggregateBody::new(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 
@@ -445,7 +448,7 @@ async fn it_limits_the_encrypted_data_byte_size() {
 
 #[tokio::test]
 async fn it_rejects_invalid_input_metadata() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -502,7 +505,7 @@ mod body_only {
 
     #[tokio::test]
     async fn it_rejects_invalid_input_metadata() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
@@ -539,7 +542,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_zero_conf_double_spends() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
@@ -576,7 +579,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_unpermitted_output_types() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_output_types(&[OutputType::Coinbase])
@@ -604,7 +607,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_unpermitted_range_proof_types() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[
@@ -638,7 +641,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_accepts_permitted_range_proof_types() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[
@@ -672,7 +675,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_when_output_types_are_not_matched() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[(OutputType::CodeTemplateRegistration, &[

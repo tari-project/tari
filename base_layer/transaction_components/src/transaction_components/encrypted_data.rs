@@ -208,13 +208,6 @@ impl EncryptedData {
         })
     }
 
-    #[cfg(test)]
-    pub fn from_vec_unsafe(data: Vec<u8>) -> Self {
-        Self {
-            data: MaxSizeBytes::from_bytes_checked(data).unwrap(),
-        }
-    }
-
     /// Get a byte vector with the encrypted data contents
     pub fn to_byte_vec(&self) -> Vec<u8> {
         self.data.clone().into()

@@ -29,7 +29,7 @@ use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
 use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
-    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
+    consensus::ConsensusConstantsBuilder,
     crypto_factories::CryptoFactories,
     key_manager::TxoStage,
     tari_amount::{uT, MicroMinotari},
@@ -62,13 +62,14 @@ mod header_validators {
     use super::*;
     use crate::{
         block_specs,
+        consensus::{BaseConsensusManager, BaseConsensusManagerBuilder},
         test_helpers::blockchain::{create_main_chain, create_new_blockchain},
         validation::{header::HeaderFullValidator, HeaderChainLinkedValidator},
     };
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
-        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let consensus_manager = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let genesis = consensus_manager.get_genesis_block();
         let db = create_store_with_consensus(consensus_manager);
 
@@ -86,7 +87,7 @@ mod header_validators {
 
     #[test]
     fn header_iter_fetch_in_chunks() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let headers = (1..=15).fold(vec![db.fetch_chain_header(0).unwrap()], |mut acc, i| {
             let prev = acc.last().unwrap();
@@ -116,7 +117,7 @@ mod header_validators {
 
     #[test]
     fn it_validates_that_version_is_in_range() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
 
         let genesis = db.fetch_chain_header(0).unwrap();
@@ -143,7 +144,7 @@ mod header_validators {
 
     #[tokio::test]
     async fn it_does_a_sanity_check_on_the_number_of_timestamps_provided() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_new_blockchain();
 
         let (_, blocks) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"])).await;
@@ -184,12 +185,12 @@ mod header_validators {
         }));
     }
 }
-
+use crate::consensus::BaseConsensusManagerBuilder;
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn chain_balance_validation() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
+    let consensus_manager = BaseConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let pre_mine_value = 5000 * uT;
     let key_manager = create_memory_db_key_manager().unwrap();
@@ -259,7 +260,7 @@ async fn chain_balance_validation() {
         .with_pre_mine_value(total_pre_mine)
         .build();
     // Create a LocalNet consensus manager that uses custom genesis block that contains an extra pre_mine utxo
-    let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
+    let consensus_manager = BaseConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
         .build()
@@ -415,7 +416,7 @@ async fn chain_balance_validation() {
 #[allow(clippy::too_many_lines)]
 async fn chain_balance_validation_burned() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
+    let consensus_manager = BaseConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let pre_mine_value = 5000 * uT;
     let key_manager = create_memory_db_key_manager().unwrap();
@@ -486,7 +487,7 @@ async fn chain_balance_validation_burned() {
         .build();
     // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
     // block that contains an extra pre-mine utxo
-    let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
+    let consensus_manager = BaseConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
         .build()
@@ -610,18 +611,20 @@ mod transaction_validator {
 
     use tari_transaction_components::{
         transaction_components::{CoinBaseExtra, OutputType, TransactionError},
-        validation::transaction::TransactionInternalConsistencyValidator,
+        validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
     };
 
     use super::*;
+    use crate::consensus::BaseConsensusManagerBuilder;
 
     #[tokio::test]
     async fn it_rejects_coinbase_outputs() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
-        let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
+        let validator =
+            TransactionInternalConsistencyValidator::new(true, consensus_manager.consensus_manager(), factories);
         let features = OutputFeatures::create_coinbase(0, None, RangeProofType::BulletProofPlus);
         let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
@@ -631,7 +634,7 @@ mod transaction_validator {
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         unpack_enum!(
-            ValidationError::OutputTypeNotPermitted {
+            AggregatedBodyValidationError::OutputTypeNotPermitted {
                 output_type: OutputType::Coinbase
             } = err
         );
@@ -640,10 +643,11 @@ mod transaction_validator {
     #[tokio::test]
     async fn coinbase_extra_must_be_empty() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
-        let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
+        let validator =
+            TransactionInternalConsistencyValidator::new(true, consensus_manager.consensus_manager(), factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = CoinBaseExtra::try_from(b"deadbeef".to_vec()).unwrap();
         let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
@@ -655,7 +659,9 @@ mod transaction_validator {
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         assert!(matches!(
             err,
-            ValidationError::TransactionError(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra)
+            AggregatedBodyValidationError::TransactionError(
+                TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra
+            )
         ));
     }
 }

@@ -259,4 +259,3 @@ impl ConsensusManagerBuilder {
         ConsensusManager { inner: Arc::new(inner) }
     }
 }
-

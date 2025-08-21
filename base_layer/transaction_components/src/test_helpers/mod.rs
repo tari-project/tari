@@ -26,6 +26,7 @@ pub use test_helpers_functions::{
     create_coinbase_wallet_output,
     create_consensus_constants,
     create_consensus_manager,
+    create_random_signature_from_secret_key,
     create_test_input,
     create_test_kernel,
     create_transaction_with,
@@ -34,10 +35,11 @@ pub use test_helpers_functions::{
     create_wallet_output_with_data,
     create_wallet_outputs,
     new_public_key,
+    schema_to_transaction,
     spend_utxos,
     TestParams,
     TransactionSchema,
-    UtxoTestParams,create_random_signature_from_secret_key,schema_to_transaction
+    UtxoTestParams,
 };
 pub mod memory_key_manager;
 pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};

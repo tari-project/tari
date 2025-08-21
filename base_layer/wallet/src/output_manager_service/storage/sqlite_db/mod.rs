@@ -1509,14 +1509,14 @@ mod test {
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
-    use tari_core::transactions::{
+    use tari_script::script;
+    use tari_test_utils::random;
+    use tari_transaction_components::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     };
-    use tari_script::script;
-    use tari_test_utils::random;
+    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
     use tempfile::tempdir;
 
     use crate::output_manager_service::storage::{

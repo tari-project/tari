@@ -670,7 +670,6 @@ mod test {
             block.header().input_mr.to_vec().to_hex(),
         );
 
-
         // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
         // kernel is correct)
 

@@ -923,26 +923,28 @@ mod test {
         transaction_components::{TransactionKernel, TransactionOutput},
     };
 
-    use crate::blocks::pre_mine::{
-        contributors_upfront_release,
-        create_pre_mine_genesis_block_info,
-        create_pre_mine_output_values,
-        get_expected_payout_grace_period_blocks,
-        get_pre_mine_items,
-        get_pre_mine_value,
-        get_signature_threshold,
-        get_tokenomics_pre_mine_unlock_schedule,
-        pre_mine_spendable_at_height,
-        verify_script_keys_for_index,
-        Apportionment,
-        CustomRelease,
-        PreMineItem,
-        ProportionalRelease,
-        ReleaseCadence,
-        ReleaseStrategy,
-        BLOCKS_PER_DAY,
+    use crate::{
+        blocks::pre_mine::{
+            contributors_upfront_release,
+            create_pre_mine_genesis_block_info,
+            create_pre_mine_output_values,
+            get_expected_payout_grace_period_blocks,
+            get_pre_mine_items,
+            get_pre_mine_value,
+            get_signature_threshold,
+            get_tokenomics_pre_mine_unlock_schedule,
+            pre_mine_spendable_at_height,
+            verify_script_keys_for_index,
+            Apportionment,
+            CustomRelease,
+            PreMineItem,
+            ProportionalRelease,
+            ReleaseCadence,
+            ReleaseStrategy,
+            BLOCKS_PER_DAY,
+        },
+        consensus::BaseConsensusManager,
     };
-    use crate::consensus::BaseConsensusManager;
 
     async fn genesis_block_test_info(
         pre_mine_items: &[PreMineItem],

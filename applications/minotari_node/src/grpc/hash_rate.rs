@@ -95,11 +95,12 @@ impl HashRateMovingAverage {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use tari_core::{
-        consensus::{ConsensusConstants, ConsensusManagerBuilder},
-        proof_of_work::{Difficulty, PowAlgorithm},
-    };
+    use tari_core::consensus::BaseConsensusManagerBuilder;
     use tari_p2p::Network;
+    use tari_transaction_components::{
+        consensus::ConsensusConstants,
+        tari_proof_of_work::{Difficulty, PowAlgorithm},
+    };
 
     use super::HashRateMovingAverage;
 
@@ -175,7 +176,7 @@ mod test {
     fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
         let mut constants = ConsensusConstants::esmeralda()[0].clone();
         constants.set_pow_target_block_interval(pow_algo, 240);
-        let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda)
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::Esmeralda)
             .add_consensus_constants(constants)
             .build()
             .unwrap();

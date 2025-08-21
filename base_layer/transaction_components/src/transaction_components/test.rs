@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_types::types::{PrivateKey, CompressedSignature};
+use tari_common_types::types::{CompressedSignature, PrivateKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::SecretKey as SecretKeyTrait,
@@ -32,12 +32,13 @@ use tari_crypto::{
 };
 use tari_script::{inputs, script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
-use crate::validation::AggregatedBodyValidationError;
+
 use super::*;
 use crate::{
     aggregated_body::AggregateBody,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
+    key_manager::TransactionKeyManagerInterface,
     tari_amount::{uT, T},
     test_helpers,
     test_helpers::{
@@ -53,9 +54,8 @@ use crate::{
         OutputFeatures,
     },
     txn_schema,
-    validation::transaction::TransactionInternalConsistencyValidator,
+    validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
 };
-use crate::key_manager::TransactionKeyManagerInterface;
 
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
@@ -317,7 +317,7 @@ fn kernel_hash() {
         &k.hash().to_hex(),
         "b94992cb59695ebad3786e9f51a220e91c627f8b38f51bcf6c87297325d1b410"
     );
-    #[cfg(tari_target_network_testnet)]
+    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     assert_eq!(
         &k.hash().to_hex(),
         "38b03d013f941e86c027969fbbc190ca2a28fa2d7ac075d50dbfb6232deee646"
@@ -355,7 +355,7 @@ fn kernel_metadata() {
         &k.hash().to_hex(),
         "22e39392dfeae9653c73437880be71e99f4b8a2b23289d54f57b8931deebfeed"
     );
-    #[cfg(tari_target_network_testnet)]
+    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     assert_eq!(
         &k.hash().to_hex(),
         "ebc852fbac798c25ce497b416f69ec11a97e186aacaa10e2bb4ca5f5a0f197f2"
@@ -691,10 +691,10 @@ mod validate_internal_consistency {
         )
         .await
         .unwrap_err();
-
+        dbg!(err);
         panic!("fix here");
-        //unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
-        //unpack_enum!(TransactionError::BuilderError(_s) = err);
+        // unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
+        // unpack_enum!(TransactionError::BuilderError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
         // Pass because maturity is set

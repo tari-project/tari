@@ -79,7 +79,7 @@ impl BaseConsensusManager {
 
     /// Get a reference to the emission parameters
     pub fn emission_schedule(&self) -> &EmissionSchedule {
-        &self.inner.consensus_manager.emission()
+        self.inner.consensus_manager.emission()
     }
 
     /// Gets the block reward for the height
@@ -324,16 +324,15 @@ pub enum BaseConsensusBuilderError {
     CannotSetGenesisBlock,
 }
 
-
-
 #[cfg(test)]
 mod test {
     /// The average amount of blocks per day based on the target block time
     pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
     use std::str::FromStr;
 
-    use super::*;
     use tari_transaction_components::consensus::consensus_constants::MAINNET_PRE_MINE_VALUE;
+
+    use super::*;
 
     #[test]
     fn test_supply_at_block() {

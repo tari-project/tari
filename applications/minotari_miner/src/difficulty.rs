@@ -118,7 +118,7 @@ pub mod test {
         )
         .timestamp() as u64)
             .into();
-        header.pow.pow_algo = tari_core::proof_of_work::PowAlgorithm::Sha3x;
+        header.pow.pow_algo = tari_transaction_components::tari_proof_of_work::PowAlgorithm::Sha3x;
         (header.clone().into(), header)
     }
 

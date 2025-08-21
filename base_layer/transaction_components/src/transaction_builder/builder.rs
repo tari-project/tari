@@ -862,6 +862,7 @@ mod test {
         test_helpers::{
             create_consensus_constants,
             create_consensus_manager,
+            create_memory_key_manager,
             create_test_input,
             create_wallet_output_with_data,
             TestParams,
@@ -871,7 +872,6 @@ mod test {
         transaction_components::{memo_field::MemoField, OutputFeatures, WalletOutputBuilder},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
-    use crate::test_helpers::create_memory_key_manager;
 
     /// Hit the edge case where our change isn't enough to cover the cost of an extra output
     #[tokio::test]

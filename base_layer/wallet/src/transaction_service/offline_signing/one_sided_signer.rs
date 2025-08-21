@@ -411,7 +411,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 .output_pair
                 .sender_offset_key_id
                 .clone()
-                .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?;
+                .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
             sender_offset_keys.push(output_sender_offset_key_id);
         }
 
@@ -445,8 +445,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                         .await?;
                 let sender_offset_key_id = change
                     .sender_offset_key_id
-                    .clone()
-                    .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?;
+                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?;
                 sender_offset_keys.push(sender_offset_key_id);
                 Some(change.output)
             },
@@ -501,7 +500,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 change
                     .sender_offset_key_id
                     .as_ref()
-                    .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
                 self.key_manager,
             )
             .await?;

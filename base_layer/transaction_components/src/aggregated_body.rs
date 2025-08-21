@@ -510,7 +510,7 @@ impl Display for AggregateBody {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{CompressedPublicKey, FixedHash, CompressedSignature};
+    use tari_common_types::types::{CompressedPublicKey, CompressedSignature, FixedHash};
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;

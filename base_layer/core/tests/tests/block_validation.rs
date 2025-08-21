@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 
 use borsh::BorshSerialize;
 use monero::{blockdata::block::Block as MoneroBlock, consensus::Encodable};
@@ -32,30 +32,13 @@ use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
-    consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
+    consensus::BaseConsensusManager,
     proof_of_work::{
         monero_rx,
         monero_rx::{verify_header, FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
-        Difficulty,
-        PowAlgorithm,
     },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::{uT, T},
-        test_helpers::{
-            create_wallet_output_with_data,
-            schema_to_transaction,
-            spend_utxos,
-            TestParams,
-            UtxoTestParams,
-        },
-        transaction_components::OutputFeatures,
-        transaction_key_manager::TransactionKeyManagerInterface,
-        CryptoFactories,
-    },
-    txn_schema,
     validation::{
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
@@ -70,6 +53,20 @@ use tari_core::{
 };
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::{
+        consensus_constants::{BlockVersion, PowAlgorithmConstants},
+        ConsensusConstantsBuilder,
+    },
+    crypto_factories::CryptoFactories,
+    key_manager::TransactionKeyManagerInterface,
+    tari_amount::{uT, T},
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowData},
+    test_helpers::{create_wallet_output_with_data, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
+    transaction_components::{CoinBaseExtra, OutputFeatures, TransactionError},
+    txn_schema,
+};
 use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 use tiny_keccak::{Hasher, Keccak};
@@ -121,10 +118,10 @@ async fn test_monero_blocks() {
             max_difficulty: Difficulty::min(),
             target_time: 200,
         })
-        .with_blockchain_version(tari_core::consensus::consensus_constants::BlockVersion::V0)
+        .with_blockchain_version(BlockVersion::V0)
         .with_valid_blockchain_version_range(0..=0)
         .build();
-    let cm = ConsensusManager::builder(network)
+    let cm = BaseConsensusManager::builder(network)
         .add_consensus_constants(cc)
         .build()
         .unwrap();
@@ -289,7 +286,7 @@ async fn inputs_are_not_malleable() {
     let mut malicious_test_params = TestParams::new(&blockchain.key_manager).await;
 
     // Oh noes - they've managed to get hold of the private script and spend keys
-    malicious_test_params.commitment_mask_key_id = spent_output.spending_key_id;
+    malicious_test_params.commitment_mask_key_id = spent_output.commitment_mask_key_id;
     let modified_so = blockchain
         .key_manager
         .get_script_offset(&vec![spent_output.script_key_id.clone()], &vec![malicious_test_params
@@ -351,7 +348,7 @@ async fn test_orphan_validator() {
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = ConsensusManager::builder(network)
+    let rules = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build()
@@ -495,7 +492,7 @@ async fn test_orphan_body_validation() {
     let key_manager = create_memory_db_key_manager().unwrap();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = ConsensusManager::builder(network)
+    let rules = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build()
@@ -716,7 +713,7 @@ async fn test_header_validation() {
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = ConsensusManager::builder(network)
+    let rules = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build()
@@ -834,7 +831,7 @@ async fn test_block_sync_body_validator() {
     let key_manager = create_memory_db_key_manager().unwrap();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = ConsensusManager::builder(network)
+    let rules = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build()
@@ -1112,7 +1109,7 @@ async fn add_block_with_large_block() {
     )
     .await;
     let network = Network::LocalNet;
-    let rules = ConsensusManager::builder(network)
+    let rules = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build()
@@ -1171,7 +1168,7 @@ async fn add_block_with_large_many_output_block() {
     let key_manager = create_memory_db_key_manager().unwrap();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[501 * T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = ConsensusManager::builder(network)
+    let rules = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build()

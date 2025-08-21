@@ -337,11 +337,11 @@ mod test {
 
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
-    use tari_transaction_components::{consensus::ConsensusManagerBuilder, tari_amount::MicroMinotari, tx};
+    use tari_transaction_components::{tari_amount::MicroMinotari, tx};
     use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
-    use crate::test_helpers::create_orphan_block;
+    use crate::{consensus::BaseConsensusManagerBuilder, test_helpers::create_orphan_block};
     #[tokio::test]
     async fn test_insert_expire_by_height() {
         let key_manager = create_memory_db_key_manager().unwrap();
@@ -443,7 +443,7 @@ mod test {
     async fn remove_scan_for_and_remove_reorged_txs() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
+        let consensus = BaseConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")

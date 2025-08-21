@@ -541,7 +541,7 @@ mod test {
             kernel.lock_height = 2;
             assert!(matches!(
                 check_kernel_lock_height(1, &[kernel.clone()]),
-                Err(ValidationError::MaturityError)
+                Err(AggregatedBodyValidationError::MaturityError)
             ));
 
             check_kernel_lock_height(2, &[kernel.clone()]).unwrap();
@@ -685,7 +685,7 @@ mod test {
             .validate(&body, &Default::default(), &Default::default(), None, None, u64::MAX)
             .unwrap_err();
 
-            assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+            assert!(matches!(err, AggregatedBodyValidationError::UnsortedOrDuplicateOutput));
         }
     }
 }

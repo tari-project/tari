@@ -864,7 +864,6 @@ mod test {
     use tari_common::configuration::Network;
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
-        consensus::ConsensusManagerBuilder,
         fee::Fee,
         tari_amount::MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
@@ -875,7 +874,10 @@ mod test {
     use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
-    use crate::test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block};
+    use crate::{
+        consensus::BaseConsensusManagerBuilder,
+        test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
+    };
     #[tokio::test]
     async fn test_find_duplicate_input() {
         let key_manager = create_memory_db_key_manager().unwrap();
@@ -1051,7 +1053,7 @@ mod test {
     async fn test_remove_reorg_txs() {
         let key_manager = create_memory_db_key_manager().unwrap();
         let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
+        let consensus = BaseConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(10_000), fee: MicroMinotari(5), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
