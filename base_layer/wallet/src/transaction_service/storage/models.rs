@@ -416,6 +416,9 @@ impl CompletedTransaction {
     }
 
     pub fn calculate_received_payment_references(&self) -> Vec<PaymentReference> {
+        if !self.status.is_confirmed() {
+            return vec![];
+        }
         if let Some(block_hash) = self.mined_in_block.as_ref() {
             return self
                 .received_output_hashes
@@ -427,6 +430,9 @@ impl CompletedTransaction {
     }
 
     pub fn calculate_sent_payment_references(&self) -> Vec<PaymentReference> {
+        if !self.status.is_confirmed() {
+            return vec![];
+        }
         if let Some(block_hash) = self.mined_in_block.as_ref() {
             return self
                 .sent_output_hashes
@@ -438,6 +444,9 @@ impl CompletedTransaction {
     }
 
     pub fn calculate_change_payment_references(&self) -> Vec<PaymentReference> {
+        if !self.status.is_confirmed() {
+            return vec![];
+        }
         if let Some(block_hash) = self.mined_in_block.as_ref() {
             return self
                 .change_output_hashes
