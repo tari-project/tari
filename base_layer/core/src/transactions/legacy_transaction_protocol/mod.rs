@@ -1,110 +1,23 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! Transaction Protocol Manager facilitates the process of constructing a Mimblewimble transaction between two parties.
-//!
-//! The Transaction Protocol Manager implements a protocol to construct a Mimwblewimble transaction between two parties
-//! , a Sender and a Receiver. In this transaction the Sender is paying the Receiver from their inputs and also paying
-//! to as many change outputs as they like. The Receiver will receive a single output from this transaction.
-//! The module consists of three main components:
-//! - A Builder for the initial Sender state data
-//! - A SenderTransactionProtocolManager which manages the Sender's state machine
-//! - A ReceiverTransactionProtocolManager which manages the Receiver's state machine.
-//!
-//! The two state machines run in parallel and will be managed by each respective party. Each state machine has methods
-//! to construct and accept the public data messages that needs to be transmitted between the parties. The diagram below
-//! illustrates the progression of the two state machines and shows where the public data messages are constructed and
-//! accepted in each state machine
-//!
-//! The sequence diagram for the single receiver protocol is:
-//!
-//! <div class="mermaid">
-//!   sequenceDiagram
-//!   participant Sender
-//!   participant Receiver
-//! #
-//!   activate Sender
-//!     Sender-->>Sender: initialize transaction
-//!   deactivate Sender
-//! #
-//!   activate Sender
-//!   Sender-->>+Receiver: partial tx info
-//!   Receiver-->>Receiver: validate tx info
-//!   Receiver-->>Receiver: create new output and sign
-//!   Receiver-->>-Sender: signed partial transaction
-//!   deactivate Sender
-//! #
-//!   activate Sender
-//!     Sender-->>Sender: validate and sign
-//!   deactivate Sender
-//! #
-//!   alt tx is valid
-//!   Sender-->>Network: Broadcast transaction
-//!   else tx is invalid
-//!   Sender--XSender: Failed
-//!   end
-//! </div>
-//!
-//! If there are multiple recipients, the protocol is more involved and requires three rounds of communication:
-//!
-//! <div class="mermaid">
-//!   sequenceDiagram
-//!   participant Sender
-//!   participant Receivers
-//! #
-//!   activate Sender
-//!   Sender-->>Sender: initialize
-//!   deactivate Sender
-//! #
-//!   activate Sender
-//!   Sender-->>+Receivers: [tx_id, amount_i]
-//!   note left of Sender: CollectingPubKeys
-//!   note right of Receivers: Initialization
-//!   Receivers-->>-Sender: [tx_id, Pi, Ri]
-//!   deactivate Sender
-//! #
-//!   alt invalid
-//!   Sender--XSender: failed
-//!   end
-//! #
-//!   activate Sender
-//!   Sender-->>+Receivers: [tx_id, ΣR, ΣP]
-//!   note left of Sender: CollectingSignatures
-//!   note right of Receivers: Signing
-//!   Receivers-->>Receivers: create output and sign
-//!   Receivers-->>-Sender: [tx_id, Output_i, s_i]
-//!   deactivate Sender
-//! #
-//!   note left of Sender: Finalizing
-//!   alt is_valid()
-//!   Sender-->>Sender: Finalized
-//!   else invalid
-//!   Sender--XSender: Failed
-//!   end
-//! </div>
-
 // #![allow(clippy::op_ref)]
-
-use derivative::Derivative;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PrivateKey;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
-
-pub mod proto;
-pub mod recipient;
-pub mod sender;
-pub mod single_receiver;
-pub mod transaction_initializer;
-use tari_common_types::types::CompressedCommitment;
-
 use crate::transactions::{
-    transaction_components::KernelFeatures,
+    transaction_components::TransactionError,
     transaction_key_manager::error::KeyManagerServiceError,
 };
+pub mod recipient;
+pub mod sender;
+pub use recipient::ReceiverTransactionProtocol;
+pub use sender::SenderTransactionProtocol;
+use tari_common_types::types::CompressedCommitment;
+
+use crate::transactions::{tari_amount::*, transaction_components::KernelFeatures};
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {
@@ -199,10 +112,4 @@ impl TransactionMetadata {
             burn_commitment: None,
         }
     }
-}
-
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
-pub struct RecoveryData {
-    pub encryption_key: PrivateKey,
 }

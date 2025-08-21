@@ -34,9 +34,9 @@ use tari_common_types::{
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
+    transaction_builder::TransactionBuilderError,
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_key_manager::error::KeyManagerServiceError,
-    transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
 use tari_p2p::services::liveness::error::LivenessError;
@@ -57,14 +57,14 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Transaction protocol is not in the correct state for this operation")]
     InvalidStateError,
     #[error("Transaction is sending to a network different than ours")]
     InvalidNetwork,
     #[error("One-sided transaction error: `{0}`")]
     OneSidedTransactionError(String),
-    #[error("Transaction Protocol Error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("The message being processed is not recognized by the Transaction Manager")]
     InvalidMessageTypeError,
     #[error("A message for a specific tx_id has been repeated")]

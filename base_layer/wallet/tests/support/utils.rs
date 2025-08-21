@@ -24,6 +24,7 @@ use rand::{CryptoRng, Rng};
 use tari_core::{
     covenants::Covenant,
     transactions::{
+        legacy_transaction_protocol::sender::TransactionSenderMessage,
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
@@ -35,7 +36,6 @@ use tari_core::{
             WalletOutput,
         },
         transaction_key_manager::{MemoryDbKeyManager, TransactionKeyManagerInterface},
-        transaction_protocol::sender::TransactionSenderMessage,
     },
 };
 use tari_script::{inputs, script, TariScript};

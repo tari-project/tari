@@ -55,6 +55,7 @@ use minotari_wallet::{
     utxo_scanner_service::handle::UtxoScannerEvent,
     TransactionStage,
     WalletConfig,
+    WalletKeyManager,
     WalletSqlite,
 };
 use serde::Serialize;
@@ -156,27 +157,6 @@ pub(crate) const SPEND_STEP_4_LEADER: &str = "step_4_for_leader_from_";
 
 #[derive(Debug)]
 pub struct SentTransaction {}
-
-/// Send a normal negotiated transaction to a recipient
-pub async fn send_tari(
-    mut wallet_transaction_service: TransactionServiceHandle,
-    fee_per_gram: u64,
-    amount: MicroMinotari,
-    destination: TariAddress,
-    payment_id: MemoField,
-) -> Result<TxId, CommandError> {
-    wallet_transaction_service
-        .send_transaction(
-            destination,
-            amount,
-            UtxoSelectionCriteria::default(),
-            OutputFeatures::default(),
-            fee_per_gram * uT,
-            payment_id,
-        )
-        .await
-        .map_err(CommandError::TransactionServiceError)
-}
 
 pub async fn burn_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
@@ -313,7 +293,7 @@ pub async fn init_sha_atomic_swap(
 
 /// claims a tari-SHA atomic swap HTLC transaction
 pub async fn finalise_sha_atomic_swap(
-    mut output_service: OutputManagerHandle,
+    mut output_service: OutputManagerHandle<WalletKeyManager>,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
     pre_image: CompressedPublicKey,
@@ -331,7 +311,7 @@ pub async fn finalise_sha_atomic_swap(
 
 /// claims a HTLC refund transaction
 pub async fn claim_htlc_refund(
-    mut output_service: OutputManagerHandle,
+    mut output_service: OutputManagerHandle<WalletKeyManager>,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
     fee_per_gram: MicroMinotari,
@@ -400,7 +380,7 @@ pub async fn coin_split(
     num_splits: usize,
     fee_per_gram: MicroMinotari,
     payment_id: MemoField,
-    output_service: &mut OutputManagerHandle,
+    output_service: &mut OutputManagerHandle<WalletKeyManager>,
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
     let (tx_id, tx, amount) = output_service
@@ -513,9 +493,6 @@ pub async fn make_it_rain(
                     let spawn_start = Instant::now();
                     // Send transaction
                     let tx_id = match transaction_type {
-                        MakeItRainTransactionType::Interactive => {
-                            send_tari(tx_service, fee, amount, address.clone(), payment_id_clone).await
-                        },
                         MakeItRainTransactionType::StealthOneSided => {
                             send_one_sided_to_stealth_address(
                                 tx_service,
@@ -1785,23 +1762,6 @@ pub async fn command_runner(
                 println!();
                 println!("Concluded step 5 'pre-mine-spend-aggregate-transaction'");
                 println!();
-            },
-            SendMinotari(args) => {
-                match send_tari(
-                    transaction_service.clone(),
-                    config.fee_per_gram,
-                    args.amount,
-                    args.destination.clone(),
-                    MemoField::open_from_string(&args.payment_id, detect_tx_metadata(&wallet, args.destination).await),
-                )
-                .await
-                {
-                    Ok(tx_id) => {
-                        debug!(target: LOG_TARGET, "send-minotari concluded with tx_id {tx_id}");
-                        tx_ids.push(tx_id);
-                    },
-                    Err(e) => eprintln!("SendMinotari error! {e}"),
-                }
             },
             SendOneSidedToStealthAddress(args) => {
                 match send_one_sided_to_stealth_address(

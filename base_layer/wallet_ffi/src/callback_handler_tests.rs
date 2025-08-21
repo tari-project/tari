@@ -38,13 +38,13 @@ mod test {
         types::{CompressedPublicKey, PrivateKey},
     };
     use tari_core::transactions::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             memo_field::{MemoField, TxType},
             Transaction,
         },
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        transaction_key_manager::MemoryDbKeyManager,
     };
     use tari_crypto::keys::SecretKey;
     use tari_service_framework::reply_channel;
@@ -448,7 +448,8 @@ mod test {
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
 
         let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
-        let mut oms_handle = OutputManagerHandle::new(oms_request_sender, oms_event_sender.clone());
+        let mut oms_handle =
+            OutputManagerHandle::<MemoryDbKeyManager>::new(oms_request_sender, oms_event_sender.clone());
 
         let shutdown_signal = Shutdown::new();
         let mut mock_output_manager_service =

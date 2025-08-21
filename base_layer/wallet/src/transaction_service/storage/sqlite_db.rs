@@ -2604,20 +2604,19 @@ mod test {
         types::{CompressedPublicKey, PrivateKey, Signature},
     };
     use tari_core::transactions::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
+        transaction_builder::TransactionBuilder,
         transaction_components::{
             memo_field::{MemoField, TxType},
             OutputFeatures,
             Transaction,
         },
         transaction_key_manager::create_memory_db_key_manager,
-        transaction_protocol::sender::TransactionSenderMessage,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
-    use tari_script::{inputs, script};
+    use tari_script::script;
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 
@@ -2642,7 +2641,6 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let consensus_constants = create_consensus_constants(0);
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -2672,7 +2670,9 @@ mod test {
         sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
+        let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
         let test_params = TestParams::new(&key_manager).await;
         let input = create_wallet_output_with_data(
             script!(Nop).unwrap(),
@@ -2684,45 +2684,26 @@ mod test {
         .await
         .unwrap();
         let amount = MicroMinotari::from(10_000);
-        let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
-            .with_payment_id(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
+            .with_memo(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
             .with_input(input)
             .await
-            .unwrap()
-            .with_recipient_data(
-                script!(Nop).unwrap(),
-                OutputFeatures::default(),
-                Default::default(),
-                MicroMinotari::zero(),
-                amount,
-                TariAddress::default(),
-            )
-            .await
-            .unwrap()
-            .with_change_data(
-                script!(Nop).unwrap(),
-                inputs!(change.script_key_pk),
-                change.script_key_id,
-                change.commitment_mask_key_id,
-                Default::default(),
-                TariAddress::default(),
-            );
-        let mut stp = builder.build().await.unwrap();
+            .unwrap();
 
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         )
         .unwrap();
+        let fee = builder.get_fee_estimate().unwrap();
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),
             destination_address: address,
             amount,
-            fee: stp.get_fee_amount().unwrap(),
-            sender_protocol: stp.clone(),
+            fee,
+            sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
@@ -2742,8 +2723,8 @@ mod test {
                 tx_id: 2u64.into(),
                 destination_address: address,
                 amount,
-                fee: stp.get_fee_amount().unwrap(),
-                sender_protocol: stp.clone(),
+                fee,
+                sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
@@ -2784,34 +2765,36 @@ mod test {
                 .unwrap()
         );
 
+        let receiver_test_params = TestParams::new(&key_manager).await;
         let output = create_wallet_output_with_data(
             script!(Nop).unwrap(),
             OutputFeatures::default(),
-            &test_params,
+            &receiver_test_params,
             MicroMinotari::from(100_000),
             &key_manager,
         )
         .await
         .unwrap();
 
-        let rtp = ReceiverTransactionProtocol::new(
-            TransactionSenderMessage::Single(Box::new(stp.build_single_round_message(&key_manager).await.unwrap())),
-            output,
-            &key_manager,
-            &consensus_constants,
-        )
-        .await;
-        let address = TariAddress::new_dual_address_with_default_features(
+        let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         )
         .unwrap();
+        builder
+            .add_recipient(
+                source_address.clone(),
+                output,
+                Some(receiver_test_params.sender_offset_key_id),
+            )
+            .await
+            .unwrap();
         let inbound_tx1 = InboundTransaction {
             tx_id: 2u64.into(),
-            source_address: address,
+            source_address: source_address.clone(),
             amount,
-            receiver_protocol: rtp.clone(),
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
@@ -2821,17 +2804,11 @@ mod test {
             last_send_timestamp: None,
             received_output_hashes: vec![],
         };
-        let address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        )
-        .unwrap();
         let inbound_tx2 = InboundTransaction {
             tx_id: 3u64.into(),
-            source_address: address,
+            source_address,
             amount,
-            receiver_protocol: rtp,
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),

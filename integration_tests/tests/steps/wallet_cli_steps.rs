@@ -33,7 +33,6 @@ use minotari_console_wallet::{
     ExportUtxosArgs,
     ExportViewKeyAndSpendKeyArgs,
     MakeItRainArgs,
-    SendMinotariArgs,
     WhoisArgs,
 };
 use tari_common_types::tari_address::TariAddress;
@@ -68,38 +67,6 @@ async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
 
     spawn_wallet(world, wallet, Some(base_node.clone()), seed_nodes, None, Some(cli)).await
-}
-
-#[when(expr = "I send {int} uT from {word} to {word} via command line")]
-async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wallet_b: String) {
-    let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    wallet_ps.kill();
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
-    let wallet_b_address = wallet_b_client
-        .get_address(Empty {})
-        .await
-        .unwrap()
-        .into_inner()
-        .interactive_address
-        .to_hex();
-    let wallet_b_address = TariAddress::from_base58(wallet_b_address.as_str()).unwrap();
-
-    let mut cli = get_default_cli();
-
-    let args = SendMinotariArgs {
-        amount: MicroMinotari(amount),
-        destination: wallet_b_address,
-        payment_id: format!("Send amount {amount} from {wallet_a} to {wallet_b}"),
-    };
-    cli.command2 = Some(CliCommands::SendMinotari(args));
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
-    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-
-    spawn_wallet(world, wallet_a, Some(base_node.clone()), seed_nodes, None, Some(cli)).await;
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} via command line")]

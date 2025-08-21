@@ -197,10 +197,6 @@ impl From<WalletError> for LibWalletError {
                 code: 201,
                 message: format!("{w:?}"),
             },
-            WalletError::TransactionServiceError(TransactionServiceError::TransactionProtocolError(_)) => Self {
-                code: 202,
-                message: format!("{w:?}"),
-            },
             WalletError::TransactionServiceError(TransactionServiceError::RepeatedMessageError) => Self {
                 code: 203,
                 message: format!("{w:?}"),

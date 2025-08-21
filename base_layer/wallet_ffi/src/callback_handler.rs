@@ -54,6 +54,8 @@ use minotari_wallet::{
     utxo_scanner_service::handle::UtxoScannerEvent,
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
+
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::broadcast;
 
@@ -66,7 +68,7 @@ unsafe impl Send for Context {}
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
-pub struct CallbackHandler<TBackend>
+pub struct CallbackHandler<TBackend, TKeyManagerInterface>
 where TBackend: TransactionBackend + 'static
 {
     pub context: Context,
@@ -89,15 +91,17 @@ where TBackend: TransactionBackend + 'static
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
-    output_manager_service: OutputManagerHandle,
+    output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
     utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
     shutdown_signal: Option<ShutdownSignal>,
     comms_address: TariAddress,
     balance_cache: Balance,
 }
 
-impl<TBackend> CallbackHandler<TBackend>
-where TBackend: TransactionBackend + 'static
+impl<TBackend, TKeyManagerInterface> CallbackHandler<TBackend, TKeyManagerInterface>
+where
+    TBackend: TransactionBackend + 'static,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_lines)]
@@ -106,7 +110,7 @@ where TBackend: TransactionBackend + 'static
         db: TransactionDatabase<TBackend>,
         transaction_service_event_stream: TransactionEventReceiver,
         output_manager_service_event_stream: OutputManagerEventReceiver,
-        output_manager_service: OutputManagerHandle,
+        output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
         utxo_scanner_service_events: broadcast::Receiver<UtxoScannerEvent>,
         shutdown_signal: ShutdownSignal,
         comms_address: TariAddress,

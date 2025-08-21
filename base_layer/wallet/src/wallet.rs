@@ -59,6 +59,7 @@ use tari_core::{
             SecretTransactionKeyManagerInterface,
             TariKeyId,
             TransactionKeyManagerInitializer,
+            TransactionKeyManagerInterface,
         },
         CryptoFactories,
     },
@@ -124,7 +125,7 @@ pub struct Wallet<T, U, V, TKeyManagerInterface, THttpClientFactory>
 where THttpClientFactory: HttpClientFactory
 {
     pub network: NetworkConsensus,
-    pub output_manager_service: OutputManagerHandle,
+    pub output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle<THttpClientFactory>,
@@ -253,7 +254,7 @@ where
 
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
 
-        let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
@@ -709,8 +710,8 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
 /// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
 /// using old node identities.
-async fn persist_one_sided_payment_script_for_node_identity(
-    output_manager_service: &mut OutputManagerHandle,
+async fn persist_one_sided_payment_script_for_node_identity<KM: TransactionKeyManagerInterface>(
+    output_manager_service: &mut OutputManagerHandle<KM>,
     spend_key: &CompressedPublicKey,
     spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {

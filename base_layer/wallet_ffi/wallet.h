@@ -3368,7 +3368,6 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            unsigned long long amount,
                                            struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
-                                           bool one_sided,
                                            const char *payment_id_string,
                                            int *error_out);
 
