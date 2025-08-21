@@ -49,10 +49,10 @@ pub enum OutputManagerError {
     BuildError(String),
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
-    #[error("Transaction protocol error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]

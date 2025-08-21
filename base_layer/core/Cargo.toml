@@ -25,6 +25,7 @@ base_node_proto = ["tari_comms/rpc"]
 benches = ["base_node"]
 ledger = ["minotari_ledger_wallet_comms"]
 metrics = ["tari_metrics"]
+sqlite_bundled = ["tari_common_sqlite/bundled"]
 
 [dependencies]
 minotari_ledger_wallet_comms = { workspace = true, optional = true }

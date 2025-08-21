@@ -143,7 +143,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
     >(
         &mut self,
         db: WalletDatabase<TBackend>,
-        output_manager_service: OutputManagerHandle,
+        output_manager_service: OutputManagerHandle<TKeyManager>,
         transaction_service: TransactionServiceHandle,
         one_sided_tari_address: TariAddress,
         shutdown_signal: ShutdownSignal,

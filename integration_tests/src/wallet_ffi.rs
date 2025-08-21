@@ -26,7 +26,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use indexmap::IndexMap;
 use libc::c_void;
 use tari_common_types::tari_address::TariAddress;
 use tari_transaction_components::transaction_components::memo_field::MemoField;
@@ -35,9 +34,6 @@ use super::ffi::{
     Balance,
     Callbacks,
     CompletedTransactions,
-    Contact,
-    Contacts,
-    ContactsLivenessData,
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
@@ -111,18 +107,6 @@ impl WalletFFI {
         self.wallet.lock().unwrap().get_balance()
     }
 
-    pub fn upsert_contact(&self, contact: Contact) -> bool {
-        self.wallet.lock().unwrap().upsert_contact(contact)
-    }
-
-    pub fn get_contacts(&self) -> Contacts {
-        self.wallet.lock().unwrap().get_contacts()
-    }
-
-    pub fn remove_contact(&self, contact_to_remove: Contact) -> bool {
-        self.wallet.lock().unwrap().remove_contact(contact_to_remove)
-    }
-
     pub fn get_pending_inbound_transactions(&self) -> PendingInboundTransactions {
         self.wallet.lock().unwrap().get_pending_inbound_transactions()
     }
@@ -151,10 +135,6 @@ impl WalletFFI {
         self.wallet.lock().unwrap().start_transaction_validation()
     }
 
-    pub fn get_liveness_data(&self) -> Arc<Mutex<IndexMap<String, ContactsLivenessData>>> {
-        self.wallet.lock().unwrap().get_liveness_data()
-    }
-
     pub fn send_transaction(
         &self,
         dest: String,
@@ -177,10 +157,6 @@ impl WalletFFI {
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
         self.wallet.lock().unwrap().get_fee_per_gram_stats(count)
-    }
-
-    pub fn contacts_handle(&self) -> *mut c_void {
-        self.wallet.lock().unwrap().contacts_handle()
     }
 }
 
@@ -206,10 +182,6 @@ pub fn get_mnemonic_word_list_for_language(language: String) -> ffi::SeedWords {
         _ => panic!("Unknown language {language}"),
     };
     ffi::SeedWords::get_mnemonic_word_list_for_language(language.to_string())
-}
-
-pub fn create_contact(alias: String, address: String) -> ffi::Contact {
-    ffi::Contact::create(alias, address)
 }
 
 pub fn create_seed_words(words: Vec<&str>) -> ffi::SeedWords {

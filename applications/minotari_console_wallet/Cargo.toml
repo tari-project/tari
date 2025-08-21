@@ -15,7 +15,6 @@ tari_common_types = { workspace = true }
 tari_transaction_components = { workspace = true, features = ["ledger"] }
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
-tari_contacts = { workspace = true }
 tari_core = { workspace = true, default-features = false, features = [
     "transactions",
     "mempool_proto",
@@ -73,7 +72,6 @@ sha2 = "0.10"
 strum = "0.22"
 thiserror = "1.0.26"
 tonic = "0.13.1"
-unicode-segmentation = "1.6.0"
 unicode-width = "0.1"
 url = "2.3.1"
 zxcvbn = "2"

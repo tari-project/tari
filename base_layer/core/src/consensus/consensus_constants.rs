@@ -587,8 +587,8 @@ impl ConsensusConstants {
             vn_registration_max_vns_initial_epoch: 0,
             vn_registration_max_vns_per_epoch: 0,
             vn_registration_max_exits_per_epoch: 0,
-            cuckaroo_cycle_length: 0,
-            cuckaroo_edge_bits: 0,
+            cuckaroo_cycle_length: 42,
+            cuckaroo_edge_bits: 29,
         };
 
         let mut con2 = consensus_constants1.clone();

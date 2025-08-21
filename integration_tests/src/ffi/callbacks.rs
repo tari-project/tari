@@ -23,9 +23,8 @@
 use std::sync::{Arc, Mutex, Once};
 
 use libc::c_void;
-use tari_common_types::tari_address::TariAddress;
 
-use super::{Balance, CompletedTransaction, ContactsLivenessData, PendingInboundTransaction, Wallet};
+use super::{Balance, CompletedTransaction, PendingInboundTransaction, Wallet};
 use crate::ffi::TransactionSendStatus;
 
 #[derive(Debug, Default)]
@@ -44,7 +43,6 @@ pub struct Callbacks {
     tx_validation_complete: Mutex<bool>,
     tx_validation_result: Mutex<u64>,
     transaction_saf_message_received: Mutex<u64>,
-    contacts_liveness_data_updated: Mutex<u64>,
     basenode_state_updated: Mutex<u64>,
     pub wallet: Option<Arc<Mutex<Wallet>>>,
 }
@@ -113,11 +111,6 @@ impl Callbacks {
     #[allow(dead_code)]
     pub fn get_transaction_saf_message_received(&self) -> u64 {
         *self.transaction_saf_message_received.lock().unwrap()
-    }
-
-    #[allow(dead_code)]
-    pub fn get_contacts_liveness_data_updated(&self) -> u64 {
-        *self.contacts_liveness_data_updated.lock().unwrap()
     }
 
     pub fn on_received_transaction(&mut self, ptr: *mut c_void) {
@@ -235,27 +228,6 @@ impl Callbacks {
         *self.txo_validation_result.lock().unwrap() = validation_results;
     }
 
-    pub fn on_contacts_liveness_data_updated(&mut self, ptr: *mut c_void) {
-        let contact_liveness_data = ContactsLivenessData::from_ptr(ptr);
-        let address = TariAddress::from_bytes(&contact_liveness_data.get_public_key().address().get_vec()).unwrap();
-        println!(
-            "{} callbackContactsLivenessUpdated: received {} from contact {} with latency {} at {} and is {}.",
-            chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
-            contact_liveness_data.get_message_type(),
-            address.to_base58(),
-            contact_liveness_data.get_latency(),
-            contact_liveness_data.get_last_seen(),
-            contact_liveness_data.get_online_status()
-        );
-        self.wallet
-            .as_mut()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .add_liveness_data(contact_liveness_data);
-        *self.contacts_liveness_data_updated.lock().unwrap() += 1;
-    }
-
     pub fn on_balance_updated(&mut self, ptr: *mut c_void) {
         let balance = Balance::from_ptr(ptr);
         println!(
@@ -326,7 +298,6 @@ impl Callbacks {
         *self.tx_validation_complete.lock().unwrap() = false;
         *self.tx_validation_result.lock().unwrap() = 0;
         *self.transaction_saf_message_received.lock().unwrap() = 0;
-        *self.contacts_liveness_data_updated.lock().unwrap() = 0;
         *self.basenode_state_updated.lock().unwrap() = 0;
         self.wallet = Some(wallet);
         println!("wallet {:?}", self.wallet);

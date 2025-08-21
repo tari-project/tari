@@ -243,11 +243,11 @@ where B: BlockchainBackend + 'static
                         Ok(Some(block)) => blocks.push(block),
                         Ok(None) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block with commitment {commitment_hex} to peer because not stored"
+                            "Could not provide requested block with commitment {commitment_hex} because not stored"
                         ),
                         Err(e) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block with commitment {commitment_hex} to peer because: {e}"
+                            "Could not provide requested block with commitment {commitment_hex} because: {e}"
                         ),
                     }
                 }

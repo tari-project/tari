@@ -28,7 +28,11 @@ use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::{BlockHash, Signature},
 };
-use tari_core::{self, base_node::rpc::models::TxLocation};
+use tari_core::{
+    self,
+    base_node::rpc::models::TxLocation,
+    transactions::transaction_key_manager::TransactionKeyManagerInterface,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -50,20 +54,22 @@ use crate::{
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
 #[derive(Clone)]
-pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity> {
+pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface> {
     operation_id: OperationId,
     db: TransactionDatabase<TTransactionBackend>,
     connectivity: TWalletConnectivity,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
-    output_manager: OutputManagerHandle,
+    output_manager: OutputManagerHandle<TKeyManagerInterface>,
 }
 
 #[allow(unused_variables)]
-impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
+impl<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TTransactionBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         operation_id: OperationId,
@@ -71,7 +77,7 @@ where
         connectivity: TWalletConnectivity,
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
-        output_manager: OutputManagerHandle,
+        output_manager: OutputManagerHandle<TKeyManagerInterface>,
     ) -> Self {
         Self {
             operation_id,

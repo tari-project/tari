@@ -55,7 +55,6 @@ pub type WalletSqlite = Wallet<
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
-    ContactsServiceSqliteDatabase<WalletDbConnection>,
     WalletKeyManager,
     DefaultHttpClientFactory,
 >;

@@ -1,5 +1,5 @@
 [workspace.package]
-version = "5.0.0-pre.3"
+version = "5.0.0-pre.4"
 edition = "2021"
 authors = ["The Tari Development Community"]
 repository = "https://github.com/tari-project/tari"
@@ -57,7 +57,6 @@ tari_common_types = { path = "base_layer/common_types" }
 tari_comms = { path = "comms/core" }
 tari_comms_dht = { path = "comms/dht", default-features = false }
 tari_comms_rpc_macros = { path = "comms/rpc_macros" }
-tari_contacts = { path = "base_layer/contacts" }
 tari_core = { path = "base_layer/core", default-features = false }
 tari_crypto = { version = "0.22.1" }
 tari_features = { path = "common/tari_features" }

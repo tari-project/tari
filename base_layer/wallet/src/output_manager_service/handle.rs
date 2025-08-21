@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
@@ -66,7 +65,6 @@ pub enum OutputManagerRequest {
     AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
-    GetRecipientTransaction(TransactionSenderMessage),
     ConfirmPendingTransaction(TxId, Option<Vec<WalletOutput>>),
     EncumberAggregateUtxo {
         tx_id: TxId,
@@ -89,18 +87,14 @@ pub enum OutputManagerRequest {
         expected_commitment: CompressedCommitment,
         recipient_address: TariAddress,
     },
-    PrepareToSendTransaction {
+    GetTransactionBuilder {
         tx_id: TxId,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
         fee_per_gram: MicroMinotari,
-        tx_meta: TransactionMetadata,
         script: TariScript,
         covenant: Covenant,
-        minimum_value_promise: MicroMinotari,
-        recipient_address: TariAddress,
-        payment_id: MemoField,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -130,7 +124,6 @@ pub enum OutputManagerRequest {
     ScrapeWallet {
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        recipient_address: TariAddress,
     },
     CreateCoinJoin {
         commitments: Vec<CompressedCommitment>,
@@ -182,16 +175,8 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.u_y().to_hex(),
                 v.metadata_signature.u_a().to_hex(),
             ),
-            ScrapeWallet {
-                tx_id,
-                fee_per_gram,
-                recipient_address,
-            } => {
-                write!(
-                    f,
-                    "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram}, recipient_address \
-                     {recipient_address})"
-                )
+            ScrapeWallet { tx_id, fee_per_gram } => {
+                write!(f, "ScrapeWallet (tx_id: {tx_id}, fee_per_gram: {fee_per_gram})")
             },
             EncumberAggregateUtxo {
                 tx_id,
@@ -225,9 +210,8 @@ impl fmt::Display for OutputManagerRequest {
                 expected_commitment.to_hex(),
                 output_hash
             ),
-            GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
             ConfirmPendingTransaction(v, _) => write!(f, "ConfirmPendingTransaction ({v})"),
-            PrepareToSendTransaction { payment_id, .. } => write!(f, "PrepareToSendTransaction ({payment_id})"),
+            GetTransactionBuilder { .. } => write!(f, "PrepareToSendTransaction "),
             CreatePayToSelfTransaction { .. } => write!(f, "CreatePayToSelfTransaction",),
             CancelTransaction(v) => write!(f, "CancelTransaction ({v})"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
@@ -290,12 +274,12 @@ impl fmt::Display for OutputManagerRequest {
 
 /// API Reply enum
 #[derive(Debug, Clone)]
-pub enum OutputManagerResponse {
+pub enum OutputManagerResponse<KM> {
     Balance(Balance),
     OutputAdded,
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
-    RecipientTransactionGenerated(ReceiverTransactionProtocol),
+    // RecipientTransactionGenerated(ReceiverTransactionProtocol),
     EncumberAggregateUtxo(
         Box<(
             Transaction,
@@ -311,7 +295,7 @@ pub enum OutputManagerResponse {
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
-    TransactionToSend(SenderTransactionProtocol),
+    TransactionBuilderToSend(Box<TransactionBuilder<KM>>),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
     UnspentOutputs(Vec<DbWalletOutput>),
@@ -384,14 +368,16 @@ pub struct RecoveredOutput {
 }
 
 #[derive(Clone)]
-pub struct OutputManagerHandle {
-    handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+pub struct OutputManagerHandle<KM> {
+    handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>,
     event_stream_sender: OutputManagerEventSender,
 }
 
-impl OutputManagerHandle {
+impl<KM> OutputManagerHandle<KM>
+where KM: TransactionKeyManagerInterface
+{
     pub fn new(
-        handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+        handle: SenderService<OutputManagerRequest, Result<OutputManagerResponse<KM>, OutputManagerError>>,
         event_stream_sender: OutputManagerEventSender,
     ) -> Self {
         OutputManagerHandle {
@@ -516,20 +502,6 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_recipient_transaction(
-        &mut self,
-        sender_message: TransactionSenderMessage,
-    ) -> Result<ReceiverTransactionProtocol, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetRecipientTransaction(sender_message))
-            .await??
-        {
-            OutputManagerResponse::RecipientTransactionGenerated(rtp) => Ok(rtp),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn prepare_transaction_to_send(
         &mut self,
         tx_id: TxId,
@@ -537,31 +509,23 @@ impl OutputManagerHandle {
         utxo_selection: UtxoSelectionCriteria,
         output_features: OutputFeatures,
         fee_per_gram: MicroMinotari,
-        tx_meta: TransactionMetadata,
         script: TariScript,
         covenant: Covenant,
-        minimum_value_promise: MicroMinotari,
-        recipient_address: TariAddress,
-        payment_id: MemoField,
-    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
+    ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::PrepareToSendTransaction {
+            .call(OutputManagerRequest::GetTransactionBuilder {
                 tx_id,
                 amount,
                 selection_criteria: utxo_selection,
                 output_features: Box::new(output_features),
                 fee_per_gram,
-                tx_meta,
                 script,
                 covenant,
-                minimum_value_promise,
-                recipient_address,
-                payment_id,
             })
             .await??
         {
-            OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
+            OutputManagerResponse::TransactionBuilderToSend(stp) => Ok(*stp),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -570,18 +534,13 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        recipient_address: TariAddress,
-    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
+    ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScrapeWallet {
-                tx_id,
-                fee_per_gram,
-                recipient_address,
-            })
+            .call(OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram })
             .await??
         {
-            OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
+            OutputManagerResponse::TransactionBuilderToSend(tx_builder) => Ok(*tx_builder),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

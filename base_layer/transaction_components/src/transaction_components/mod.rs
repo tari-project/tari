@@ -40,7 +40,7 @@ use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, Compres
 use tari_script::TariScript;
 use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
 pub use transaction::Transaction;
-pub use transaction_builder::TransactionBuilder;
+pub use transaction_builder::CoreTransactionBuilder;
 pub use transaction_input::{SpentOutput, TransactionInput};
 pub use transaction_input_version::TransactionInputVersion;
 pub use transaction_kernel::TransactionKernel;

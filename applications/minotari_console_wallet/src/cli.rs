@@ -145,7 +145,6 @@ fn replace_or_add_override(overrides: &mut Vec<(String, String)>, key: &str, val
 #[derive(Debug, Subcommand, Clone)]
 pub enum CliCommands {
     GetBalance,
-    SendMinotari(SendMinotariArgs),
     BurnMinotari(BurnMinotariArgs),
     PreMineSpendGetOutputStatus,
     PreMineStart(PreMineStartSessionArgs),
@@ -382,19 +381,16 @@ pub struct MakeItRainArgs {
 
 impl MakeItRainArgs {
     pub fn transaction_type(&self) -> MakeItRainTransactionType {
-        if self.one_sided {
-            MakeItRainTransactionType::StealthOneSided
-        } else if self.burn_tari {
+        if self.burn_tari {
             MakeItRainTransactionType::BurnTari
         } else {
-            MakeItRainTransactionType::Interactive
+            MakeItRainTransactionType::StealthOneSided
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum MakeItRainTransactionType {
-    Interactive,
     StealthOneSided,
     BurnTari,
 }

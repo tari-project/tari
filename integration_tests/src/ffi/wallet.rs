@@ -28,7 +28,6 @@ use std::{
 };
 
 use callbacks::Callbacks;
-use indexmap::IndexMap;
 use libc::{c_ulonglong, c_void};
 use tari_common_types::tari_address::TariAddress;
 use tari_transaction_components::transaction_components::memo_field::MemoField;
@@ -39,7 +38,6 @@ use super::{
         wallet_create,
         TariBalance,
         TariCompletedTransaction,
-        TariContactsLivenessData,
         TariPendingInboundTransaction,
         TariTransactionSendStatus,
         TariWallet,
@@ -47,9 +45,6 @@ use super::{
     Balance,
     CommsConfig,
     CompletedTransactions,
-    Contact,
-    Contacts,
-    ContactsLivenessData,
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
@@ -129,11 +124,6 @@ extern "C" fn callback_txo_validation_complete(_context: *mut c_void, request_ke
     callbacks.on_txo_validation_complete(request_key, validation_results);
     // println!("callback_txo_validation_complete");
 }
-extern "C" fn callback_contacts_liveness_data_updated(_context: *mut c_void, ptr: *mut TariContactsLivenessData) {
-    let callbacks = Callbacks::instance();
-    callbacks.on_contacts_liveness_data_updated(ptr);
-    // println!("callback_contacts_liveness_data_updated");
-}
 extern "C" fn callback_balance_updated(_context: *mut c_void, ptr: *mut TariBalance) {
     let callbacks = Callbacks::instance();
     callbacks.on_balance_updated(ptr);
@@ -181,7 +171,6 @@ struct CachedBalance {
 #[derive(Debug)]
 pub struct Wallet {
     ptr: *mut TariWallet,
-    liveness_data: Arc<Mutex<IndexMap<String, ContactsLivenessData>>>,
     balance: CachedBalance,
 }
 
@@ -226,7 +215,6 @@ impl Wallet {
                 callback_transaction_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
-                callback_contacts_liveness_data_updated,
                 callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
@@ -244,20 +232,11 @@ impl Wallet {
         #[allow(clippy::arc_with_non_send_sync)]
         let wallet = Arc::new(Mutex::new(Self {
             ptr,
-            liveness_data: Default::default(),
             balance: Default::default(),
         }));
         let callbacks = Callbacks::instance();
         callbacks.reset(wallet.clone());
         wallet
-    }
-
-    pub fn add_liveness_data(&mut self, contact_liveness_data: ContactsLivenessData) {
-        let address = TariAddress::from_bytes(&contact_liveness_data.get_public_key().address().get_vec()).unwrap();
-        self.liveness_data
-            .lock()
-            .unwrap()
-            .insert(address.to_base58(), contact_liveness_data);
     }
 
     pub fn set_balance(&mut self, balance: Balance) {
@@ -296,45 +275,6 @@ impl Wallet {
             }
         }
         PublicKeys::from_ptr(ptr)
-    }
-
-    pub fn upsert_contact(&self, contact: Contact) -> bool {
-        let success;
-        let mut error = 0;
-        unsafe {
-            success = ffi_import::wallet_upsert_contact(self.ptr, contact.get_ptr(), &mut error);
-            if error > 0 {
-                println!("wallet_upsert_contact error {error}");
-                panic!("wallet_upsert_contact error");
-            }
-        }
-        success
-    }
-
-    pub fn get_contacts(&self) -> Contacts {
-        let ptr;
-        let mut error = 0;
-        unsafe {
-            ptr = ffi_import::wallet_get_contacts(self.ptr, &mut error);
-            if error > 0 {
-                println!("wallet_get_contacts error {error}");
-                panic!("wallet_get_contacts error");
-            }
-        }
-        Contacts::from_ptr(ptr)
-    }
-
-    pub fn remove_contact(&self, contact: Contact) -> bool {
-        let success;
-        let mut error = 0;
-        unsafe {
-            success = ffi_import::wallet_remove_contact(self.ptr, contact.get_ptr(), &mut error);
-            if error > 0 {
-                println!("wallet_remove_contact error {error}");
-                panic!("wallet_remove_contact error");
-            }
-        }
-        success
     }
 
     pub fn get_balance(&self) -> Balance {
@@ -457,10 +397,6 @@ impl Wallet {
         request_key
     }
 
-    pub fn get_liveness_data(&self) -> Arc<Mutex<IndexMap<String, ContactsLivenessData>>> {
-        self.liveness_data.clone()
-    }
-
     #[allow(dead_code)]
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
         let ptr;
@@ -473,18 +409,5 @@ impl Wallet {
             }
         }
         FeePerGramStats::from_ptr(ptr)
-    }
-
-    pub fn contacts_handle(&self) -> *mut c_void {
-        let ptr;
-        let mut error = 0;
-        unsafe {
-            ptr = ffi_import::contacts_handle(self.ptr, &mut error);
-            if error > 0 {
-                println!("contacts_handle error {error}");
-                panic!("contacts_handle error");
-            }
-        }
-        ptr
     }
 }

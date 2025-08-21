@@ -127,8 +127,12 @@ const LOG_TARGET: &str = "wallet::output_manager_service";
 /// them to be moved to the spent and unspent output lists respectively.
 pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     resources: OutputManagerResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-    request_stream:
-        Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+    request_stream: Option<
+        reply_channel::Receiver<
+            OutputManagerRequest,
+            Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError>,
+        >,
+    >,
     base_node_service: BaseNodeServiceHandle,
     validation_in_progress: Arc<Mutex<()>>,
 }
@@ -144,7 +148,7 @@ where
         config: OutputManagerServiceConfig,
         request_stream: reply_channel::Receiver<
             OutputManagerRequest,
-            Result<OutputManagerResponse, OutputManagerError>,
+            Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError>,
         >,
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
@@ -188,6 +192,7 @@ where
             interactive_tari_address,
             utxo_scanner_handle,
             transaction_service_handle,
+            network,
         };
 
         Ok(Self {
@@ -261,7 +266,7 @@ where
     async fn handle_request(
         &mut self,
         request: OutputManagerRequest,
-    ) -> Result<OutputManagerResponse, OutputManagerError> {
+    ) -> Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError> {
         trace!(target: LOG_TARGET, "Handling Service Request: {request}");
         match request {
             OutputManagerRequest::AddOutput((uo, spend_priority)) => self
@@ -342,38 +347,26 @@ where
                 self.get_balance_payment_id(current_tip_for_time_lock_calculation, payment_id)
                     .map(OutputManagerResponse::Balance)
             },
-            OutputManagerRequest::GetRecipientTransaction(tsm) => self
-                .get_default_recipient_transaction(tsm)
-                .await
-                .map(OutputManagerResponse::RecipientTransactionGenerated),
-            OutputManagerRequest::PrepareToSendTransaction {
+            OutputManagerRequest::GetTransactionBuilder {
                 tx_id,
                 amount,
                 selection_criteria,
                 output_features,
                 fee_per_gram,
-                tx_meta,
                 script,
                 covenant,
-                minimum_value_promise,
-                recipient_address,
-                payment_id,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
                     amount,
                     selection_criteria,
                     fee_per_gram,
-                    tx_meta,
                     *output_features,
                     script,
                     covenant,
-                    minimum_value_promise,
-                    recipient_address,
-                    payment_id,
                 )
                 .await
-                .map(OutputManagerResponse::TransactionToSend),
+                .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
@@ -437,14 +430,10 @@ where
                         .await?,
                 ))
             },
-            OutputManagerRequest::ScrapeWallet {
-                tx_id,
-                fee_per_gram,
-                recipient_address,
-            } => self
-                .scrape_wallet(tx_id, fee_per_gram, recipient_address)
+            OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram } => self
+                .scrape_wallet(tx_id, fee_per_gram)
                 .await
-                .map(OutputManagerResponse::TransactionToSend),
+                .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
 
             OutputManagerRequest::PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
@@ -571,7 +560,7 @@ where
         output_hash: HashOutput,
         pre_image: CompressedPublicKey,
         fee_per_gram: MicroMinotari,
-    ) -> Result<OutputManagerResponse, OutputManagerError> {
+    ) -> Result<OutputManagerResponse<TKeyManagerInterface>, OutputManagerError> {
         let output = self
             .resources
             .connectivity
@@ -815,134 +804,6 @@ where
         Ok(balance)
     }
 
-    /// Request a receiver transaction be generated from the supplied Sender Message
-    #[allow(clippy::too_many_lines)]
-    async fn get_default_recipient_transaction(
-        &mut self,
-        sender_message: TransactionSenderMessage,
-    ) -> Result<ReceiverTransactionProtocol, OutputManagerError> {
-        let single_round_sender_data = match sender_message.single() {
-            Some(data) => data,
-            _ => return Err(OutputManagerError::InvalidSenderMessage),
-        };
-        // Confirm covenant is default
-        if single_round_sender_data.covenant != Covenant::default() {
-            return Err(OutputManagerError::InvalidCovenant);
-        }
-        // Confirm output features is default
-        if single_round_sender_data.features != OutputFeatures::default() {
-            return Err(OutputManagerError::InvalidOutputFeatures);
-        }
-        // Confirm lock height is 0
-        if single_round_sender_data.metadata.lock_height != 0 {
-            return Err(OutputManagerError::InvalidLockHeight);
-        }
-        // Confirm kernel features
-        if single_round_sender_data.metadata.kernel_features != KernelFeatures::default() {
-            return Err(OutputManagerError::InvalidKernelFeatures);
-        }
-
-        let (spending_key, script_public_key) = self
-            .resources
-            .key_manager
-            .get_next_commitment_mask_and_script_key()
-            .await?;
-
-        // Confirm script hash is for the expected script, at the moment assuming Nop or Push_pubkey
-        // if the script is Push_pubkey(default_key) we know we have to fill it in.
-        let script = if single_round_sender_data.script == script!(Nop)? {
-            single_round_sender_data.script.clone()
-        } else if single_round_sender_data.script == script!(PushPubKey(Box::default()))? {
-            script!(PushPubKey(Box::new(script_public_key.pub_key.clone())))?
-        } else {
-            return Err(OutputManagerError::InvalidScriptHash);
-        };
-        let payment_id = MemoField::new_address_and_data(
-            single_round_sender_data.sender_address.clone(),
-            single_round_sender_data.metadata.fee,
-            false,
-            TxType::PaymentToOther,
-            vec![],
-        )
-        .map_err(|e| OutputManagerError::ServiceError(format!("Invalid payment ID, size: {e}")))?;
-        let encrypted_data = self
-            .resources
-            .key_manager
-            .encrypt_data_for_recovery(
-                &spending_key.key_id,
-                None,
-                single_round_sender_data.amount.as_u64(),
-                payment_id.clone(),
-            )
-            .await
-            .unwrap();
-        let minimum_value_promise = single_round_sender_data.minimum_value_promise;
-
-        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-            &TransactionOutputVersion::get_current_version(),
-            &script,
-            &single_round_sender_data.features.clone(),
-            &single_round_sender_data.covenant,
-            &encrypted_data,
-            &minimum_value_promise,
-        );
-        let metadata_signature = self
-            .resources
-            .key_manager
-            .get_receiver_partial_metadata_signature(
-                &spending_key.key_id,
-                &single_round_sender_data.amount.into(),
-                &single_round_sender_data.sender_offset_public_key,
-                &single_round_sender_data.ephemeral_public_nonce,
-                &TransactionOutputVersion::get_current_version(),
-                &metadata_message,
-                single_round_sender_data.features.range_proof_type,
-            )
-            .await?;
-
-        let key_kanager_output = WalletOutput::new_current_version(
-            single_round_sender_data.amount,
-            spending_key.key_id.clone(),
-            single_round_sender_data.features.clone(),
-            script,
-            ExecutionStack::default(),
-            script_public_key.key_id,
-            single_round_sender_data.sender_offset_public_key.clone(),
-            // Note: The signature at this time is only partially built
-            metadata_signature,
-            0,
-            single_round_sender_data.covenant.clone(),
-            encrypted_data,
-            minimum_value_promise,
-            payment_id,
-            &self.resources.key_manager,
-        )
-        .await?;
-        let output = DbWalletOutput::from_wallet_output(
-            key_kanager_output.clone(),
-            &self.resources.key_manager,
-            None,
-            OutputSource::default(),
-            Some(single_round_sender_data.tx_id),
-            None,
-        )
-        .await?;
-
-        self.resources
-            .db
-            .add_output_to_be_received(single_round_sender_data.tx_id, output)?;
-
-        let rtp = ReceiverTransactionProtocol::new(
-            sender_message.clone(),
-            key_kanager_output,
-            &self.resources.key_manager,
-            &self.resources.consensus_constants,
-        )
-        .await;
-
-        Ok(rtp)
-    }
-
     /// Get a fee estimate for an amount of MicroMinotari, at a specified fee per gram and given number of kernels and
     /// outputs.
     async fn fee_estimate(
@@ -1026,17 +887,13 @@ where
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
-        tx_meta: TransactionMetadata,
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
-        recipient_minimum_value_promise: MicroMinotari,
-        recipient_address: TariAddress,
-        payment_id: MemoField,
-    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
+    ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Preparing to send transaction - TxId: {tx_id}, amount: {amount}, fee per gram: {fee_per_gram}, payment id: {payment_id}, selection: {selection_criteria}"
+            "Preparing to send transaction - TxId: {tx_id}, amount: {amount}, fee per gram: {fee_per_gram}, selection: {selection_criteria}"
         );
         let features_and_scripts_byte_size = self
             .resources
@@ -1064,27 +921,15 @@ where
             )
             .await?;
 
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
+            self.resources.network,
+        )
+        .await?;
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_recipient_data(
-                recipient_script,
-                recipient_output_features,
-                recipient_covenant,
-                recipient_minimum_value_promise,
-                amount,
-                recipient_address,
-            )
-            .await?
-            .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_payment_id(payment_id)
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_lock_height(tx_meta.lock_height)
-            .with_kernel_features(tx_meta.kernel_features)
-            .with_tx_id(tx_id);
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone()).await?;
@@ -1096,55 +941,13 @@ where
             input_selection.num_selected()
         );
 
-        let (change_commitment_mask_key, change_script_key) = self
-            .resources
-            .key_manager
-            .get_next_commitment_mask_and_script_key()
-            .await?;
-        builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
-            ExecutionStack::default(),
-            change_script_key.key_id,
-            change_commitment_mask_key.key_id,
-            Covenant::default(),
-            self.resources.interactive_tari_address.clone(),
-        );
-
-        let stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
-        // If a change output was created add it to the pending_outputs list.
-        let mut change_output = Vec::<DbWalletOutput>::new();
-        if input_selection.requires_change_output() {
-            let wallet_output = stp.get_pre_finalized_change_output()?.ok_or_else(|| {
-                OutputManagerError::BuildError(
-                    "There should be a change output metadata signature available".to_string(),
-                )
-            })?;
-            change_output.push(
-                DbWalletOutput::from_wallet_output(
-                    wallet_output,
-                    &self.resources.key_manager,
-                    None,
-                    OutputSource::default(),
-                    Some(tx_id),
-                    None,
-                )
-                .await?,
-            );
-        }
-
-        // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
-        // store them until the transaction times out OR is confirmed
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), change_output)?;
+            .encumber_outputs(tx_id, input_selection.into_selected(), vec![])?;
 
         debug!(target: LOG_TARGET, "Prepared transaction (TxId: {tx_id}) to send");
 
-        Ok(stp)
+        Ok(builder)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1190,35 +993,21 @@ where
             .await?;
 
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
+            self.resources.network,
+        )
+        .await?;
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(false)
             .with_kernel_features(KernelFeatures::empty())
-            .with_payment_id(payment_id);
+            .with_memo(payment_id);
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone()).await?;
-        }
-
-        if input_selection.requires_change_output() {
-            let (change_commitment_mask_key, change_script_key) = self
-                .resources
-                .key_manager
-                .get_next_commitment_mask_and_script_key()
-                .await?;
-            builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script_key.pub_key)))?,
-                ExecutionStack::default(),
-                change_script_key.key_id,
-                change_commitment_mask_key.key_id,
-                Covenant::default(),
-                self.resources.interactive_tari_address.clone(),
-            );
         }
 
         let mut db_outputs = vec![];
@@ -1250,14 +1039,9 @@ where
             )
         }
 
-        let mut stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        let tx_id = stp.get_tx_id()?;
-
-        stp.finalize(&self.resources.key_manager).await?;
-        if let Some(wallet_output) = stp.get_finalized_change_output()? {
+        let finalized = builder.build().await?;
+        let tx_id = TxId::new_random();
+        if let Some(wallet_output) = finalized.change {
             db_outputs.push(
                 DbWalletOutput::from_wallet_output(
                     wallet_output,
@@ -1274,7 +1058,7 @@ where
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        Ok((tx_id, stp.into_transaction()?))
+        Ok((tx_id, finalized.transaction))
     }
 
     async fn pre_mine_script_key_from_payment_id(
@@ -1455,51 +1239,25 @@ where
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created script, with fee {fee}");
 
         // Create sender transaction protocol builder with recipient data and no change
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
+            self.resources.network,
+        )
+        .await?;
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())
             .await?
-            .with_recipient_data(
-                push_pubkey_script(recipient_address.public_spend_key()),
-                output_features,
-                Covenant::default(),
-                minimum_value_promise,
-                amount,
-                recipient_address.clone(),
-            )
-            .await?
-            .with_change_data(
-                script!(PushPubKey(Box::default()))?,
-                ExecutionStack::default(),
-                TariKeyId::default(),
-                TariKeyId::default(),
-                Covenant::default(),
-                self.resources.interactive_tari_address.clone(),
-            )
-            .with_payment_id(payment_id);
-        let mut stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        stp.change_recipient_sender_offset_private_key(
-            self.resources
-                .key_manager
-                .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-                .await?
-                .key_id,
-        )?;
+            .with_memo(payment_id);
+        let sender_offset_private_key_id_self = self
+            .resources
+            .key_manager
+            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+            .await?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created sender transaction protocol");
-
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used
-        let _single_round_sender_data = stp.build_single_round_message(&self.resources.key_manager).await?;
 
         self.confirm_encumberance(tx_id, Vec::new()).await?;
 
@@ -1508,11 +1266,6 @@ where
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
         // KDFs to produce the spending and encryption keys. All player's shares are added together to produce the
         // shared secret.
-        let sender_offset_private_key_id_self =
-            stp.get_recipient_sender_offset_private_key()?
-                .ok_or(OutputManagerError::ServiceError(format!(
-                    "Missing sender offset private key ID (TxId: {tx_id})"
-                )))?;
 
         let shared_secret = {
             let mut key_sum = UncompressedPublicKey::default();
@@ -1523,7 +1276,7 @@ where
                 .resources
                 .key_manager
                 .get_diffie_hellman_shared_secret(
-                    &sender_offset_private_key_id_self,
+                    &sender_offset_private_key_id_self.key_id,
                     recipient_address
                         .public_view_key()
                         .ok_or(OutputManagerError::ServiceError(format!(
@@ -1545,7 +1298,7 @@ where
         let sender_offset_public_key_self = self
             .resources
             .key_manager
-            .get_public_key_at_key_id(&sender_offset_private_key_id_self)
+            .get_public_key_at_key_id(&sender_offset_private_key_id_self.key_id)
             .await?;
         let mut aggregated_sender_offset_public_key_shares = UncompressedPublicKey::default();
         for key in &sender_offset_public_key_shares {
@@ -1556,11 +1309,6 @@ where
         let sender_offset_public_key =
             &aggregated_sender_offset_public_key_shares + sender_offset_public_key_self.to_public_key()?;
 
-        let sender_message = TransactionSenderMessage::new_single_round_message(
-            stp.get_single_round_message(&self.resources.key_manager)
-                .await
-                .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
-        );
         let mut aggregated_metadata_ephemeral_public_key_shares = UncompressedPublicKey::default();
         for key in &metadata_ephemeral_public_key_shares {
             aggregated_metadata_ephemeral_public_key_shares =
@@ -1578,12 +1326,7 @@ where
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
-                sender_message
-                    .single()
-                    .ok_or(
-                        OutputManagerError::InvalidSenderMessage)?
-                    .features
-                    .clone(),
+                output_features,
             )
             .with_script(script)
             .encrypt_data_for_recovery(
@@ -1598,7 +1341,7 @@ where
             .with_minimum_value_promise(minimum_value_promise)
             .sign_partial_as_sender_and_receiver(
                 &self.resources.key_manager,
-                &sender_offset_private_key_id_self,
+                &sender_offset_private_key_id_self.key_id,
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
@@ -1607,24 +1350,22 @@ where
             .try_build(&self.resources.key_manager)
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
+
+        builder
+            .add_recipient(
+                recipient_address.clone(),
+                output.clone(),
+                Some(sender_offset_private_key_id_self.key_id),
+            )
+            .await?;
+
+        // Finalize
+        let finalized = builder.build().await?;
+
         let total_metadata_ephemeral_public_key = aggregated_metadata_ephemeral_public_key_shares +
             &output.metadata_signature.ephemeral_pubkey().to_public_key()?;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: created output with partial metadata signature");
 
-        // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
-        // signatures are not yet complete.
-        let rtp = ReceiverTransactionProtocol::new(
-            sender_message,
-            output,
-            &self.resources.key_manager,
-            &self.resources.consensus_constants.clone(),
-        )
-        .await;
-        let recipient_reply = rtp.get_signed_data()?.clone();
-        stp.add_presigned_recipient_info(recipient_reply)?;
-        stp.finalize(&self.resources.key_manager)
-            .await
-            .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {tx_id}");
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: finalized partial transaction");
 
@@ -1646,13 +1387,12 @@ where
 
         let total_script_nonce = aggregated_script_signature_public_nonces +
             &updated_input.script_signature.ephemeral_pubkey().to_public_key()?;
-        let mut tx = stp.get_transaction()?.clone();
+        let fee = finalized.fee;
+        let mut tx = finalized.transaction;
         let mut tx_body = tx.body;
         tx_body.update_script_signature(updated_input.commitment()?, updated_input.script_signature.clone())?;
         tx.body = tx_body;
         trace!(target: LOG_TARGET, "encumber_aggregate_utxo: updated script signature");
-
-        let fee = stp.get_fee_amount()?;
 
         // shared secret does not support debug so we manually convert this to a public key
         let shared_secret_bytes = shared_secret.as_bytes();
@@ -1787,51 +1527,24 @@ where
         let amount = input.value - fee;
 
         // Create sender transaction protocol builder with recipient data and no change
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut tx_builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
-        builder
+            self.resources.network,
+        )
+        .await?;
+        tx_builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(input.clone())
-            .await?
-            .with_sender_address(self.resources.one_sided_tari_address.clone())
-            .with_recipient_data(
-                script!(PushPubKey(Box::default()))?,
-                output_features,
-                Covenant::default(),
-                minimum_value_promise,
-                amount,
-                recipient_address.clone(),
-            )
-            .await?
-            .with_change_data(
-                script!(PushPubKey(Box::default()))?,
-                ExecutionStack::default(),
-                TariKeyId::default(),
-                TariKeyId::default(),
-                Covenant::default(),
-                self.resources.one_sided_tari_address.clone(),
-            )
-            .with_payment_id(payment_id.clone());
-        let mut stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        stp.change_recipient_sender_offset_private_key(
-            self.resources
-                .key_manager
-                .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
-                .await?
-                .key_id,
-        )?;
-
-        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
-        // but the returned value is not used
-        let _single_round_sender_data = stp.build_single_round_message(&self.resources.key_manager).await?;
+            .await?;
+        let sender_offset_private_key_id_self = self
+            .resources
+            .key_manager
+            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+            .await?;
 
         self.confirm_encumberance(tx_id, Vec::new()).await?;
 
@@ -1839,17 +1552,12 @@ where
 
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
         // KDFs to produce the spending and encryption keys.
-        let sender_offset_private_key_id_self =
-            stp.get_recipient_sender_offset_private_key()?
-                .ok_or(OutputManagerError::ServiceError(format!(
-                    "Missing sender offset private key ID (TxId: {tx_id})"
-                )))?;
 
         let shared_secret = self
             .resources
             .key_manager
             .get_diffie_hellman_shared_secret(
-                &sender_offset_private_key_id_self,
+                &sender_offset_private_key_id_self.key_id,
                 recipient_address
                     .public_view_key()
                     .ok_or(OutputManagerError::ServiceError(format!(
@@ -1867,14 +1575,8 @@ where
         let sender_offset_public_key = self
             .resources
             .key_manager
-            .get_public_key_at_key_id(&sender_offset_private_key_id_self)
+            .get_public_key_at_key_id(&sender_offset_private_key_id_self.key_id)
             .await?;
-
-        let sender_message = TransactionSenderMessage::new_single_round_message(
-            stp.get_single_round_message(&self.resources.key_manager)
-                .await
-                .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?,
-        );
 
         let script_spending_key = self
             .resources
@@ -1892,13 +1594,7 @@ where
             .map_err(OutputManagerError::InvalidPaymentIdFormat)?;
 
         let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
-            .with_features(
-                sender_message
-                    .single()
-                    .ok_or(
-                        OutputManagerError::InvalidSenderMessage)?
-                    .features
-                    .clone(),
+            .with_features(output_features
             )
             .with_script(script)
             .encrypt_data_for_recovery(
@@ -1913,7 +1609,7 @@ where
             .with_minimum_value_promise(minimum_value_promise)
             .sign_as_sender_and_receiver_verified(
                 &self.resources.key_manager,
-                &sender_offset_private_key_id_self,
+                &sender_offset_private_key_id_self.key_id,
                 &recipient_address,
             )
             .await
@@ -1922,25 +1618,18 @@ where
             .await
             .map_err(|e|service_error_with_id(tx_id, e.to_string(), true))?;
 
-        // Finalize the partial transaction - it will not be valid at this stage as the metadata and script
-        // signatures are not yet complete.
-        let rtp = ReceiverTransactionProtocol::new(
-            sender_message,
-            output,
-            &self.resources.key_manager,
-            &self.resources.consensus_constants.clone(),
-        )
-        .await;
-        let recipient_reply = rtp.get_signed_data()?.clone();
-        stp.add_presigned_recipient_info(recipient_reply)?;
-        stp.finalize(&self.resources.key_manager)
-            .await
-            .map_err(|e| service_error_with_id(tx_id, e.to_string(), true))?;
+        tx_builder
+            .add_recipient(
+                self.resources.one_sided_tari_address.clone(),
+                output.clone(),
+                Some(sender_offset_private_key_id_self.key_id),
+            )
+            .await?;
+
+        let finalized = tx_builder.build().await?;
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {tx_id}");
-
-        let tx = stp.get_transaction()?.clone();
-
-        let fee = stp.get_fee_amount()?;
+        let fee = finalized.fee;
+        let tx = finalized.transaction;
 
         Ok((tx, amount, fee))
     }
@@ -1985,19 +1674,20 @@ where
             .await?;
 
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut tx_builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
-        builder
+            self.resources.network,
+        )
+        .await?;
+        tx_builder
             .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_kernel_features(KernelFeatures::empty())
-            .with_tx_id(tx_id);
+            .with_kernel_features(KernelFeatures::empty());
 
         for kmo in input_selection.iter() {
-            builder.with_input(kmo.wallet_output.clone()).await?;
+            tx_builder.with_input(kmo.wallet_output.clone()).await?;
         }
 
         let (output, sender_offset_key_id) = self
@@ -2006,52 +1696,24 @@ where
                 amount,
                 covenant,
                 payment_id,
-                input_selection.fee_without_change,
+                input_selection.as_final_fee(),
             )
             .await?;
 
-        builder
+        tx_builder
             .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
             .await
             .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
         let mut outputs = vec![output];
 
-        let (change_commitment_mask_key_id, change_script_public_key) = self
-            .resources
-            .key_manager
-            .get_next_commitment_mask_and_script_key()
-            .await?;
-        builder
-            .with_change_data(
-                script!(PushPubKey(Box::new(change_script_public_key.pub_key.clone())))?,
-                ExecutionStack::default(),
-                change_script_public_key.key_id.clone(),
-                change_commitment_mask_key_id.key_id,
-                Covenant::default(),
-                self.resources.interactive_tari_address.clone(),
-            )
-            .with_payment_id(MemoField::open_from_string(
-                "Pay to self transaction",
-                TxType::PaymentToSelf,
-            ));
+        let finalized = tx_builder.build().await?;
 
-        let mut stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
-        let fee = stp.get_fee_amount()?;
+        let fee = finalized.fee;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
-        stp.finalize(&self.resources.key_manager).await?;
-        if input_selection.requires_change_output() {
-            let wallet_output = stp.get_finalized_change_output()?.ok_or_else(|| {
-                OutputManagerError::BuildError(
-                    "There should be a change output metadata signature available".to_string(),
-                )
-            })?;
+        if let Some(change) = finalized.change {
             let change_output = DbWalletOutput::from_wallet_output(
-                wallet_output,
+                change,
                 &self.resources.key_manager,
                 None,
                 OutputSource::default(),
@@ -2071,7 +1733,7 @@ where
             .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
         self.confirm_encumberance(tx_id, Vec::new()).await?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
-        let tx = stp.into_transaction()?;
+        let tx = finalized.transaction;
 
         Ok((fee, tx))
     }
@@ -2469,12 +2131,14 @@ where
 
         trace!(target: LOG_TARGET, "initializing new split (even) transaction");
 
-        let mut tx_builder = SenderTransactionProtocol::builder(
+        let mut tx_builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
+            self.resources.network,
+        )
+        .await?;
         tx_builder
-            .with_payment_id(MemoField::open_from_string(
+            .with_memo(MemoField::open_from_string(
                 &format!("Coin split transaction, {accumulated_amount} into {number_of_splits} outputs"),
                 TxType::CoinSplit,
             ))
@@ -2518,14 +2182,11 @@ where
             dest_outputs.push(output);
         }
 
-        let mut stp = tx_builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        let finalized = tx_builder.build().await?;
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = stp.get_tx_id()?;
+        let tx_id = TxId::new_random();
 
         trace!(
             target: LOG_TARGET,
@@ -2543,10 +2204,7 @@ where
             "finalizing coin split transaction (tx_id={tx_id})."
         );
 
-        // finalizing transaction
-        stp.finalize(&self.resources.key_manager).await?;
-
-        Ok((tx_id, stp.into_transaction()?, accumulated_amount + fee))
+        Ok((tx_id, finalized.transaction, accumulated_amount + fee))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -2636,16 +2294,18 @@ where
 
         trace!(target: LOG_TARGET, "initializing new split transaction");
 
-        let mut tx_builder = SenderTransactionProtocol::builder(
+        let mut tx_builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
+            self.resources.network,
+        )
+        .await?;
         let payment_id = MemoField::open_from_string(
             &format!("Coin split, {accumulated_amount} into {number_of_splits} outputs"),
             TxType::CoinSplit,
         );
         tx_builder
-            .with_payment_id(payment_id.clone())
+            .with_memo(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2684,31 +2344,11 @@ where
 
         let has_leftover_change = change > MicroMinotari::zero();
 
-        // extending transaction if there is some `change` left over
-        if has_leftover_change {
-            let (change_mask, change_script) = self
-                .resources
-                .key_manager
-                .get_next_commitment_mask_and_script_key()
-                .await?;
-            tx_builder.with_change_data(
-                script!(PushPubKey(Box::new(change_script.pub_key)))?,
-                ExecutionStack::default(),
-                change_script.key_id,
-                change_mask.key_id,
-                Covenant::default(),
-                self.resources.interactive_tari_address.clone(),
-            );
-        }
-
-        let mut stp = tx_builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        let finalized = tx_builder.build().await?;
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = stp.get_tx_id()?;
+        let tx_id = TxId::new_random();
 
         trace!(
             target: LOG_TARGET,
@@ -2720,22 +2360,14 @@ where
             "finalizing coin split transaction (tx_id={tx_id})."
         );
 
-        // finalizing transaction
-        stp.finalize(&self.resources.key_manager).await?;
-
         // again, to obtain output for leftover change
-        if has_leftover_change {
+        if let Some(change) = finalized.change {
             // obtaining output for the `change`
-            let wallet_output_for_change = stp.get_finalized_change_output()?.ok_or_else(|| {
-                OutputManagerError::BuildError(
-                    "There should be a `change` output metadata signature available".to_string(),
-                )
-            })?;
 
             // appending `change` output to the result
             dest_outputs.push(
                 DbWalletOutput::from_wallet_output(
-                    wallet_output_for_change,
+                    change,
                     &self.resources.key_manager,
                     None,
                     OutputSource::default(),
@@ -2763,7 +2395,7 @@ where
             total_split_amount + final_fee
         };
 
-        Ok((tx_id, stp.into_transaction()?, value))
+        Ok((tx_id, finalized.transaction, value))
     }
 
     async fn output_to_self(
@@ -2893,12 +2525,14 @@ where
 
         trace!(target: LOG_TARGET, "initializing new join transaction");
 
-        let mut tx_builder = SenderTransactionProtocol::builder(
+        let mut tx_builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
+            self.resources.network,
+        )
+        .await?;
         tx_builder
-            .with_payment_id(payment_id.clone())
+            .with_memo(payment_id.clone())
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_kernel_features(KernelFeatures::empty());
@@ -2927,14 +2561,11 @@ where
             .with_output(output.wallet_output.clone(), sender_offset_key_id)
             .await?;
 
-        let mut stp = tx_builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+        let finalized = tx_builder.build().await?;
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
-        let tx_id = stp.get_tx_id()?;
+        let tx_id = TxId::new_random();
 
         trace!(
             target: LOG_TARGET,
@@ -2952,85 +2583,34 @@ where
             "finalizing coin join transaction (tx_id={tx_id})."
         );
 
-        // finalizing transaction
-        stp.finalize(&self.resources.key_manager).await?;
-
-        Ok((tx_id, stp.into_transaction()?, accumulated_amount + fee))
+        Ok((tx_id, finalized.transaction, accumulated_amount + fee))
     }
 
     pub async fn scrape_wallet(
         &mut self,
         tx_id: TxId,
         fee_per_gram: MicroMinotari,
-        recipient_address: TariAddress,
-    ) -> Result<SenderTransactionProtocol, OutputManagerError> {
-        let default_features_and_scripts_size = self
-            .default_features_and_scripts_size()
-            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
-
+    ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
         let src_outputs = self.resources.db.fetch_all_unspent_outputs()?;
 
-        let accumulated_amount_with_fee = src_outputs
-            .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value);
-
-        let fee =
-            self.get_fee_calc()
-                .calculate(fee_per_gram, 1, src_outputs.len(), 1, default_features_and_scripts_size);
-
-        let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
-
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
-        let tx_meta = TransactionMetadata::default();
+            self.resources.network,
+        )
+        .await?;
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_recipient_data(
-                // TMS will fix the script later with correct spend key
-                push_pubkey_script(&Default::default()),
-                Default::default(),
-                Default::default(),
-                MicroMinotari::zero(),
-                accumulated_amount,
-                recipient_address,
-            )
-            .await?
-            .with_sender_address(self.resources.interactive_tari_address.clone())
-            .with_payment_id(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_lock_height(tx_meta.lock_height)
-            .with_kernel_features(tx_meta.kernel_features)
-            .with_tx_id(tx_id);
+            .with_memo(MemoField::open_from_string("scraping wallet", TxType::PaymentToOther))
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in &src_outputs {
             builder.with_input(uo.wallet_output.clone()).await?;
         }
 
-        let (change_commitment_mask_key, change_script_key) = self
-            .resources
-            .key_manager
-            .get_next_commitment_mask_and_script_key()
-            .await?;
-        // builder needs change data, but this should be 0
-        builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
-            ExecutionStack::default(),
-            change_script_key.key_id,
-            change_commitment_mask_key.key_id,
-            Covenant::default(),
-            self.resources.interactive_tari_address.clone(),
-        );
-
-        let stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
         // encumbering transaction
         self.resources.db.encumber_outputs(tx_id, src_outputs.clone(), vec![])?;
-        Ok(stp)
+        Ok(builder)
     }
 
     async fn fetch_utxo_from_node(
@@ -3088,17 +2668,20 @@ where
                 );
 
                 // Create builder with no recipients (other than ourselves)
-                let mut builder = SenderTransactionProtocol::builder(
+                let mut builder = TransactionBuilder::new(
                     self.resources.consensus_constants.clone(),
                     self.resources.key_manager.clone(),
-                );
+                    self.resources.network,
+                )
+                .await?;
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_payment_id(MemoField::open_from_string(
+                    .with_memo(MemoField::open_from_string(
                         "SHA-XTR atomic swap",
                         TxType::ClaimAtomicSwap,
                     ))
+                    .with_tx_type(TxType::ClaimAtomicSwap)
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
                     .with_input(rewound_output)
@@ -3106,32 +2689,13 @@ where
 
                 let mut outputs = Vec::new();
 
-                let (change_commitment_mask_key, change_script_key) = self
-                    .resources
-                    .key_manager
-                    .get_next_commitment_mask_and_script_key()
-                    .await?;
-                builder.with_change_data(
-                    script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
-                    ExecutionStack::default(),
-                    change_script_key.key_id,
-                    change_commitment_mask_key.key_id,
-                    Covenant::default(),
-                    self.resources.interactive_tari_address.clone(),
-                );
+                let finalized = builder.build().await?;
 
-                let mut stp = builder
-                    .build()
-                    .await
-                    .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
-                let tx_id = stp.get_tx_id()?;
+                let tx_id = TxId::new_random();
 
                 trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({tx_id}).");
-                let fee = stp.get_fee_amount()?;
-                trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({tx_id}).");
-                stp.finalize(&self.resources.key_manager).await?;
-                if let Some(wallet_output) = stp.get_finalized_change_output()? {
+                let fee = finalized.fee;
+                if let Some(wallet_output) = finalized.change {
                     let change_output = DbWalletOutput::from_wallet_output(
                         wallet_output,
                         &self.resources.key_manager,
@@ -3146,7 +2710,7 @@ where
 
                 self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
                 self.confirm_encumberance(tx_id, Vec::new()).await?;
-                let tx = stp.into_transaction()?;
+                let tx = finalized.transaction;
 
                 Ok((tx_id, fee, amount - fee, tx))
             } else {
@@ -3171,14 +2735,16 @@ where
         let amount = output.value;
 
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(
+        let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
-        );
+            self.resources.network,
+        )
+        .await?;
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_payment_id(MemoField::open_from_string(
+            .with_memo(MemoField::open_from_string(
                 "SHA-XTR atomic refund",
                 TxType::HtlcAtomicSwapRefund,
             ))
@@ -3189,33 +2755,13 @@ where
 
         let mut outputs = Vec::new();
 
-        let (change_commitment_mask_key, change_script_key) = self
-            .resources
-            .key_manager
-            .get_next_commitment_mask_and_script_key()
-            .await?;
-        builder.with_change_data(
-            script!(PushPubKey(Box::new(change_script_key.pub_key.clone())))?,
-            ExecutionStack::default(),
-            change_script_key.key_id,
-            change_commitment_mask_key.key_id,
-            Covenant::default(),
-            self.resources.interactive_tari_address.clone(),
-        );
-
-        let mut stp = builder
-            .build()
-            .await
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
-
-        let tx_id = stp.get_tx_id()?;
+        let tx_id = TxId::new_random();
 
         trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({tx_id}).");
+        let finalized = builder.build().await?;
+        let fee = finalized.fee;
 
-        let fee = stp.get_fee_amount()?;
-
-        stp.finalize(&self.resources.key_manager).await?;
-        if let Some(wallet_output) = stp.get_finalized_change_output()? {
+        if let Some(wallet_output) = finalized.change {
             let change_output = DbWalletOutput::from_wallet_output(
                 wallet_output,
                 &self.resources.key_manager,
@@ -3227,7 +2773,7 @@ where
             .await?;
             outputs.push(change_output);
         }
-        let tx = stp.into_transaction()?;
+        let tx = finalized.transaction;
 
         self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
         self.confirm_encumberance(tx_id, Vec::new()).await?;

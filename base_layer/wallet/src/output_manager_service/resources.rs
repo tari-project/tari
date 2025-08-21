@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{consensus::ConsensusConstants, crypto_factories::CryptoFactories};
@@ -33,7 +34,6 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::handle::UtxoScannerHandle,
 };
-
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]
 pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyManagerInterface> {
@@ -49,4 +49,5 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub one_sided_tari_address: TariAddress,
     pub utxo_scanner_handle: UtxoScannerHandle,
     pub transaction_service_handle: TransactionServiceHandle,
+    pub network: Network,
 }

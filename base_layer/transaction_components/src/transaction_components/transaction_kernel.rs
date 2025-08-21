@@ -159,25 +159,6 @@ impl TransactionKernel {
         }
     }
 
-    /// This is a helper fuction for build kernel challange that does not take in the individual fields,
-    /// but rather takes in the TransactionMetadata object.
-    pub fn build_kernel_challenge_from_tx_meta(
-        version: &TransactionKernelVersion,
-        sum_public_nonces: &CompressedPublicKey,
-        total_excess: &CompressedPublicKey,
-        tx_meta: &TransactionMetadata,
-    ) -> [u8; 64] {
-        TransactionKernel::build_kernel_signature_challenge(
-            version,
-            sum_public_nonces,
-            total_excess,
-            tx_meta.fee,
-            tx_meta.lock_height,
-            &tx_meta.kernel_features,
-            &tx_meta.burn_commitment,
-        )
-    }
-
     /// Helper function to creates the kernel excess signature challenge.
     /// The challenge is defined as the hash of the following data:
     ///  Public nonce

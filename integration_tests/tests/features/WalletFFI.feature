@@ -101,48 +101,13 @@ Feature: Wallet FFI
 #        Then I cancel all outbound transactions on ffi wallet FFI_WALLET and it will cancel 1 transaction
 #        Then I wait for ffi wallet FFI_WALLET to have 0 pending outbound transaction
 #        And I stop ffi wallet FFI_WALLET
-
-#    Scenario: As a client I want to manage contacts
-#        Given I have a base node BASE
-#        And I have a ffi wallet FFI_WALLET connected to base node BASE
-#        When I have wallet WALLET connected to base node BASE
-#        And I add contact with alias ALIAS and address of WALLET to ffi wallet FFI_WALLET
-#        Then I have contact with alias ALIAS and address of WALLET in ffi wallet FFI_WALLET
-#        When I remove contact with alias ALIAS from ffi wallet FFI_WALLET
-#        Then I don't have contact with alias ALIAS in ffi wallet FFI_WALLET
-#        And I stop ffi wallet FFI_WALLET
-
-#    @critical
-#    Scenario: As a client I want to receive contact liveness events
-#        Given I have a seed node SEED
-        # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
-#        And I have non-default wallet WALLET1 connected to all seed nodes using DirectOnly
-#        And I have non-default wallet WALLET2 connected to all seed nodes using DirectOnly
-#        And I have a ffi wallet FFI_WALLET connected to seed node SEED
-        # Start the contact liveness pings by adding contacts to the FFI wallet
-#        When I add contact with alias ALIAS1 and address of WALLET1 to ffi wallet FFI_WALLET
-#        And I add contact with alias ALIAS2 and address of WALLET2 to ffi wallet FFI_WALLET
-#        # Do some mining and send transactions to force P2P discovery
-#        And I have SHA3X mining node MINER1 connected to base node SEED and wallet WALLET1
-#        And I have SHA3X mining node MINER2 connected to base node SEED and wallet WALLET2
-#        And mining node MINER1 mines 1 blocks
-#        And mining node MINER2 mines 5 blocks
-#        Then I wait for wallet WALLET1 to have at least 100000000 uT
-#        And I wait for wallet WALLET2 to have at least 100000000 uT
-#        When I send 100000000 uT one-sided without waiting for broadcast from wallet WALLET1 to wallet FFI_WALLET at fee 20
-#        And I send 100000000 uT one-sided without waiting for broadcast from wallet WALLET2 to wallet FFI_WALLET at fee 20
-        # If the FFI wallet can send the transactions, P2P connectivity has been established
-#        Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
-#        And I stop ffi wallet FFI_WALLET
-
+    
 #    @critical
 #    Scenario: As a client I want to retrieve a list of transactions I have made and received
 #        Given I have a seed node SEED
 #        When I have a base node BASE1 connected to all seed nodes
 #        When I have wallet SENDER connected to base node BASE1
 #        And I have a ffi wallet FFI_WALLET connected to base node BASE1
-        # Force some P2P discovery with contact liveness
-#        When I add contact with alias ALIAS1 and address of SENDER to ffi wallet FFI_WALLET
 #        When I have wallet RECEIVER connected to base node BASE1
 #        When I have SHA3X mining node MINER connected to base node BASE1 and wallet SENDER
 #        When mining node MINER mines 10 blocks
@@ -198,10 +163,6 @@ Feature: Wallet FFI
 #        When I have wallet SENDER connected to base node BASE1
 #        And I have a ffi wallet FFI_WALLET connected to base node BASE1
 #        When I have wallet RECEIVER connected to base node BASE1
-
-        # Force some P2P discovery with contact liveness
-#        When I add contact with alias ALIAS1 and address of SENDER to ffi wallet FFI_WALLET
-#        When I add contact with alias ALIAS2 and address of RECEIVER to ffi wallet FFI_WALLET
 
         # Fund the FFI wallet
 #        When I have SHA3X mining node MINER connected to base node BASE1 and wallet SENDER

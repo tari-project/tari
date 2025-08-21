@@ -27,7 +27,6 @@ use tari_common::configuration::Network;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    tari_address::TariAddress,
     types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedSignature},
 };
 use tari_crypto::keys::SecretKey;
@@ -200,9 +199,10 @@ impl TestParams {
     }
 
     pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> std::io::Result<usize> {
+        let temp_script = script!(PushPubKey(Box::default()));
         let output_features = OutputFeatures { ..Default::default() };
         Ok(self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop].map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
+            temp_script.map_err(|e| e.to_std_io_error())?.get_serialized_size()? +
                 output_features.get_serialized_size()?,
         ) * num_outputs)
     }
@@ -275,12 +275,14 @@ pub fn create_random_signature(
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
 pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, features: KernelFeatures) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+    let e = TransactionKernel::build_kernel_signature_challenge(
         &TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &CompressedPublicKey::from_secret_key(&k),
-        &tx_meta,
+        fee,
+        lock_height,
+        &features,
+        &None,
     );
     let sig = UncompressedSignature::sign_raw_uniform(&k, r, &e).unwrap();
     Signature::new_from_schnorr(sig)
@@ -295,20 +297,14 @@ pub async fn create_random_signature_from_secret_key(
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
 ) -> (CompressedPublicKey, Signature) {
-    let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, kernel_features);
     let total_nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
     let total_excess = key_manager.get_public_key_at_key_id(&secret_key_id).await.unwrap();
     let kernel_version = TransactionKernelVersion::get_current_version();
-    let kernel_message = TransactionKernel::build_kernel_signature_message(
-        &kernel_version,
-        tx_meta.fee,
-        tx_meta.lock_height,
-        &tx_meta.kernel_features,
-        &tx_meta.burn_commitment,
-    );
+    let kernel_message =
+        TransactionKernel::build_kernel_signature_message(&kernel_version, fee, lock_height, &kernel_features, &None);
     let kernel_signature = key_manager
         .get_partial_txo_kernel_signature(
             &secret_key_id,
@@ -642,32 +638,20 @@ pub async fn create_transaction_with(
 ) -> Transaction {
     let rules = ConsensusManager::builder(Network::LocalNet).build();
     let constants = rules.consensus_constants(0).clone();
-    let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let change = TestParams::new(key_manager).await;
-    stx_builder
-        .with_lock_height(lock_height)
-        .with_fee_per_gram(fee_per_gram)
-        .with_kernel_features(KernelFeatures::empty())
-        .with_change_data(
-            TariScript::default(),
-            ExecutionStack::default(),
-            change.script_key_id,
-            change.commitment_mask_key_id,
-            Covenant::default(),
-            TariAddress::default(),
-        );
+    let mut tx_builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+        .await
+        .unwrap();
+    tx_builder.with_lock_height(lock_height).with_fee_per_gram(fee_per_gram);
     for input in inputs {
-        stx_builder.with_input(input).await.unwrap();
+        tx_builder.with_input(input).await.unwrap();
     }
 
     for (output, script_offset_key_id) in outputs {
-        stx_builder.with_output(output, script_offset_key_id).await.unwrap();
+        tx_builder.with_output(output, script_offset_key_id).await.unwrap();
     }
+    let finalized = tx_builder.build().await.unwrap();
 
-    let mut stx_protocol = stx_builder.build().await.unwrap();
-    stx_protocol.finalize(key_manager).await.unwrap();
-
-    stx_protocol.into_transaction().unwrap()
+    finalized.transaction
 }
 
 /// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
@@ -678,56 +662,45 @@ pub async fn spend_utxos(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
 ) -> (Transaction, Vec<WalletOutput>) {
-    let (mut stx_protocol, mut outputs) = create_stx_protocol(schema, key_manager).await;
-    stx_protocol.finalize(key_manager).await.unwrap();
-    let txn = stx_protocol.get_transaction().unwrap().clone();
-    let change_output = stx_protocol.get_finalized_change_output().unwrap().unwrap();
-    outputs.push(change_output);
+    let (finalized_tx, mut outputs) = create_test_transaction(schema, key_manager).await;
+    let txn = finalized_tx.transaction.clone();
+    if let Some(change) = &finalized_tx.change {
+        outputs.push(change.clone());
+    }
     (txn, outputs)
 }
 
 #[allow(clippy::too_many_lines)]
-pub async fn create_stx_protocol(
+pub async fn create_test_transaction(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
-) -> (SenderTransactionProtocol, Vec<WalletOutput>) {
+) -> (FinalizedTransaction, Vec<WalletOutput>) {
     let mut outputs = Vec::with_capacity(schema.to.len());
-    let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
+    let builder = create_test_transaction_internal(schema, key_manager, &mut outputs).await;
 
-    let stx_protocol = stx_builder.build().await.unwrap();
-    (stx_protocol, outputs)
+    let finalized_tx = builder.build().await.unwrap();
+    (finalized_tx, outputs)
 }
 
 #[allow(clippy::too_many_lines)]
-pub async fn create_stx_protocol_internal(
+async fn create_test_transaction_internal(
     schema: TransactionSchema,
     key_manager: &MemoryDbKeyManager,
     outputs: &mut Vec<WalletOutput>,
-) -> SenderTransactionInitializer<MemoryDbKeyManager> {
+) -> TransactionBuilder<MemoryDbKeyManager> {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .consensus_constants(0)
         .clone();
-    let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let change = TestParams::new(key_manager).await;
-    let script_public_key = key_manager
-        .get_public_key_at_key_id(&change.script_key_id)
+    let mut tx_builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
         .await
         .unwrap();
-    stx_builder
+    tx_builder
         .with_lock_height(schema.lock_height)
-        .with_fee_per_gram(schema.fee)
-        .with_change_data(
-            script!(PushPubKey(Box::new(script_public_key))).unwrap(),
-            ExecutionStack::default(),
-            change.script_key_id,
-            change.commitment_mask_key_id,
-            Covenant::default(),
-            TariAddress::default(),
-        );
+        .with_fee_per_gram(schema.fee);
 
     for tx_input in &schema.from {
-        stx_builder.with_input(tx_input.clone()).await.unwrap();
+        tx_builder.with_input(tx_input.clone()).await.unwrap();
     }
     for val in schema.to {
         let commitment_mask = key_manager
@@ -766,7 +739,7 @@ pub async fn create_stx_protocol_internal(
             .unwrap();
 
         outputs.push(output.clone());
-        stx_builder.with_output(output, sender_offset.key_id).await.unwrap();
+        tx_builder.with_output(output, sender_offset.key_id).await.unwrap();
     }
     for mut utxo in schema.to_outputs {
         let sender_offset = key_manager
@@ -786,10 +759,10 @@ pub async fn create_stx_protocol_internal(
             .await
             .unwrap();
 
-        stx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
+        tx_builder.with_output(utxo, sender_offset.key_id).await.unwrap();
     }
 
-    stx_builder
+    tx_builder
 }
 
 pub async fn create_coinbase_kernel(

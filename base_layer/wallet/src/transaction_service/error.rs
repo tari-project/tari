@@ -57,14 +57,14 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Transaction protocol is not in the correct state for this operation")]
     InvalidStateError,
     #[error("Transaction is sending to a network different than ours")]
     InvalidNetwork,
     #[error("One-sided transaction error: `{0}`")]
     OneSidedTransactionError(String),
-    #[error("Transaction Protocol Error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("The message being processed is not recognized by the Transaction Manager")]
     InvalidMessageTypeError,
     #[error("A message for a specific tx_id has been repeated")]

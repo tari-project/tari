@@ -22,7 +22,7 @@
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash, Signature, UncompressedPublicKey},
+    types::{CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, Signature, UncompressedPublicKey},
 };
 use tari_core::transactions::transaction_protocol::{
     recipient::RecipientSignedMessage,
@@ -47,8 +47,19 @@ use tari_transaction_components::{
 
 use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
-    offline_signing::models::{OneSidedTransactionInfo, SignedTransaction},
+    offline_signing::models::{OneSidedTransactionInfo, SignedTransaction, TransactionMetadata},
 };
+
+/// This is the message containing the public data that the Receiver will send back to the Sender
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecipientSignedMessage {
+    pub tx_id: TxId,
+    pub output: TransactionOutput,
+    pub public_spend_key: CompressedPublicKey,
+    pub partial_signature: Signature,
+    pub tx_metadata: TransactionMetadata,
+    pub offset: PrivateKey,
+}
 
 struct SignedMessage {
     pub signed_data: RecipientSignedMessage,
@@ -108,7 +119,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
     async fn calculate_total_nonce_and_total_public_excess(
         &self,
         info: &OneSidedTransactionInfo,
-    ) -> Result<(CompressedPublicKey, CompressedPublicKey), TPE> {
+    ) -> Result<(CompressedPublicKey, CompressedPublicKey), TransactionServiceError> {
         let mut public_nonce = UncompressedPublicKey::default();
         let mut public_excess = UncompressedPublicKey::default();
         for input in &info.inputs {
@@ -300,8 +311,8 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         sender_offset_key_id: TariKeyId,
         sender_public_nonce: CompressedPublicKey,
         sender_public_excess: CompressedPublicKey,
-    ) -> Result<(Transaction, Option<WalletOutput>), TPE> {
-        let mut tx_builder = TransactionBuilder::new();
+    ) -> Result<(Transaction, Option<WalletOutput>), TransactionServiceError> {
+        let mut tx_builder = CoreTransactionBuilder::new();
 
         let total_public_nonce = &sender_public_nonce.to_public_key()? +
             signed_message
@@ -395,7 +406,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 .output_pair
                 .sender_offset_key_id
                 .clone()
-                .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+                .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?;
             sender_offset_keys.push(output_sender_offset_key_id);
         }
 
@@ -430,7 +441,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 let sender_offset_key_id = change
                     .sender_offset_key_id
                     .clone()
-                    .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+                    .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?;
                 sender_offset_keys.push(sender_offset_key_id);
                 Some(change.output)
             },
@@ -456,7 +467,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .with_signature(Signature::new_from_schnorr(signature))
             .build()?;
         tx_builder.with_kernel(kernel);
-        let transaction = tx_builder.build().map_err(TPE::from)?;
+        let transaction = tx_builder.build()?;
         Ok((transaction, change_output))
     }
 
@@ -464,11 +475,11 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         &self,
         change: &OutputPair,
         output_hash: FixedHash,
-    ) -> Result<OutputPair, TPE> {
+    ) -> Result<OutputPair, TransactionServiceError> {
         let mut payment_id = change.output.payment_id.clone();
         payment_id
             .transaction_info_set_sent_output_hashes(vec![output_hash])
-            .map_err(TPE::AddressExceededMaximumMemoFieldSize)?;
+            .map_err(TransactionBuilderError::InvalidMemo)?;
         let encrypted_data = self
             .key_manager
             .encrypt_data_for_recovery(
@@ -485,14 +496,14 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 change
                     .sender_offset_key_id
                     .as_ref()
-                    .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?,
+                    .ok_or_else(|| TransactionBuilderError::SenderOffsetKeyIdMissing)?,
                 self.key_manager,
             )
             .await?;
-        Ok(OutputPair {
-            output: change_output,
-            kernel_nonce: change.kernel_nonce.clone(),
-            sender_offset_key_id: change.sender_offset_key_id.clone(),
-        })
+        Ok(OutputPair::new(
+            change_output,
+            change.kernel_nonce.clone(),
+            change.sender_offset_key_id.clone(),
+        ))
     }
 }

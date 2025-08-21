@@ -110,7 +110,7 @@ where
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
-            let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
             let view_key = key_manager

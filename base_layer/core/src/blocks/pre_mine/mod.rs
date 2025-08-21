@@ -37,24 +37,31 @@ use tari_common_types::{
 };
 use tari_crypto::keys::SecretKey as SkTrait;
 use tari_script::{script, ExecutionStack};
-use tari_transaction_components::{
-    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
-    tari_amount::{MicroMinotari, Minotari},
-    transaction_components::{
-        memo_field::MemoField,
-        one_sided::public_key_to_output_encryption_key,
-        transaction_metadata::TransactionMetadata,
-        CoinBaseExtra,
-        KernelFeatures,
-        OutputFeatures,
-        OutputFeaturesVersion,
-        OutputType,
-        RangeProofType,
-        TransactionKernel,
-        TransactionKernelVersion,
-        TransactionOutput,
-        TransactionOutputVersion,
-        WalletOutputBuilder,
+use tari_utilities::ByteArray;
+
+use crate::{
+    one_sided::public_key_to_output_encryption_key,
+    transactions::{
+        tari_amount::{MicroMinotari, Minotari},
+        transaction_components::{
+            memo_field::MemoField,
+            CoinBaseExtra,
+            KernelFeatures,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutputBuilder,
+        },
+        transaction_key_manager::{
+            create_memory_db_key_manager,
+            SecretTransactionKeyManagerInterface,
+            TransactionKeyManagerInterface,
+        },
     },
 };
 use tari_transaction_key_manager::create_memory_db_key_manager;
@@ -887,13 +894,15 @@ pub async fn create_pre_mine_genesis_block_info(
     }
     // lets create a single kernel for all the outputs
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::empty());
     let total_public_key = CompressedPublicKey::from_secret_key(&total_private_key);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+    let e = TransactionKernel::build_kernel_signature_challenge(
         &TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &total_public_key,
-        &tx_meta,
+        0.into(),
+        0,
+        &KernelFeatures::empty(),
+        &None,
     );
     let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).map_err(|e| e.to_string())?;
     let compressed_signature = Signature::new_from_schnorr(signature);

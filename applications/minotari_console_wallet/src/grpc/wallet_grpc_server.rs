@@ -124,6 +124,7 @@ use minotari_wallet::{
         offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
     },
+    WalletKeyManager,
     WalletSqlite,
 };
 use rand::rngs::OsRng;
@@ -134,16 +135,17 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
-use tari_core::transactions::transaction_protocol::recipient::RecipientState;
-use tari_crypto::hash_domain;
-use tari_transaction_components::{
-    consensus::{ConsensusConstants, ConsensusManager},
-    key_manager::TransactionKeyManagerInterface,
-    tari_amount::MicroMinotari,
-    transaction_components::{
-        memo_field::{MemoField, TxType},
-        OutputFeatures,
-        UnblindedOutput,
+use tari_core::{
+    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
+    transactions::{
+        legacy_transaction_protocol::recipient::RecipientState,
+        tari_amount::MicroMinotari,
+        transaction_components::{
+            memo_field::{MemoField, TxType},
+            OutputFeatures,
+            UnblindedOutput,
+        },
+        transaction_key_manager::TransactionKeyManagerInterface,
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
@@ -186,7 +188,7 @@ async fn send_transaction_event(
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
     rules: ConsensusManager,
-    debouncer: Arc<Mutex<WalletDebouncer>>,
+    debouncer: Arc<Mutex<WalletDebouncer<WalletKeyManager>>>,
 }
 
 impl WalletGrpcServer {
@@ -226,7 +228,7 @@ impl WalletGrpcServer {
         self.wallet.transaction_service.clone()
     }
 
-    fn get_output_manager_service(&self) -> OutputManagerHandle {
+    fn get_output_manager_service(&self) -> OutputManagerHandle<WalletKeyManager> {
         self.wallet.output_manager_service.clone()
     }
 
@@ -855,6 +857,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
+            if payment_type == PaymentType::StandardMimblewimble as i32 {
+                return Err(Status::invalid_argument(
+                    "Standard Mimblewimble transactions are not supported in this method".to_string(),
+                ));
+            }
             let payment_id = if !raw_payment_id.is_empty() {
                 MemoField::open_unchecked(raw_payment_id.to_vec(), TxType::PaymentToOther)
             } else if let Some(user_pay_id) = user_payment_id {
@@ -880,18 +887,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             transfers.push(async move {
                 (
                     hex_address,
-                    if payment_type == PaymentType::StandardMimblewimble as i32 {
-                        transaction_service
-                            .send_transaction(
-                                address,
-                                amount.into(),
-                                UtxoSelectionCriteria::default(),
-                                OutputFeatures::default(),
-                                fee_per_gram.into(),
-                                payment_id,
-                            )
-                            .await
-                    } else if payment_type == PaymentType::OneSided as i32 {
+                    if payment_type == PaymentType::OneSided as i32 {
                         transaction_service
                             .send_one_sided_transaction(
                                 address,

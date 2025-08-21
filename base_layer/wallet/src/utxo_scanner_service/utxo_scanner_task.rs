@@ -85,7 +85,7 @@ pub struct UtxoScannerTask<
     TKeyManager,
     TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 > {
-    pub(crate) resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletClientFactory, TKeyManager>,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) retry_limit: usize,
     pub(crate) num_retries: usize,
