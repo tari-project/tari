@@ -21,11 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use semver::Version;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::FixedHash};
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::TxId,
+    types::{CompressedCommitment, FixedHash},
+};
 use tari_core::transactions::{
     tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, OutputFeatures, Transaction, WalletOutput},
-    transaction_protocol::TransactionMetadata,
+    transaction_components::{memo_field::MemoField, KernelFeatures, OutputFeatures, Transaction, WalletOutput},
 };
 
 use crate::transaction_service::{
@@ -78,6 +81,19 @@ pub struct PaymentRecipient {
     pub address: TariAddress,
 }
 
+/// Transaction metadata, this includes all the fields that needs to be signed on the kernel
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct TransactionMetadata {
+    /// The absolute fee for the transaction
+    pub fee: MicroMinotari,
+    /// The earliest block this transaction can be mined
+    pub lock_height: u64,
+    /// The kernel features
+    pub kernel_features: KernelFeatures,
+    /// optional burn commitment if present
+    pub burn_commitment: Option<CompressedCommitment>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct OneSidedTransactionInfo {
     /// Payment ID
@@ -90,7 +106,7 @@ pub struct OneSidedTransactionInfo {
     pub inputs: Vec<MarshalOutputPair>,
     /// The recipient's outputs.
     pub outputs: Vec<MarshalOutputPair>,
-    /// Details used to construct the transaction kernel.
+    // /// Details used to construct the transaction kernel.
     pub metadata: TransactionMetadata,
     /// Sender address
     pub sender_address: TariAddress,

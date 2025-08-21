@@ -103,14 +103,6 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     ImportTransaction(WalletTransaction),
-    SendTransaction {
-        destination: TariAddress,
-        amount: MicroMinotari,
-        selection_criteria: UtxoSelectionCriteria,
-        output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-    },
     BurnTari {
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
@@ -241,7 +233,6 @@ pub enum TransactionServiceRequest {
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, MemoField),
     SetLowPowerMode,
     SetNormalPowerMode,
-    RestartTransactionProtocols,
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
@@ -291,15 +282,6 @@ impl fmt::Display for TransactionServiceRequest {
                     "ScrapeWallet (destination: {destination}, fee_per_gram: {fee_per_gram})"
                 )
             },
-            Self::SendTransaction {
-                destination,
-                amount,
-                payment_id,
-                ..
-            } => write!(
-                f,
-                "SendTransaction (amount: {amount}, to: {destination}, payment_id: {payment_id})"
-            ),
             Self::BurnTari { amount, payment_id, .. } => write!(f, "Burning Tari ({amount}, {payment_id})"),
             Self::SpendBackupPreMineUtxo {
                 fee_per_gram,
@@ -457,7 +439,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({tx_id})"),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
             Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
-            Self::RestartTransactionProtocols => write!(f, "RestartTransactionProtocols"),
             Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
             Self::GetNumConfirmationsRequired => write!(f, "GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
@@ -746,32 +727,6 @@ impl TransactionServiceHandle {
 
     pub fn get_event_stream(&self) -> TransactionEventReceiver {
         self.event_stream_sender.subscribe()
-    }
-
-    pub async fn send_transaction(
-        &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
-        selection_criteria: UtxoSelectionCriteria,
-        output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-    ) -> Result<TxId, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SendTransaction {
-                destination,
-                amount,
-                selection_criteria,
-                output_features: Box::new(output_features),
-                fee_per_gram,
-                payment_id,
-            })
-            .await??
-        {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
     }
 
     pub async fn scrape_wallet(
@@ -1438,17 +1393,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::NumConfirmationsSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn restart_transaction_protocols(&mut self) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::RestartTransactionProtocols)
-            .await??
-        {
-            TransactionServiceResponse::ProtocolsRestarted => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

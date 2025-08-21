@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, marker::PhantomData, sync::Arc, thread};
+use std::{cmp, marker::PhantomData, sync::Arc};
 
 use blake2::Blake2b;
 use digest::consts::U32;
-use futures::executor::block_on;
 use log::*;
 use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
@@ -68,6 +67,7 @@ use tari_core::{
             SecretTransactionKeyManagerInterface,
             TariKeyId,
             TransactionKeyManagerInitializer,
+            TransactionKeyManagerInterface,
         },
         CryptoFactories,
     },
@@ -140,7 +140,7 @@ where THttpClientFactory: HttpClientFactory
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
-    pub output_manager_service: OutputManagerHandle,
+    pub output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
     pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle<THttpClientFactory>,
@@ -290,10 +290,8 @@ where
         let comms = if config.p2p.transport.transport_type == TransportType::Tor {
             let wallet_db = wallet_database.clone();
             let node_id = comms.node_identity();
-            let moved_ts_clone = transaction_service_handle.clone();
             let after_comms = move |identity: TorIdentity| {
                 // we do this so that we dont have to move in a mut ref and making the closure a FnMut.
-                let mut ts = moved_ts_clone.clone();
                 let address_string = format!("/onion3/{}:{}", identity.service_id, identity.onion_port);
                 if let Err(e) = wallet_db.set_tor_identity(identity) {
                     error!(target: LOG_TARGET, "Failed to set wallet db tor identity{e:?}");
@@ -311,15 +309,6 @@ where
                 // made during comms startup. In the case of a Tor Transport the public address could
                 // have been generated
                 let _result = wallet_db.set_node_address(address);
-                thread::spawn(move || {
-                    let result = block_on(ts.restart_transaction_protocols());
-                    if result.is_err() {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Could not restart transaction negotiation protocols: {result:?}"
-                        );
-                    }
-                });
             };
             initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
         } else {
@@ -327,7 +316,7 @@ where
             initialization::spawn_comms_using_transport(comms, config.p2p.transport.clone(), after_comms).await?
         };
 
-        let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
         let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
         let dht = handles.expect_handle::<Dht>();
 
@@ -790,8 +779,8 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
 /// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
 /// using old node identities.
-async fn persist_one_sided_payment_script_for_node_identity(
-    output_manager_service: &mut OutputManagerHandle,
+async fn persist_one_sided_payment_script_for_node_identity<KM: TransactionKeyManagerInterface>(
+    output_manager_service: &mut OutputManagerHandle<KM>,
     spend_key: &CompressedPublicKey,
     spend_key_id: TariKeyId,
 ) -> Result<(), WalletError> {

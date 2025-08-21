@@ -26,7 +26,7 @@ use std::{
 };
 
 use log::*;
-use minotari_wallet::output_manager_service::handle::OutputManagerHandle;
+use minotari_wallet::{output_manager_service::handle::OutputManagerHandle, WalletKeyManager};
 use tokio::{
     sync::{broadcast, RwLock},
     time,
@@ -34,13 +34,12 @@ use tokio::{
 };
 
 use crate::ui::state::AppStateInner;
-
 const LOG_TARGET: &str = "wallet::console_wallet::debouncer";
 
 #[derive(Clone)]
 pub(crate) struct BalanceEnquiryDebouncer {
     app_state_inner: Arc<RwLock<AppStateInner>>,
-    output_manager_service: OutputManagerHandle,
+    output_manager_service: OutputManagerHandle<WalletKeyManager>,
     balance_enquiry_cooldown_period: Duration,
     tx: broadcast::Sender<()>,
 }
@@ -49,7 +48,7 @@ impl BalanceEnquiryDebouncer {
     pub fn new(
         app_state_inner: Arc<RwLock<AppStateInner>>,
         balance_enquiry_cooldown_period: Duration,
-        output_manager_service: OutputManagerHandle,
+        output_manager_service: OutputManagerHandle<WalletKeyManager>,
     ) -> Self {
         // This channel must only be size 1; the debouncer will ensure that the balance is updated timeously
         let (tx, _) = broadcast::channel(1);

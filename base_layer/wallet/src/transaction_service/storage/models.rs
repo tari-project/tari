@@ -37,10 +37,9 @@ use tari_core::{
     consensus::ConsensusConstants,
     transactions::{
         fee::Fee,
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         tari_amount::MicroMinotari,
         transaction_components::{memo_field::MemoField, Transaction},
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     },
 };
 

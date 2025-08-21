@@ -118,7 +118,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     .unwrap();
     // Block 3
     let txs = vec![
-        txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![]),
+        txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![outputs[2][2].value/2]),
         txn_schema!(from: vec![outputs[2][4].clone(), outputs[2][3].clone()], to: vec![40*T], fee: 100*uT),
     ];
     generate_new_block(
@@ -149,14 +149,14 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     // Block 5
     let txs = vec![
         txn_schema!(
-            from: vec![outputs[4][3].clone(), outputs[3][1].clone()],
+            from: vec![outputs[4][3].clone(), outputs[3][2].clone()],
             to: vec![20 * T, 21 * T]
         ),
         txn_schema!(
             from: vec![outputs[4][1].clone()],
             to: vec![500_000 * uT, 1_300_000 * uT]
         ),
-        txn_schema!(from: vec![outputs[3][2].clone()], to: vec![500_000 * uT]),
+        txn_schema!(from: vec![outputs[3][3].clone()], to: vec![500_000 * uT]),
     ];
     generate_new_block(
         &mut db,

@@ -544,7 +544,7 @@ mod test {
         let xn = hex::decode("9d589ed597ed42d1").unwrap();
         let nonce: u64 = u64::from_be_bytes(xn.try_into().expect("Cannot fail"));
 
-        let hash = determine_sip_hash(&header_before_blake, nonce.into());
+        let hash = determine_sip_hash(&header_before_blake, nonce);
         assert_eq!(
             hex::encode(hash),
             "49b48f77df94943cf3a422c5a0b528c737cc38a7b6c36076e81abcede5b2be3a"

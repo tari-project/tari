@@ -22,12 +22,13 @@ pub mod transaction_components;
 mod format_currency;
 pub use format_currency::format_currency;
 
-pub mod transaction_protocol;
-pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
+pub mod legacy_transaction_protocol;
 
 pub mod weight;
 
 pub mod transaction_key_manager;
+
+pub mod transaction_builder;
 
 #[macro_use]
 #[cfg(feature = "base_node")]

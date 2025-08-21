@@ -43,12 +43,12 @@ use crate::{
         transaction_components::{
             memo_field::{MemoField, TxType},
             CoinBaseExtra,
+            CoreTransactionBuilder,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
             RangeProofType,
             Transaction,
-            TransactionBuilder,
             TransactionError,
             TransactionKernel,
             TransactionKernelVersion,
@@ -64,7 +64,6 @@ use crate::{
             TransactionKeyManagerInterface,
             TxoStage,
         },
-        transaction_protocol::TransactionMetadata,
     },
 };
 
@@ -269,16 +268,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let range_proof_type = self.range_proof_type.ok_or(CoinbaseBuildError::MissingRangeProofType)?;
 
         let kernel_features = KernelFeatures::create_coinbase();
-        let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
         // generate kernel signature
         let kernel_version = TransactionKernelVersion::get_current_version();
-        let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &kernel_version,
-            metadata.fee,
-            metadata.lock_height,
-            &metadata.kernel_features,
-            &metadata.burn_commitment,
-        );
+        let kernel_message =
+            TransactionKernel::build_kernel_signature_message(&kernel_version, 0.into(), 0, &kernel_features, &None);
         let public_nonce = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
@@ -298,7 +291,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
                 &public_commitment_mask_key,
                 &kernel_version,
                 &kernel_message,
-                &metadata.kernel_features,
+                &kernel_features,
                 TxoStage::Output,
             )
             .await?;
@@ -377,7 +370,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
-        let mut builder = TransactionBuilder::new();
+        let mut builder = CoreTransactionBuilder::new();
         builder
             .add_output(output)
             // A coinbase must have 0 offset or the reward balance check will fail.
