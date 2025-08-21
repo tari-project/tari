@@ -649,9 +649,9 @@ mod test {
         assert_eq!(smt_root.0.to_vec().to_hex(), block.header().output_mr.to_vec().to_hex(),);
 
         let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
-        let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
+        let normal_output_mr = calculate_header_normal_output_mr(&block.block().body).unwrap();
         assert_eq!(
-            AggregateBody::calculate_header_block_output_mr(normal_output_mr, &coinbases)
+            calculate_header_block_output_mr(normal_output_mr, &coinbases)
                 .unwrap()
                 .to_vec()
                 .to_hex(),
@@ -670,10 +670,6 @@ mod test {
             block.header().input_mr.to_vec().to_hex(),
         );
 
-        // assert_eq!(
-        //     calculate_validator_node_mr(&vn_nodes).to_vec().to_hex(),
-        //     block.header().validator_node_mr.to_vec().to_hex()
-        // );
 
         // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
         // kernel is correct)

@@ -54,14 +54,16 @@ use crate::{
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     validation::{BlockBodyValidator, ValidationError},
 };
-async fn setup_with_rules(rules: ConsensusManager, check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
+use crate::consensus::BaseConsensusManager;
+
+async fn setup_with_rules(rules: BaseConsensusManager, check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
     let blockchain = TestBlockchain::create(rules.clone()).await;
     let validator = BlockBodyFullValidator::new(rules, check_rangeproof);
     (blockchain, validator)
 }
 
 async fn setup(check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)

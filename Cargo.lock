@@ -8041,6 +8041,7 @@ dependencies = [
  "decimal-rs",
  "derivative",
  "digest",
+ "hex",
  "integer-encoding",
  "log",
  "minotari_ledger_wallet_comms",
@@ -8068,6 +8069,7 @@ dependencies = [
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
+ "toml 0.5.11",
  "wasm-bindgen",
  "zeroize",
 ]

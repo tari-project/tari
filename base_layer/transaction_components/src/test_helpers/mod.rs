@@ -37,7 +37,7 @@ pub use test_helpers_functions::{
     spend_utxos,
     TestParams,
     TransactionSchema,
-    UtxoTestParams,
+    UtxoTestParams,create_random_signature_from_secret_key,schema_to_transaction
 };
 pub mod memory_key_manager;
 pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};

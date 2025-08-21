@@ -40,7 +40,6 @@ use tari_comms::{
     BytesMut,
 };
 use tari_transaction_components::{
-    consensus::ConsensusManager,
     tari_amount::uT,
     test_helpers::create_tx,
     transaction_components::Transaction,
@@ -60,6 +59,8 @@ use crate::{
     },
     validation::mocks::MockValidator,
 };
+use crate::consensus::BaseConsensusManager;
+
 pub async fn create_transactions(n: usize) -> Vec<Transaction> {
     let key_manager = create_memory_db_key_manager().unwrap();
     let mut transactions = Vec::new();
@@ -75,7 +76,7 @@ pub async fn create_transactions(n: usize) -> Vec<Transaction> {
 async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
     let mempool = Mempool::new(
         Default::default(),
-        ConsensusManager::builder(Network::LocalNet).build().unwrap(),
+        BaseConsensusManager::builder(Network::LocalNet).build().unwrap(),
         Box::new(MockValidator::new(true)),
     );
 

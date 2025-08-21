@@ -101,7 +101,7 @@ mod test {
             let sk = PrivateKey::random(&mut OsRng);
             let exit = ValidatorNodeExit::signed(&sk, None, VnEpoch(1));
             let exit = ValidatorNodeExit::new(
-                ValidatorNodeSignature::new(exit.public_key().clone(), Signature::default()),
+                ValidatorNodeSignature::new(exit.public_key().clone(), CompressedSignature::default()),
                 VnEpoch(1),
             );
             assert!(!exit.is_valid_signature_for(None));

@@ -59,6 +59,8 @@ wasm-bindgen = "0.2.100"
 [dev-dependencies]
 chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
 tari_test_utils = { workspace = true }
+hex = "0.4"
+toml = "0.5.8"
 
 serde_json = "1.0"
 static_assertions = "1.1.0"
@@ -71,6 +73,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(tari_target_network_nextnet)',
     'cfg(tari_target_network_testnet)',
 ] }
+
 
 
 [package.metadata.cargo-machete]

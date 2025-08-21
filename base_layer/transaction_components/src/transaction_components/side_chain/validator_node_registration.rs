@@ -172,7 +172,7 @@ mod test {
         fn it_returns_false_for_invalid_signature() {
             let mut reg = create_instance();
             reg = ValidatorNodeRegistration::new(
-                ValidatorNodeSignature::new(reg.public_key().clone(), Signature::default()),
+                ValidatorNodeSignature::new(reg.public_key().clone(), CompressedSignature::default()),
                 Default::default(),
                 reg.max_epoch,
             );

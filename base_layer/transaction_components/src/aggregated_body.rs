@@ -510,7 +510,7 @@ impl Display for AggregateBody {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{CompressedPublicKey, FixedHash, Signature};
+    use tari_common_types::types::{CompressedPublicKey, FixedHash, CompressedSignature};
     use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
@@ -525,7 +525,7 @@ mod test {
             0.into(),
             0,
             CompressedCommitment::default(),
-            Signature::default(),
+            CompressedSignature::default(),
             None,
         );
         let output = TransactionOutput::default();

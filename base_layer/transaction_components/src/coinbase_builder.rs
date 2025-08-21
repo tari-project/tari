@@ -510,7 +510,7 @@ mod test {
     use tari_common_types::{
         key_branches::TransactionKeyManagerBranch,
         tari_address::TariAddress,
-        types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
+        types::{CompressedCommitment, CompressedPublicKey, PrivateKey, CompressedSignature},
     };
     use tari_crypto::keys::SecretKey;
     use tari_utilities::ByteArray;
@@ -1053,7 +1053,7 @@ mod test {
             .with_features(kernel_1.features)
             .with_lock_height(kernel_1.lock_height)
             .with_excess(&CompressedCommitment::from_commitment(excess))
-            .with_signature(Signature::new_from_schnorr(kernel_signature))
+            .with_signature(CompressedSignature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1181,7 +1181,7 @@ mod test {
             .with_features(kernel_1.features)
             .with_lock_height(kernel_1.lock_height)
             .with_excess(&CompressedCommitment::from_commitment(excess))
-            .with_signature(Signature::new_from_schnorr(kernel_signature))
+            .with_signature(CompressedSignature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 

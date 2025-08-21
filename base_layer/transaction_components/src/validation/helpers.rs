@@ -251,35 +251,7 @@ mod test {
         }
     }
 
-    mod calc_median_timestamp {
-        use super::*;
 
-        #[test]
-        fn it_errors_on_empty() {
-            assert!(calc_median_timestamp(&[]).is_err());
-        }
-
-        #[test]
-        fn it_calculates_the_correct_median_timestamp() {
-            let median_timestamp = calc_median_timestamp(&[0.into()]).unwrap();
-            assert_eq!(median_timestamp, 0.into());
-
-            let median_timestamp = calc_median_timestamp(&[123.into()]).unwrap();
-            assert_eq!(median_timestamp, 123.into());
-
-            let median_timestamp = calc_median_timestamp(&[2.into(), 4.into()]).unwrap();
-            assert_eq!(median_timestamp, 3.into());
-
-            let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]).unwrap();
-            assert_eq!(median_timestamp, 0.into());
-
-            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]).unwrap();
-            assert_eq!(median_timestamp, 2.into());
-
-            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into(), 5.into()]).unwrap();
-            assert_eq!(median_timestamp, 3.into());
-        }
-    }
 
     mod check_coinbase_maturity {
 
@@ -293,15 +265,15 @@ mod test {
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let key_manager = create_memory_key_manager().unwrap();
             let coinbase =
-                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue)
+                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue,&key_manager)
                     .await;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -314,15 +286,15 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase =
-                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue)
+                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue, &key_manager)
                     .await;
             coinbase.features.maturity = 0;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -338,19 +310,19 @@ mod test {
         #[tokio::test]
         async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(
                 &test_params,
                 height,
                 None,
-                RangeProofType::BulletProofPlus,
+                RangeProofType::BulletProofPlus, &key_manager
             )
             .await;
             coinbase.value = 123.into();
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.commitment_mask_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();

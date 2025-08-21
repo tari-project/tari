@@ -622,7 +622,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroMinotari(10);
@@ -642,7 +642,7 @@ mod test {
     #[tokio::test]
     async fn it_does_batch_verify_correct_minimum_values() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [
@@ -680,7 +680,7 @@ mod test {
 
     #[tokio::test]
     async fn it_does_batch_verify_with_mixed_range_proof_types() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let factories = CryptoFactories::default();
         let test_params = TestParams::new(&key_manager).await;
 
@@ -728,7 +728,7 @@ mod test {
 
     #[tokio::test]
     async fn invalid_revealed_value_proofs_are_blocked() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let test_params = TestParams::new(&key_manager).await;
         assert!(create_output(
             &test_params,
@@ -760,7 +760,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_batch_verify_incorrect_minimum_values() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [

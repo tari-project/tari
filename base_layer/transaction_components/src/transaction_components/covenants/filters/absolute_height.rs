@@ -90,7 +90,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_reached() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let covenant = covenant!(absolute_height(@uint(100))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;
@@ -103,7 +103,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_all_in_if_height_exceeded() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let covenant = covenant!(absolute_height(@uint(42))).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 100, |_| {}, &key_manager).await;

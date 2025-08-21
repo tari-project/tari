@@ -407,7 +407,7 @@ mod test {
 
     #[tokio::test]
     async fn test_partial_metadata_signatures() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let (commitment_mask_key, script_key) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());
@@ -441,7 +441,7 @@ mod test {
 
                 let receiver_metadata_signature = key_manager
                     .get_receiver_partial_metadata_signature(
-                        &wallet_output.spending_key_id,
+                        &wallet_output.commitment_mask_key_id,
                         &wallet_output.value.into(),
                         &wallet_output.sender_offset_public_key,
                         &ephemeral_key.pub_key,
@@ -453,7 +453,7 @@ mod test {
                     .unwrap();
 
                 let commitment = key_manager
-                    .get_commitment(&wallet_output.spending_key_id, &wallet_output.value.into())
+                    .get_commitment(&wallet_output.commitment_mask_key_id, &wallet_output.value.into())
                     .await
                     .unwrap();
                 let sender_metadata_signature = key_manager

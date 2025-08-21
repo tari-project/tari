@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_types::types::{PrivateKey, Signature};
+use tari_common_types::types::{PrivateKey, CompressedSignature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::SecretKey as SecretKeyTrait,
@@ -32,7 +32,7 @@ use tari_crypto::{
 };
 use tari_script::{inputs, script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
-
+use crate::validation::AggregatedBodyValidationError;
 use super::*;
 use crate::{
     aggregated_body::AggregateBody,
@@ -55,6 +55,8 @@ use crate::{
     txn_schema,
     validation::transaction::TransactionInternalConsistencyValidator,
 };
+use crate::key_manager::TransactionKeyManagerInterface;
+
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
     let key_manager = create_memory_key_manager().unwrap();
@@ -295,7 +297,7 @@ fn kernel_hash() {
     }
     let s = PrivateKey::from_hex("6c6eebc5a9c02e1f3c16a69ba4331f9f63d0718401dea10adc4f9d3b879a2c09").unwrap();
     let r = CompressedPublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
-    let sig = Signature::new(r, s);
+    let sig = CompressedSignature::new(r, s);
     let excess =
         CompressedCommitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
     let k = KernelBuilder::new()
@@ -326,7 +328,7 @@ fn kernel_hash() {
 fn kernel_metadata() {
     let s = PrivateKey::from_hex("df9a004360b1cf6488d8ff7fb625bc5877f4b013f9b2b20d84932172e605b207").unwrap();
     let r = CompressedPublicKey::from_hex("5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee561").unwrap();
-    let sig = Signature::new(r, s);
+    let sig = CompressedSignature::new(r, s);
     let excess =
         CompressedCommitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
     let k = KernelBuilder::new()
@@ -430,7 +432,7 @@ async fn test_validate_internal_consistency() {
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager)
         .await
         .expect("Failed to create tx");
-    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
@@ -449,7 +451,7 @@ async fn check_cut_through() {
     assert_eq!(tx.body.outputs().len(), 2);
     assert_eq!(tx.body.kernels().len(), 1);
 
-    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     validator.validate(&tx, None, None, u64::MAX).unwrap();
@@ -545,11 +547,11 @@ async fn inputs_not_malleable() {
     inputs[0].input_data = stack;
     tx.body = AggregateBody::new(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
 
-    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
-    unpack_enum!(ValidationError::TransactionError(_a) = err);
+    unpack_enum!(AggregatedBodyValidationError::TransactionError(_a) = err);
 }
 
 #[tokio::test]
@@ -690,8 +692,9 @@ mod validate_internal_consistency {
         .await
         .unwrap_err();
 
-        unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
-        unpack_enum!(TransactionError::BuilderError(_s) = err);
+        panic!("fix here");
+        //unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
+        //unpack_enum!(TransactionError::BuilderError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
         // Pass because maturity is set

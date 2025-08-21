@@ -447,7 +447,7 @@ mod test {
 
             #[tokio::test]
             async fn it_returns_false_if_not_eq() {
-                let key_manager = create_memory_db_key_manager().unwrap();
+                let key_manager = create_memory_key_manager().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -626,7 +626,7 @@ mod test {
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {
-                let key_manager = create_memory_db_key_manager().unwrap();
+                let key_manager = create_memory_key_manager().unwrap();
                 let features = OutputFeatures {
                     maturity: 42,
                     range_proof_type: RangeProofType::RevealedValue,

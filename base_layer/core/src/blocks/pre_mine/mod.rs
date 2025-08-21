@@ -918,7 +918,7 @@ mod test {
     use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
     use tari_script::{Opcode, Opcode::CheckHeight};
     use tari_transaction_components::{
-        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission, ConsensusManager},
+        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission},
         tari_amount::{MicroMinotari, Minotari},
         transaction_components::{TransactionKernel, TransactionOutput},
     };
@@ -942,6 +942,7 @@ mod test {
         ReleaseStrategy,
         BLOCKS_PER_DAY,
     };
+    use crate::consensus::BaseConsensusManager;
 
     async fn genesis_block_test_info(
         pre_mine_items: &[PreMineItem],
@@ -1466,7 +1467,7 @@ mod test {
         //                                                          | 15000 -> | (180) |
 
         let network = Network::MainNet;
-        let consensus_manager = ConsensusManager::builder(network)
+        let consensus_manager = BaseConsensusManager::builder(network)
             .build()
             .map_err(|e| e.to_string())
             .unwrap();

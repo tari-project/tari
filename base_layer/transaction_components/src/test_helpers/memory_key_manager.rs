@@ -22,13 +22,12 @@
 
 use std::{
     collections::HashMap,
-    iter,
     mem::size_of,
     sync::{Arc, RwLock},
 };
 
 use chacha20poly1305::Key;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
+use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     seeds::cipher_seed::CipherSeed,
     types::{CompressedPublicKey, PrivateKey},
@@ -46,12 +45,6 @@ use crate::{
     },
 };
 pub type MemoryKeyManager = TransactionKeyManagerWrapper<MemoryKeyManagerBackend>;
-fn random_string(len: usize) -> String {
-    iter::repeat(())
-        .map(|_| OsRng.sample(Alphanumeric) as char)
-        .take(len)
-        .collect()
-}
 
 pub fn create_memory_key_manager_with_range_proof_size(
     size: usize,
@@ -79,7 +72,7 @@ pub fn create_memory_key_manager() -> Result<MemoryKeyManager, KeyManagerService
     create_memory_key_manager_with_range_proof_size(64)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MemoryKeyManagerBackend {
     key_manger_states: Arc<RwLock<HashMap<String, KeyManagerState>>>,
     private_keys: Arc<RwLock<HashMap<CompressedPublicKey, PrivateKey>>>,
