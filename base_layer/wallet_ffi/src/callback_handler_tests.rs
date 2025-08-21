@@ -38,19 +38,14 @@ mod test {
         types::{CompressedPublicKey, PrivateKey},
     };
     use tari_comms_dht::event::DhtEvent;
-    use tari_contacts::contacts_service::{
-        handle::{ContactsLivenessData, ContactsLivenessEvent},
-        service::{ContactMessageType, ContactOnlineStatus},
-        types::Contact,
-    };
     use tari_core::transactions::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             memo_field::{MemoField, TxType},
             Transaction,
         },
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+        transaction_key_manager::MemoryDbKeyManager,
     };
     use tari_crypto::keys::SecretKey;
     use tari_service_framework::reply_channel;
@@ -84,7 +79,6 @@ mod test {
         pub callback_txo_validation_communication_failure: bool,
         pub callback_txo_validation_internal_failure: bool,
         pub callback_txo_validation_already_busy: bool,
-        pub callback_contacts_liveness_data_updated: u32,
         pub callback_balance_updated: u32,
         pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
@@ -111,7 +105,6 @@ mod test {
                 callback_txo_validation_communication_failure: false,
                 callback_txo_validation_internal_failure: false,
                 callback_txo_validation_already_busy: false,
-                callback_contacts_liveness_data_updated: 0,
                 callback_balance_updated: 0,
                 callback_transaction_validation_complete: 0,
                 tx_cancellation_callback_called_completed: false,
@@ -236,15 +229,6 @@ mod test {
             3 => lock.callback_txo_validation_internal_failure = true,
             _ => (),
         }
-        drop(lock);
-    }
-
-    unsafe extern "C" fn contacts_liveness_data_updated_callback(
-        _context: *mut c_void,
-        _data: *mut ContactsLivenessData,
-    ) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.callback_contacts_liveness_data_updated += 1;
         drop(lock);
     }
 
@@ -472,7 +456,8 @@ mod test {
         let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
 
         let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
-        let mut oms_handle = OutputManagerHandle::new(oms_request_sender, oms_event_sender.clone());
+        let mut oms_handle =
+            OutputManagerHandle::<MemoryDbKeyManager>::new(oms_request_sender, oms_event_sender.clone());
 
         let shutdown_signal = Shutdown::new();
         let mut mock_output_manager_service =
@@ -491,8 +476,6 @@ mod test {
         runtime.spawn(mock_output_manager_service.run());
         assert_eq!(balance, runtime.block_on(oms_handle.get_balance()).unwrap());
 
-        let (contacts_liveness_events_sender, _) = broadcast::channel(250);
-        let contacts_liveness_events = contacts_liveness_events_sender.subscribe();
         let (utxo_scanner_events_sender, _) = broadcast::channel(250);
         let utxo_scanner_events = utxo_scanner_events_sender.subscribe();
         let comms_address = TariAddress::new_dual_address_with_default_features(
@@ -512,7 +495,6 @@ mod test {
             dht_event_receiver,
             shutdown_signal.to_signal(),
             comms_address,
-            contacts_liveness_events,
             received_tx_callback,
             received_tx_reply_callback,
             received_tx_finalized_callback,
@@ -524,7 +506,6 @@ mod test {
             transaction_send_result_callback,
             tx_cancellation_callback,
             txo_validation_complete_callback,
-            contacts_liveness_data_updated_callback,
             balance_updated_callback,
             transaction_validation_complete_callback,
             saf_messages_received_callback,
@@ -802,36 +783,6 @@ mod test {
         }
         assert_eq!(callback_balance_updated, 7);
 
-        let contact = Contact::new(
-            "My friend".to_string(),
-            faux_unconfirmed_tx.destination_address,
-            None,
-            None,
-            false,
-        );
-        let data = ContactsLivenessData::new(
-            contact.address.clone(),
-            contact.node_id.clone(),
-            contact.latency,
-            contact.last_seen,
-            ContactMessageType::NoMessage,
-            ContactOnlineStatus::NeverSeen,
-        );
-        contacts_liveness_events_sender
-            .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))))
-            .unwrap();
-        let data = ContactsLivenessData::new(
-            contact.address.clone(),
-            contact.node_id,
-            Some(1234),
-            Some(Utc::now()),
-            ContactMessageType::Ping,
-            ContactOnlineStatus::Online,
-        );
-        contacts_liveness_events_sender
-            .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))))
-            .unwrap();
-
         dht_event_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
             .unwrap();
@@ -880,7 +831,6 @@ mod test {
         assert!(lock.callback_txo_validation_communication_failure);
         assert!(lock.callback_txo_validation_already_busy);
         assert!(lock.callback_txo_validation_internal_failure);
-        assert_eq!(lock.callback_contacts_liveness_data_updated, 2);
         assert_eq!(lock.callback_balance_updated, 7);
         assert_eq!(lock.callback_transaction_validation_complete, 13);
         assert_eq!(lock.connectivity_status_callback_called, 4);

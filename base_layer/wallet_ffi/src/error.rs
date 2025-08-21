@@ -27,7 +27,6 @@ use minotari_wallet::{
 };
 use tari_common_types::tari_address::TariAddressError;
 use tari_comms::{multiaddr, peer_manager::PeerManagerError};
-use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_core::transactions::transaction_key_manager::error::KeyManagerServiceError;
 use tari_crypto::{
     signatures::SchnorrSignatureError,
@@ -171,12 +170,6 @@ impl From<WalletError> for LibWalletError {
                 code: 109,
                 message: format!("{w:?}"),
             },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
-                ContactsServiceStorageError::ValuesNotFound,
-            )) => Self {
-                code: 110,
-                message: format!("{w:?}"),
-            },
             WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
                 TransactionStorageError::ValueNotFound(_),
             )) => Self {
@@ -202,10 +195,6 @@ impl From<WalletError> for LibWalletError {
             // Transaction Service Errors
             WalletError::TransactionServiceError(TransactionServiceError::InvalidStateError) => Self {
                 code: 201,
-                message: format!("{w:?}"),
-            },
-            WalletError::TransactionServiceError(TransactionServiceError::TransactionProtocolError(_)) => Self {
-                code: 202,
                 message: format!("{w:?}"),
             },
             WalletError::TransactionServiceError(TransactionServiceError::RepeatedMessageError) => Self {
@@ -246,22 +235,6 @@ impl From<WalletError> for LibWalletError {
             // Comms Stack errors
             WalletError::MultiaddrError(_) => Self {
                 code: 301,
-                message: format!("{w:?}"),
-            },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactNotFound) => Self {
-                code: 401,
-                message: format!("{w:?}"),
-            },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
-                ContactsServiceStorageError::OperationNotSupported,
-            )) => Self {
-                code: 403,
-                message: format!("{w:?}"),
-            },
-            WalletError::ContactsServiceError(ContactsServiceError::ContactsServiceStorageError(
-                ContactsServiceStorageError::ConversionError,
-            )) => Self {
-                code: 404,
                 message: format!("{w:?}"),
             },
             // Wallet Encryption Errors

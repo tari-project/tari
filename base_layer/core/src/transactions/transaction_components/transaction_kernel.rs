@@ -42,7 +42,6 @@ use crate::{
     transactions::{
         tari_amount::MicroMinotari,
         transaction_components::{KernelFeatures, TransactionError},
-        transaction_protocol::TransactionMetadata,
     },
 };
 
@@ -160,25 +159,6 @@ impl TransactionKernel {
             Some(ref burn_commitment) => Ok(burn_commitment),
             None => Err(TransactionError::InvalidKernel("Burn commitment not found".to_string())),
         }
-    }
-
-    /// This is a helper fuction for build kernel challange that does not take in the individual fields,
-    /// but rather takes in the TransactionMetadata object.
-    pub fn build_kernel_challenge_from_tx_meta(
-        version: &TransactionKernelVersion,
-        sum_public_nonces: &CompressedPublicKey,
-        total_excess: &CompressedPublicKey,
-        tx_meta: &TransactionMetadata,
-    ) -> [u8; 64] {
-        TransactionKernel::build_kernel_signature_challenge(
-            version,
-            sum_public_nonces,
-            total_excess,
-            tx_meta.fee,
-            tx_meta.lock_height,
-            &tx_meta.kernel_features,
-            &tx_meta.burn_commitment,
-        )
     }
 
     /// Helper function to creates the kernel excess signature challenge.

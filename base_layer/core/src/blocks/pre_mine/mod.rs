@@ -62,7 +62,6 @@ use crate::{
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerInterface,
         },
-        transaction_protocol::TransactionMetadata,
     },
 };
 
@@ -893,13 +892,15 @@ pub async fn create_pre_mine_genesis_block_info(
     }
     // lets create a single kernel for all the outputs
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::empty());
     let total_public_key = CompressedPublicKey::from_secret_key(&total_private_key);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+    let e = TransactionKernel::build_kernel_signature_challenge(
         &TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &total_public_key,
-        &tx_meta,
+        0.into(),
+        0,
+        &KernelFeatures::empty(),
+        &None,
     );
     let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).map_err(|e| e.to_string())?;
     let compressed_signature = Signature::new_from_schnorr(signature);

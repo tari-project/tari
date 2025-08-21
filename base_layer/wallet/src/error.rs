@@ -30,7 +30,6 @@ use tari_comms::{
     multiaddr,
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
-use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_core::transactions::{
     transaction_components::TransactionError,
     transaction_key_manager::error::KeyManagerServiceError,
@@ -71,8 +70,6 @@ pub enum WalletError {
     WalletStorageError(#[from] WalletStorageError),
     #[error("Set logger error: `{0}`")]
     SetLoggerError(#[from] SetLoggerError),
-    #[error("Contacts service error: `{0}`")]
-    ContactsServiceError(#[from] ContactsServiceError),
     #[error("Liveness service error: `{0}`")]
     LivenessServiceError(#[from] LivenessError),
     #[error("Connectivity error: `{0}`")]

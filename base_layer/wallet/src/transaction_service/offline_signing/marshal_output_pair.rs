@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
 use tari_core::transactions::{
+    transaction_builder::OutputPair,
     transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
-    transaction_protocol::sender::OutputPair,
 };
 use tari_utilities::hex::{from_hex, Hex};
 

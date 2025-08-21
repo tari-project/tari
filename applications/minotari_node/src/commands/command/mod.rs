@@ -50,6 +50,7 @@ mod quit;
 mod reset_offline_peers;
 mod rewind_blockchain;
 mod search_kernel;
+mod search_payref;
 mod search_utxo;
 mod status;
 mod test_peer_liveness;
@@ -136,6 +137,7 @@ pub enum Command {
     DiscoverPeer(discover_peer::Args),
     GetBlock(get_block::Args),
     SearchUtxo(search_utxo::Args),
+    SearchPayref(search_payref::Args),
     SearchKernel(search_kernel::Args),
     GetMempoolStats(get_mempool_stats::Args),
     GetMempoolState(get_mempool_state::Args),
@@ -234,6 +236,7 @@ impl CommandContext {
                 Command::ListHeaders(_) |
                 Command::HeaderStats(_) |
                 Command::SearchUtxo(_) |
+                Command::SearchPayref(_) |
                 Command::SearchKernel(_) |
                 Command::GetMempoolStats(_) |
                 Command::GetMempoolState(_) |
@@ -301,6 +304,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::DiscoverPeer(args) => self.handle_command(args).await,
             Command::GetBlock(args) => self.handle_command(args).await,
             Command::SearchUtxo(args) => self.handle_command(args).await,
+            Command::SearchPayref(args) => self.handle_command(args).await,
             Command::SearchKernel(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::GetMempoolStats(args) => self.handle_command(args).await,

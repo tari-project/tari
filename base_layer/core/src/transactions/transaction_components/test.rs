@@ -38,6 +38,7 @@ use crate::{
     consensus::ConsensusManager,
     transactions::{
         aggregated_body::AggregateBody,
+        legacy_transaction_protocol::TransactionProtocolError,
         tari_amount::{uT, T},
         test_helpers,
         test_helpers::{TestParams, UtxoTestParams},
@@ -51,7 +52,6 @@ use crate::{
             create_memory_db_key_manager_with_range_proof_size,
             TransactionKeyManagerInterface,
         },
-        transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
     txn_schema,
@@ -616,7 +616,6 @@ mod validate_internal_consistency {
         inputs[0].features = input_params.features.clone();
         inputs[0].covenant = input_params.covenant.clone();
         inputs[0].script = input_params.script.clone();
-        // SenderTransactionProtocol::finalize() calls validate_internal_consistency
         let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager).await;
         // Otherwise if this passes check again with the height
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();

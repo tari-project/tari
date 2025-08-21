@@ -287,7 +287,7 @@ pub async fn init_wallet(
     let db_path = &config.db_file;
 
     // wallet should be encrypted from the beginning, so we must require a password to be provided by the user
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, key_manager_backend) =
         initialize_sqlite_database_backends(db_path, arg_password, config.db_connection_pool_size)?;
 
     let wallet_db = WalletDatabase::new(wallet_backend);
@@ -331,7 +331,6 @@ pub async fn init_wallet(
         output_db,
         transaction_backend,
         output_manager_backend,
-        contacts_backend,
         key_manager_backend,
         shutdown_signal,
         master_seed,
@@ -421,11 +420,6 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -
         if let Err(e) = wallet.transaction_service.revalidate_rejected_transactions().await {
             error!(target: LOG_TARGET, "Failed to revalidate rejected transactions: {e}");
         }
-        debug!("restarting transaction protocols");
-        if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
-            error!(target: LOG_TARGET, "Problem restarting transaction protocols: {e}");
-        }
-
         // validate transaction outputs
         validate_txos(wallet).await?;
     }

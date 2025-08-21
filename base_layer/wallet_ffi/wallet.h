@@ -51,12 +51,6 @@ struct CompressedCommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSe
  */
 struct CompressedKey_RistrettoPublicKey;
 
-struct Contact;
-
-struct ContactsLivenessData;
-
-struct ContactsServiceHandle;
-
 /**
  * A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
  * See https://rfc.tari.com/RFC-0250_Covenants.html for details.
@@ -115,8 +109,6 @@ struct TariAddress;
 struct TariBaseNodeState;
 
 struct TariCompletedTransactions;
-
-struct TariContacts;
 
 struct TariPaymentRecords;
 
@@ -222,10 +214,6 @@ typedef struct EncryptedData TariEncryptedOpenings;
 typedef struct BulletRangeProof RangeProof;
 
 typedef RangeProof TariRangeProof;
-
-typedef struct Contact TariContact;
-
-typedef struct ContactsLivenessData TariContactsLivenessData;
 
 typedef struct CompletedTransaction TariCompletedTransaction;
 
@@ -1268,7 +1256,8 @@ unsigned int unblinded_outputs_get_length(struct TariUnblindedOutputs *outputs,
  * TariUnblindedOutputs is null or position is invalid
  *
  * # Safety
- * The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+ * The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutputs to prevent a
+ * memory leak
  */
 TariUnblindedOutput *unblinded_outputs_get_at(struct TariUnblindedOutputs *outputs,
                                               unsigned int position,
@@ -1817,272 +1806,6 @@ unsigned char seed_words_push_word(struct TariSeedWords *seed_words,
  * None
  */
 void seed_words_destroy(struct TariSeedWords *seed_words);
-
-/**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contact -------------------------------------------------///
- * Creates a TariContact
- *
- * ## Arguments
- * `alias` - The pointer to a char array
- * `address` - The pointer to a TariWalletAddress
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariContact` - Returns a pointer to a TariContact. Note that it returns ptr::null_mut()
- * if alias is null or if pk is null
- *
- * # Safety
- * The ```contact_destroy``` method must be called when finished with a TariContact
- */
-TariContact *contact_create(const char *alias,
-                            TariWalletAddress *address,
-                            bool favourite,
-                            int *error_out);
-
-/**
- * Gets the alias of the TariContact
- *
- * ## Arguments
- * `contact` - The pointer to a TariContact
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns an error if the pointer is null.
- *
- * ## Returns
- * `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
- * contact is null
- *
- * # Safety
- * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
- */
-char *contact_get_alias(TariContact *contact,
-                        int *error_out);
-
-/**
- * Gets the favourite status of the TariContact
- *
- * ## Arguments
- * `contact` - The pointer to a TariContact
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns false if the pointer is null.
- *
- * ## Returns
- * `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
- * null as well.
- *
- * # Safety
- * The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
- */
-bool contact_get_favourite(TariContact *contact,
-                           int *error_out);
-
-/**
- * Gets the TariWalletAddress of the TariContact
- *
- * ## Arguments
- * `contact` - The pointer to a TariContact
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if contact is null.
- *
- * ## Returns
- * `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns
- * ptr::null_mut() if contact is null
- *
- * # Safety
- * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
- */
-TariWalletAddress *contact_get_tari_address(TariContact *contact,
-                                            int *error_out);
-
-/**
- * Frees memory for a TariContact
- *
- * ## Arguments
- * `contact` - The pointer to a TariContact
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void contact_destroy(TariContact *contact);
-
-/**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contacts -------------------------------------------------///
- * Gets the length of TariContacts
- *
- * ## Arguments
- * `contacts` - The pointer to a TariContacts
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `c_uint` - Returns number of elements in the contacts, zero if any pointer is null.
- *
- * # Safety
- * None
- */
-unsigned int contacts_get_length(struct TariContacts *contacts,
-                                 int *error_out);
-
-/**
- * Gets a TariContact from TariContacts at position
- *
- * ## Arguments
- * `contacts` - The pointer to a TariContacts
- * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariContact` - Returns a TariContact, note that it returns ptr::null_mut() if contacts is
- * null or position is invalid
- *
- * # Safety
- * The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
- */
-TariContact *contacts_get_at(struct TariContacts *contacts,
-                             unsigned int position,
-                             int *error_out);
-
-/**
- * Frees memory for a TariContacts
- *
- * ## Arguments
- * `contacts` - The pointer to a TariContacts
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void contacts_destroy(struct TariContacts *contacts);
-
-/**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- Contacts Liveness Data ----------------------------------///
- * Gets the public_key from a TariContactsLivenessData
- *
- * ## Arguments
- * `liveness_data` - The pointer to a TariContactsLivenessData
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns ptr::null_mut() if
- * liveness_data is null.
- *
- * # Safety
- * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
- * memory leak
- */
-TariWalletAddress *liveness_data_get_public_key(TariContactsLivenessData *liveness_data,
-                                                int *error_out);
-
-/**
- * Gets the latency in milli-seconds (ms) from a TariContactsLivenessData
- *
- * ## Arguments
- * `liveness_data` - The pointer to a TariContactsLivenessData
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
- * value of '0' if it is None. Note that it also returns '0' if any pointer is null.
- *
- * # Safety
- * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
- * memory leak
- */
-unsigned int liveness_data_get_latency(TariContactsLivenessData *liveness_data,
-                                       int *error_out);
-
-/**
- * Gets the last_seen time (in local time) from a TariContactsLivenessData
- *
- * ## Arguments
- * `liveness_data` - The pointer to a TariContactsLivenessData
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns an error if the pointer is null.
- *
- * ## Returns
- * `*mut c_char` - Returns a pointer to a char array if the optional last_seen data exists, with a value of '?' if it
- * is None. Note that it returns ptr::null_mut() if liveness_data is null.
- *
- * # Safety
- * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
- * memory leak
- */
-char *liveness_data_get_last_seen(TariContactsLivenessData *liveness_data,
-                                  int *error_out);
-
-/**
- * Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData
- *
- * ## Arguments
- * `liveness_data` - The pointer to a TariContactsLivenessData
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a 0 if any pointer argument is null.
- *
- * ## Returns
- * `c_int` - Returns the status which corresponds to:
- * | Value | Interpretation |
- * |---|---|
- * |  -1 | NullError        |
- * |   0 | Ping             |
- * |   1 | Pong             |
- * |   2 | NoMessage        |
- *
- * # Safety
- * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
- * memory leak
- */
-int liveness_data_get_message_type(TariContactsLivenessData *liveness_data,
-                                   int *error_out);
-
-/**
- * Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
- *
- * ## Arguments
- * `liveness_data` - The pointer to a TariContactsLivenessData
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `c_int` - Returns the status which corresponds to:
- * | Value | Interpretation |
- * |---|---|
- * |  -1 | NullError        |
- * |   0 | Online           |
- * |   1 | Offline          |
- * |   2 | NeverSeen        |
- * |   3 | Banned           |
- *
- * # Safety
- * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
- * memory leak
- */
-const char *liveness_data_get_online_status(TariContactsLivenessData *liveness_data,
-                                            int *error_out);
-
-/**
- * Frees memory for a TariContactsLivenessData
- *
- * ## Arguments
- * `liveness_data` - The pointer to a TariContactsLivenessData
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void liveness_data_destroy(TariContactsLivenessData *liveness_data);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -3189,7 +2912,6 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  *     TxoValidationAlreadyBusy            // 1
  *     TxoValidationInternalFailure        // 2
  *     TxoValidationCommunicationFailure   // 3
- * `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
  * called when a contact's liveness status changed. The data represents the contact's updated status information.
  * `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
  * the balance changes.
@@ -3264,8 +2986,6 @@ struct TariWallet *wallet_create(void *context,
                                  void (*callback_txo_validation_complete)(void *context,
                                                                           uint64_t,
                                                                           uint64_t),
-                                 void (*callback_contacts_liveness_data_updated)(void *context,
-                                                                                 TariContactsLivenessData*),
                                  void (*callback_balance_updated)(void *context, TariBalance*),
                                  void (*callback_transaction_validation_complete)(void *context,
                                                                                   uint64_t,
@@ -3579,45 +3299,6 @@ TariPublicKey *wallet_get_public_spend_key(struct TariWallet *wallet,
                                            int *error_out);
 
 /**
- * Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the
- * Alias will be updated.
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `contact` - The TariContact pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns false if any pointer argument is null.
- *
- * ## Returns
- * `bool` - Returns if successful or not
- *
- * # Safety
- * None
- */
-bool wallet_upsert_contact(struct TariWallet *wallet,
-                           TariContact *contact,
-                           int *error_out);
-
-/**
- * Removes a TariContact from the TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `tx` - The TariPendingInboundTransaction pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns false if any pointer argument is null.
- *
- * ## Returns
- * `bool` - Returns if successful or not
- *
- * # Safety
- * None
- */
-bool wallet_remove_contact(struct TariWallet *wallet,
-                           TariContact *contact,
-                           int *error_out);
-
-/**
  * Gets the available balance from a TariBalance. This is the balance the user can spend.
  *
  * ## Arguments
@@ -3724,7 +3405,6 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
                                            unsigned long long amount,
                                            struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
-                                           bool one_sided,
                                            const char *payment_id_string,
                                            int *error_out);
 
@@ -3812,24 +3492,6 @@ unsigned long long wallet_get_num_confirmations_required(struct TariWallet *wall
 void wallet_set_num_confirmations_required(struct TariWallet *wallet,
                                            unsigned long long num,
                                            int *error_out);
-
-/**
- * Get the TariContacts from a TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariContacts` - returns the contacts, note that it returns ptr::null_mut() if
- * wallet is null
- *
- * # Safety
- * The ```contacts_destroy``` method must be called when finished with a TariContacts to prevent a memory leak
- */
-struct TariContacts *wallet_get_contacts(struct TariWallet *wallet,
-                                         int *error_out);
 
 /**
  * Get the TariCompletedTransactions from a TariWallet
@@ -4609,36 +4271,6 @@ unsigned long long fee_per_gram_stat_get_max_fee_per_gram(TariFeePerGramStat *fe
  * None
  */
 void fee_per_gram_stat_destroy(TariFeePerGramStat *fee_per_gram_stat);
-
-/**
- * Returns a ptr to the ContactsServiceHandle for use with chat
- *
- * ## Arguments
- * `wallet` - The wallet instance
- * `error_out` - Pointer to an int which will be modified
- *
- * ## Returns
- * `*mut ContactsServiceHandle` an opaque pointer used in chat sideloading initialization
- *
- * # Safety
- * You should release the returned pointer after it's been used to initialize chat using `contacts_handle_destroy`
- */
-struct ContactsServiceHandle *contacts_handle(struct TariWallet *wallet,
-                                              int *error_out);
-
-/**
- * Frees memory for a ContactsServiceHandle
- *
- * ## Arguments
- * `contacts_handle` - The pointer to a ContactsServiceHandle
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
 
 /**
  * Destroy TariPaymentRecords

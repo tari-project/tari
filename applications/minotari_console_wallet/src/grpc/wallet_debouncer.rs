@@ -40,10 +40,10 @@ use minotari_wallet::{
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
     WalletSqlite,
 };
+use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::Mutex;
 use tonic::Status;
-
 const LOG_TARGET: &str = "wallet::ui::grpc::get_balance_debounced";
 const CONNECTIVITY_CHECK_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
 
@@ -58,13 +58,13 @@ const CONNECTIVITY_CHECK_INTERVAL: Duration = Duration::from_secs(300); // 5 min
 /// - Proactively checks connectivity when no scanning occurs for 5 minutes
 /// - Provides more reliable online/offline status for gRPC clients like mining applications
 #[derive(Clone)]
-pub struct WalletDebouncer {
+pub struct WalletDebouncer<KeyManagerInterface> {
     balance: Arc<Mutex<Balance>>,
     scanned_height: Arc<AtomicU64>,
     refresh_needed: Arc<AtomicBool>,
     intial_scanning_done: Arc<AtomicBool>,
     initial_validation_done: Arc<AtomicBool>,
-    output_manager_service: OutputManagerHandle,
+    output_manager_service: OutputManagerHandle<KeyManagerInterface>,
     transaction_service: TransactionServiceHandle,
     utxo_scanner_handle: UtxoScannerHandle,
     wallet: WalletSqlite,
@@ -74,10 +74,12 @@ pub struct WalletDebouncer {
     connection_status: Arc<Mutex<OnlineStatus>>,
 }
 
-impl WalletDebouncer {
+impl<KeyManagerInterface> WalletDebouncer<KeyManagerInterface>
+where KeyManagerInterface: TransactionKeyManagerInterface
+{
     /// Create a new WalletDebouncer instance.
     pub fn new(
-        output_manager_service: OutputManagerHandle,
+        output_manager_service: OutputManagerHandle<KeyManagerInterface>,
         transaction_service: TransactionServiceHandle,
         utxo_scanner_handle: UtxoScannerHandle,
         wallet: WalletSqlite,

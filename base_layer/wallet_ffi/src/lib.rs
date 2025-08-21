@@ -60,7 +60,6 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, Local};
 use error::LibWalletError;
 use ffi_basenode_state::TariBaseNodeState;
 use itertools::Itertools;
@@ -133,7 +132,6 @@ use tari_common_types::{
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::{DhtConfig, DhtConnectivityConfig, NetworkDiscoveryConfig};
-use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
@@ -224,14 +222,10 @@ pub struct TariPaymentRecord {
 
 pub struct TariPaymentRecords(Vec<TariPaymentRecord>);
 
-pub struct TariContacts(Vec<TariContact>);
-
-pub type TariContact = Contact;
 pub type TariCompletedTransaction = CompletedTransaction;
 pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
 pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
-pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = MnemonicLanguage;
 
@@ -2522,7 +2516,8 @@ pub unsafe extern "C" fn unblinded_outputs_get_length(
 /// TariUnblindedOutputs is null or position is invalid
 ///
 /// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+/// The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutputs to prevent a
+/// memory leak
 // converting between here is fine as its used to clamp the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
@@ -3771,470 +3766,6 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
     }
 }
 
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Contact -------------------------------------------------///
-/// Creates a TariContact
-///
-/// ## Arguments
-/// `alias` - The pointer to a char array
-/// `address` - The pointer to a TariWalletAddress
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariContact` - Returns a pointer to a TariContact. Note that it returns ptr::null_mut()
-/// if alias is null or if pk is null
-///
-/// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact
-#[no_mangle]
-pub unsafe extern "C" fn contact_create(
-    alias: *const c_char,
-    address: *mut TariWalletAddress,
-    favourite: bool,
-    error_out: *mut c_int,
-) -> *mut TariContact {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let alias_string;
-    if alias.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("alias".to_string())).code;
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(alias).to_str() {
-            Ok(v) => {
-                alias_string = v.to_owned();
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("alias".to_string())).code;
-                return ptr::null_mut();
-            },
-        }
-    }
-
-    if address.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let contact = Contact::new(alias_string, (*address).clone(), None, None, favourite);
-    Box::into_raw(Box::new(contact))
-}
-
-/// Gets the alias of the TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns an error if the pointer is null.
-///
-/// ## Returns
-/// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
-/// contact is null
-///
-/// # Safety
-/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out: *mut c_int) -> *mut c_char {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        ptr::null_mut()
-    } else {
-        let mut a = CString::new("").expect("Blank CString will not fail.");
-        match CString::new((*contact).alias.clone()) {
-            Ok(v) => a = v,
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("contact".to_string())).code;
-            },
-        }
-        CString::into_raw(a)
-    }
-}
-
-/// Gets the favourite status of the TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if the pointer is null.
-///
-/// ## Returns
-/// `bool` - Returns a bool indicating the favourite status of a contact. NOTE this will return false if the pointer is
-/// null as well.
-///
-/// # Safety
-/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn contact_get_favourite(contact: *mut TariContact, error_out: *mut c_int) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    let mut favourite = false;
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-    } else {
-        favourite = (*contact).favourite;
-    }
-
-    favourite
-}
-
-/// Gets the TariWalletAddress of the TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if contact is null.
-///
-/// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns
-/// ptr::null_mut() if contact is null
-///
-/// # Safety
-/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn contact_get_tari_address(
-    contact: *mut TariContact,
-    error_out: *mut c_int,
-) -> *mut TariWalletAddress {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new((*contact).address.clone()))
-}
-
-/// Frees memory for a TariContact
-///
-/// ## Arguments
-/// `contact` - The pointer to a TariContact
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
-    if !contact.is_null() {
-        drop(Box::from_raw(contact))
-    }
-}
-
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Contacts -------------------------------------------------///
-/// Gets the length of TariContacts
-///
-/// ## Arguments
-/// `contacts` - The pointer to a TariContacts
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `c_uint` - Returns number of elements in the contacts, zero if any pointer is null.
-///
-/// # Safety
-/// None
-// casting here is okay as we dont have more thant u32 contacts
-#[allow(clippy::cast_possible_truncation)]
-#[no_mangle]
-pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_out: *mut c_int) -> c_uint {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    let mut len = 0;
-    if contacts.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contacts".to_string())).code;
-    } else {
-        len = (*contacts).0.len();
-    }
-    len as c_uint
-}
-
-/// Gets a TariContact from TariContacts at position
-///
-/// ## Arguments
-/// `contacts` - The pointer to a TariContacts
-/// `position` - The integer position
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariContact` - Returns a TariContact, note that it returns ptr::null_mut() if contacts is
-/// null or position is invalid
-///
-/// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
-// converting between here is fine as its used to clamp the array to length
-#[allow(clippy::cast_possible_wrap)]
-#[no_mangle]
-pub unsafe extern "C" fn contacts_get_at(
-    contacts: *mut TariContacts,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut TariContact {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if contacts.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contacts".to_string())).code;
-        return ptr::null_mut();
-    }
-    let len = contacts_get_length(contacts, error_out) as c_int - 1;
-    if len < 0 || position > len as c_uint {
-        *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new((&(*contacts).0)[position as usize].clone()))
-}
-
-/// Frees memory for a TariContacts
-///
-/// ## Arguments
-/// `contacts` - The pointer to a TariContacts
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
-    if !contacts.is_null() {
-        drop(Box::from_raw(contacts))
-    }
-}
-
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Contacts Liveness Data ----------------------------------///
-/// Gets the public_key from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns ptr::null_mut() if
-/// liveness_data is null.
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_public_key(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> *mut TariWalletAddress {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new((*liveness_data).address().clone()))
-}
-
-/// Gets the latency in milli-seconds (ms) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
-/// value of '0' if it is None. Note that it also returns '0' if any pointer is null.
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_latency(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> c_uint {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return 0;
-    }
-    if let Some(latency) = (*liveness_data).latency() {
-        latency as c_uint
-    } else {
-        0
-    }
-}
-
-/// Gets the last_seen time (in local time) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns an error if the pointer is null.
-///
-/// ## Returns
-/// `*mut c_char` - Returns a pointer to a char array if the optional last_seen data exists, with a value of '?' if it
-/// is None. Note that it returns ptr::null_mut() if liveness_data is null.
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_last_seen(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> *mut c_char {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return ptr::null_mut();
-    }
-    if let Some(last_seen) = (*liveness_data).last_ping_pong_received() {
-        let last_seen_local_time = DateTime::<Local>::from(last_seen).format("%FT%T").to_string();
-        let mut return_value = CString::new("").expect("Blank CString will not fail.");
-        match CString::new(last_seen_local_time) {
-            Ok(val) => {
-                return_value = val;
-            },
-            _ => {
-                *error_out = LibWalletError::from(InterfaceError::PointerError("liveness_data".to_string())).code;
-            },
-        }
-        CString::into_raw(return_value)
-    } else {
-        CString::into_raw(CString::new("?").expect("Single character CString will not fail."))
-    }
-}
-
-/// Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a 0 if any pointer argument is null.
-///
-/// ## Returns
-/// `c_int` - Returns the status which corresponds to:
-/// | Value | Interpretation |
-/// |---|---|
-/// |  -1 | NullError        |
-/// |   0 | Ping             |
-/// |   1 | Pong             |
-/// |   2 | NoMessage        |
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_message_type(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> c_int {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return -1;
-    }
-    let status = (*liveness_data).message_type();
-    status as c_int
-}
-
-/// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `c_int` - Returns the status which corresponds to:
-/// | Value | Interpretation |
-/// |---|---|
-/// |  -1 | NullError        |
-/// |   0 | Online           |
-/// |   1 | Offline          |
-/// |   2 | NeverSeen        |
-/// |   3 | Banned           |
-///
-/// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
-/// memory leak
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_get_online_status(
-    liveness_data: *mut TariContactsLivenessData,
-    error_out: *mut c_int,
-) -> *const c_char {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let mut result = CString::new("").expect("Blank CString will not fail.");
-    if liveness_data.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
-        return ptr::null_mut();
-    }
-    let status = (*liveness_data).online_status();
-    match CString::new(status.to_string()) {
-        Ok(v) => result = v,
-        _ => {
-            *error_out = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
-        },
-    }
-    result.into_raw()
-}
-
-/// Frees memory for a TariContactsLivenessData
-///
-/// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsLivenessData) {
-    if !liveness_data.is_null() {
-        drop(Box::from_raw(liveness_data))
-    }
-}
 /// -------------------------------------------------------------------------------------------- ///
 /// ----------------------------------- CompletedTransactions ----------------------------------- ///
 /// Gets the length of a TariCompletedTransactions
@@ -6368,7 +5899,6 @@ pub(crate) fn get_wallet_database_path(config: TariCommsConfig) -> PathBuf {
 ///     TxoValidationAlreadyBusy            // 1
 ///     TxoValidationInternalFailure        // 2
 ///     TxoValidationCommunicationFailure   // 3
-/// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
 /// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
@@ -6442,7 +5972,6 @@ pub unsafe extern "C" fn wallet_create(
     ),
     callback_transaction_cancellation: unsafe extern "C" fn(context: *mut c_void, *mut TariCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_contacts_liveness_data_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(context: *mut c_void),
@@ -6590,9 +6119,9 @@ pub unsafe extern "C" fn wallet_create(
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, key_manager_backend) =
         match initialize_sqlite_database_backends(main_wallet_database_sql_database_path, passphrase, 16) {
-            Ok((w, t, o, c, x)) => (w, t, o, c, x),
+            Ok((t, o, c, x)) => (t, o, c, x),
             Err(e) => {
                 *error_out = LibWalletError::from(WalletError::WalletStorageError(e)).code;
                 return ptr::null_mut();
@@ -6818,7 +6347,6 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_database,
         transaction_backend.clone(),
         output_manager_backend,
-        contacts_backend,
         key_manager_backend,
         shutdown.to_signal(),
         master_seed,
@@ -6849,7 +6377,6 @@ pub unsafe extern "C" fn wallet_create(
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 wallet_address,
-                w.contacts_service.get_contacts_liveness_event_stream(),
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
@@ -6861,7 +6388,6 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
-                callback_contacts_liveness_data_updated,
                 callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
@@ -7751,99 +7277,6 @@ pub unsafe extern "C" fn wallet_get_public_spend_key(
     }
 }
 
-/// Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the
-/// Alias will be updated.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `contact` - The TariContact pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if any pointer argument is null.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_upsert_contact(
-    wallet: *mut TariWallet,
-    contact: *mut TariContact,
-    error_out: *mut c_int,
-) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        return false;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.contacts_service.upsert_contact((*contact).clone()))
-    {
-        Ok(_) => true,
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
-            false
-        },
-    }
-}
-
-/// Removes a TariContact from the TariWallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `tx` - The TariPendingInboundTransaction pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns false if any pointer argument is null.
-///
-/// ## Returns
-/// `bool` - Returns if successful or not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_remove_contact(
-    wallet: *mut TariWallet,
-    contact: *mut TariContact,
-    error_out: *mut c_int,
-) -> bool {
-    if error_out.is_null() {
-        return false;
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return false;
-    }
-    if contact.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("contact".to_string())).code;
-        return false;
-    }
-
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .contacts_service
-            .remove_contact((*contact).address.clone()),
-    ) {
-        Ok(_) => true,
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
-            false
-        },
-    }
-}
-
 /// Gets the available balance from a TariBalance. This is the balance the user can spend.
 ///
 /// ## Arguments
@@ -7999,7 +7432,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
     amount: c_ulonglong,
     commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
-    one_sided: bool,
     payment_id_string: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
@@ -8041,43 +7473,24 @@ pub unsafe extern "C" fn wallet_send_transaction(
         }
     };
 
-    if one_sided {
-        match (*wallet).runtime.block_on(
-            (*wallet)
-                .wallet
-                .transaction_service
-                .send_one_sided_to_stealth_address_transaction(
-                    (*destination).clone(),
-                    MicroMinotari::from(amount),
-                    selection_criteria,
-                    OutputFeatures::default(),
-                    MicroMinotari::from(fee_per_gram),
-                    payment_id,
-                ),
-        ) {
-            Ok(tx_id) => tx_id.as_u64(),
-            Err(e) => {
-                *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                0
-            },
-        }
-    } else {
-        match (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.send_transaction(
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .send_one_sided_to_stealth_address_transaction(
                 (*destination).clone(),
                 MicroMinotari::from(amount),
                 selection_criteria,
                 OutputFeatures::default(),
                 MicroMinotari::from(fee_per_gram),
                 payment_id,
-            )) {
-            Ok(tx_id) => tx_id.as_u64(),
-            Err(e) => {
-                *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                0
-            },
-        }
+            ),
+    ) {
+        Ok(tx_id) => tx_id.as_u64(),
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            0
+        },
     }
 }
 
@@ -8270,47 +7683,6 @@ pub unsafe extern "C" fn wallet_set_num_confirmations_required(
     {
         Ok(()) => (),
         Err(e) => *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code,
-    }
-}
-
-/// Get the TariContacts from a TariWallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariContacts` - returns the contacts, note that it returns ptr::null_mut() if
-/// wallet is null
-///
-/// # Safety
-/// The ```contacts_destroy``` method must be called when finished with a TariContacts to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariContacts {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    let mut contacts = Vec::new();
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let retrieved_contacts = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.contacts_service.get_contacts());
-    match retrieved_contacts {
-        Ok(mut retrieved_contacts) => {
-            contacts.append(&mut retrieved_contacts);
-            Box::into_raw(Box::new(TariContacts(contacts)))
-        },
-        Err(e) => {
-            *error_out = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
-            ptr::null_mut()
-        },
     }
 }
 
@@ -10258,49 +9630,6 @@ pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariF
     }
 }
 
-/// Returns a ptr to the ContactsServiceHandle for use with chat
-///
-/// ## Arguments
-/// `wallet` - The wallet instance
-/// `error_out` - Pointer to an int which will be modified
-///
-/// ## Returns
-/// `*mut ContactsServiceHandle` an opaque pointer used in chat sideloading initialization
-///
-/// # Safety
-/// You should release the returned pointer after it's been used to initialize chat using `contacts_handle_destroy`
-#[no_mangle]
-pub unsafe extern "C" fn contacts_handle(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut ContactsServiceHandle {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    Box::into_raw(Box::new((*wallet).wallet.contacts_service.clone()))
-}
-
-/// Frees memory for a ContactsServiceHandle
-///
-/// ## Arguments
-/// `contacts_handle` - The pointer to a ContactsServiceHandle
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsServiceHandle) {
-    if !contacts_handle.is_null() {
-        drop(Box::from_raw(contacts_handle))
-    }
-}
-
 /// Destroy TariPaymentRecords
 /// # Safety
 /// None
@@ -10391,7 +9720,6 @@ mod test {
     use once_cell::sync::Lazy;
     use tari_common_types::{emoji, tari_address::TariAddressFeatures, types::PrivateKey};
     use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, transports::MemoryTransport};
-    use tari_contacts::contacts_service::types::{ChatBody, Direction, Message, MessageId, MessageMetadata};
     use tari_core::{
         covenant,
         transactions::{
@@ -10427,7 +9755,6 @@ mod test {
         pub transaction_send_result_callback: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
-        pub callback_contacts_liveness_data_updated: bool,
         pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
         pub callback_basenode_state_updated: bool,
@@ -10447,7 +9774,6 @@ mod test {
                 transaction_send_result_callback: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
-                callback_contacts_liveness_data_updated: false,
                 callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
                 callback_basenode_state_updated: false,
@@ -10632,13 +9958,6 @@ mod test {
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_context: *mut c_void, _tx_id: c_ulonglong, _result: u64) {
-        // assert!(true); //optimized out by compiler
-    }
-
-    unsafe extern "C" fn contacts_liveness_data_updated_callback(
-        _context: *mut c_void,
-        _balance: *mut TariContactsLivenessData,
-    ) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -11182,94 +10501,6 @@ mod test {
     }
 
     #[test]
-    fn test_contact() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let test_contact_private_key = private_key_generate();
-            let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
-            let test_address = Box::into_raw(Box::new(
-                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()).unwrap(),
-            ));
-            let test_str = "Test Contact";
-            let test_contact_str = CString::new(test_str).unwrap();
-            let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let test_contact = contact_create(test_contact_alias, test_address, true, error_ptr);
-            let favourite = contact_get_favourite(test_contact, error_ptr);
-            assert!(favourite);
-            let alias = contact_get_alias(test_contact, error_ptr);
-            let alias_string = CString::from_raw(alias).to_str().unwrap().to_owned();
-            assert_eq!(alias_string, test_str);
-            let contact_address = contact_get_tari_address(test_contact, error_ptr);
-            let contact_key_bytes = tari_address_get_bytes(contact_address, error_ptr);
-            let contact_bytes_len = byte_vector_get_length(contact_key_bytes, error_ptr);
-            assert_eq!(contact_bytes_len, 35);
-            contact_destroy(test_contact);
-            tari_address_destroy(test_address);
-            private_key_destroy(test_contact_private_key);
-            string_destroy(test_contact_alias as *mut c_char);
-            byte_vector_destroy(contact_key_bytes);
-        }
-    }
-
-    #[test]
-    fn test_contact_dont_panic() {
-        unsafe {
-            let mut error = 0;
-            let error_ptr = &mut error as *mut c_int;
-            let test_contact_private_key = private_key_generate();
-            let key = CompressedPublicKey::from_secret_key(&(*test_contact_private_key));
-            let test_contact_address = Box::into_raw(Box::new(
-                TariWalletAddress::new_single_address_with_interactive_only(key, Network::default()).unwrap(),
-            ));
-            let test_str = "Test Contact";
-            let test_contact_str = CString::new(test_str).unwrap();
-            let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
-            let mut _test_contact = contact_create(ptr::null_mut(), test_contact_address, false, error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("alias_ptr".to_string())).code
-            );
-            _test_contact = contact_create(test_contact_alias, ptr::null_mut(), false, error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("public_key_ptr".to_string())).code
-            );
-            let _alias = contact_get_alias(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let _contact_address = contact_get_tari_address(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let _contact_address = contact_get_favourite(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let contact_key_bytes = public_key_get_bytes(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            let contact_bytes_len = byte_vector_get_length(ptr::null_mut(), error_ptr);
-            assert_eq!(
-                error,
-                LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
-            );
-            assert_eq!(contact_bytes_len, 0);
-            contact_destroy(_test_contact);
-            tari_address_destroy(test_contact_address);
-            private_key_destroy(test_contact_private_key);
-            string_destroy(test_contact_alias as *mut c_char);
-            byte_vector_destroy(contact_key_bytes);
-        }
-    }
-
-    #[test]
     #[allow(clippy::too_many_lines)]
     fn test_master_private_key_persistence() {
         unsafe {
@@ -11327,7 +10558,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -11383,7 +10613,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -11493,7 +10722,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -11717,7 +10945,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -11780,7 +11007,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -11855,7 +11081,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -12063,7 +11288,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -12196,7 +11420,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -12333,7 +11556,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -12594,7 +11816,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -12862,7 +12083,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -13119,7 +12339,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -13483,7 +12702,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -13541,7 +12759,6 @@ mod test {
                 transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
-                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -13565,34 +12782,6 @@ mod test {
             // - Wallet peer for Bob (add Alice as a base node peer; same as above)
             let alice_wallet_comms = (*alice_wallet_ptr).wallet.comms.clone();
             let alice_node_identity = alice_wallet_comms.node_identity();
-
-            // Add some contacts
-            // - Contact for Alice
-            let bob_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
-                bob_node_identity.public_key().clone(),
-                Network::LocalNet,
-            )
-            .unwrap();
-            let alice_contact_alias_ptr: *const c_char =
-                CString::into_raw(CString::new("bob").unwrap()) as *const c_char;
-            let alice_contact_address_ptr = Box::into_raw(Box::new(bob_wallet_address.clone()));
-            let alice_contact_ptr = contact_create(alice_contact_alias_ptr, alice_contact_address_ptr, true, error_ptr);
-            tari_address_destroy(alice_contact_address_ptr);
-            assert!(wallet_upsert_contact(alice_wallet_ptr, alice_contact_ptr, error_ptr));
-            contact_destroy(alice_contact_ptr);
-            // - Contact for Bob
-            let alice_wallet_address = TariWalletAddress::new_single_address_with_interactive_only(
-                alice_node_identity.public_key().clone(),
-                Network::LocalNet,
-            )
-            .unwrap();
-            let bob_contact_alias_ptr: *const c_char =
-                CString::into_raw(CString::new("alice").unwrap()) as *const c_char;
-            let bob_contact_address_ptr = Box::into_raw(Box::new(alice_wallet_address.clone()));
-            let bob_contact_ptr = contact_create(bob_contact_alias_ptr, bob_contact_address_ptr, true, error_ptr);
-            tari_address_destroy(bob_contact_address_ptr);
-            assert!(wallet_upsert_contact(bob_wallet_ptr, bob_contact_ptr, error_ptr));
-            contact_destroy(bob_contact_ptr);
 
             // Use comms service - do `dial_peer` for both wallets (we do not 'assert!' here to not make the test flaky)
             // Note: This loop is just to make sure we actually connect as the first attempts do not always succeed
@@ -13628,57 +12817,6 @@ mod test {
                 alice_wallet_runtime.block_on(async { tokio::time::sleep(Duration::from_millis(500)).await });
             }
 
-            // Use contacts service - send some messages for both wallets
-            let mut alice_wallet_contacts_service = (*alice_wallet_ptr).wallet.contacts_service.clone();
-            let mut bob_wallet_contacts_service = (*bob_wallet_ptr).wallet.contacts_service.clone();
-            let mut alice_msg_count = 0;
-            let mut bob_msg_count = 0;
-            // Note: This loop is just to make sure we actually send a couple of messages as the first attempts do not
-            // always succeed (we do not 'assert!' here to not make the test flaky)
-            for i in 0..60 {
-                if alice_msg_count < 5 {
-                    let alice_message_result =
-                        alice_wallet_runtime.block_on(alice_wallet_contacts_service.send_message(Message {
-                            body: ChatBody::try_from(vec![i]).unwrap(),
-                            metadata: vec![MessageMetadata::default()],
-                            receiver_address: alice_wallet_address.clone(),
-                            sender_address: bob_wallet_address.clone(),
-                            direction: Direction::Outbound,
-                            stored_at: u64::from(i),
-                            sent_at: u64::from(i),
-                            delivery_confirmation_at: None,
-                            read_confirmation_at: None,
-                            message_id: MessageId::try_from(vec![i]).unwrap(),
-                        }));
-                    if alice_message_result.is_ok() {
-                        alice_msg_count += 1;
-                    }
-                }
-                if bob_msg_count < 5 {
-                    let bob_message_result =
-                        bob_wallet_runtime.block_on(bob_wallet_contacts_service.send_message(Message {
-                            body: ChatBody::try_from(vec![i]).unwrap(),
-                            metadata: vec![MessageMetadata::default()],
-                            sender_address: alice_wallet_address.clone(),
-                            receiver_address: bob_wallet_address.clone(),
-                            direction: Direction::Outbound,
-                            stored_at: u64::from(i),
-                            sent_at: u64::from(i),
-                            delivery_confirmation_at: None,
-                            read_confirmation_at: None,
-                            message_id: MessageId::try_from(vec![i]).unwrap(),
-                        }));
-                    if bob_message_result.is_ok() {
-                        bob_msg_count += 1;
-                    }
-                }
-                if alice_msg_count >= 5 && bob_msg_count >= 5 {
-                    break;
-                }
-                // Wait a bit before the next attempt
-                alice_wallet_runtime.block_on(async { tokio::time::sleep(Duration::from_millis(500)).await });
-            }
-
             // Trigger Alice wallet shutdown (same as `pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet)`
             wallet_destroy(alice_wallet_ptr);
 
@@ -13698,11 +12836,6 @@ mod test {
                     panic!("Connection to Alice should not be active!");
                 }
             }
-
-            // - Bob can still retrieve messages Alice sent
-            let bob_contacts_get_messages =
-                bob_wallet_runtime.block_on(bob_wallet_contacts_service.get_messages(alice_wallet_address, 1, 1));
-            assert!(bob_contacts_get_messages.is_ok());
 
             // Cleanup
             wallet_destroy(bob_wallet_ptr);
