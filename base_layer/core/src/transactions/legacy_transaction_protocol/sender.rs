@@ -490,10 +490,6 @@ impl SenderTransactionProtocol {
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
-    // #[cfg(test)]
-    // pub(super) fn into_state(self) -> SenderState {
-    //     self.state
-    // }
 }
 
 impl From<SenderState> for SenderTransactionProtocol {
