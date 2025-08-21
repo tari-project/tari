@@ -129,7 +129,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             public_excess = public_excess -
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &input.output_pair.output.spending_key_id,
+                        &input.output_pair.output.commitment_mask_key_id,
                         &input.output_pair.kernel_nonce,
                     )
                     .await?
@@ -144,7 +144,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &output.output_pair.output.spending_key_id,
+                        &output.output_pair.output.commitment_mask_key_id,
                         &output.output_pair.kernel_nonce,
                     )
                     .await?
@@ -160,7 +160,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &change.output_pair.output.spending_key_id,
+                        &change.output_pair.output.commitment_mask_key_id,
                         &change.output_pair.kernel_nonce,
                     )
                     .await?
@@ -252,7 +252,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         };
         let public_excess = self
             .key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &public_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
@@ -267,7 +267,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let signature = self
             .key_manager
             .get_partial_txo_kernel_signature(
-                &output.spending_key_id,
+                &output.commitment_mask_key_id,
                 &public_nonce.key_id,
                 &CompressedPublicKey::new_from_pk(total_nonce),
                 &CompressedPublicKey::new_from_pk(total_excess),
@@ -279,7 +279,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .await?;
         let offset = self
             .key_manager
-            .get_txo_private_kernel_offset(&output.spending_key_id, &public_nonce.key_id)
+            .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &public_nonce.key_id)
             .await?;
 
         let signed_data = RecipientSignedMessage {
@@ -347,7 +347,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &input.output_pair.output.spending_key_id,
+                        &input.output_pair.output.commitment_mask_key_id,
                         &input.output_pair.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -362,7 +362,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 &self
                     .key_manager
                     .get_txo_private_kernel_offset(
-                        &input.output_pair.output.spending_key_id,
+                        &input.output_pair.output.commitment_mask_key_id,
                         &input.output_pair.kernel_nonce,
                     )
                     .await?;
@@ -381,7 +381,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &output.output_pair.output.spending_key_id,
+                        &output.output_pair.output.commitment_mask_key_id,
                         &output.output_pair.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -396,7 +396,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 &self
                     .key_manager
                     .get_txo_private_kernel_offset(
-                        &output.output_pair.output.spending_key_id,
+                        &output.output_pair.output.commitment_mask_key_id,
                         &output.output_pair.kernel_nonce,
                     )
                     .await?;
@@ -420,7 +420,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                     &self
                         .key_manager
                         .get_partial_txo_kernel_signature(
-                            &change.output.spending_key_id,
+                            &change.output.commitment_mask_key_id,
                             &change.kernel_nonce,
                             &total_public_nonce,
                             &total_public_excess,
@@ -434,7 +434,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
                 offset = offset +
                     &self
                         .key_manager
-                        .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
+                        .get_txo_private_kernel_offset(&change.output.commitment_mask_key_id, &change.kernel_nonce)
                         .await?;
                 let sender_offset_key_id = change
                     .sender_offset_key_id
@@ -481,7 +481,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
         let encrypted_data = self
             .key_manager
             .encrypt_data_for_recovery(
-                &change.output.spending_key_id,
+                &change.output.commitment_mask_key_id,
                 None,
                 change.output.value.as_u64(),
                 payment_id,

@@ -423,7 +423,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     // share or pre calc the nonces
     async fn get_metadata_signature(
         &self,
-        spending_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
@@ -433,7 +433,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     async fn get_one_sided_metadata_signature(
         &self,
-        spending_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
@@ -482,7 +482,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     async fn generate_burn_proof(
         &self,
-        spending_key: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         amount: &PrivateKey,
         claim_public_key: &CompressedPublicKey,
     ) -> Result<RistrettoComSig, TransactionError>;

@@ -3396,7 +3396,7 @@ where
         ) {
             (Some(change), Some(original)) => {
                 let mut change = change.clone();
-                change.spending_key_id = original.output_pair.output.spending_key_id;
+                change.commitment_mask_key_id = original.output_pair.output.commitment_mask_key_id;
                 Some(vec![change])
             },
             _ => None,

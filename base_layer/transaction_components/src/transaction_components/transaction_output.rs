@@ -333,10 +333,10 @@ impl TransactionOutput {
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
-        spending_key: &PrivateKey,
+        commitment_mask_key: &PrivateKey,
         value: u64,
     ) -> Result<bool, TransactionError> {
-        Ok(prover.verify_mask(&self.commitment.to_commitment()?, spending_key, value)?)
+        Ok(prover.verify_mask(&self.commitment.to_commitment()?, commitment_mask_key, value)?)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.

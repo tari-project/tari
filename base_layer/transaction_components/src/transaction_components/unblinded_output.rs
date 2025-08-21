@@ -52,7 +52,7 @@ use crate::{
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,
     pub value: MicroMinotari,
-    pub spending_key: PrivateKey,
+    pub commitment_mask_key: PrivateKey,
     pub features: OutputFeatures,
     pub script: TariScript,
     pub covenant: Covenant,
@@ -72,7 +72,7 @@ impl UnblindedOutput {
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroMinotari,
-        spending_key: PrivateKey,
+        commitment_mask_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -93,7 +93,7 @@ impl UnblindedOutput {
         Self {
             version,
             value,
-            spending_key,
+            commitment_mask_key,
             features,
             script,
             input_data,
@@ -111,7 +111,7 @@ impl UnblindedOutput {
     #[allow(clippy::too_many_arguments)]
     pub fn new_current_version(
         value: MicroMinotari,
-        spending_key: PrivateKey,
+        commitment_mask_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -127,7 +127,7 @@ impl UnblindedOutput {
         Self::new(
             TransactionOutputVersion::get_current_version(),
             value,
-            spending_key,
+            commitment_mask_key,
             features,
             script,
             input_data,
@@ -147,12 +147,12 @@ impl UnblindedOutput {
         key_manager: &KM,
         payment_id: MemoField,
     ) -> Result<WalletOutput, TransactionError> {
-        let spending_key_id = key_manager.import_key(self.spending_key).await?;
+        let commitment_mask_key_id = key_manager.import_key(self.commitment_mask_key).await?;
         let script_key_id = key_manager.import_key(self.script_private_key).await?;
         let wallet_output = WalletOutput::new_with_rangeproof(
             self.version,
             self.value,
-            spending_key_id,
+            commitment_mask_key_id,
             self.features,
             self.script,
             self.input_data,
@@ -173,7 +173,7 @@ impl UnblindedOutput {
         output: WalletOutput,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
-        let spending_key = key_manager.get_private_key(&output.spending_key_id).await?;
+        let commitment_mask_key = key_manager.get_private_key(&output.commitment_mask_key_id).await?;
         let script_private_key = key_manager.get_private_key(&output.script_key_id).await?;
         let range_proof = if output.features.range_proof_type == RangeProofType::BulletProofPlus {
             output.range_proof
@@ -183,7 +183,7 @@ impl UnblindedOutput {
         let unblinded_output = UnblindedOutput {
             version: output.version,
             value: output.value,
-            spending_key,
+            commitment_mask_key,
             features: output.features,
             script: output.script,
             covenant: output.covenant,

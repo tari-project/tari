@@ -32,7 +32,7 @@ use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use crate::{
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
     fee::Fee,
     helpers::borsh::SerializedSize,
@@ -308,6 +308,14 @@ pub fn create_consensus_manager() -> ConsensusManager {
     ConsensusManager::builder(Network::LocalNet).build()
 }
 
+pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
+    create_consensus_manager().consensus_constants(height).clone()
+}
+
+pub fn new_public_key() -> CompressedPublicKey {
+    CompressedPublicKey::random_keypair(&mut OsRng).1
+}
+
 pub async fn create_coinbase_wallet_output<KM: TransactionKeyManagerInterface>(
     test_params: &TestParams,
     height: u64,
@@ -411,7 +419,7 @@ macro_rules! tx {
 #[macro_export]
 macro_rules! txn_schema {
     (from: $inputs:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {{
-        $crate::transactions::test_helpers::TransactionSchema {
+        $crate::test_helpers::TransactionSchema {
             from: $inputs.clone(),
             to: $outputs.clone(),
             to_outputs: vec![],
@@ -456,7 +464,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            features: $crate::transaction_components::OutputFeatures::default(),
             input_version: None,
             output_version: None
         )
@@ -472,7 +480,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee: 5.into(),
             lock:0,
-            features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            features: $crate::transaction_components::OutputFeatures::default(),
             input_version: Some($input_version),
             output_version: Some($output_version)
         )
@@ -730,7 +738,7 @@ async fn create_test_transaction_internal<KM: TransactionKeyManagerInterface>(
         let metadata_message = TransactionOutput::metadata_signature_message(&utxo);
         utxo.metadata_signature = key_manager
             .get_metadata_signature(
-                &utxo.spending_key_id,
+                &utxo.commitment_mask_key_id,
                 &utxo.value.into(),
                 &sender_offset.key_id,
                 &utxo.version,

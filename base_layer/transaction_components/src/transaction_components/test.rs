@@ -43,7 +43,6 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    legacy_transaction_protocol::TransactionProtocolError,
     tari_amount::{uT, T},
     test_helpers,
     test_helpers::{TestParams, UtxoTestParams},

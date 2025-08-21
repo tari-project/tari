@@ -917,6 +917,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
     use tari_script::{Opcode, Opcode::CheckHeight};
+    use tari_transaction_components::consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission};
 
     use crate::{
         blocks::pre_mine::{
@@ -938,7 +939,7 @@ mod test {
             ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
-        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission, ConsensusManager},
+        consensus::BaseConsensusManager,
         transactions::{
             tari_amount::{MicroMinotari, Minotari},
             transaction_components::{TransactionKernel, TransactionOutput},

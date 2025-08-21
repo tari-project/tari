@@ -496,7 +496,10 @@ where KM: TransactionKeyManagerInterface
                     .to_public_key()?;
             public_excess = public_excess -
                 self.key_manager
-                    .get_txo_kernel_signature_excess_with_offset(&input.output.spending_key_id, &input.kernel_nonce)
+                    .get_txo_kernel_signature_excess_with_offset(
+                        &input.output.commitment_mask_key_id,
+                        &input.kernel_nonce,
+                    )
                     .await?
                     .to_public_key()?;
         }
@@ -508,7 +511,10 @@ where KM: TransactionKeyManagerInterface
                     .to_public_key()?;
             public_excess = public_excess +
                 self.key_manager
-                    .get_txo_kernel_signature_excess_with_offset(&output.output.spending_key_id, &output.kernel_nonce)
+                    .get_txo_kernel_signature_excess_with_offset(
+                        &output.output.commitment_mask_key_id,
+                        &output.kernel_nonce,
+                    )
                     .await?
                     .to_public_key()?;
         }
@@ -522,7 +528,7 @@ where KM: TransactionKeyManagerInterface
             public_excess = public_excess +
                 self.key_manager
                     .get_txo_kernel_signature_excess_with_offset(
-                        &output.output.output.spending_key_id,
+                        &output.output.output.commitment_mask_key_id,
                         &output.output.kernel_nonce,
                     )
                     .await?
@@ -537,7 +543,10 @@ where KM: TransactionKeyManagerInterface
                     .to_public_key()?;
             public_excess = public_excess +
                 self.key_manager
-                    .get_txo_kernel_signature_excess_with_offset(&change.output.spending_key_id, &change.kernel_nonce)
+                    .get_txo_kernel_signature_excess_with_offset(
+                        &change.output.commitment_mask_key_id,
+                        &change.kernel_nonce,
+                    )
                     .await?
                     .to_public_key()?;
         }
@@ -605,7 +614,7 @@ where KM: TransactionKeyManagerInterface
                 &(self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &input.output.spending_key_id,
+                        &input.output.commitment_mask_key_id,
                         &input.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -618,7 +627,7 @@ where KM: TransactionKeyManagerInterface
                     .to_schnorr_signature()?);
             offset = offset -
                 self.key_manager
-                    .get_txo_private_kernel_offset(&input.output.spending_key_id, &input.kernel_nonce)
+                    .get_txo_private_kernel_offset(&input.output.commitment_mask_key_id, &input.kernel_nonce)
                     .await?;
             script_keys.push(input.output.script_key_id.clone());
         }
@@ -627,7 +636,7 @@ where KM: TransactionKeyManagerInterface
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
-                        &output.output.spending_key_id,
+                        &output.output.commitment_mask_key_id,
                         &output.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -641,7 +650,7 @@ where KM: TransactionKeyManagerInterface
             offset = offset +
                 &self
                     .key_manager
-                    .get_txo_private_kernel_offset(&output.output.spending_key_id, &output.kernel_nonce)
+                    .get_txo_private_kernel_offset(&output.output.commitment_mask_key_id, &output.kernel_nonce)
                     .await?;
             let sender_offset_key_id = output
                 .sender_offset_key_id
@@ -654,7 +663,7 @@ where KM: TransactionKeyManagerInterface
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
-                        &output.output.output.spending_key_id,
+                        &output.output.output.commitment_mask_key_id,
                         &output.output.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -668,7 +677,10 @@ where KM: TransactionKeyManagerInterface
             offset = offset +
                 &self
                     .key_manager
-                    .get_txo_private_kernel_offset(&output.output.output.spending_key_id, &output.output.kernel_nonce)
+                    .get_txo_private_kernel_offset(
+                        &output.output.output.commitment_mask_key_id,
+                        &output.output.kernel_nonce,
+                    )
                     .await?;
             let sender_offset_key_id = output
                 .output
@@ -684,7 +696,7 @@ where KM: TransactionKeyManagerInterface
                 &self
                     .key_manager
                     .get_partial_txo_kernel_signature(
-                        &change.output.spending_key_id,
+                        &change.output.commitment_mask_key_id,
                         &change.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
@@ -698,7 +710,7 @@ where KM: TransactionKeyManagerInterface
             offset = offset +
                 &self
                     .key_manager
-                    .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
+                    .get_txo_private_kernel_offset(&change.output.commitment_mask_key_id, &change.kernel_nonce)
                     .await?;
             let sender_offset_key_id = change
                 .sender_offset_key_id
@@ -842,18 +854,22 @@ impl<KM> Debug for TransactionBuilder<KM> {
 mod test {
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
     use tari_script::{script, TariScript};
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{
-        test_helpers::{create_consensus_constants, create_consensus_rules},
-        transactions::{
-            tari_amount::{uT, MicroMinotari},
-            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams, UtxoTestParams},
-            transaction_builder::TransactionBuilder,
-            transaction_components::{memo_field::MemoField, OutputFeatures, WalletOutputBuilder},
-            transaction_key_manager::create_memory_db_key_manager,
-            CryptoFactories,
+        crypto_factories::CryptoFactories,
+        tari_amount::{uT, MicroMinotari},
+        test_helpers::{
+            create_consensus_constants,
+            create_consensus_manager,
+            create_test_input,
+            create_wallet_output_with_data,
+            TestParams,
+            UtxoTestParams,
         },
+        transaction_builder::TransactionBuilder,
+        transaction_components::{memo_field::MemoField, OutputFeatures, WalletOutputBuilder},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 
@@ -1037,7 +1053,7 @@ mod test {
             .unwrap();
         let finalized = builder.build().await.unwrap();
         let tx = finalized.transaction;
-        let rules = create_consensus_rules();
+        let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
@@ -1045,7 +1061,7 @@ mod test {
 
     #[tokio::test]
     async fn single_recipient_no_change() {
-        let rules = create_consensus_rules();
+        let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
         let key_manager = create_memory_db_key_manager().unwrap();
         let bob_key = TestParams::new(&key_manager).await;
@@ -1109,7 +1125,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn single_recipient_with_change() {
-        let rules = create_consensus_rules();
+        let rules = create_consensus_manager();
         let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         // Alice's parameters
@@ -1176,7 +1192,7 @@ mod test {
 
     #[tokio::test]
     async fn single_recipient_multiple_inputs_with_change() {
-        let rules = create_consensus_rules();
+        let rules = create_consensus_manager();
         let key_manager = create_memory_db_key_manager().unwrap();
         let factories = CryptoFactories::default();
         // Bob's parameters

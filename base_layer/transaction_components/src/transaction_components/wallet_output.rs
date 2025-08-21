@@ -57,7 +57,7 @@ use crate::{
 pub struct WalletOutput {
     pub version: TransactionOutputVersion,
     pub value: MicroMinotari,
-    pub spending_key_id: TariKeyId,
+    pub commitment_mask_key_id: TariKeyId,
     pub features: OutputFeatures,
     pub script: TariScript,
     pub covenant: Covenant,
@@ -78,7 +78,7 @@ impl WalletOutput {
     pub async fn new<KM: TransactionKeyManagerInterface>(
         version: TransactionOutputVersion,
         value: MicroMinotari,
-        spending_key_id: TariKeyId,
+        commitment_mask_key_id: TariKeyId,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -95,7 +95,7 @@ impl WalletOutput {
         let range_proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
             Some(
                 key_manager
-                    .construct_range_proof(&spending_key_id, value.into(), minimum_value_promise.into())
+                    .construct_range_proof(&commitment_mask_key_id, value.into(), minimum_value_promise.into())
                     .await?,
             )
         } else {
@@ -104,7 +104,7 @@ impl WalletOutput {
         Ok(Self {
             version,
             value,
-            spending_key_id,
+            commitment_mask_key_id,
             features,
             script,
             input_data,
@@ -124,7 +124,7 @@ impl WalletOutput {
     pub fn new_with_rangeproof(
         version: TransactionOutputVersion,
         value: MicroMinotari,
-        spending_key_id: TariKeyId,
+        commitment_mask_key_id: TariKeyId,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -141,7 +141,7 @@ impl WalletOutput {
         Self {
             version,
             value,
-            spending_key_id,
+            commitment_mask_key_id,
             features,
             script,
             input_data,
@@ -160,7 +160,7 @@ impl WalletOutput {
     #[allow(clippy::too_many_arguments)]
     pub async fn new_current_version<KM: TransactionKeyManagerInterface>(
         value: MicroMinotari,
-        spending_key_id: TariKeyId,
+        commitment_mask_key_id: TariKeyId,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -177,7 +177,7 @@ impl WalletOutput {
         Self::new(
             TransactionOutputVersion::get_current_version(),
             value,
-            spending_key_id,
+            commitment_mask_key_id,
             features,
             script,
             input_data,
@@ -200,7 +200,7 @@ impl WalletOutput {
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
         let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+        let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value).await?;
         let rangeproof_hash = match &self.range_proof {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
@@ -210,7 +210,7 @@ impl WalletOutput {
         let script_signature = key_manager
             .get_script_signature(
                 &self.script_key_id,
-                &self.spending_key_id,
+                &self.commitment_mask_key_id,
                 &value,
                 &version,
                 &script_message,
@@ -245,7 +245,7 @@ impl WalletOutput {
     ) -> Result<(TransactionInput, CompressedPublicKey), TransactionError> {
         let value = self.value.into();
         let version = TransactionInputVersion::get_current_version();
-        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+        let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value).await?;
 
         let message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
         let ephemeral_public_key_self = key_manager.get_random_key().await?;
@@ -260,7 +260,7 @@ impl WalletOutput {
         );
         let commitment_partial_script_signature = key_manager
             .get_partial_script_signature(
-                &self.spending_key_id,
+                &self.commitment_mask_key_id,
                 &value,
                 &version,
                 &total_ephemeral_public_key,
@@ -333,7 +333,7 @@ impl WalletOutput {
             )));
         }
         let value = self.value.into();
-        let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+        let commitment = key_manager.get_commitment(&self.commitment_mask_key_id, &value).await?;
 
         let output = TransactionOutput::new(
             self.version,
@@ -387,7 +387,7 @@ impl WalletOutput {
         key_manager: &KM,
     ) -> Result<CompressedCommitment, TransactionError> {
         Ok(key_manager
-            .get_commitment(&self.spending_key_id, &self.value.into())
+            .get_commitment(&self.commitment_mask_key_id, &self.value.into())
             .await?)
     }
 
@@ -415,7 +415,7 @@ impl WalletOutput {
 
         let metadata_sig = key_manager
             .get_metadata_signature(
-                &self.spending_key_id,
+                &self.commitment_mask_key_id,
                 &self.value.into(),
                 sender_offset,
                 &self.version,
@@ -454,7 +454,7 @@ impl Debug for WalletOutput {
         f.debug_struct("KeyManagerOutput")
             .field("version", &self.version)
             .field("value", &self.value)
-            .field("spending_key_id", &self.spending_key_id)
+            .field("commitment_mask_key_id", &self.commitment_mask_key_id)
             .field("features", &self.features)
             .field("script", &self.script)
             .field("covenant", &self.covenant)

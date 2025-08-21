@@ -1882,7 +1882,7 @@ pub async fn command_runner(
                                 i + 1,
                                 utxo.0.value,
                                 if args.with_private_keys {
-                                    utxo.0.spending_key.to_hex()
+                                    utxo.0.commitment_mask_key.to_hex()
                                 } else {
                                     "*hidden*".to_string()
                                 },
@@ -1951,7 +1951,7 @@ pub async fn command_runner(
                                 i + 1,
                                 utxo.0.value,
                                 if args.with_private_keys {
-                                    utxo.0.spending_key.to_hex()
+                                    utxo.0.commitment_mask_key.to_hex()
                                 } else {
                                     "*hidden*".to_string()
                                 },
@@ -2780,7 +2780,7 @@ fn write_utxos_to_csv_file(
             i + 1,
             utxo.version.as_u8(),
             utxo.value.0,
-            if with_private_keys { utxo.spending_key.to_hex() } else { "*hidden*".to_string() },
+            if with_private_keys { utxo.commitment_mask_key.to_hex() } else { "*hidden*".to_string() },
             commitment.to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,

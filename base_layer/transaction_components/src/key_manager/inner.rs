@@ -636,13 +636,13 @@ where TBackend: TransactionKeyManagerBackend + 'static
     pub async fn verify_mask(
         &self,
         commitment: &CompressedCommitment,
-        spending_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerServiceError> {
-        let spending_key = self.get_private_key(spending_key_id).await?;
+        let commitment_mask_key = self.get_private_key(commitment_mask_key_id).await?;
         self.crypto_factories
             .range_proof
-            .verify_mask(&commitment.to_commitment()?, &spending_key, value)
+            .verify_mask(&commitment.to_commitment()?, &commitment_mask_key, value)
             .map_err(|e| e.into())
     }
 
@@ -1222,7 +1222,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn get_metadata_signature(
         &self,
-        spending_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
@@ -1236,7 +1236,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .await?;
         let receiver_partial_metadata_signature = self
             .get_receiver_partial_metadata_signature(
-                spending_key_id,
+                commitment_mask_key_id,
                 value_as_private_key,
                 &sender_offset_public_key,
                 &ephemeral_pubkey.pub_key,
@@ -1245,7 +1245,9 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 range_proof_type,
             )
             .await?;
-        let commitment = self.get_commitment(spending_key_id, value_as_private_key).await?;
+        let commitment = self
+            .get_commitment(commitment_mask_key_id, value_as_private_key)
+            .await?;
         let ephemeral_commitment = receiver_partial_metadata_signature.ephemeral_commitment();
         let sender_partial_metadata_signature = self
             .get_sender_partial_metadata_signature(

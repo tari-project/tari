@@ -520,7 +520,7 @@ mod test {
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         crypto_factories::CryptoFactories,
         tari_amount::uT,
-        test_helpers::TestParams,
+        test_helpers::{create_consensus_constants, TestParams},
         transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
         CoinbaseBuilder,

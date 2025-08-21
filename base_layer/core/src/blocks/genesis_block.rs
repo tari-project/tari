@@ -427,7 +427,7 @@ mod test {
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{BlockchainBackend, SmtHasher},
-        consensus::ConsensusManager,
+        consensus::BaseConsensusManager,
         input_mr_hash_from_pruned_mmr,
         kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},

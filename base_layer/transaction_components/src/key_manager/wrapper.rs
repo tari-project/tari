@@ -431,7 +431,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     async fn get_metadata_signature(
         &self,
-        spending_key_id: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
         sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
@@ -442,7 +442,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .read()
             .await
             .get_metadata_signature(
-                spending_key_id,
+                commitment_mask_key_id,
                 value_as_private_key,
                 sender_offset_key_id,
                 txo_version,
@@ -557,14 +557,14 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     async fn generate_burn_proof(
         &self,
-        spending_key: &TariKeyId,
+        commitment_mask_key_id: &TariKeyId,
         amount: &PrivateKey,
         claim_public_key: &CompressedPublicKey,
     ) -> Result<RistrettoComSig, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
-            .generate_burn_proof(spending_key, amount, claim_public_key)
+            .generate_burn_proof(commitment_mask_key_id, amount, claim_public_key)
             .await
     }
 
