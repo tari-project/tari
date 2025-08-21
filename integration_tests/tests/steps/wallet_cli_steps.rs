@@ -36,13 +36,12 @@ use minotari_console_wallet::{
     MakeItRainArgs,
     WhoisArgs,
 };
-use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_common_types::{seeds::seed_words::SeedWords, tari_address::TariAddress};
 use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
-use tari_key_manager::SeedWords;
+use tari_transaction_components::tari_amount::MicroMinotari;
 use tari_utilities::hex::Hex;
 
 use crate::steps::get_saved_seed_words;

@@ -9705,19 +9705,17 @@ mod test {
         transaction_service::handle::TransactionSendStatus,
     };
     use once_cell::sync::Lazy;
-    use tari_common_types::{emoji, tari_address::TariAddressFeatures, types::PrivateKey};
+    use tari_common_types::{emoji, seeds::mnemonic_wordlists, tari_address::TariAddressFeatures, types::PrivateKey};
     use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, transports::MemoryTransport};
-    use tari_core::{
-        covenant,
-        transactions::{
-            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
-            transaction_key_manager::{create_memory_db_key_manager, SecretTransactionKeyManagerInterface},
-        },
-    };
-    use tari_key_manager::mnemonic_wordlists;
     use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
     use tari_script::script;
     use tari_test_utils::random;
+    use tari_transaction_components::{
+        covenant,
+        key_manager::SecretTransactionKeyManagerInterface,
+        test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
+    };
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     use tari_utilities::encoding::MBase58;
     use tempfile::tempdir;
 
@@ -12219,7 +12217,7 @@ mod test {
                 .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .block_on(key_manager.get_private_key(&utxo_1.commitment_mask_key_id))
                 .unwrap();
             let script_private_key = runtime
                 .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
@@ -12385,7 +12383,7 @@ mod test {
 
             let amount = utxo_1.value.as_u64();
             let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .block_on(key_manager.get_private_key(&utxo_1.commitment_mask_key_id))
                 .unwrap();
             let script_private_key = runtime
                 .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
@@ -12452,7 +12450,7 @@ mod test {
 
             let amount = utxo_2.value.as_u64();
             let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_2.spending_key_id))
+                .block_on(key_manager.get_private_key(&utxo_2.commitment_mask_key_id))
                 .unwrap();
             let script_private_key = runtime
                 .block_on(key_manager.get_private_key(&utxo_2.script_key_id))
@@ -12508,13 +12506,19 @@ mod test {
             let unblinded_output_ptr_2 = unblinded_outputs_get_at(unspent_outputs_ptr, 1, error_ptr);
             let range_proof_ptr_2 = range_proof_get(unblinded_output_ptr_2, error_ptr);
 
-            assert_eq!((*tari_utxo_ptr_1).spending_key, (*unblinded_output_ptr_1).spending_key);
+            assert_eq!(
+                (*tari_utxo_ptr_1).commitment_mask_key,
+                (*unblinded_output_ptr_1).commitment_mask_key
+            );
             assert_eq!(
                 (*tari_utxo_ptr_1).encrypted_data,
                 (*unblinded_output_ptr_1).encrypted_data
             );
             assert_eq!((*proof_ptr_1).0, (*range_proof_ptr_1).0);
-            assert_eq!((*tari_utxo_ptr_2).spending_key, (*unblinded_output_ptr_2).spending_key);
+            assert_eq!(
+                (*tari_utxo_ptr_2).commitment_mask_key,
+                (*unblinded_output_ptr_2).commitment_mask_key
+            );
             assert_eq!(
                 (*tari_utxo_ptr_2).encrypted_data,
                 (*unblinded_output_ptr_2).encrypted_data
@@ -12582,7 +12586,7 @@ mod test {
                 .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .block_on(key_manager.get_private_key(&utxo_1.commitment_mask_key_id))
                 .unwrap();
             let script_private_key = runtime
                 .block_on(key_manager.get_private_key(&utxo_1.script_key_id))

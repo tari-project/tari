@@ -170,7 +170,7 @@ pub enum ValidationError {
     #[error("Output type '{output_type}' does not match sidechain data")]
     OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
     #[error("Validation error: {0}")]
-    AggregatedBodyValidation(#[from] AggregatedBodyValidationError),
+    AggregatedBodyValidationError(#[from] AggregatedBodyValidationError),
     #[error("Cuckaroo POW error: {0}")]
     CuckarooPowError(#[from] CuckarooVerificationError),
 }
@@ -242,7 +242,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
-            err @ ValidationError::AggregatedBodyValidation(_) |
+            err @ ValidationError::AggregatedBodyValidationError(_) |
             err @ ValidationError::CuckarooPowError(_) |
             err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),

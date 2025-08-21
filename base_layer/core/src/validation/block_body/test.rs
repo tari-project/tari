@@ -43,6 +43,7 @@ use tari_transaction_components::{
         TransactionError,
     },
     txn_schema,
+    validation::AggregatedBodyValidationError,
     CoinbaseBuilder,
 };
 use tokio::time::Instant;
@@ -55,7 +56,6 @@ use crate::{
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     validation::{BlockBodyValidator, ValidationError},
 };
-
 async fn setup_with_rules(
     rules: BaseConsensusManager,
     check_rangeproof: bool,
@@ -389,7 +389,10 @@ async fn it_checks_txo_sort_order() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+    ));
 }
 
 #[tokio::test]
@@ -415,7 +418,10 @@ async fn it_limits_the_script_byte_size() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::TariScriptExceedsMaxSize { .. }));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::TariScriptExceedsMaxSize { .. })
+    ));
 }
 
 #[tokio::test]
@@ -443,7 +449,12 @@ async fn it_limits_the_encrypted_data_byte_size() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::EncryptedDataExceedsMaxSize { .. }));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(
+            AggregatedBodyValidationError::EncryptedDataExceedsMaxSize { .. }
+        )
+    ));
 }
 
 #[tokio::test]
@@ -497,7 +508,10 @@ async fn it_rejects_zero_conf_double_spends() {
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, &unmined).unwrap_err();
-    assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
+    ));
 }
 
 mod body_only {
@@ -574,7 +588,10 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
+        assert!(matches!(
+            err,
+            ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
+        ));
     }
 
     #[tokio::test]
@@ -601,7 +618,8 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        unpack_enum!(ValidationError::OutputTypeNotPermitted { output_type } = err);
+        unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
+        unpack_enum!(AggregatedBodyValidationError::OutputTypeNotPermitted { output_type } = err);
         assert_eq!(output_type, OutputType::Standard);
     }
 
@@ -635,7 +653,8 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        unpack_enum!(ValidationError::RangeProofTypeNotPermitted { range_proof_type } = err);
+        unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
+        unpack_enum!(AggregatedBodyValidationError::RangeProofTypeNotPermitted { range_proof_type } = err);
         assert_eq!(range_proof_type, RangeProofType::BulletProofPlus);
     }
 
@@ -699,7 +718,8 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        unpack_enum!(ValidationError::OutputTypeNotMatchedToRangeProofType { output_type } = err);
+        unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
+        unpack_enum!(AggregatedBodyValidationError::OutputTypeNotMatchedToRangeProofType { output_type } = err);
         assert!(output_type == OutputType::Standard || output_type == OutputType::Coinbase);
     }
 }

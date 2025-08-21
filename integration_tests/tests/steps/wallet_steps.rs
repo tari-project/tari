@@ -52,22 +52,6 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_common_types::types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoinBaseExtra,
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            TransactionOutputVersion,
-            UnblindedOutput,
-        },
-    },
-};
 use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
 use tari_integration_tests::{
     transaction::{
@@ -79,6 +63,20 @@ use tari_integration_tests::{
     TariWorld,
 };
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        EncryptedData,
+        OutputFeatures,
+        OutputType,
+        RangeProofType,
+        TransactionOutputVersion,
+        UnblindedOutput,
+    },
+};
 use tari_utilities::hex::Hex;
 
 use crate::steps::{

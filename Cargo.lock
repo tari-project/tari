@@ -4554,6 +4554,7 @@ dependencies = [
  "tari_shutdown",
  "tari_test_utils",
  "tari_transaction_components",
+ "tari_transaction_key_manager",
  "tari_utilities",
  "tempfile",
  "thiserror 1.0.69",

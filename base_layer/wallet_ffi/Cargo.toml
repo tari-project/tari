@@ -50,6 +50,7 @@ openssl = { version = "0.10.72", features = ["vendored"] }
 crate-type = ["staticlib", "cdylib"]
 
 [dev-dependencies]
+tari_transaction_key_manager = { workspace = true }
 once_cell = "1.8.0"
 tempfile = "3.1.0"
 tari_common_types = { workspace = true }

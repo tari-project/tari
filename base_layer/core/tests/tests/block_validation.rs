@@ -66,6 +66,7 @@ use tari_transaction_components::{
     test_helpers::{create_wallet_output_with_data, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
     transaction_components::{CoinBaseExtra, OutputFeatures, TransactionError},
     txn_schema,
+    validation::AggregatedBodyValidationError,
 };
 use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
@@ -933,7 +934,7 @@ async fn test_block_sync_body_validator() {
     assert!(
         matches!(
             err,
-            ValidationError::BlockTooLarge { actual_weight, max_weight } if
+            ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::BlockTooLarge { actual_weight, max_weight }) if
             actual_weight == 414 && max_weight == 400
         ),
         "{}",

@@ -40,8 +40,8 @@ use tari_common_types::{
     transaction::TxId,
     types::{FixedHash, HashOutput, PrivateKey},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::OutputFeatures};
 use tari_crypto::keys::SecretKey;
+use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::OutputFeatures};
 use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{hex::Hex, ByteArray};
 

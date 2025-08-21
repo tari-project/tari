@@ -691,11 +691,11 @@ mod validate_internal_consistency {
         )
         .await
         .unwrap_err();
-        dbg!(err);
-        panic!("fix here");
-        // unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
-        // unpack_enum!(TransactionError::BuilderError(_s) = err);
-
+        unpack_enum!(TransactionError::BuilderError(err) = err);
+        assert_eq!(
+            err,
+            "Covenant failed to validate: Covenant did not match any outputs".to_string()
+        );
         //---------------------------------- Case4 - PASS --------------------------------------------//
         // Pass because maturity is set
         test_case(

@@ -38,18 +38,21 @@ mod test {
         types::{CompressedPublicKey, PrivateKey},
     };
     use tari_comms_dht::event::DhtEvent;
-    use tari_core::transactions::{
-        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
+    use tari_core::transactions::legacy_transaction_protocol::{
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    };
+    use tari_crypto::keys::SecretKey;
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::Shutdown;
+    use tari_transaction_components::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             memo_field::{MemoField, TxType},
             Transaction,
         },
-        transaction_key_manager::MemoryDbKeyManager,
     };
-    use tari_crypto::keys::SecretKey;
-    use tari_service_framework::reply_channel;
-    use tari_shutdown::Shutdown;
+    use tari_transaction_key_manager::MemoryDbKeyManager;
     use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
 
     use crate::{
