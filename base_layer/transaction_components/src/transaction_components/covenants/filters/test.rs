@@ -19,28 +19,28 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use tari_transaction_key_manager::MemoryDbKeyManager;
-
-use crate::transaction_components::{
-    covenants::{
-        context::CovenantContext,
-        test::{create_context, create_outputs},
-        Covenant,
+use crate::{
+    key_manager::TransactionKeyManagerInterface,
+    transaction_components::{
+        covenants::{
+            context::CovenantContext,
+            test::{create_context, create_outputs},
+            Covenant,
+        },
+        TransactionInput,
+        TransactionOutput,
     },
-    TransactionInput,
-    TransactionOutput,
 };
 
 /// Create a covenant context and outputs for testing a filter with a given covenant, input and block height. The
 /// outputs are default random and modified by closure parameter `output_mod: F` (anonymous function) before it is
 /// returned.
-pub async fn setup_filter_test<'a, F>(
+pub async fn setup_filter_test<'a, F, KM: TransactionKeyManagerInterface>(
     covenant: &Covenant,
     input: &'a TransactionInput,
     block_height: u64,
     output_mod: F,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KM,
 ) -> (CovenantContext<'a>, Vec<TransactionOutput>)
 where
     F: FnOnce(&mut Vec<TransactionOutput>),

@@ -47,9 +47,9 @@ use tari_common_types::{
         CommsDHKE,
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         PrivateKey,
         RangeProof,
-        Signature,
         UncompressedComAndPubSignature,
         UncompressedSignature,
     },
@@ -1149,7 +1149,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         private_key_id: &TariKeyId,
         nonce_key_id: &TariKeyId,
         challenge: &[u8; 64],
-    ) -> Result<Signature, TransactionError> {
+    ) -> Result<CompressedSignature, TransactionError> {
         match &*self.wallet_type {
             WalletType::Ledger(ledger) => {
                 #[cfg(not(feature = "ledger"))]
@@ -1193,7 +1193,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                                         challenge,
                                     )?;
 
-                                    Ok(Signature::new_from_schnorr(signature))
+                                    Ok(CompressedSignature::new_from_schnorr(signature))
                                 }
                             },
                             _ => Err(self.key_id_not_supported_error(
@@ -1215,7 +1215,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                 let private_nonce = self.get_private_key(nonce_key_id).await?;
                 let signature = UncompressedSignature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
 
-                Ok(Signature::new_from_schnorr(signature))
+                Ok(CompressedSignature::new_from_schnorr(signature))
             },
         }
     }
@@ -1445,7 +1445,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
-    ) -> Result<Signature, TransactionError> {
+    ) -> Result<CompressedSignature, TransactionError> {
         let private_key = self.get_private_key(commitment_mask_key_id).await?;
         // We cannot use an offset with a coinbase tx as this will not allow us to check the coinbase commitment and
         // because the offset function does not know if its a coinbase or not, we need to know if we need to bypass it
@@ -1476,7 +1476,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         );
 
         let signature = UncompressedSignature::sign_raw_uniform(&final_signing_key, private_nonce, &challenge)?;
-        Ok(Signature::new_from_schnorr(signature))
+        Ok(CompressedSignature::new_from_schnorr(signature))
     }
 
     pub async fn get_txo_kernel_signature_excess_with_offset(

@@ -32,9 +32,9 @@ use tari_common_types::{
         CommsDHKE,
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         PrivateKey,
         RangeProof,
-        Signature,
     },
     wallet_types::WalletType,
 };
@@ -311,7 +311,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
-    ) -> Result<Signature, TransactionError> {
+    ) -> Result<CompressedSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await
@@ -496,7 +496,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
         challenge: &[u8; 64],
-    ) -> Result<Signature, TransactionError> {
+    ) -> Result<CompressedSignature, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await

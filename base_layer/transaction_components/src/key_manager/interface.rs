@@ -33,9 +33,9 @@ use tari_common_types::{
         CommsDHKE,
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         PrivateKey,
         RangeProof,
-        Signature,
     },
     WALLET_COMMS_AND_SPEND_KEY_BRANCH,
 };
@@ -364,7 +364,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         kernel_message: &[u8; 32],
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
-    ) -> Result<Signature, TransactionError>;
+    ) -> Result<CompressedSignature, TransactionError>;
 
     async fn get_txo_kernel_signature_excess_with_offset(
         &self,
@@ -454,7 +454,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         private_key_id: &TariKeyId,
         nonce: &TariKeyId,
         challenge: &[u8; 64],
-    ) -> Result<Signature, TransactionError>;
+    ) -> Result<CompressedSignature, TransactionError>;
 
     async fn get_receiver_partial_metadata_signature(
         &self,

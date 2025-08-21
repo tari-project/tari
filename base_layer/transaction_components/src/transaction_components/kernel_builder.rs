@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::{CompressedCommitment, Signature};
+use tari_common_types::types::{CompressedCommitment, CompressedSignature};
 
 use crate::{
     tari_amount::MicroMinotari,
@@ -36,7 +36,7 @@ pub struct KernelBuilder {
     fee: MicroMinotari,
     lock_height: u64,
     excess: Option<CompressedCommitment>,
-    excess_sig: Option<Signature>,
+    excess_sig: Option<CompressedSignature>,
     burn_commitment: Option<CompressedCommitment>,
 }
 
@@ -78,7 +78,7 @@ impl KernelBuilder {
     }
 
     /// Add the excess signature
-    pub fn with_signature(mut self, signature: Signature) -> KernelBuilder {
+    pub fn with_signature(mut self, signature: CompressedSignature) -> KernelBuilder {
         self.excess_sig = Some(signature);
         self
     }

@@ -4,7 +4,7 @@
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
 use tari_sidechain::ShardGroup;
 use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
@@ -94,7 +94,7 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// is in
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
     /// Fetch all UTXOs and spends in the block

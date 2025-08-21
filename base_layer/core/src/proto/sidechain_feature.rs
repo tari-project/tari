@@ -26,7 +26,7 @@ use std::convert::{TryFrom, TryInto};
 
 use prost::Message;
 use tari_common::configuration::Network;
-use tari_common_types::types::{CompressedPublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature};
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
     ChainLink,
@@ -142,7 +142,7 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
                 public_key,
                 value
                     .signature
-                    .map(Signature::try_from)
+                    .map(CompressedSignature::try_from)
                     .ok_or("signature not provided")??,
             ),
             claim_public_key,
@@ -175,7 +175,7 @@ impl TryFrom<proto::types::ValidatorNodeExit> for ValidatorNodeExit {
                 public_key,
                 value
                     .signature
-                    .map(Signature::try_from)
+                    .map(CompressedSignature::try_from)
                     .ok_or("signature not provided")??,
             ),
             value.max_epoch.into(),
@@ -203,7 +203,7 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
                 .map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
-                .map(Signature::try_from)
+                .map(CompressedSignature::try_from)
                 .ok_or("author_signature not provided")??,
             template_name: MaxSizeString::try_from(value.template_name).map_err(|e| e.to_string())?,
             template_version: value
@@ -330,7 +330,7 @@ impl TryFrom<proto::types::SidechainId> for SideChainId {
         let public_key = CompressedPublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?;
         let knowledge_proof = value
             .knowledge_proof
-            .map(Signature::try_from)
+            .map(CompressedSignature::try_from)
             .ok_or("knowledge_proof not provided")??;
         Ok(Self::new(public_key, knowledge_proof))
     }

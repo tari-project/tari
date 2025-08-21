@@ -25,7 +25,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{CompressedPublicKey, PrivateKey, Signature},
+    types::{CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_transaction_components::transaction_components::TransactionOutput;
 
@@ -57,7 +57,7 @@ pub struct RecipientSignedMessage {
     pub tx_id: TxId,
     pub output: TransactionOutput,
     pub public_spend_key: CompressedPublicKey,
-    pub partial_signature: Signature,
+    pub partial_signature: CompressedSignature,
     pub tx_metadata: TransactionMetadata,
     pub offset: PrivateKey,
 }

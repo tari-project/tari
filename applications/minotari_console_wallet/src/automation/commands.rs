@@ -72,10 +72,10 @@ use tari_common_types::{
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
         HashOutput,
         PrivateKey,
-        Signature,
         UncompressedPublicKey,
         UncompressedSignature,
     },
@@ -247,8 +247,8 @@ async fn spend_backup_pre_mine_utxo(
 async fn finalise_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     tx_id: u64,
-    meta_signatures: Vec<Signature>,
-    script_signatures: Vec<Signature>,
+    meta_signatures: Vec<CompressedSignature>,
+    script_signatures: Vec<CompressedSignature>,
     wallet_script_secret_key: PrivateKey,
 ) -> Result<TxId, CommandError> {
     trace!(target: LOG_TARGET, "finalise_aggregate_utxo: start");
@@ -266,8 +266,8 @@ async fn finalise_aggregate_utxo(
     wallet_transaction_service
         .finalize_aggregate_utxo(
             tx_id,
-            Signature::new_from_schnorr(meta_sig),
-            Signature::new_from_schnorr(script_sig),
+            CompressedSignature::new_from_schnorr(meta_sig),
+            CompressedSignature::new_from_schnorr(script_sig),
             wallet_script_secret_key,
         )
         .await
@@ -329,7 +329,7 @@ pub async fn register_validator_node(
     amount: MicroMinotari,
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: CompressedPublicKey,
-    validator_node_signature: Signature,
+    validator_node_signature: CompressedSignature,
     validator_node_claim_public_key: CompressedPublicKey,
     sidechain_deployment_key: Option<PrivateKey>,
     epoch: VnEpoch,
@@ -1601,8 +1601,8 @@ pub async fn command_runner(
                         },
                     };
 
-                    if script_signature.get_signature() == Signature::default().get_signature() ||
-                        metadata_signature.get_signature() == Signature::default().get_signature()
+                    if script_signature.get_signature() == CompressedSignature::default().get_signature() ||
+                        metadata_signature.get_signature() == CompressedSignature::default().get_signature()
                     {
                         eprintln!(
                             "\nError: Script and/or metadata signatures not created (index {})!\n",
@@ -2063,7 +2063,7 @@ pub async fn command_runner(
                     args.amount,
                     transaction_service.clone(),
                     args.validator_node_public_key.into(),
-                    Signature::new(
+                    CompressedSignature::new(
                         args.validator_node_public_nonce.into(),
                         RistrettoSecretKey::from_vec(args.validator_node_signature.first().expect("Already checked"))?,
                     ),

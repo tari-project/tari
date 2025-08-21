@@ -132,7 +132,7 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
+    types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::legacy_transaction_protocol::recipient::RecipientState;
@@ -1236,7 +1236,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .unwrap_or(&Signature::default())
+                            .unwrap_or(&CompressedSignature::default())
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
@@ -1374,7 +1374,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     excess_sig: txn
                         .transaction
                         .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
+                        .unwrap_or(&CompressedSignature::default())
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),
@@ -1535,7 +1535,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .unwrap_or(&Signature::default())
+                            .unwrap_or(&CompressedSignature::default())
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
@@ -1677,7 +1677,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 excess_sig: txn
                     .transaction
                     .first_kernel_excess_sig()
-                    .unwrap_or(&Signature::default())
+                    .unwrap_or(&CompressedSignature::default())
                     .get_signature()
                     .to_vec(),
                 raw_payment_id: txn.payment_id.to_bytes(),
@@ -2164,7 +2164,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     excess_sig: txn
                         .transaction
                         .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
+                        .unwrap_or(&CompressedSignature::default())
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),

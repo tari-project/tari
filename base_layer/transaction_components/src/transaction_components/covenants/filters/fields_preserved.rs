@@ -46,11 +46,10 @@ impl Filter for FieldsPreservedFilter {
 mod test {
     #![allow(clippy::indexing_slicing)]
 
-    use tari_transaction_key_manager::create_memory_db_key_manager;
-
     use super::*;
     use crate::{
         covenant,
+        test_helpers::create_memory_key_manager,
         transaction_components::{
             covenants::{filters::test::setup_filter_test, test::create_input},
             OutputType,
@@ -61,7 +60,7 @@ mod test {
     async fn it_filters_outputs_that_match_input_fields() {
         let covenant =
             covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type))).unwrap();
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let mut input = create_input(&key_manager).await;
         input.set_maturity(42).unwrap();
         input.features_mut().unwrap().output_type = OutputType::ValidatorNodeRegistration;

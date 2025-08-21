@@ -32,7 +32,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::{U32, U64};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, FixedHash, Signature};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash};
 use tari_hashing::TransactionHashDomain;
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
@@ -63,7 +63,7 @@ pub struct TransactionKernel {
     pub excess: CompressedCommitment,
     /// An aggregated signature of the metadata in this kernel, signed by the individual excess values and the offset
     /// excess of the sender.
-    pub excess_sig: Signature,
+    pub excess_sig: CompressedSignature,
     /// This is an optional field that must be set if the transaction contains a burned output.
     pub burn_commitment: Option<CompressedCommitment>,
 }
@@ -75,7 +75,7 @@ impl TransactionKernel {
         fee: MicroMinotari,
         lock_height: u64,
         excess: CompressedCommitment,
-        excess_sig: Signature,
+        excess_sig: CompressedSignature,
         burn_commitment: Option<CompressedCommitment>,
     ) -> TransactionKernel {
         TransactionKernel {
@@ -102,7 +102,7 @@ impl TransactionKernel {
         fee: MicroMinotari,
         lock_height: u64,
         excess: CompressedCommitment,
-        excess_sig: Signature,
+        excess_sig: CompressedSignature,
         burn_commitment: Option<CompressedCommitment>,
     ) -> TransactionKernel {
         TransactionKernel::new(

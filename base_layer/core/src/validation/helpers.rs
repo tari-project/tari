@@ -471,12 +471,12 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
 #[cfg(test)]
 mod test {
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::{crypto_factories::CryptoFactories, test_helpers, test_helpers::TestParams};
 
     use super::*;
-    use crate::transactions::{test_helpers, test_helpers::TestParams, CryptoFactories};
 
     mod is_all_unique_and_sorted {
-        use super::*;
+        use tari_transaction_components::validation::helpers::is_all_unique_and_sorted;
 
         #[test]
         fn it_returns_true_when_nothing_to_compare() {
@@ -541,14 +541,13 @@ mod test {
 
     mod check_coinbase_maturity {
         use futures::executor::block_on;
-
-        use super::*;
-        use crate::transactions::{
+        use tari_transaction_components::{
             aggregated_body::AggregateBody,
             transaction_components::{RangeProofType, TransactionError},
-            transaction_key_manager::create_memory_db_key_manager,
         };
+        use tari_transaction_key_manager::create_memory_db_key_manager;
 
+        use super::*;
         #[tokio::test]
         async fn it_succeeds_for_valid_coinbase() {
             let height = 1;

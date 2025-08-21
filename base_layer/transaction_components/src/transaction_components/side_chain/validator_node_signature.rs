@@ -25,18 +25,18 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, PrivateKey, Signature, UncompressedSignature},
+    types::{CompressedPublicKey, CompressedSignature, PrivateKey, UncompressedSignature},
 };
 use tari_hashing::layer2::validator_registration_hasher;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {
     public_key: CompressedPublicKey,
-    signature: Signature,
+    signature: CompressedSignature,
 }
 
 impl ValidatorNodeSignature {
-    pub fn new(public_key: CompressedPublicKey, signature: Signature) -> Self {
+    pub fn new(public_key: CompressedPublicKey, signature: CompressedSignature) -> Self {
         Self { public_key, signature }
     }
 
@@ -59,7 +59,7 @@ impl ValidatorNodeSignature {
             .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
         Self {
             public_key,
-            signature: Signature::new_from_schnorr(signature),
+            signature: CompressedSignature::new_from_schnorr(signature),
         }
     }
 
@@ -71,7 +71,7 @@ impl ValidatorNodeSignature {
             .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
         Self {
             public_key,
-            signature: Signature::new_from_schnorr(signature),
+            signature: CompressedSignature::new_from_schnorr(signature),
         }
     }
 
@@ -141,7 +141,7 @@ impl ValidatorNodeSignature {
         &self.public_key
     }
 
-    pub fn signature(&self) -> &Signature {
+    pub fn signature(&self) -> &CompressedSignature {
         &self.signature
     }
 }

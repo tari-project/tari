@@ -27,7 +27,15 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BadBlock, BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{
+        BadBlock,
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+    },
 };
 use tari_transaction_components::{
     tari_proof_of_work::PowAlgorithm,
@@ -174,7 +182,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
     //---------------------------------- Kernel --------------------------------------------//
-    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
+    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: CompressedSignature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
     make_async_fn!(fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>, "fetch_kernels_in_block");
 
@@ -241,7 +249,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_by_hash(hash: HashOutput, compact: bool) -> Option<HistoricalBlock>, "fetch_block_by_hash");
 
-    make_async_fn!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
+    make_async_fn!(fetch_block_with_kernel(excess_sig: CompressedSignature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
 
     make_async_fn!(fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
 

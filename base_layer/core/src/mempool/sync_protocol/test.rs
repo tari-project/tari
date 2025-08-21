@@ -39,6 +39,13 @@ use tari_comms::{
     Bytes,
     BytesMut,
 };
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    tari_amount::uT,
+    test_helpers::create_tx,
+    transaction_components::Transaction,
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -46,21 +53,13 @@ use tokio::{
 };
 
 use crate::{
-    consensus::ConsensusManager,
     mempool::{
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
-    transactions::{
-        tari_amount::uT,
-        test_helpers::create_tx,
-        transaction_components::Transaction,
-        transaction_key_manager::create_memory_db_key_manager,
-    },
     validation::mocks::MockValidator,
 };
-
 pub async fn create_transactions(n: usize) -> Vec<Transaction> {
     let key_manager = create_memory_db_key_manager().unwrap();
     let mut transactions = Vec::new();

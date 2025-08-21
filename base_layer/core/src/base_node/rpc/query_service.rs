@@ -86,7 +86,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         self.mempool.clone()
     }
 
-    async fn fetch_kernel(&self, signature: types::Signature) -> Result<TxQueryResponse, Error> {
+    async fn fetch_kernel(&self, signature: types::CompressedSignature) -> Result<TxQueryResponse, Error> {
         let db = self.db();
 
         match db.fetch_kernel_by_excess_sig(signature.clone()).await? {

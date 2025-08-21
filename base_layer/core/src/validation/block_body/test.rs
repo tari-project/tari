@@ -27,31 +27,31 @@ use tari_common::configuration::Network;
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    crypto_factories::CryptoFactories,
+    key_manager::TariKeyId,
+    tari_amount::{uT, T},
+    tari_proof_of_work::Difficulty,
+    test_helpers::schema_to_transaction,
+    transaction_components::{
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        memo_field::MemoField,
+        EncryptedData,
+        RangeProofType,
+        TransactionError,
+    },
+    txn_schema,
+    CoinbaseBuilder,
+};
 use tokio::time::Instant;
 
 use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
     blocks::BlockValidationError,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
-    proof_of_work::Difficulty,
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::{uT, T},
-        test_helpers::schema_to_transaction,
-        transaction_components::{
-            encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-            memo_field::MemoField,
-            EncryptedData,
-            RangeProofType,
-            TransactionError,
-        },
-        transaction_key_manager::TariKeyId,
-        CoinbaseBuilder,
-        CryptoFactories,
-    },
-    txn_schema,
     validation::{BlockBodyValidator, ValidationError},
 };
 async fn setup_with_rules(rules: ConsensusManager, check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
@@ -530,12 +530,10 @@ mod body_only {
 }
 
 mod orphan_validator {
+    use tari_transaction_components::{transaction_components::OutputType, txn_schema};
+
     use super::*;
-    use crate::{
-        transactions::transaction_components::OutputType,
-        txn_schema,
-        validation::block_body::BlockBodyInternalConsistencyValidator,
-    };
+    use crate::validation::block_body::BlockBodyInternalConsistencyValidator;
 
     #[tokio::test]
     async fn it_rejects_zero_conf_double_spends() {

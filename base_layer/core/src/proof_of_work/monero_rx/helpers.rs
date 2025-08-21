@@ -434,6 +434,7 @@ mod test {
     use serial_test::serial;
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
     use tari_utilities::{
         epoch_time::EpochTime,
         hex::{from_hex, Hex},
@@ -441,7 +442,6 @@ mod test {
     };
 
     use super::*;
-    use crate::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]
@@ -578,7 +578,7 @@ mod test {
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
         let mut block_header = BlockHeader {
             version: 0,
@@ -678,7 +678,7 @@ mod test {
 
     #[test]
     fn test_append_mm_tag() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -753,7 +753,7 @@ mod test {
 
     #[test]
     fn test_append_mm_tag_no_tag() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -826,7 +826,7 @@ mod test {
 
     #[test]
     fn test_append_mm_tag_wrong_hash() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -903,7 +903,7 @@ mod test {
 
     #[test]
     fn test_duplicate_append_mm_tag() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -1061,7 +1061,7 @@ mod test {
 
     #[test]
     fn test_verify_header_no_coinbase() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -1138,7 +1138,7 @@ mod test {
 
     #[test]
     fn test_verify_header_no_data() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -1196,7 +1196,7 @@ mod test {
 
     #[test]
     fn test_verify_invalid_root() {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();

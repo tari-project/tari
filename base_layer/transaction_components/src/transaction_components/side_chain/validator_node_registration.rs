@@ -27,7 +27,7 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, FixedHash, PrivateKey, Signature},
+    types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_hashing::TransactionHashDomain;
 use tari_utilities::ByteArray;
@@ -101,7 +101,7 @@ impl ValidatorNodeRegistration {
         &self.claim_public_key
     }
 
-    pub fn signature(&self) -> &Signature {
+    pub fn signature(&self) -> &CompressedSignature {
         self.signature.signature()
     }
 

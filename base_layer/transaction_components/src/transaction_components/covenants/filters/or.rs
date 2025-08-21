@@ -52,17 +52,17 @@ impl Filter for OrFilter {
 mod test {
     #![allow(clippy::indexing_slicing)]
     use tari_script::script;
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{
         covenant,
+        test_helpers::create_memory_key_manager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
 
     #[tokio::test]
     async fn it_filters_outputset_using_union() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone())))).unwrap();
         let input = create_input(&key_manager).await;

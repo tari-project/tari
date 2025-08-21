@@ -32,11 +32,6 @@ use tari_crypto::{
 };
 use tari_script::{inputs, script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
-use tari_transaction_key_manager::{
-    create_memory_db_key_manager,
-    create_memory_db_key_manager_with_range_proof_size,
-    MemoryDbKeyManager,
-};
 
 use super::*;
 use crate::{
@@ -45,7 +40,12 @@ use crate::{
     crypto_factories::CryptoFactories,
     tari_amount::{uT, T},
     test_helpers,
-    test_helpers::{TestParams, UtxoTestParams},
+    test_helpers::{
+        create_memory_key_manager,
+        memory_key_manager::create_memory_key_manager_with_range_proof_size,
+        TestParams,
+        UtxoTestParams,
+    },
     transaction_components::{
         covenants::Covenant,
         memo_field::MemoField,
@@ -57,7 +57,7 @@ use crate::{
 };
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
@@ -81,7 +81,7 @@ fn test_smt_hashes() {
 
 #[tokio::test]
 async fn key_manager_input() {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
@@ -109,7 +109,7 @@ async fn key_manager_input() {
 #[tokio::test]
 async fn range_proof_verification() {
     let factories = CryptoFactories::new(32);
-    let key_manager = create_memory_db_key_manager_with_range_proof_size(32).unwrap();
+    let key_manager = create_memory_key_manager_with_range_proof_size(32).unwrap();
     // Directly test the tx_output verification
     let test_params_1 = TestParams::new(&key_manager).await;
     let test_params_2 = TestParams::new(&key_manager).await;
@@ -172,7 +172,7 @@ async fn range_proof_verification() {
 #[tokio::test]
 async fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let wallet_output1 = TestParams::new(&key_manager)
         .await
         .create_output(
@@ -263,7 +263,7 @@ async fn range_proof_verification_batch() {
 
 #[tokio::test]
 async fn sender_signature_verification() {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
     let wallet_output = test_params
         .create_output(Default::default(), &key_manager)
@@ -426,7 +426,7 @@ fn check_timelocks() {
 #[tokio::test]
 async fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager)
         .await
         .expect("Failed to create tx");
@@ -439,7 +439,7 @@ async fn test_validate_internal_consistency() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn check_cut_through() {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let (tx, _, outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
             .await
@@ -496,7 +496,7 @@ async fn check_cut_through() {
 
 #[tokio::test]
 async fn check_duplicate_inputs_outputs() {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let (tx, _, _outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
             .await
@@ -519,7 +519,7 @@ async fn check_duplicate_inputs_outputs() {
 
 #[tokio::test]
 async fn inputs_not_malleable() {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let (inputs, outputs) = test_helpers::create_wallet_outputs(
         5000.into(),
         1,
@@ -554,7 +554,7 @@ async fn inputs_not_malleable() {
 
 #[tokio::test]
 async fn test_output_recover_openings() {
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_key_manager().unwrap();
     let test_params = TestParams::new(&key_manager).await;
     let v = MicroMinotari::from(42);
 
@@ -585,15 +585,15 @@ mod validate_internal_consistency {
     use super::*;
     use crate::{
         covenant,
+        key_manager::TransactionKeyManagerInterface,
         test_helpers::{create_transaction_with, create_wallet_outputs},
         transaction_components::covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
     };
-
-    async fn test_case(
+    async fn test_case<KM: TransactionKeyManagerInterface>(
         input_params: &UtxoTestParams,
         utxo_params: &UtxoTestParams,
         height: u64,
-        key_manager: &MemoryDbKeyManager,
+        key_manager: &KM,
     ) -> Result<(), TransactionError> {
         let (mut inputs, outputs) = create_wallet_outputs(
             100 * T,
@@ -613,7 +613,7 @@ mod validate_internal_consistency {
         inputs[0].script = input_params.script.clone();
         let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager).await;
         // Otherwise if this passes check again with the height
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = ConsensusManager::builder(Network::LocalNet).build();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
         validator
             .validate(&tx, None, None, height)
@@ -626,7 +626,7 @@ mod validate_internal_consistency {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant))).unwrap();
         let features = OutputFeatures { ..Default::default() };
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         test_case(
             &UtxoTestParams {
                 features: features.clone(),

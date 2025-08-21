@@ -524,11 +524,11 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
     use tari_script::script;
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{
         test_helpers,
+        test_helpers::create_memory_key_manager,
         transaction_components::{covenants::Covenant, KernelFeatures, OutputFeatures, TransactionInputVersion},
     };
 
@@ -592,7 +592,7 @@ mod test {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
             &key_manager,
@@ -654,7 +654,7 @@ mod test {
             // Sort the kernels, we'll check that the outputs fail the sorting check
             kernels.sort();
 
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_key_manager().unwrap();
             let mut outputs = Vec::new();
             for _ in 0..10 {
                 let (o, _, _) = test_helpers::create_utxo(

@@ -515,26 +515,28 @@ mod test {
     use tari_crypto::keys::SecretKey;
     use tari_utilities::ByteArray;
 
+    use super::*;
     use crate::{
+        aggregated_body::AggregateBody,
         coinbase_builder::CoinbaseBuildError,
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         crypto_factories::CryptoFactories,
         tari_amount::uT,
-        test_helpers::{create_consensus_constants, TestParams},
+        test_helpers::{create_consensus_constants, create_memory_key_manager, MemoryKeyManager, TestParams},
         transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
         validation::aggregate_body::AggregateBodyInternalConsistencyValidator,
         CoinbaseBuilder,
     };
 
     fn get_builder() -> (
-        CoinbaseBuilder<MemoryDbKeyManager>,
+        CoinbaseBuilder<MemoryKeyManager>,
         ConsensusManager,
         CryptoFactories,
-        MemoryDbKeyManager,
+        MemoryKeyManager,
     ) {
         let network = Network::LocalNet;
-        let rules = ConsensusManagerBuilder::new(network).build().unwrap();
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let rules = ConsensusManagerBuilder::new(network).build();
+        let key_manager = create_memory_key_manager().unwrap();
         let factories = CryptoFactories::default();
         (CoinbaseBuilder::new(key_manager.clone()), rules, factories, key_manager)
     }
@@ -777,22 +779,6 @@ mod test {
             )
             .is_ok());
     }
-    use tari_script::push_pubkey_script;
-    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
-
-    use crate::{
-        aggregated_body::AggregateBody,
-        generate_coinbase_with_wallet_output,
-        key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoinBaseExtra,
-            KernelBuilder,
-            RangeProofType,
-            TransactionKernelVersion,
-        },
-    };
 
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
@@ -863,12 +849,12 @@ mod test {
             &None,
         );
         let excess = key_manager
-            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &new_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(&output.commitment_mask_key_id, &new_nonce.key_id)
             .await
             .unwrap();
         let sig = key_manager
             .get_partial_txo_kernel_signature(
-                &output.spending_key_id,
+                &output.commitment_mask_key_id,
                 &new_nonce.key_id,
                 &new_nonce.pub_key,
                 &excess,
@@ -881,7 +867,7 @@ mod test {
             .unwrap();
         // we verify that the created signature is correct
         let offset = key_manager
-            .get_txo_private_kernel_offset(&output.spending_key_id, &new_nonce.key_id)
+            .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &new_nonce.key_id)
             .await
             .unwrap();
         let sig_challenge = TransactionKernel::finalize_kernel_signature_challenge(
@@ -1033,7 +1019,7 @@ mod test {
 
         let mut kernel_signature = key_manager
             .get_partial_txo_kernel_signature(
-                &wo1.spending_key_id,
+                &wo1.commitment_mask_key_id,
                 &new_nonce1.key_id,
                 &CompressedPublicKey::new_from_pk(nonce.clone()),
                 &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1049,7 +1035,7 @@ mod test {
         kernel_signature = &kernel_signature +
             &key_manager
                 .get_partial_txo_kernel_signature(
-                    &wo2.spending_key_id,
+                    &wo2.commitment_mask_key_id,
                     &new_nonce2.key_id,
                     &CompressedPublicKey::new_from_pk(nonce.clone()),
                     &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1161,7 +1147,7 @@ mod test {
 
         let mut kernel_signature = key_manager
             .get_partial_txo_kernel_signature(
-                &wo1.spending_key_id,
+                &wo1.commitment_mask_key_id,
                 &new_nonce1.key_id,
                 &CompressedPublicKey::new_from_pk(nonce.clone()),
                 &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1177,7 +1163,7 @@ mod test {
         kernel_signature = &kernel_signature +
             &key_manager
                 .get_partial_txo_kernel_signature(
-                    &wo2.spending_key_id,
+                    &wo2.commitment_mask_key_id,
                     &new_nonce2.key_id,
                     &CompressedPublicKey::new_from_pk(nonce),
                     &CompressedPublicKey::new_from_pk(excess.as_public_key().clone()),
@@ -1214,7 +1200,7 @@ mod test {
 
     #[tokio::test]
     async fn test_generate_coinbase_with_payment_id_from_address() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let wallet_private_spend_key = PrivateKey::random(&mut rand::rngs::OsRng);
         let wallet_private_view_key = PrivateKey::random(&mut rand::rngs::OsRng);
 

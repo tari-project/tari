@@ -38,7 +38,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     tari_address::TariAddress,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
 use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::LMDBConfig;
@@ -283,7 +283,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }

@@ -11,8 +11,8 @@ use tari_common_types::{
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         PrivateKey,
-        Signature,
         UncompressedPublicKey,
         UncompressedSignature,
     },
@@ -734,7 +734,7 @@ where KM: TransactionKeyManagerInterface
             .with_lock_height(self.lock_height)
             .with_burn_commitment(self.burn_commitment.clone())
             .with_excess(&excess)
-            .with_signature(Signature::new_from_schnorr(signature))
+            .with_signature(CompressedSignature::new_from_schnorr(signature))
             .build()?;
         core_tx_builder.with_kernel(kernel);
         let tx = core_tx_builder.build()?;
@@ -854,7 +854,6 @@ impl<KM> Debug for TransactionBuilder<KM> {
 mod test {
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
     use tari_script::{script, TariScript};
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{

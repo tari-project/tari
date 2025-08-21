@@ -33,7 +33,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TxId},
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{mempool::FeePerGramStat, proto};
@@ -133,14 +133,14 @@ pub enum TransactionServiceRequest {
     },
     FinalizeSentAggregateTransaction {
         tx_id: u64,
-        total_meta_data_signature: Signature,
-        total_script_data_signature: Signature,
+        total_meta_data_signature: CompressedSignature,
+        total_script_data_signature: CompressedSignature,
         script_offset: PrivateKey,
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         validator_node_claim_public_key: CommsPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
@@ -151,7 +151,7 @@ pub enum TransactionServiceRequest {
     SubmitValidatorNodeExit {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
@@ -748,7 +748,7 @@ impl TransactionServiceHandle {
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CompressedPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         validator_node_claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
@@ -780,7 +780,7 @@ impl TransactionServiceHandle {
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CompressedPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
@@ -1072,8 +1072,8 @@ impl TransactionServiceHandle {
     pub async fn finalize_aggregate_utxo(
         &mut self,
         tx_id: u64,
-        total_meta_data_signature: Signature,
-        total_script_data_signature: Signature,
+        total_meta_data_signature: CompressedSignature,
+        total_script_data_signature: CompressedSignature,
         script_offset: PrivateKey,
     ) -> Result<TxId, TransactionServiceError> {
         match self

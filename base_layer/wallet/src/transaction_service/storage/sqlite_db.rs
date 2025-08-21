@@ -54,7 +54,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
@@ -2393,10 +2393,10 @@ impl CompletedTransaction {
             .map_err(CompletedTransactionConversionError::AeadError)?;
         let transaction_signature = match CompressedPublicKey::from_vec(&c.transaction_signature_nonce) {
             Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
-                Ok(signature) => Signature::new(public_nonce, signature),
-                Err(_) => Signature::default(),
+                Ok(signature) => CompressedSignature::new(public_nonce, signature),
+                Err(_) => CompressedSignature::default(),
             },
-            Err(_) => Signature::default(),
+            Err(_) => CompressedSignature::default(),
         };
         let mined_in_block = match c.mined_in_block {
             Some(v) => v.try_into().ok(),
@@ -2461,7 +2461,7 @@ pub struct UpdateCompletedTransactionSql {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
-    pub signature: Signature,
+    pub signature: CompressedSignature,
     pub status: TransactionStatus,
     pub payment_id: MemoField,
 }
@@ -2472,7 +2472,7 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
     fn try_from(i: UnconfirmedTransactionInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
-            signature: Signature::new(
+            signature: CompressedSignature::new(
                 CompressedPublicKey::from_vec(&i.transaction_signature_nonce)?,
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
@@ -2613,11 +2613,11 @@ mod test {
             OutputFeatures,
             Transaction,
         },
-        transaction_key_manager::create_memory_db_key_manager,
     };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_script::script;
     use tari_test_utils::random::string;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     use tempfile::tempdir;
 
     use crate::{

@@ -56,9 +56,9 @@ use tari_common_types::{
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
         HashOutput,
-        Signature,
         UncompressedCommitment,
     },
 };
@@ -720,7 +720,7 @@ where B: BlockchainBackend
 
     pub fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: Signature,
+        excess_sig: CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_kernel_by_excess_sig(&excess_sig)
@@ -1408,7 +1408,10 @@ where B: BlockchainBackend
 
     /// Attempt to fetch the block corresponding to the provided kernel hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_kernel(&self, excess_sig: Signature) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+    pub fn fetch_block_with_kernel(
+        &self,
+        excess_sig: CompressedSignature,
+    ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_by_kernel_signature(&*db, excess_sig)
     }
@@ -2003,7 +2006,7 @@ fn fetch_blocks<T: BlockchainBackend>(
 
 fn fetch_block_by_kernel_signature<T: BlockchainBackend>(
     db: &T,
-    excess_sig: Signature,
+    excess_sig: CompressedSignature,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     match db.fetch_kernel_by_excess_sig(&excess_sig) {
         Ok(kernel) => match kernel {
@@ -2965,16 +2968,15 @@ mod test {
     use rand::seq::SliceRandom;
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::{
+        consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder},
+        tari_proof_of_work::Difficulty,
+    };
 
     use super::*;
     use crate::{
         block_specs,
-        consensus::{
-            chain_strength_comparer::strongest_chain,
-            consensus_constants::PowAlgorithmConstants,
-            ConsensusConstantsBuilder,
-        },
-        proof_of_work::Difficulty,
+        consensus::chain_strength_comparer::strongest_chain,
         test_helpers::{
             blockchain::{
                 create_chained_blocks,
@@ -3905,7 +3907,7 @@ mod test {
     struct TestHarness {
         db: BlockchainDatabase<TempDatabase>,
         config: BlockchainDatabaseConfig,
-        consensus: ConsensusManager,
+        consensus: BaseConsensusManager,
         chain_strength_comparer: Box<dyn ChainStrengthComparer>,
         post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
         header_validator: Box<dyn HeaderChainLinkedValidator<TempDatabase>>,
@@ -3975,8 +3977,8 @@ mod test {
         Ok((results, chain))
     }
 
-    fn create_consensus_rules() -> ConsensusManager {
-        ConsensusManager::builder(Network::LocalNet)
+    fn create_consensus_rules() -> BaseConsensusManager {
+        BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()

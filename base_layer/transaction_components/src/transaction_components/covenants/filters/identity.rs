@@ -40,16 +40,15 @@ impl Filter for IdentityFilter {
 
 #[cfg(test)]
 mod tests {
-    use tari_transaction_key_manager::create_memory_db_key_manager;
-
     use super::*;
     use crate::{
         covenant,
+        test_helpers::create_memory_key_manager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
     #[tokio::test]
     async fn it_returns_the_outputset_unchanged() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let covenant = covenant!(identity()).unwrap();
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |_| {}, &key_manager).await;

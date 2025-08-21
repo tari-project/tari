@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, TariScript};
 use tari_transaction_components::{
@@ -142,8 +142,8 @@ struct PreMineSpendStep4OutputsForLeader {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step4OutputsForLeader {
     output_index: usize,
-    script_signature: Signature,
-    metadata_signature: Signature,
+    script_signature: CompressedSignature,
+    metadata_signature: CompressedSignature,
     script_offset: PrivateKey,
 }
 

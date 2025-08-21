@@ -27,7 +27,7 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, HashOutput, PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{Transaction, TransactionError},
@@ -178,7 +178,7 @@ impl UnconfirmedPool {
     }
 
     /// Check if a transaction is available in the UnconfirmedPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
@@ -862,23 +862,20 @@ impl UnconfirmedPool {
 mod test {
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
+    use tari_transaction_components::{
+        aggregated_body::AggregateBody,
+        consensus::ConsensusManagerBuilder,
+        fee::Fee,
+        tari_amount::MicroMinotari,
+        test_helpers::{TestParams, UtxoTestParams},
+        transaction_builder::TransactionBuilder,
+        tx,
+        weight::TransactionWeight,
+    };
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
-    use crate::{
-        consensus::ConsensusManagerBuilder,
-        test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
-        transactions::{
-            aggregated_body::AggregateBody,
-            fee::Fee,
-            tari_amount::MicroMinotari,
-            test_helpers::{TestParams, UtxoTestParams},
-            transaction_builder::TransactionBuilder,
-            transaction_key_manager::create_memory_db_key_manager,
-            weight::TransactionWeight,
-        },
-        tx,
-    };
-
+    use crate::test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block};
     #[tokio::test]
     async fn test_find_duplicate_input() {
         let key_manager = create_memory_db_key_manager().unwrap();

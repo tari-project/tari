@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedCommitment},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, UncompressedCommitment},
 };
 use tari_script::TariScript;
 use tari_transaction_components::{
@@ -79,7 +79,7 @@ pub(super) struct RawTransactionInfo {
     /// The partial kernel excess received from the recipient.
     pub recipient_partial_kernel_excess: CompressedPublicKey,
     /// The partial kernel signature received from the recipient.
-    pub recipient_partial_kernel_signature: Signature,
+    pub recipient_partial_kernel_signature: CompressedSignature,
     /// The partial kernel offset received from the recipient.
     pub recipient_partial_kernel_offset: PrivateKey,
     /// The change output details. This may be None if no change is required.

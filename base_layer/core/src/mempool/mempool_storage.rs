@@ -23,7 +23,7 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
 use tari_transaction_components::{
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
@@ -325,7 +325,7 @@ impl MempoolStorage {
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> TxStorageResponse {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> TxStorageResponse {
         if self.unconfirmed_pool.has_tx_with_excess_sig(excess_sig) {
             TxStorageResponse::UnconfirmedPool
         } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig) {

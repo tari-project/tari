@@ -22,9 +22,8 @@
 
 use std::convert::TryInto;
 
-use tari_transaction_key_manager::MemoryDbKeyManager;
-
 use crate::{
+    key_manager::TransactionKeyManagerInterface,
     test_helpers::{TestParams, UtxoTestParams},
     transaction_components::{
         covenants::{context::CovenantContext, Covenant},
@@ -38,10 +37,10 @@ use crate::{
     },
 };
 
-pub async fn create_outputs(
+pub async fn create_outputs<KM: TransactionKeyManagerInterface>(
     n: usize,
     utxo_params: UtxoTestParams,
-    key_manager: &MemoryDbKeyManager,
+    key_manager: &KM,
 ) -> Vec<TransactionOutput> {
     let mut outputs = Vec::new();
     for _i in 0..n {
@@ -52,7 +51,7 @@ pub async fn create_outputs(
     outputs
 }
 
-pub async fn create_input(key_manager: &MemoryDbKeyManager) -> TransactionInput {
+pub async fn create_input<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> TransactionInput {
     let params = TestParams::new(key_manager).await;
     let output = params.create_output(Default::default(), key_manager).await.unwrap();
     output.to_transaction_input(key_manager).await.unwrap()

@@ -24,7 +24,7 @@ use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U64;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, FixedHash, Signature};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, FixedHash};
 use tari_hashing::TransactionHashDomain;
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 
@@ -33,7 +33,7 @@ use crate::consensus::DomainSeparatedConsensusHasher;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct CodeTemplateRegistration {
     pub author_public_key: CompressedPublicKey,
-    pub author_signature: Signature,
+    pub author_signature: CompressedSignature,
     pub template_name: MaxSizeString<32>,
     pub template_version: u16,
     pub template_type: TemplateType,
@@ -43,7 +43,7 @@ pub struct CodeTemplateRegistration {
 }
 
 impl CodeTemplateRegistration {
-    pub fn author_signature(&self) -> &Signature {
+    pub fn author_signature(&self) -> &CompressedSignature {
         &self.author_signature
     }
 

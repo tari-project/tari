@@ -24,7 +24,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, PrivateKey, Signature},
+    types::{CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_utilities::ByteArray;
 
@@ -62,7 +62,7 @@ impl ValidatorNodeExit {
         self.max_epoch
     }
 
-    pub fn signature(&self) -> &Signature {
+    pub fn signature(&self) -> &CompressedSignature {
         self.signature.signature()
     }
 

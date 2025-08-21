@@ -26,7 +26,7 @@ use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
-    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedSignature},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, UncompressedSignature},
 };
 use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
@@ -227,36 +227,23 @@ impl Default for UtxoTestParams {
     }
 }
 
-/// A convenience struct for a set of public-private keys and a public-private nonce
-pub struct TestKeySet {
-    pub k: PrivateKey,
-    pub pk: CompressedPublicKey,
-    pub r: PrivateKey,
-    pub pr: CompressedPublicKey,
-}
-
-/// Generate a new random key set. The key set includes
-/// * a public-private keypair (k, pk)
-/// * a public-private nonce keypair (r, pr)
-pub fn generate_keys() -> TestKeySet {
-    let _rng = rand::thread_rng();
-    let (k, pk) = CompressedPublicKey::random_keypair(&mut OsRng);
-    let (r, pr) = CompressedPublicKey::random_keypair(&mut OsRng);
-    TestKeySet { k, pk, r, pr }
-}
-
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
 pub fn create_random_signature(
     fee: MicroMinotari,
     lock_height: u64,
     features: KernelFeatures,
-) -> (CompressedPublicKey, Signature) {
+) -> (CompressedPublicKey, CompressedSignature) {
     let (k, p) = CompressedPublicKey::random_keypair(&mut OsRng);
     (p, create_signature(k, fee, lock_height, features))
 }
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
-pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, features: KernelFeatures) -> Signature {
+pub fn create_signature(
+    k: PrivateKey,
+    fee: MicroMinotari,
+    lock_height: u64,
+    features: KernelFeatures,
+) -> CompressedSignature {
     let r = PrivateKey::random(&mut OsRng);
     let e = TransactionKernel::build_kernel_signature_challenge(
         &TransactionKernelVersion::get_current_version(),
@@ -268,7 +255,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, fea
         &None,
     );
     let sig = UncompressedSignature::sign_raw_uniform(&k, r, &e).unwrap();
-    Signature::new_from_schnorr(sig)
+    CompressedSignature::new_from_schnorr(sig)
 }
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
@@ -279,7 +266,7 @@ pub async fn create_random_signature_from_secret_key<KM: TransactionKeyManagerIn
     lock_height: u64,
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
-) -> (CompressedPublicKey, Signature) {
+) -> (CompressedPublicKey, CompressedSignature) {
     let total_nonce = key_manager
         .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
@@ -377,7 +364,7 @@ pub async fn create_wallet_output_with_data<KM: TransactionKeyManagerInterface>(
 #[macro_export]
 macro_rules! tx {
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr, features: $features:expr, $key_manager:expr) => {{
-      use $crate::transactions::test_helpers::create_tx;
+      use $crate::test_helpers::create_tx;
       create_tx($amount, $fee, $lock, $n_in, $mat, $n_out, $features, $key_manager).await
   }};
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr, $key_manager:expr) => {{

@@ -74,7 +74,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
-use tari_common_types::types::Signature;
+use tari_common_types::types::CompressedSignature;
 use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::Transaction};
 
 use crate::proto::base_node as base_node_proto;
@@ -99,7 +99,7 @@ impl Display for StatsResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StateResponse {
     pub unconfirmed_pool: Vec<Arc<Transaction>>,
-    pub reorg_pool: Vec<Signature>,
+    pub reorg_pool: Vec<CompressedSignature>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

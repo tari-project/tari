@@ -283,11 +283,10 @@ mod test {
 
     mod check_coinbase_maturity {
 
-        use tari_transaction_key_manager::create_memory_db_key_manager;
-
         use super::*;
         use crate::{
             aggregated_body::AggregateBody,
+            test_helpers::create_memory_key_manager,
             transaction_components::{RangeProofType, TransactionError},
         };
 
@@ -297,7 +296,7 @@ mod test {
             let key_manager = create_memory_db_key_manager().unwrap();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_key_manager().unwrap();
             let coinbase =
                 test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue)
                     .await;

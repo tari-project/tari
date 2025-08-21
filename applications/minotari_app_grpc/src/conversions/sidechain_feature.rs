@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use prost::Message;
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedPublicKey, Signature},
+    types::{CompressedPublicKey, CompressedSignature},
 };
 use tari_core::base_node::comms_interface::ValidatorNodeChange;
 use tari_max_size::MaxSizeString;
@@ -141,7 +141,7 @@ impl TryFrom<grpc::SideChainId> for SideChainId {
             .knowledge_proof
             .ok_or("sidechain_id knowledge_proof not provided")?;
         let knowledge_proof =
-            Signature::try_from(knowledge_proof).map_err(|e| format!("sidechain_id_knowledge_proof: {e}"))?;
+            CompressedSignature::try_from(knowledge_proof).map_err(|e| format!("sidechain_id_knowledge_proof: {e}"))?;
 
         Ok(Self::new(public_key, knowledge_proof))
     }
@@ -247,7 +247,7 @@ impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
                 .map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
-                .map(Signature::try_from)
+                .map(CompressedSignature::try_from)
                 .ok_or("author_signature not provided")??,
             template_name: MaxSizeString::try_from(value.template_name).map_err(|e| e.to_string())?,
             template_version: value

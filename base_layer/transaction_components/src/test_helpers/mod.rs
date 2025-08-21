@@ -1,4 +1,4 @@
-// Copyright 2023 The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,15 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod memory_db_key_manager;
-// pub use inner::TransactionKeyManagerInner;
-pub use memory_db_key_manager::{
-    create_memory_db_key_manager,
-    create_memory_db_key_manager_from_seed,
-    create_memory_db_key_manager_with_range_proof_size,
-    MemoryDbKeyManager,
+mod test_helpers_functions;
+pub use test_helpers_functions::{
+    create_coinbase_kernel,
+    create_coinbase_wallet_output,
+    create_consensus_constants,
+    create_consensus_manager,
+    create_test_input,
+    create_test_kernel,
+    create_transaction_with,
+    create_tx,
+    create_utxo,
+    create_wallet_output_with_data,
+    create_wallet_outputs,
+    new_public_key,
+    spend_utxos,
+    TestParams,
+    TransactionSchema,
+    UtxoTestParams,
 };
-
-pub mod storage;
-
-pub mod schema;
+pub mod memory_key_manager;
+pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};

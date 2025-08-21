@@ -39,15 +39,12 @@ use tari_core::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
     },
-    transactions::{
-        tari_amount::MicroMinotari,
-        test_helpers::create_utxo,
-        transaction_key_manager::create_memory_db_key_manager,
-    },
+    transactions::{tari_amount::MicroMinotari, test_helpers::create_utxo},
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
 use tari_script::script;
 use tari_service_framework::reply_channel;
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};

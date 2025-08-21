@@ -22,7 +22,14 @@
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, Signature, UncompressedPublicKey},
+    types::{
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        PrivateKey,
+        UncompressedPublicKey,
+    },
 };
 use tari_script::push_pubkey_script;
 use tari_transaction_components::{
@@ -54,7 +61,7 @@ pub struct RecipientSignedMessage {
     pub tx_id: TxId,
     pub output: TransactionOutput,
     pub public_spend_key: CompressedPublicKey,
-    pub partial_signature: Signature,
+    pub partial_signature: CompressedSignature,
     pub tx_metadata: TransactionMetadata,
     pub offset: PrivateKey,
 }
@@ -462,7 +469,7 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             .with_lock_height(info.metadata.lock_height)
             .with_burn_commitment(burn_commitment)
             .with_excess(&excess)
-            .with_signature(Signature::new_from_schnorr(signature))
+            .with_signature(CompressedSignature::new_from_schnorr(signature))
             .build()?;
         tx_builder.with_kernel(kernel);
         let transaction = tx_builder.build()?;

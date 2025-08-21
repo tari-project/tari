@@ -23,7 +23,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey};
 use tari_crypto::ristretto::{CompressedRistrettoSchnorr, RistrettoSchnorr};
 use tari_sidechain::EvictionProof;
 
@@ -116,11 +116,11 @@ pub enum SideChainFeatureData {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct SideChainId {
     public_key: CompressedPublicKey,
-    knowledge_proof: Signature,
+    knowledge_proof: CompressedSignature,
 }
 
 impl SideChainId {
-    pub fn new(public_key: CompressedPublicKey, knowledge_proof: Signature) -> Self {
+    pub fn new(public_key: CompressedPublicKey, knowledge_proof: CompressedSignature) -> Self {
         Self {
             public_key,
             knowledge_proof,
@@ -131,7 +131,7 @@ impl SideChainId {
         &self.public_key
     }
 
-    pub fn knowledge_proof(&self) -> &Signature {
+    pub fn knowledge_proof(&self) -> &CompressedSignature {
         &self.knowledge_proof
     }
 

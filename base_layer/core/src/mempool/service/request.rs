@@ -23,7 +23,7 @@
 use core::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::Signature;
+use tari_common_types::types::CompressedSignature;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
@@ -35,7 +35,7 @@ use crate::common::waiting_requests::RequestKey;
 pub enum MempoolRequest {
     GetStats,
     GetState,
-    GetTxStateByExcessSig(Signature),
+    GetTxStateByExcessSig(CompressedSignature),
     SubmitTransaction(Transaction),
     GetFeePerGramStats { count: usize, tip_height: u64 },
 }

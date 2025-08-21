@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlockHash, Signature};
+use tari_common_types::types::{BlockHash, CompressedSignature};
 use tari_utilities::ByteArray;
 
 use crate::proto::base_node as proto;
@@ -137,7 +137,7 @@ pub struct TxQueryResponse {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxQueryBatchResponse {
-    pub signature: Signature,
+    pub signature: CompressedSignature,
     pub location: TxLocation,
     pub best_block_hash: Option<BlockHash>,
     pub confirmations: u64,
@@ -254,7 +254,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
             t => Some(t),
         };
         Ok(Self {
-            signature: Signature::try_from(
+            signature: CompressedSignature::try_from(
                 proto_response
                     .signature
                     .ok_or_else(|| "Signature not present".to_string())?,

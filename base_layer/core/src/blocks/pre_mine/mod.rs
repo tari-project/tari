@@ -29,8 +29,8 @@ use tari_common_types::{
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         PrivateKey,
-        Signature,
         UncompressedPublicKey,
         UncompressedSignature,
     },
@@ -896,7 +896,7 @@ pub async fn create_pre_mine_genesis_block_info(
         &None,
     );
     let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).map_err(|e| e.to_string())?;
-    let compressed_signature = Signature::new_from_schnorr(signature);
+    let compressed_signature = CompressedSignature::new_from_schnorr(signature);
     let excess = CompressedCommitment::from_compressed_key(total_public_key);
     let kernel = TransactionKernel::new_current_version(
         KernelFeatures::empty(),
@@ -917,33 +917,30 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
     use tari_script::{Opcode, Opcode::CheckHeight};
-    use tari_transaction_components::consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission};
+    use tari_transaction_components::{
+        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission, ConsensusManager},
+        tari_amount::{MicroMinotari, Minotari},
+        transaction_components::{TransactionKernel, TransactionOutput},
+    };
 
-    use crate::{
-        blocks::pre_mine::{
-            contributors_upfront_release,
-            create_pre_mine_genesis_block_info,
-            create_pre_mine_output_values,
-            get_expected_payout_grace_period_blocks,
-            get_pre_mine_items,
-            get_pre_mine_value,
-            get_signature_threshold,
-            get_tokenomics_pre_mine_unlock_schedule,
-            pre_mine_spendable_at_height,
-            verify_script_keys_for_index,
-            Apportionment,
-            CustomRelease,
-            PreMineItem,
-            ProportionalRelease,
-            ReleaseCadence,
-            ReleaseStrategy,
-            BLOCKS_PER_DAY,
-        },
-        consensus::BaseConsensusManager,
-        transactions::{
-            tari_amount::{MicroMinotari, Minotari},
-            transaction_components::{TransactionKernel, TransactionOutput},
-        },
+    use crate::blocks::pre_mine::{
+        contributors_upfront_release,
+        create_pre_mine_genesis_block_info,
+        create_pre_mine_output_values,
+        get_expected_payout_grace_period_blocks,
+        get_pre_mine_items,
+        get_pre_mine_value,
+        get_signature_threshold,
+        get_tokenomics_pre_mine_unlock_schedule,
+        pre_mine_spendable_at_height,
+        verify_script_keys_for_index,
+        Apportionment,
+        CustomRelease,
+        PreMineItem,
+        ProportionalRelease,
+        ReleaseCadence,
+        ReleaseStrategy,
+        BLOCKS_PER_DAY,
     };
 
     async fn genesis_block_test_info(

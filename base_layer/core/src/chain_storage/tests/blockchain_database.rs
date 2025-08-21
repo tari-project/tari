@@ -25,24 +25,26 @@
 use std::sync::Arc;
 
 use tari_common_types::tari_address::TariAddress;
+use tari_transaction_components::{
+    key_manager::TariKeyId,
+    tari_amount::T,
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
+    test_helpers::schema_to_transaction,
+    transaction_components::{Transaction, WalletOutput},
+    txn_schema,
+};
+use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::AchievedTargetDifficulty,
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
         default_coinbase_entities,
         BlockSpec,
     },
-    transactions::{
-        tari_amount::T,
-        test_helpers::schema_to_transaction,
-        transaction_components::{Transaction, WalletOutput},
-        transaction_key_manager::{MemoryDbKeyManager, TariKeyId},
-    },
-    txn_schema,
 };
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
@@ -597,17 +599,14 @@ mod validator_node_merkle_root {
 
     use rand::rngs::OsRng;
     use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
+    use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{
         blocks::genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
         chain_storage::calculate_validator_node_mr,
-        transactions::{
-            transaction_components::{OutputFeatures, ValidatorNodeSignature},
-            transaction_key_manager::create_memory_db_key_manager,
-        },
     };
-
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
         let key_manager = create_memory_db_key_manager().unwrap();

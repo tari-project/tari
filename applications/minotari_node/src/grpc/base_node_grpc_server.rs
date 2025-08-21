@@ -49,8 +49,8 @@ use tari_common_types::{
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
-        Signature,
         UncompressedCommitment,
         UncompressedPublicKey,
         UncompressedSignature,
@@ -1272,7 +1272,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
             .with_excess(&CompressedCommitment::from_commitment(total_excess))
-            .with_signature(Signature::new_from_schnorr(kernel_signature))
+            .with_signature(CompressedSignature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1515,7 +1515,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
             .with_excess(&CompressedCommitment::from_commitment(total_excess))
-            .with_signature(Signature::new_from_schnorr(kernel_signature))
+            .with_signature(CompressedSignature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1846,7 +1846,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::TransactionState)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        let excess_sig: Signature = request
+        let excess_sig: CompressedSignature = request
             .excess_sig
             .ok_or_else(|| {
                 obscure_error_if_true(

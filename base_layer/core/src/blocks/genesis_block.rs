@@ -433,6 +433,7 @@ mod test {
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
+        MrHashError,
         PrunedInputMmr,
         PrunedOutputMmr,
     };
@@ -705,15 +706,18 @@ mod test {
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(
-                &*lock,
-                0,
-                &CompressedCommitment::from_commitment(total_utxo_sum),
-                &kernel_sum,
-                &CompressedCommitment::default(),
-            )
-            .unwrap();
+        ChainBalanceValidator::new(
+            BaseConsensusManager::builder(network).build().unwrap(),
+            Default::default(),
+        )
+        .validate(
+            &*lock,
+            0,
+            &CompressedCommitment::from_commitment(total_utxo_sum),
+            &kernel_sum,
+            &CompressedCommitment::default(),
+        )
+        .unwrap();
     }
 
     fn set_network_by_env_var_or_force_set(network: Network) {

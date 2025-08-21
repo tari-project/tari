@@ -41,12 +41,12 @@ mod benches {
         transactions::{
             tari_amount::{uT, T},
             transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
-            transaction_key_manager::create_memory_db_key_manager,
             CryptoFactories,
         },
         tx,
         validation::transaction::TransactionFullValidator,
     };
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     use tokio::runtime::Runtime;
 
     async fn generate_transactions(

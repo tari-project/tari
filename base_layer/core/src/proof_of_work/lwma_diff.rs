@@ -203,10 +203,10 @@ impl DifficultyAdjustment for LinearWeightedMovingAverage {
 
 #[cfg(test)]
 mod test {
+    use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyAdjustment};
     use tari_utilities::epoch_time::EpochTime;
 
-    use crate::proof_of_work::{lwma_diff::LinearWeightedMovingAverage, Difficulty, DifficultyAdjustment};
-
+    use crate::proof_of_work::lwma_diff::LinearWeightedMovingAverage;
     #[test]
     fn lwma_zero_len() {
         let dif = LinearWeightedMovingAverage::new(90, 120).unwrap();

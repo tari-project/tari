@@ -352,13 +352,13 @@ impl WalletOutputBuilder {
 #[cfg(test)]
 mod test {
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
-    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
+    use crate::test_helpers::create_memory_key_manager;
 
     #[tokio::test]
     async fn test_try_build() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let (commitment_mask_key, script_key_id) = key_manager.get_next_commitment_mask_and_script_key().await.unwrap();
         let value = MicroMinotari(100);
         let kmob = WalletOutputBuilder::new(value, commitment_mask_key.key_id.clone());

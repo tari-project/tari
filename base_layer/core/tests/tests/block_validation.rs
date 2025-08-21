@@ -70,6 +70,7 @@ use tari_core::{
 };
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 use tiny_keccak::{Hasher, Keccak};
 use tokio::time::Instant;
@@ -1219,11 +1220,3 @@ async fn add_block_with_large_many_output_block() {
     // of the block
     println!("finished validating in: {}", finished.as_millis());
 }
-
-use tari_core::{
-    proof_of_work::PowData,
-    transactions::{
-        transaction_components::{CoinBaseExtra, TransactionError},
-        transaction_key_manager::create_memory_db_key_manager,
-    },
-};

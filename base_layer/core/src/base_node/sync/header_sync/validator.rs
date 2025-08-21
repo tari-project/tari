@@ -293,20 +293,20 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 mod test {
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
     use super::*;
     use crate::{
         blocks::BlockHeader,
-        proof_of_work::PowAlgorithm,
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
 
     fn setup() -> (
         BlockHeaderSyncValidator<TempDatabase>,
         AsyncBlockchainDb<TempDatabase>,
-        ConsensusManager,
+        BaseConsensusManager,
     ) {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let randomx_factory = RandomXFactory::default();
         let db = create_new_blockchain();
         (

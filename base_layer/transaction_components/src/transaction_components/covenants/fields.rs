@@ -395,14 +395,16 @@ mod test {
         use super::*;
 
         mod is_eq {
-            use tari_transaction_key_manager::create_memory_db_key_manager;
-
             use super::*;
-            use crate::{tari_amount::MicroMinotari, transaction_components::RangeProofType};
+            use crate::{
+                tari_amount::MicroMinotari,
+                test_helpers::create_memory_key_manager,
+                transaction_components::RangeProofType,
+            };
 
             #[tokio::test]
             async fn it_returns_true_if_eq() {
-                let key_manager = create_memory_db_key_manager().unwrap();
+                let key_manager = create_memory_key_manager().unwrap();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -493,13 +495,13 @@ mod test {
         }
 
         mod is_eq_input {
-            use tari_transaction_key_manager::create_memory_db_key_manager;
 
             use super::*;
+            use crate::test_helpers::create_memory_key_manager;
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
-                let key_manager = create_memory_db_key_manager().unwrap();
+                let key_manager = create_memory_key_manager().unwrap();
                 let output = create_outputs(
                     1,
                     UtxoTestParams {
@@ -565,9 +567,8 @@ mod test {
     }
 
     mod output_fields {
-        use tari_transaction_key_manager::create_memory_db_key_manager;
-
         use super::*;
+        use crate::test_helpers::create_memory_key_manager;
 
         mod construct_challenge_from {
             use digest::Update;
@@ -577,7 +578,7 @@ mod test {
 
             #[tokio::test]
             async fn it_constructs_challenge_using_consensus_encoding() {
-                let key_manager = create_memory_db_key_manager().unwrap();
+                let key_manager = create_memory_key_manager().unwrap();
                 let features = OutputFeatures {
                     maturity: 42,
                     output_type: OutputType::Coinbase,

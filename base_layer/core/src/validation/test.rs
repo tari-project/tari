@@ -28,23 +28,30 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
 use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
+use tari_transaction_components::{
+    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
+    crypto_factories::CryptoFactories,
+    key_manager::TxoStage,
+    tari_amount::{uT, MicroMinotari},
+    test_helpers::{create_random_signature_from_secret_key, create_utxo},
+    transaction_components::{
+        covenants::Covenant,
+        KernelBuilder,
+        KernelFeatures,
+        OutputFeatures,
+        RangeProofType,
+        TransactionKernel,
+    },
+    tx,
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction, SmtHasher},
-    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
-    covenants::Covenant,
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
-    transactions::{
-        tari_amount::{uT, MicroMinotari},
-        test_helpers::{create_random_signature_from_secret_key, create_utxo},
-        transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, TransactionKernel},
-        transaction_key_manager::{create_memory_db_key_manager, TxoStage},
-        CryptoFactories,
-    },
-    tx,
     validation::{ChainBalanceValidator, DifficultyCalculator, FinalHorizonStateValidation, ValidationError},
 };
 
@@ -601,11 +608,12 @@ async fn chain_balance_validation_burned() {
 mod transaction_validator {
     use std::convert::TryFrom;
 
-    use super::*;
-    use crate::{
-        transactions::transaction_components::{CoinBaseExtra, OutputType, TransactionError},
+    use tari_transaction_components::{
+        transaction_components::{CoinBaseExtra, OutputType, TransactionError},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
+
+    use super::*;
 
     #[tokio::test]
     async fn it_rejects_coinbase_outputs() {

@@ -31,7 +31,7 @@ use tari_common_types::{
     payment_reference::{generate_payment_reference, PaymentReference},
     tari_address::TariAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, CompressedCommitment, FixedHash, PrivateKey, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_core::transactions::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
 use tari_transaction_components::{
@@ -178,7 +178,7 @@ pub struct CompletedTransaction {
     pub direction: TransactionDirection,
     pub send_count: u32,
     pub last_send_timestamp: Option<DateTime<Utc>>,
-    pub transaction_signature: Signature,
+    pub transaction_signature: CompressedSignature,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
     pub mined_timestamp: Option<DateTime<Utc>>,
@@ -212,7 +212,7 @@ impl CompletedTransaction {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
         } else {
-            Signature::default()
+            CompressedSignature::default()
         };
         Ok(Self {
             tx_id,
@@ -386,7 +386,7 @@ impl CompletedTransaction {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
         } else {
-            Signature::default()
+            CompressedSignature::default()
         };
         Ok(Self {
             tx_id,
@@ -466,7 +466,7 @@ impl CompletedTransaction {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
         } else {
-            Signature::default()
+            CompressedSignature::default()
         };
         Self {
             tx_id: tx.tx_id,
@@ -555,7 +555,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             direction: TransactionDirection::Inbound,
             send_count: 0,
             last_send_timestamp: None,
-            transaction_signature: Signature::default(),
+            transaction_signature: CompressedSignature::default(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,

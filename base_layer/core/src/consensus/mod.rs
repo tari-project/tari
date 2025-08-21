@@ -23,9 +23,6 @@
 #[cfg(feature = "base_node")]
 pub(crate) mod chain_strength_comparer;
 
-// pub mod consensus_constants;
-// pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
-
 mod consensus_manager;
 pub use consensus_manager::{BaseConsensusBuilderError, BaseConsensusManager, BaseConsensusManagerBuilder};
 

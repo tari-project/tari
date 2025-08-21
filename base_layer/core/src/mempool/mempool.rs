@@ -23,7 +23,7 @@
 use std::sync::{Arc, RwLock};
 
 use log::debug;
-use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
 use tari_transaction_components::transaction_components::Transaction;
 use tokio::task;
 
@@ -158,7 +158,10 @@ impl Mempool {
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub async fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+    pub async fn has_tx_with_excess_sig(
+        &self,
+        excess_sig: CompressedSignature,
+    ) -> Result<TxStorageResponse, MempoolError> {
         self.with_read_access(move |storage| Ok(storage.has_tx_with_excess_sig(&excess_sig)))
             .await
     }

@@ -28,7 +28,15 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
+    types::{
+        BlockHash,
+        CompressedCommitment,
+        CompressedPublicKey,
+        CompressedSignature,
+        FixedHash,
+        HashOutput,
+        PrivateKey,
+    },
 };
 use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::hex::Hex;
@@ -54,14 +62,14 @@ pub enum NodeCommsRequest {
         range: RangeInclusive<u64>,
         compact: bool,
     },
-    FetchBlocksByKernelExcessSigs(Vec<Signature>),
+    FetchBlocksByKernelExcessSigs(Vec<CompressedSignature>),
     FetchBlocksByUtxos(Vec<CompressedCommitment>),
     GetHeaderByHash(HashOutput),
     GetBlockByHash(HashOutput),
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     GetBlockFromAllChains(HashOutput),
-    FetchKernelByExcessSig(Signature),
+    FetchKernelByExcessSig(CompressedSignature),
     FetchMempoolTransactionsByExcessSigs {
         excess_sigs: Vec<PrivateKey>,
     },

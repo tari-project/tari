@@ -40,7 +40,6 @@ use tari_core::{
         tari_amount::{uT, T},
         test_helpers::{schema_to_transaction, spend_utxos},
         transaction_components::OutputFeatures,
-        transaction_key_manager::create_memory_db_key_manager,
         CryptoFactories,
     },
     txn_schema,
@@ -52,6 +51,7 @@ use tari_core::{
     },
 };
 use tari_test_utils::unpack_enum;
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tempfile::tempdir;
 
 use crate::{

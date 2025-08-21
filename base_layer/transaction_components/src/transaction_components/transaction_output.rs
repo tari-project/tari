@@ -584,19 +584,18 @@ pub fn batch_verify_range_proofs(
 
 #[cfg(test)]
 mod test {
-    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
-
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::{
         crypto_factories::CryptoFactories,
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroMinotari,
-        test_helpers::{TestParams, UtxoTestParams},
+        test_helpers::{create_memory_key_manager, TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
     };
     #[tokio::test]
     async fn it_builds_correctly() {
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().unwrap();
         let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroMinotari(10);
@@ -787,12 +786,12 @@ mod test {
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
     }
 
-    async fn create_output(
+    async fn create_output<KM: TransactionKeyManagerInterface>(
         test_params: &TestParams,
         value: MicroMinotari,
         minimum_value_promise: MicroMinotari,
         range_proof_type: RangeProofType,
-        key_manager: &MemoryDbKeyManager,
+        key_manager: &KM,
     ) -> Result<TransactionOutput, String> {
         let utxo = test_params
             .create_output(
@@ -814,12 +813,12 @@ mod test {
             .map_err(|e| e.to_string())
     }
 
-    async fn create_invalid_output(
+    async fn create_invalid_output<KM: TransactionKeyManagerInterface>(
         test_params: &TestParams,
         value: MicroMinotari,
         minimum_value_promise: MicroMinotari,
         range_proof_type: RangeProofType,
-        key_manager: &MemoryDbKeyManager,
+        key_manager: &KM,
     ) -> TransactionOutput {
         // we need first to create a valid minimum value, regardless of the minimum_value_promise
         // because this test function should allow creating an invalid proof for later testing

@@ -208,17 +208,12 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
+    use tari_transaction_components::{consensus::NetworkConsensus, tari_proof_of_work::PowData};
     use tari_utilities::ByteArray;
     use tiny_keccak::{Hasher, Keccak};
 
     use super::MoneroPowData;
-    use crate::{
-        consensus::NetworkConsensus,
-        proof_of_work::{
-            monero_rx::{merkle_tree::MerkleProof, FixedByteArray},
-            PowData,
-        },
-    };
+    use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
 
     #[test]
     fn test_borsh_de_serialization() {

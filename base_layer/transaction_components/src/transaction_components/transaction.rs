@@ -29,7 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, PrivateKey};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -96,7 +96,7 @@ impl Transaction {
         self.body.min_spendable_height()
     }
 
-    pub fn first_kernel_excess_sig(&self) -> Option<&Signature> {
+    pub fn first_kernel_excess_sig(&self) -> Option<&CompressedSignature> {
         Some(&self.body.kernels().first()?.excess_sig)
     }
 }

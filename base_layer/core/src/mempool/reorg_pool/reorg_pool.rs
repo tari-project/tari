@@ -27,7 +27,7 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, PrivateKey};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
@@ -166,7 +166,7 @@ impl ReorgPool {
     }
 
     /// Check if a transaction is stored in the ReorgPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
@@ -337,15 +337,11 @@ mod test {
 
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
+    use tari_transaction_components::{consensus::ConsensusManagerBuilder, tari_amount::MicroMinotari, tx};
+    use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
-    use crate::{
-        consensus::ConsensusManagerBuilder,
-        test_helpers::create_orphan_block,
-        transactions::{tari_amount::MicroMinotari, transaction_key_manager::create_memory_db_key_manager},
-        tx,
-    };
-
+    use crate::test_helpers::create_orphan_block;
     #[tokio::test]
     async fn test_insert_expire_by_height() {
         let key_manager = create_memory_db_key_manager().unwrap();

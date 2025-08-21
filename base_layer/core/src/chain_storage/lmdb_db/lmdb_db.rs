@@ -120,10 +120,10 @@ use tari_common_types::{
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
         HashOutput,
         PrivateKey,
-        Signature,
         UncompressedCommitment,
     },
 };
@@ -2738,7 +2738,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let mut key = Vec::<u8>::new();
