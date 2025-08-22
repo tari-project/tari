@@ -27,20 +27,20 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
-use tari_core::{
-    base_node::rpc::models::{
+use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    rpc::models::{
         self,
         BlockHeader,
         BlockUtxoInfo,
+        FeePerGramStat,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
         TxSubmissionResponse,
     },
-    mempool::FeePerGramStat,
+    transaction_components::{Transaction, TransactionOutput},
 };
-use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::transaction_components::{Transaction, TransactionOutput};
 use tari_utilities::ByteArray;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
