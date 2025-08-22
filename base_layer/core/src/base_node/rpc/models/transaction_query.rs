@@ -27,11 +27,11 @@ pub struct Signature {
     pub signature: Vec<u8>,
 }
 
-impl TryFrom<Signature> for types::Signature {
+impl TryFrom<Signature> for types::CompressedSignature {
     type Error = ByteArrayError;
 
     fn try_from(signature: Signature) -> Result<Self, Self::Error> {
-        Ok(types::Signature::new(
+        Ok(types::CompressedSignature::new(
             CompressedKey::new(&signature.public_nonce),
             RistrettoSecretKey::from_canonical_bytes(&signature.signature)?,
         ))

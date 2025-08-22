@@ -29,21 +29,17 @@ use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrp
 use minotari_node_grpc_client::grpc;
 use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use tari_core::{
-    consensus::ConsensusManager,
-    proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
-    transactions::{
-        generate_coinbase,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoinBaseExtra,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-    },
+    consensus::BaseConsensusManager,
+    proof_of_work::{monero_rx, monero_rx::FixedByteArray},
     AuxChainHashes,
 };
 use tari_max_size::MaxSizeBytes;
+use tari_transaction_components::{
+    generate_coinbase,
+    tari_proof_of_work::Difficulty,
+    transaction_components::{memo_field::MemoField, CoinBaseExtra, TransactionKernel, TransactionOutput},
+};
+use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -62,7 +58,7 @@ pub(crate) struct BlockTemplateManager<'a> {
     p2pool_client: Option<ShaP2PoolGrpcClient>,
     key_manager: MemoryDbKeyManager,
     wallet_payment_address: TariAddress,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
 }
 
 impl<'a> BlockTemplateManager<'a> {
@@ -70,7 +66,7 @@ impl<'a> BlockTemplateManager<'a> {
         base_node_client: &'a mut BaseNodeGrpcClient,
         p2pool_client: Option<ShaP2PoolGrpcClient>,
         config: Arc<MergeMiningProxyConfig>,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateManager<'a>, MmProxyError> {
         let key_manager = create_memory_db_key_manager()?;
@@ -257,6 +253,7 @@ impl BlockTemplateManager<'_> {
         Ok((coinbase_output, coinbase_kernel))
     }
 }
+use tari_transaction_components::transaction_components::memo_field::TxType;
 
 /// This is an interim solution to calculate the merkle root for the aux chains when multiple aux chains will be
 /// merge mined with Monero. It needs to be replaced with a more general solution in the future.

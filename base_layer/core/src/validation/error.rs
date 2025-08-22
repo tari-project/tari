@@ -19,22 +19,23 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use tari_common_types::{epoch::VnEpoch, types::HashOutput};
 use tari_sidechain::SidechainProofValidationError;
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    tari_proof_of_work::{DifficultyError, PowError},
+    transaction_components::{covenants::CovenantError, OutputType, RangeProofType, TransactionError},
+    validation::AggregatedBodyValidationError,
+    BanPeriod,
+    BanReason,
+};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
-    common::{BanPeriod, BanReason},
-    covenants::CovenantError,
-    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError, DifficultyError, PowError},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{OutputType, RangeProofType, TransactionError},
-    },
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
 };
 
 #[derive(Debug, Error)]
@@ -168,6 +169,8 @@ pub enum ValidationError {
     OutputSpendRuleDisallow { output_type: OutputType, details: String },
     #[error("Output type '{output_type}' does not match sidechain data")]
     OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
+    #[error("Validation error: {0}")]
+    AggregatedBodyValidationError(#[from] AggregatedBodyValidationError),
     #[error("Cuckaroo POW error: {0}")]
     CuckarooPowError(#[from] CuckarooVerificationError),
 }
@@ -239,6 +242,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
+            err @ ValidationError::AggregatedBodyValidationError(_) |
             err @ ValidationError::CuckarooPowError(_) |
             err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),

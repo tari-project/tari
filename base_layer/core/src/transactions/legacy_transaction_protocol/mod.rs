@@ -3,21 +3,16 @@
 
 // #![allow(clippy::op_ref)]
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::CompressedCommitment;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
+use tari_transaction_components::{tari_amount::*, transaction_components::TransactionError};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
-
-use crate::transactions::{
-    transaction_components::TransactionError,
-    transaction_key_manager::error::KeyManagerServiceError,
-};
 pub mod recipient;
 pub mod sender;
 pub use recipient::ReceiverTransactionProtocol;
 pub use sender::SenderTransactionProtocol;
-use tari_common_types::types::CompressedCommitment;
-
-use crate::transactions::{tari_amount::*, transaction_components::KernelFeatures};
+use tari_transaction_components::{key_manager::error::KeyManagerServiceError, transaction_components::KernelFeatures};
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {

@@ -26,8 +26,8 @@ use futures::future;
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 use url::Url;
 

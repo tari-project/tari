@@ -25,8 +25,7 @@ use std::fmt::Display;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
-
-use crate::transactions::transaction_components::{TransactionInput, TransactionOutput};
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionOutput};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputMinedInfo {

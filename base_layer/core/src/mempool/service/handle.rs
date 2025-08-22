@@ -20,19 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::Signature;
+use tari_common_types::types::CompressedSignature;
 use tari_service_framework::{reply_channel::TrySenderService, Service};
+use tari_transaction_components::transaction_components::Transaction;
 
-use crate::{
-    mempool::{
-        service::{MempoolRequest, MempoolResponse},
-        FeePerGramStat,
-        MempoolServiceError,
-        StateResponse,
-        StatsResponse,
-        TxStorageResponse,
-    },
-    transactions::transaction_components::Transaction,
+use crate::mempool::{
+    service::{MempoolRequest, MempoolResponse},
+    FeePerGramStat,
+    MempoolServiceError,
+    StateResponse,
+    StatsResponse,
+    TxStorageResponse,
 };
 
 #[derive(Clone)]
@@ -61,7 +59,7 @@ impl MempoolHandle {
 
     pub async fn get_tx_state_by_excess_sig(
         &mut self,
-        sig: Signature,
+        sig: CompressedSignature,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetTxStateByExcessSig(sig)).await?? {
             MempoolResponse::TxStorage(response) => Ok(response),

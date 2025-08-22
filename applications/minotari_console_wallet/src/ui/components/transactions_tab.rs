@@ -11,7 +11,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus},
 };
-use tari_core::transactions::transaction_components::memo_field::TxType;
+use tari_transaction_components::transaction_components::memo_field::TxType;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,

@@ -26,16 +26,17 @@ use tari_common::configuration::Network;
 use tari_core::{
     blocks::ChainBlock,
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
-    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
+    consensus::{BaseConsensusManager, BaseConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
-    transactions::{
-        tari_amount::{uT, T},
-        transaction_components::WalletOutput,
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-    },
-    txn_schema,
     validation::DifficultyCalculator,
 };
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, ConsensusConstantsBuilder},
+    tari_amount::{uT, T},
+    transaction_components::WalletOutput,
+    txn_schema,
+};
+use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
@@ -84,7 +85,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
-    ConsensusManager,
+    BaseConsensusManager,
     MemoryDbKeyManager,
 ) {
     let network = Network::LocalNet;
@@ -185,13 +186,13 @@ pub async fn create_new_blockchain(
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
-    ConsensusManager,
+    BaseConsensusManager,
     MemoryDbKeyManager,
 ) {
     let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = consensus_constants(network).build();
     let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = BaseConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build()
@@ -214,12 +215,12 @@ pub async fn create_new_blockchain_with_constants(
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
-    ConsensusManager,
+    BaseConsensusManager,
     MemoryDbKeyManager,
 ) {
     let key_manager = create_memory_db_key_manager().unwrap();
     let (block0, output) = create_genesis_block(&constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = BaseConsensusManagerBuilder::new(network)
         .add_consensus_constants(constants)
         .with_block(block0.clone())
         .build()
@@ -243,13 +244,13 @@ pub async fn create_new_blockchain_lmdb(
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
-    ConsensusManager,
+    BaseConsensusManager,
     MemoryDbKeyManager,
 ) {
     let key_manager = create_memory_db_key_manager().unwrap();
     let consensus_constants = consensus_constants(network).build();
     let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
+    let consensus_manager = BaseConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build()

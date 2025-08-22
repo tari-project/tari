@@ -24,6 +24,7 @@ use std::cmp::Ordering;
 use log::*;
 use primitive_types::U512;
 use tari_common_types::types::{FixedHash, HashOutput};
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
@@ -31,8 +32,8 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
-    consensus::ConsensusManager,
-    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
+    consensus::BaseConsensusManager,
+    proof_of_work::randomx_factory::RandomXFactory,
     validation::{
         header::HeaderFullValidator,
         tari_rx_vm_key_height,
@@ -49,7 +50,7 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 pub struct BlockHeaderSyncValidator<B> {
     db: AsyncBlockchainDb<B>,
     state: Option<State>,
-    consensus_rules: ConsensusManager,
+    consensus_rules: BaseConsensusManager,
     validator: HeaderFullValidator,
 }
 
@@ -65,7 +66,11 @@ struct State {
 }
 
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, consensus_rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
+    pub fn new(
+        db: AsyncBlockchainDb<B>,
+        consensus_rules: BaseConsensusManager,
+        randomx_factory: RandomXFactory,
+    ) -> Self {
         let difficulty_calculator = DifficultyCalculator::new(consensus_rules.clone(), randomx_factory);
         let validator = HeaderFullValidator::new(consensus_rules.clone(), difficulty_calculator);
         Self {
@@ -288,20 +293,20 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 mod test {
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
     use super::*;
     use crate::{
         blocks::BlockHeader,
-        proof_of_work::PowAlgorithm,
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
 
     fn setup() -> (
         BlockHeaderSyncValidator<TempDatabase>,
         AsyncBlockchainDb<TempDatabase>,
-        ConsensusManager,
+        BaseConsensusManager,
     ) {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
         let randomx_factory = RandomXFactory::default();
         let db = create_new_blockchain();
         (

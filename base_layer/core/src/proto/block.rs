@@ -27,7 +27,6 @@ use tari_utilities::ByteArray;
 
 use super::core as proto;
 use crate::blocks::{Block, HistoricalBlock, NewBlock};
-
 //---------------------------------- Block --------------------------------------------//
 
 impl TryFrom<proto::Block> for Block {

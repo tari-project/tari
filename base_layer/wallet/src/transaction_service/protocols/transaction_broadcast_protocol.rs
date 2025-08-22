@@ -29,12 +29,10 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::Signature,
+    types::CompressedSignature,
 };
-use tari_core::{
-    base_node::rpc::models::{TxLocation, TxSubmissionRejectionReason},
-    transactions::{transaction_components::Transaction, transaction_key_manager::TransactionKeyManagerInterface},
-};
+use tari_core::base_node::rpc::models::{TxLocation, TxSubmissionRejectionReason};
+use tari_transaction_components::{key_manager::TransactionKeyManagerInterface, transaction_components::Transaction};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::watch, time::sleep};
 
@@ -279,7 +277,7 @@ where
     /// end.
     async fn transaction_query(
         &mut self,
-        signature: Signature,
+        signature: CompressedSignature,
         client: &TWalletConnectivity::BaseNodeClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let response = client

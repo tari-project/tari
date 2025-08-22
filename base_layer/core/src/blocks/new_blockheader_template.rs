@@ -25,9 +25,10 @@ use std::fmt::{Display, Error, Formatter};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, PrivateKey};
+use tari_transaction_components::tari_proof_of_work::ProofOfWork;
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::block_header::BlockHeader, proof_of_work::ProofOfWork};
+use crate::blocks::block_header::BlockHeader;
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, BorshSerialize, BorshDeserialize)]

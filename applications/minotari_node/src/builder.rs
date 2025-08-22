@@ -44,10 +44,9 @@ use tari_core::{
         LMDBDatabase,
         Validators,
     },
-    consensus::ConsensusManager,
+    consensus::BaseConsensusManager,
     mempool::{service::LocalMempoolService, Mempool},
     proof_of_work::randomx_factory::RandomXFactory,
-    transactions::CryptoFactories,
     validation::{
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
@@ -58,6 +57,7 @@ use tari_core::{
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::crypto_factories::CryptoFactories;
 use tokio::sync::watch;
 
 use crate::{
@@ -74,7 +74,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// on the comms stack.
 pub struct BaseNodeContext {
     config: Arc<ApplicationConfig>,
-    consensus_rules: ConsensusManager,
+    consensus_rules: BaseConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
@@ -161,7 +161,7 @@ impl BaseNodeContext {
     }
 
     /// Returns the consensus rules
-    pub fn consensus_rules(&self) -> &ConsensusManager {
+    pub fn consensus_rules(&self) -> &BaseConsensusManager {
         &self.consensus_rules
     }
 
@@ -195,7 +195,7 @@ pub async fn configure_and_initialize_node(
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
             readiness_status_handler.send_readiness_status(ReadinessState::BuildingContextBlockchain);
-            let rules = ConsensusManager::builder(app_config.base_node.network)
+            let rules = BaseConsensusManager::builder(app_config.base_node.network)
                 .build()
                 .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
             let backend = create_lmdb_database_with_stats_channel(
@@ -234,7 +234,7 @@ async fn build_node_context(
         target: LOG_TARGET,
         "Building base node context for {}  network", app_config.base_node.network
     );
-    let rules = ConsensusManager::builder(app_config.base_node.network)
+    let rules = BaseConsensusManager::builder(app_config.base_node.network)
         .build()
         .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
     let factories = CryptoFactories::default();

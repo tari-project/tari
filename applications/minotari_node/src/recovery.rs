@@ -45,9 +45,8 @@ use tari_core::{
         BlockchainDatabaseConfig,
         Validators,
     },
-    consensus::ConsensusManager,
+    consensus::BaseConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
-    transactions::CryptoFactories,
     validation::{
         block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
         header::HeaderFullValidator,
@@ -55,6 +54,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
+use tari_transaction_components::crypto_factories::CryptoFactories;
 
 use crate::{grpc::readiness_grpc_server::ReadinessStatusHandler, BaseNodeConfig, DatabaseType};
 
@@ -78,10 +78,12 @@ pub async fn run_recovery(
     readiness_handler: ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
-    let rules = ConsensusManager::builder(node_config.network).build().map_err(|e| {
-        error!(target: LOG_TARGET, "Error configuring consensus manager: {e}");
-        anyhow!("Could not configure consensus manager: {e}")
-    })?;
+    let rules = BaseConsensusManager::builder(node_config.network)
+        .build()
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Error configuring consensus manager: {e}");
+            anyhow!("Could not configure consensus manager: {e}")
+        })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
             readiness_handler.send_readiness_status(ReadinessState::DatabaseInitializing);
@@ -151,7 +153,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
     readiness_status_handler: &ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
-    let rules = ConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
+    let rules = BaseConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
         error!(target: LOG_TARGET, "Error creating consensus manager: {e}");
         anyhow!("Error creating consensus manager: {e}")
     })?;

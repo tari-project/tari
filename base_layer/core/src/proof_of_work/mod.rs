@@ -21,20 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 /// Crates for proof of work difficulty
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub(crate) mod difficulty;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use difficulty::{Difficulty, DifficultyAdjustment};
-#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub(crate) mod accumulated_difficulty;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub use accumulated_difficulty::AccumulatedDifficulty;
-
-/// Crates for proof of work error
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-mod error;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use error::{DifficultyAdjustmentError, DifficultyError, PowError};
 
 /// Crates for proof of work monero_rx
 #[cfg(feature = "base_node")]
@@ -42,21 +30,6 @@ pub mod monero_rx;
 #[cfg(feature = "base_node")]
 pub use monero_rx::{monero_randomx_difficulty, tari_randomx_difficulty};
 
-/// Crate for proof of work itself
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-#[allow(clippy::module_inception)]
-mod proof_of_work;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use proof_of_work::{PowData, ProofOfWork};
-
-/// Crates for proof of work proof_of_work_algorithm
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-mod proof_of_work_algorithm;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use proof_of_work_algorithm::PowAlgorithm;
-
-#[cfg(feature = "base_node")]
-pub mod cuckaroo_pow;
 /// Crates for proof of work sha3_pow
 #[cfg(feature = "base_node")]
 mod sha3x_pow;
@@ -84,3 +57,6 @@ pub mod randomx_factory;
 
 #[cfg(feature = "base_node")]
 pub mod siphash;
+
+#[cfg(feature = "base_node")]
+pub mod cuckaroo_pow;
