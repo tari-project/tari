@@ -38,6 +38,7 @@ pub enum StratumRequest {
         job_id: String,
         nonce: String,
         result: String,
+        pow: Option<Vec<u64>>,
     },
     Subscribe {
         id: String,

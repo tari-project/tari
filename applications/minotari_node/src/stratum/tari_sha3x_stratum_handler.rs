@@ -164,7 +164,14 @@ impl<
         })
     }
 
-    async fn submit(&self, job_id: String, nonce: u64, result: String, id: String) -> anyhow::Result<SubmitResponse> {
+    async fn submit(
+        &self,
+        job_id: String,
+        nonce: u64,
+        result: String,
+        id: String,
+        cuckaroo_nonces: Option<Vec<u64>>,
+    ) -> anyhow::Result<SubmitResponse> {
         let job = self.job_repository.get_job(job_id.clone()).await?;
         if job.is_none() {
             return Err(anyhow::anyhow!("Job with id {} not found", job_id));
@@ -233,6 +240,7 @@ impl<
                     original_mining_hash: job.original_mining_hash.clone(),
                     miner_address: job.miner_address.to_string(),
                     result,
+                    cuckaroo_nonces: cuckaroo_nonces.unwrap_or_default(),
                 },
                 tx,
             ))

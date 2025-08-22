@@ -32,4 +32,5 @@ pub struct SubmittedJob {
     pub miner_address: String,
     pub original_mining_hash: Vec<u8>,
     pub result: Vec<u8>,
+    pub cuckaroo_nonces: Vec<u64>,
 }

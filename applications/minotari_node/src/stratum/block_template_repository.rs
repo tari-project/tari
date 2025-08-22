@@ -22,7 +22,7 @@ use tari_core::{
     blocks::Block,
     chain_storage::ChainStorageError,
     consensus::ConsensusManager,
-    proof_of_work::PowAlgorithm,
+    proof_of_work::{cuckaroo_pow::pack_nonces, PowAlgorithm},
     transactions::{
         generate_coinbase_with_wallet_output,
         tari_amount::MicroMinotari,
@@ -107,6 +107,18 @@ impl DefaultBlockTemplateRepository {
                                             }
                                             PowAlgorithm::Sha3x => {
                                               block.header.nonce = job.nonce.to_be();
+                                            }
+                                            PowAlgorithm::Cuckaroo => {
+                                              block.header.nonce = job.nonce;
+                                              block.header.pow.pow_algo = PowAlgorithm::Cuckaroo;
+                                              block.header.pow.pow_data = match pack_nonces(&job.cuckaroo_nonces, 29).try_into() {
+                                                Ok(r) => r,
+                                                Err(e) => {
+                                                  warn!(target: LOG_TARGET, "Failed to pack nonces: {}", e);
+                                                  let _ = responder.send(Err(format!("Failed to pack nonces: {}", e)));
+                                                  continue;
+                                                }
+                                              }
                                             }
                                             _ => {
                                               warn!(target: LOG_TARGET, "Unsupported PoW algorithm for job ID: {}", job.job_id);

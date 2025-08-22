@@ -266,7 +266,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     }
                                                                                 }
                                                                             },
-                                                                            StratumRequest::Submit { job_id, nonce, result, id } => {
+                                                                            StratumRequest::Submit { job_id, nonce, result, id, pow } => {
                                                                                 let nonce = match u64::from_str_radix(&nonce, 16) {
                                                                                     Ok(n) => n,
                                                                                     Err(e) => {
@@ -275,12 +275,12 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                         continue;
                                                                                     }
                                                                                 };
-                                                                                let response = handler.submit(job_id, nonce, result, id.clone()).await;
+                                                                                let response = handler.submit(job_id, nonce, result, id.clone(), pow).await;
                                                                                 match response {
                                                                                     Ok(resp) => {
                                                                                         info!(target: LOG_TARGET, "Handled submit request with id: {}", id);
                                                                                         let json_response = serde_json::to_string(&resp).unwrap();
-                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": {}, \"error\": null}}\n", id, json_response).as_bytes()).await.inspect_err(|e| {
+                                                                                        let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": true, \"error\": null}}\n", id).as_bytes()).await.inspect_err(|e| {
                                                                                             warn!(target: LOG_TARGET, "Failed to write response: {}", e);
                                                                                         }       );
                                                                                     },
@@ -456,7 +456,14 @@ pub trait StratumJobHandler: Clone + Send + Sync + 'static {
         endpoint_difficulty: u64,
     ) -> anyhow::Result<LoginResponse>;
 
-    async fn submit(&self, job_id: String, nonce: u64, result: String, id: String) -> anyhow::Result<SubmitResponse>;
+    async fn submit(
+        &self,
+        job_id: String,
+        nonce: u64,
+        result: String,
+        id: String,
+        cuckaroo_nonces: Option<Vec<u64>>,
+    ) -> anyhow::Result<SubmitResponse>;
 
     async fn subscribe(
         &self,

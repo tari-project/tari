@@ -70,11 +70,23 @@ impl StratumStreamAdapter for NiceHashStyleStatumStreamAdapter {
                     .as_str()
                     .ok_or(anyhow::anyhow!("Invalid JSON. result missing"))?
                     .to_string();
+                let pow = if let Some(p) = params.get("pow") {
+                    Some(
+                        p.as_array()
+                            .ok_or(anyhow::anyhow!("Invalid JSON. pow missing"))?
+                            .iter()
+                            .filter_map(|v| v.as_u64())
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    None
+                };
                 Ok(StratumRequest::Submit {
                     id,
                     job_id,
                     nonce,
                     result,
+                    pow,
                 })
             },
             _ => Err(anyhow::anyhow!("Unknown method")),

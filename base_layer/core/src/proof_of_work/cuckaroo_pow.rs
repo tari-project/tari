@@ -185,9 +185,8 @@ fn cuckaroo_result_inner(
     Ok(res)
 }
 
-#[cfg(test)]
 #[allow(clippy::indexing_slicing)]
-fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
+pub fn pack_nonces(uncompressed: &[u64], bit_width: u8) -> Vec<u8> {
     let mut target = vec![0u8; (uncompressed.len() * bit_width as usize).div_ceil(8)];
     let mut compressed = target.as_mut_slice();
     let mut mini_buffer = 0u64;
@@ -270,6 +269,7 @@ fn generate_edges(
 
         // Use false here, to match original cuckaroo
         let edge = siphash_block(siphash_keys, *nonces.get(i).expect("Already checked"), 21);
+        dbg!(edge);
         let u = edge & node_mask;
         let v = (edge >> 32) & node_mask;
 
@@ -688,6 +688,155 @@ mod test {
             (45078436, 457953146),
             (444797260, 355116366),
             (45078436, 10110110)
+        ]);
+    }
+
+    #[test]
+    fn test_edge_generation_example3() {
+        let edge_nonces: Vec<u64> = vec![147341567];
+
+        let blob = hex::decode("93e43a39b44f0875af830b6fd4cc69a421b1f5f0c5efd1b6c2e16d439bfd238c").unwrap();
+        let nonce = hex::decode("ab30dc99fd054f57").unwrap();
+        let nonce: u64 = u64::from_be_bytes(nonce.try_into().unwrap());
+
+        let sip_hash_keys = determine_sip_hash(&blob, nonce.into());
+        assert_eq!(
+            hex::encode(&sip_hash_keys),
+            "094cf89614ed5ee03b1454881361110fc380e9c4072343f5d24b9e2597b0da96"
+        );
+
+        // let sip_hash_keys = hex::decode("a216826b5d2752ccf129eef73e1e02a6b56d13195d7998e6b04d02a136b88f4f").unwrap();
+        let sip_hash_keys = [
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(0..8)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(8..16)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(16..24)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(24..32)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+        ];
+        let res = generate_edges(&sip_hash_keys, 29, NonZeroUsize::new(1).unwrap(), &edge_nonces).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res, vec![(361363154, 255932004)]);
+    }
+
+    #[test]
+    fn test_edge_generation_example4() {
+        let edge_nonces: Vec<u64> = vec![
+            1252665, 4516819, 17265865, 24709305, 89445155, 99203810, 108059490, 118448252, 126732226, 147341567,
+            162827037, 177849034, 183556179, 191103550, 231377681, 233321258, 237510921, 257843213, 266606591,
+            282340500, 288301862, 333019502, 344766902, 355446190, 368615551, 371362415, 371729271, 380994474,
+            396711753, 400948255, 402047643, 445581804, 452121724, 460915916, 464509725, 472201798, 487709959,
+            488169697, 499236155, 509929107, 516834413, 534561363,
+        ];
+
+        let blob = hex::decode("93e43a39b44f0875af830b6fd4cc69a421b1f5f0c5efd1b6c2e16d439bfd238c").unwrap();
+        let nonce = hex::decode("ab30dc99fd054f57").unwrap();
+        let nonce: u64 = u64::from_be_bytes(nonce.try_into().unwrap());
+
+        let sip_hash_keys = determine_sip_hash(&blob, nonce.into());
+        assert_eq!(
+            hex::encode(&sip_hash_keys),
+            "094cf89614ed5ee03b1454881361110fc380e9c4072343f5d24b9e2597b0da96"
+        );
+
+        // let sip_hash_keys = hex::decode("a216826b5d2752ccf129eef73e1e02a6b56d13195d7998e6b04d02a136b88f4f").unwrap();
+        let sip_hash_keys = [
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(0..8)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(8..16)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(16..24)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+            u64::from_le_bytes(
+                sip_hash_keys
+                    .get(24..32)
+                    .expect("Already checked")
+                    .try_into()
+                    .expect("Cannot fail"),
+            ),
+        ];
+        let res = generate_edges(&sip_hash_keys, 29, NonZeroUsize::new(42).unwrap(), &edge_nonces).unwrap();
+        assert_eq!(res.len(), 42);
+        assert_eq!(res, vec![
+            (138864790, 173576314),
+            (138864790, 183574123),
+            (475775524, 272345198),
+            (434305107, 118921972),
+            (145538206, 491299099),
+            (507636712, 57208766),
+            (274489528, 183574123),
+            (475775524, 86499705),
+            (376165312, 307539583),
+            (361363154, 255932004),
+            (361363154, 491299099),
+            (429018120, 525050564),
+            (400305596, 173576314),
+            (507636712, 471838093),
+            (534308678, 484814104),
+            (434305107, 104085420),
+            (152178341, 255932004),
+            (139457798, 471838093),
+            (65921500, 78549354),
+            (429018120, 461321619),
+            (209554018, 29235998),
+            (184129162, 78549354),
+            (508864826, 118921972),
+            (265651264, 386485268),
+            (330070098, 178264960),
+            (330070098, 461321619),
+            (274489528, 386997870),
+            (184129162, 272345198),
+            (65921500, 525050564),
+            (534308678, 86499705),
+            (152178341, 492228492),
+            (507444066, 178264960),
+            (508864826, 492228492),
+            (398316755, 307539583),
+            (376165312, 29235998),
+            (265651264, 386997870),
+            (398316755, 104085420),
+            (507444066, 386485268),
+            (139457798, 21811140),
+            (145538206, 484814104),
+            (400305596, 21811140),
+            (209554018, 57208766)
         ]);
     }
 

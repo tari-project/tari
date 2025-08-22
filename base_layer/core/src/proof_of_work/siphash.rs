@@ -45,19 +45,23 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8) -> u64 {
     // repeated hashing over the whole block
     let mut siphash = SipHash24::new(v);
     for (i, item) in nonce_hash.iter_mut().enumerate() {
+        dbg!(edge0 + i as u64);
         siphash.hash(edge0 + i as u64, rot_e);
 
         *item = siphash.digest();
     }
     let last = nonce_hash[SIPHASH_BLOCK_SIZE - 1];
 
-    let mut siphashb = SipHash24::new(v);
+    // let mut siphashb = SipHash24::new(v);
     let last_nonce = nonce & SIPHASH_BLOCK_MASK;
-    for i in 0..=last_nonce {
-        siphashb.hash(edge0 + i, rot_e);
+    for i in 0..SIPHASH_BLOCK_MASK as usize {
+        dbg!(i);
+        // siphashb.hash(edge0 + i, rot_e);
+        nonce_hash[i] = nonce_hash[i] ^ last;
     }
-    let b_hash = siphashb.digest();
-    b_hash ^ last
+    // let b_hash = siphashb.digest();
+    // b_hash ^ last
+    nonce_hash[last_nonce as usize]
 }
 
 /// Implements siphash 2-4 specialized for a 4 u64 array key and a u64 nonce
