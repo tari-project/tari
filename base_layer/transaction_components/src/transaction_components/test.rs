@@ -300,6 +300,7 @@ fn kernel_hash() {
     let sig = CompressedSignature::new(r, s);
     let excess =
         CompressedCommitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
+    #[allow(unused)]
     let k = KernelBuilder::new()
         .with_signature(sig)
         .with_fee(100.into())
@@ -317,7 +318,7 @@ fn kernel_hash() {
         &k.hash().to_hex(),
         "b94992cb59695ebad3786e9f51a220e91c627f8b38f51bcf6c87297325d1b410"
     );
-    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
+    #[cfg(tari_target_network_testnet)]
     assert_eq!(
         &k.hash().to_hex(),
         "38b03d013f941e86c027969fbbc190ca2a28fa2d7ac075d50dbfb6232deee646"
@@ -331,6 +332,7 @@ fn kernel_metadata() {
     let sig = CompressedSignature::new(r, s);
     let excess =
         CompressedCommitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
+    #[allow(unused)]
     let k = KernelBuilder::new()
         .with_signature(sig)
         .with_fee(100.into())
@@ -350,7 +352,7 @@ fn kernel_metadata() {
         n => panic!("Only mainnet networks should target mainnet. Network was {}", n),
     }
 
-    #[cfg(tari_target_network_nextnet)]
+    #[cfg(tari_target_network_testnet)]
     assert_eq!(
         &k.hash().to_hex(),
         "22e39392dfeae9653c73437880be71e99f4b8a2b23289d54f57b8931deebfeed"
