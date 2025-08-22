@@ -9,7 +9,7 @@ license.workspace = true
 
 [features]
 ledger = ["minotari_ledger_wallet_comms"]
-
+wasm = ["wasm-bindgen"]
 [dependencies]
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }

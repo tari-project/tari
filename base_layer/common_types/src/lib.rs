@@ -39,4 +39,5 @@ pub mod transaction;
 mod tx_id;
 pub mod types;
 pub mod wallet_types;
+#[cfg(feature = "wasm")]
 mod wasm;

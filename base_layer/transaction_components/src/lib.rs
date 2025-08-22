@@ -23,6 +23,9 @@ pub mod transaction_components;
 pub mod validation;
 pub use transaction_builder::{TransactionBuilder, TransactionBuilderError};
 
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 mod format_currency;
 pub use format_currency::format_currency;
 

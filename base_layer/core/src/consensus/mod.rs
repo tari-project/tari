@@ -22,8 +22,9 @@
 
 #[cfg(feature = "base_node")]
 pub(crate) mod chain_strength_comparer;
-
+#[cfg(feature = "base_node")]
 mod consensus_manager;
+#[cfg(feature = "base_node")]
 pub use consensus_manager::{BaseConsensusBuilderError, BaseConsensusManager, BaseConsensusManagerBuilder};
 
 mod consensus_encoding;
