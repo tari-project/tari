@@ -145,7 +145,7 @@ impl TariWorld {
             CompressedPublicKey::from_secret_key(&wallet_private_key),
             Network::LocalNet,
         )
-            .unwrap();
+        .unwrap();
         Self {
             current_scenario_name: None,
             current_feature_name: None,
