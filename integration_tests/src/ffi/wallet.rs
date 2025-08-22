@@ -42,13 +42,13 @@ use super::{
         TariWallet,
     },
     Balance,
-    CommsConfig,
     CompletedTransactions,
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
     PublicKeys,
     WalletAddress,
+    WalletDbConfig,
 };
 use crate::ffi::{callbacks, ffi_import::TariBaseNodeState};
 
@@ -177,7 +177,11 @@ impl Drop for Wallet {
 
 impl Wallet {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn create(comms_config: CommsConfig, log_path: String, seed_words_ptr: *const c_void) -> Arc<Mutex<Self>> {
+    pub fn create(
+        wallet_db_config: WalletDbConfig,
+        log_path: String,
+        seed_words_ptr: *const c_void,
+    ) -> Arc<Mutex<Self>> {
         let mut recovery_in_progress: bool = false;
         let mut error = 0;
         let ptr;
@@ -185,7 +189,7 @@ impl Wallet {
         unsafe {
             ptr = wallet_create(
                 void_ptr,
-                comms_config.get_ptr(),
+                wallet_db_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
                 11,
                 50,

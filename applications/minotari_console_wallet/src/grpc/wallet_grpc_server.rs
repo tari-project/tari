@@ -1763,8 +1763,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let resp = tari_rpc::NetworkStatusResponse {
             status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: u32::try_from(latency)
-                .map_err(|_| Status::internal("Count not convert u64 to u32".to_string()))?,
+            avg_latency_ms: u32::try_from(latency).unwrap_or(u32::MAX),
             num_node_connections: 1,
         };
 

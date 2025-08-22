@@ -26,18 +26,18 @@ use libc::c_void;
 
 use super::ffi_import;
 
-pub struct CommsConfig {
+pub struct WalletDbConfig {
     ptr: *mut c_void,
 }
 
-impl Drop for CommsConfig {
+impl Drop for WalletDbConfig {
     fn drop(&mut self) {
         unsafe { ffi_import::wallet_db_config_destroy(self.ptr) };
         self.ptr = null_mut();
     }
 }
 
-impl CommsConfig {
+impl WalletDbConfig {
     pub fn create(base_dir: String) -> Self {
         let mut error = 0;
         let ptr;

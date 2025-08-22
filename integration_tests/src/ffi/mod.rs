@@ -23,7 +23,7 @@
 mod comms_config;
 pub mod ffi_bytes;
 pub mod ffi_import;
-pub use comms_config::CommsConfig;
+pub use comms_config::WalletDbConfig;
 mod wallet_address;
 pub use wallet_address::WalletAddress;
 mod wallet;

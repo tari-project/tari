@@ -1706,6 +1706,8 @@ message CheckConnectivityResponse{
     Online = 1;
     // The wallet is not connected to any peers
     Offline = 2;
+    // The wallet connection is degraded (e.g., limited connectivity)
+    Degraded = 3;
   }
   // The current connectivity state of the wallet
   OnlineStatus status = 1;

@@ -114,9 +114,9 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
                     }
                 }
             } else {
-                // This branch will never trigger in practice, as the client will always return a latency when online
+                // Latency unavailable; report degraded with unknown latency sentinel.
                 OnlineStatus::Degraded {
-                    latency_ms: DEGRADED_LATENCY_THRESHOLD.as_secs(),
+                    latency_ms: UNKNOWN_LATENCY_MS,
                     node_id,
                     public_key,
                     url,
