@@ -1,4 +1,4 @@
-// Copyright 2025
+// Copyright 2025  The Tari Project
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
 //
