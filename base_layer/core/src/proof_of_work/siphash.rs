@@ -53,7 +53,6 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8) -> u64 {
 
     let last_nonce = nonce & SIPHASH_BLOCK_MASK;
     for i in 0..SIPHASH_BLOCK_MASK as usize {
-        // siphashb.hash(edge0 + i, rot_e);
         nonce_hash[i] = nonce_hash[i] ^ last;
     }
     nonce_hash[last_nonce as usize]
