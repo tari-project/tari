@@ -699,7 +699,7 @@ mod test {
         let nonce = hex::decode("ab30dc99fd054f57").unwrap();
         let nonce: u64 = u64::from_be_bytes(nonce.try_into().unwrap());
 
-        let sip_hash_keys = determine_sip_hash(&blob, nonce.into());
+        let sip_hash_keys = determine_sip_hash(&blob, nonce);
         assert_eq!(
             hex::encode(&sip_hash_keys),
             "094cf89614ed5ee03b1454881361110fc380e9c4072343f5d24b9e2597b0da96"
@@ -755,7 +755,7 @@ mod test {
         let nonce = hex::decode("ab30dc99fd054f57").unwrap();
         let nonce: u64 = u64::from_be_bytes(nonce.try_into().unwrap());
 
-        let sip_hash_keys = determine_sip_hash(&blob, nonce.into());
+        let sip_hash_keys = determine_sip_hash(&blob, nonce);
         assert_eq!(
             hex::encode(&sip_hash_keys),
             "094cf89614ed5ee03b1454881361110fc380e9c4072343f5d24b9e2597b0da96"
