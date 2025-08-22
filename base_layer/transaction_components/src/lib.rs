@@ -23,6 +23,8 @@ pub mod transaction_components;
 pub mod validation;
 pub use transaction_builder::{TransactionBuilder, TransactionBuilderError};
 
+pub mod rpc;
+
 #[cfg(feature = "wasm")]
 pub mod wasm;
 

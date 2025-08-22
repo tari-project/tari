@@ -224,7 +224,7 @@ pub struct TariPaymentRecords(Vec<TariPaymentRecord>);
 pub type TariCompletedTransaction = CompletedTransaction;
 pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
-pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
+pub type TariFeePerGramStat = tari_transaction_components::rpc::models::FeePerGramStat;
 pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = MnemonicLanguage;
 

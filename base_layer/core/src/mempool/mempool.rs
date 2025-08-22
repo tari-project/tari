@@ -24,7 +24,7 @@ use std::sync::{Arc, RwLock};
 
 use log::debug;
 use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
-use tari_transaction_components::transaction_components::Transaction;
+use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 use tokio::task;
 
 use crate::{
@@ -33,7 +33,6 @@ use crate::{
     mempool::{
         error::MempoolError,
         mempool_storage::MempoolStorage,
-        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,

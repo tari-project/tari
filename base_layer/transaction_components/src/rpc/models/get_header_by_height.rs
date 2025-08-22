@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: BSD-3-Clause
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
-use tari_transaction_components::tari_proof_of_work::ProofOfWork;
 use tari_utilities::epoch_time::EpochTime;
 use utoipa::{
     openapi::{schema::SchemaType, Object, Schema, Type},
     ToSchema,
 };
 
-use crate::blocks;
+use crate::tari_proof_of_work::ProofOfWork;
+
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct BlockHeader {
     /// Hash of the block header
@@ -67,51 +67,4 @@ pub fn proof_of_work_schema() -> Schema {
             .property("pow_data", Schema::Object(Object::with_type(Type::String)))
             .build(),
     )
-}
-
-impl From<BlockHeader> for blocks::BlockHeader {
-    fn from(header: BlockHeader) -> Self {
-        Self {
-            version: header.version,
-            height: header.height,
-            prev_hash: header.prev_hash,
-            timestamp: header.timestamp,
-            input_mr: header.input_mr,
-            output_mr: header.output_mr,
-            block_output_mr: header.block_output_mr,
-            output_smt_size: header.output_smt_size,
-            kernel_mr: header.kernel_mr,
-            kernel_mmr_size: header.kernel_mmr_size,
-            total_kernel_offset: header.total_kernel_offset,
-            total_script_offset: header.total_script_offset,
-            validator_node_mr: header.validator_node_mr,
-            validator_node_size: header.validator_node_size,
-            pow: header.pow,
-            nonce: header.nonce,
-        }
-    }
-}
-
-impl From<blocks::BlockHeader> for BlockHeader {
-    fn from(header: blocks::BlockHeader) -> Self {
-        Self {
-            hash: header.hash(),
-            version: header.version,
-            height: header.height,
-            prev_hash: header.prev_hash,
-            timestamp: header.timestamp,
-            input_mr: header.input_mr,
-            output_mr: header.output_mr,
-            block_output_mr: header.block_output_mr,
-            output_smt_size: header.output_smt_size,
-            kernel_mr: header.kernel_mr,
-            kernel_mmr_size: header.kernel_mmr_size,
-            total_kernel_offset: header.total_kernel_offset,
-            total_script_offset: header.total_script_offset,
-            validator_node_mr: header.validator_node_mr,
-            validator_node_size: header.validator_node_size,
-            pow: header.pow,
-            nonce: header.nonce,
-        }
-    }
 }

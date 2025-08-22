@@ -36,12 +36,13 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::{mempool::FeePerGramStat, proto};
+use tari_core::proto;
 use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
+    rpc::models::FeePerGramStat,
     tari_amount::MicroMinotari,
     transaction_components::{
         memo_field::MemoField,

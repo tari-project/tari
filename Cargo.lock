@@ -8040,6 +8040,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+ "serde_valid",
  "static_assertions",
  "strum",
  "strum_macros",
@@ -8056,6 +8057,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "toml 0.5.11",
+ "utoipa",
  "wasm-bindgen",
  "zeroize",
 ]
