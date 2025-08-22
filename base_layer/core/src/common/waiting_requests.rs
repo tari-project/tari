@@ -26,8 +26,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use rand::RngCore;
 use tokio::sync::{oneshot::Sender as OneshotSender, RwLock};
 
-pub type RequestKey = u64;
-
+use crate::common::RequestKey;
 /// Generate a new random request key to uniquely identify a request and its corresponding responses.
 #[cfg(feature = "base_node")]
 pub fn generate_request_key<R>(rng: &mut R) -> RequestKey
@@ -50,7 +49,6 @@ impl<T> WaitingRequests<T> {
     }
 
     /// Insert a new waiting request.
-    #[cfg(feature = "base_node")]
     pub async fn insert(&self, key: RequestKey, reply_tx: OneshotSender<T>) {
         self.requests
             .write()
@@ -59,7 +57,6 @@ impl<T> WaitingRequests<T> {
     }
 
     /// Remove the waiting request corresponding to the provided key.
-    #[cfg(feature = "base_node")]
     pub async fn remove(&self, key: RequestKey) -> Option<(OneshotSender<T>, Instant)> {
         self.requests.write().await.remove(&key).unwrap_or(None)
     }

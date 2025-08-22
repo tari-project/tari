@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod memory_db_key_manager;
-// pub use inner::TransactionKeyManagerInner;
 pub use memory_db_key_manager::{
     create_memory_db_key_manager,
     create_memory_db_key_manager_from_seed,

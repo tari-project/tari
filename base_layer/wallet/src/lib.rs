@@ -6,8 +6,6 @@
 // has lead to bundling of dependencies into a resources struct, which is then overused and is the
 // wrong abstraction
 #![allow(clippy::too_many_arguments)]
-use tari_transaction_components::key_manager::TransactionKeyManagerWrapper;
-
 #[macro_use]
 mod macros;
 pub mod base_node_service;
@@ -21,6 +19,7 @@ pub mod test_utils;
 pub mod transaction_service;
 
 pub use tari_common_types::types::WalletHasher;
+use tari_transaction_components::key_manager::TransactionKeyManagerWrapper;
 pub mod util;
 pub mod wallet;
 

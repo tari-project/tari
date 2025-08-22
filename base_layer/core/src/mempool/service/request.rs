@@ -27,7 +27,7 @@ use tari_common_types::types::CompressedSignature;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
-use crate::common::waiting_requests::RequestKey;
+use crate::common::RequestKey;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]

@@ -7,6 +7,13 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+
+[features]
+default = ["bundled_sqlite"]
+c_integration = []
+bundled_sqlite = ["libsqlite3-sys"]
+ledger = ["tari_core/ledger"]
+
 [dependencies]
 tari_core = { workspace = true, default-features = false, features = [
     "transactions",
@@ -60,7 +67,7 @@ log = "0.4.6"
 rand = "0.8"
 serde = { version = "1.0.89", features = ["derive"] }
 serde_json = "1.0.39"
-strum = "0.22"
+strum = { version = "0.22", features = ["derive"] }
 strum_macros = "0.22"
 tempfile = "3.1.0"
 thiserror = "1.0.26"
@@ -91,11 +98,6 @@ tari_core = { workspace = true, default-features = false, features = [
 env_logger = "0.7.1"
 prost = "0.13.3"
 
-[features]
-default = ["bundled_sqlite"]
-c_integration = []
-bundled_sqlite = ["libsqlite3-sys"]
-ledger = ["tari_core/ledger"]
 
 [package.metadata.cargo-machete]
 ignored = [

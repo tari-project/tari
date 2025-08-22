@@ -55,10 +55,11 @@ use tari_transaction_components::{
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
+
+use crate::blocks::BlocksHashDomain;
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-use crate::blocks::BlocksHashDomain;
-                    #[derive(Debug, Error)]
+#[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
     #[error("The Genesis block header is incorrectly chained")]
     ChainedGenesisBlockHeader,

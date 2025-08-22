@@ -58,7 +58,10 @@ use crate::{
     },
     blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
-    common::waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
+    common::{
+        waiting_requests::{generate_request_key, WaitingRequests},
+        RequestKey,
+    },
     proto as shared_protos,
     proto::base_node as proto,
 };

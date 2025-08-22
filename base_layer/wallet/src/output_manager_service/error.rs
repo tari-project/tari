@@ -57,8 +57,6 @@ pub enum OutputManagerError {
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]
     MnemonicError(#[from] MnemonicError),
-    // #[error("Key manager error: `{0}`")]
-    // KeyManagerError(#[from] KeyManagerError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("DHT outbound error: `{0}`")]
