@@ -24,16 +24,15 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{CompressedCommitment, FixedHash},
 };
+use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
-    proof_of_work::{AchievedTargetDifficulty, Difficulty},
-    transactions::transaction_components::Transaction,
+    proof_of_work::AchievedTargetDifficulty,
     validation::error::ValidationError,
 };
-
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
 pub trait BlockBodyValidator<B>: Send + Sync {

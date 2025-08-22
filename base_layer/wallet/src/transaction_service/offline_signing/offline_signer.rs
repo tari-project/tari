@@ -27,18 +27,16 @@ use tari_common_types::{
     transaction::TxId,
     types::CompressedPublicKey,
 };
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+use tari_script::push_pubkey_script;
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        OutputFeatures,
     },
 };
-use tari_script::push_pubkey_script;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,

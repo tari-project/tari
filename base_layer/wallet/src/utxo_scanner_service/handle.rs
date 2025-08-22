@@ -22,7 +22,7 @@
 
 use std::time::Duration;
 
-use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_transaction_components::tari_amount::MicroMinotari;
 use tokio::sync::broadcast;
 
 use crate::util::watch::Watch;

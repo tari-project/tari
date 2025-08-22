@@ -24,11 +24,11 @@ use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
-use tari_core::transactions::{
+use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
 };
-use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
 use zeroize::Zeroize;
 
@@ -42,7 +42,7 @@ impl TryFrom<UnblindedOutput> for grpc::UnblindedOutput {
         BorshSerialize::serialize(&output.covenant, &mut covenant).map_err(|err| err.to_string())?;
         Ok(grpc::UnblindedOutput {
             value: u64::from(output.value),
-            spending_key: output.spending_key.as_bytes().to_vec(),
+            spending_key: output.commitment_mask_key.as_bytes().to_vec(),
             features: Some(output.features.into()),
             script: output.script.to_bytes(),
             input_data: output.input_data.to_bytes(),

@@ -24,17 +24,14 @@ use std::fmt::{Display, Formatter};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-
-use crate::{
-    blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block},
-    proof_of_work::Difficulty,
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
-        transaction_components::TransactionError,
-    },
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    tari_amount::MicroMinotari,
+    tari_proof_of_work::Difficulty,
+    transaction_components::TransactionError,
 };
 
+use crate::blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block};
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
 /// a final step the Base node to add the MMR roots to the header.
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

@@ -46,7 +46,7 @@ pub use fixed_hash::{FixedHash, FixedHashSizeError};
 
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
-pub type Signature = CompressedRistrettoSchnorr;
+pub type CompressedSignature = CompressedRistrettoSchnorr;
 pub type UncompressedSignature = RistrettoSchnorr;
 /// Define a generic signature type using a hash domain.
 pub type SignatureWithDomain<H> = RistrettoSchnorrWithDomain<H>;
@@ -84,7 +84,11 @@ pub type RangeProofService = BulletproofsPlusService;
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
 
+// Diffie-Hellman key exchange type
+pub type CommsDHKE = DiffieHellmanSharedSecret<RistrettoPublicKey>;
+
 use tari_crypto::{
+    dhke::DiffieHellmanSharedSecret,
     hash_domain,
     hashing::DomainSeparatedHasher,
     ristretto::{pedersen::PedersenCommitment, RistrettoSchnorr},

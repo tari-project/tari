@@ -31,23 +31,24 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     chain_storage::{BlockchainDatabaseConfig, Validators},
-    consensus::ConsensusManager,
-    covenants::Covenant,
+    consensus::BaseConsensusManager,
     mempool::{Mempool, MempoolConfig},
-    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
+    proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
-    },
-    transactions::{
-        tari_amount::MicroMinotari,
-        test_helpers::create_utxo,
-        transaction_key_manager::create_memory_db_key_manager,
     },
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
 use tari_script::script;
 use tari_service_framework::reply_channel;
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    tari_proof_of_work::Difficulty,
+    test_helpers::create_utxo,
+    transaction_components::covenants::Covenant,
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::{block_builders::append_block, sample_blockchains::create_new_blockchain};
@@ -64,7 +65,7 @@ async fn inbound_get_metadata() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = BaseConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -133,7 +134,7 @@ async fn inbound_fetch_headers() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = BaseConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -216,7 +217,7 @@ async fn inbound_fetch_blocks() {
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = BaseConsensusManager::builder(network).build().unwrap();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -250,7 +251,7 @@ async fn inbound_fetch_blocks() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let consensus_manager = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
     let block0 = consensus_manager.get_genesis_block();
     let key_manager = create_memory_db_key_manager().unwrap();
     let validators = Validators::new(

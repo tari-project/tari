@@ -28,11 +28,7 @@ use tari_common::configuration::Network;
 use tari_common_types::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
 use tari_comms_dht::Dht;
-use tari_core::{
-    consensus::ConsensusManager,
-    proto::base_node as base_node_proto,
-    transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories},
-};
+use tari_core::proto::base_node as base_node_proto;
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
@@ -45,6 +41,11 @@ use tari_service_framework::{
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+};
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    crypto_factories::CryptoFactories,
+    key_manager::TransactionKeyManagerInterface,
 };
 use tokio::sync::broadcast;
 

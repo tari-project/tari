@@ -6,6 +6,7 @@ use std::cmp;
 use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
+use tari_transaction_components::transaction_components::TransactionOutput;
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use thiserror::Error;
 
@@ -31,9 +32,7 @@ use crate::{
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
-    transactions::transaction_components::TransactionOutput,
 };
-
 const LOG_TARGET: &str = "c::bn::rpc::query_service";
 
 #[derive(Debug, Error)]
@@ -87,7 +86,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         self.mempool.clone()
     }
 
-    async fn fetch_kernel(&self, signature: types::Signature) -> Result<TxQueryResponse, Error> {
+    async fn fetch_kernel(&self, signature: types::CompressedSignature) -> Result<TxQueryResponse, Error> {
         let db = self.db();
 
         match db.fetch_kernel_by_excess_sig(signature.clone()).await? {

@@ -23,10 +23,8 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyError, MIN_DIFFICULTY};
 use tari_utilities::ByteArray;
-
-use crate::proof_of_work::{difficulty::MIN_DIFFICULTY, error::DifficultyError, Difficulty};
-
 /// The difficulty is defined as the maximum target divided by the block hash.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize)]
 pub struct AccumulatedDifficulty(u128);

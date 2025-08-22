@@ -52,7 +52,8 @@ use tari_common_types::{
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::WalletType,
 };
-use tari_core::transactions::{
+use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
     tari_amount::{uT, MicroMinotari},
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -62,7 +63,6 @@ use tari_core::transactions::{
     },
     weight::TransactionWeight,
 };
-use tari_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::{watch, RwLock};
 

@@ -26,6 +26,7 @@ use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_comms_dht::Dht;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_transaction_components::crypto_factories::CryptoFactories;
 use tokio::sync::{broadcast, watch};
 
 use crate::{
@@ -40,9 +41,8 @@ use crate::{
         LocalNodeCommsInterface,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    consensus::ConsensusManager,
+    consensus::BaseConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
-    transactions::CryptoFactories,
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
@@ -50,7 +50,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
 pub struct BaseNodeStateMachineInitializer<B> {
     db: AsyncBlockchainDb<B>,
     config: BaseNodeStateMachineConfig,
-    rules: ConsensusManager,
+    rules: BaseConsensusManager,
     factories: CryptoFactories,
     randomx_factory: RandomXFactory,
     bypass_range_proof_verification: bool,
@@ -62,7 +62,7 @@ where B: BlockchainBackend + 'static
     pub fn new(
         db: AsyncBlockchainDb<B>,
         config: BaseNodeStateMachineConfig,
-        rules: ConsensusManager,
+        rules: BaseConsensusManager,
         factories: CryptoFactories,
         randomx_factory: RandomXFactory,
         bypass_range_proof_verification: bool,

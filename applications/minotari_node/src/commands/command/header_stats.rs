@@ -26,10 +26,8 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::Utc;
 use clap::Parser;
-use tari_core::{
-    chain_storage::ChainStorageError,
-    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, PowAlgorithm},
-};
+use tari_core::{chain_storage::ChainStorageError, proof_of_work::lwma_diff::LinearWeightedMovingAverage};
+use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::hex::Hex;
 use tokio::{
     fs::File,
