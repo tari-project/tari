@@ -7678,6 +7678,7 @@ dependencies = [
  "primitive-types",
  "rand 0.8.5",
  "serde",
+ "serde_json",
  "strum",
  "strum_macros",
  "tari_common",
