@@ -116,7 +116,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateResponse,
 };
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, WalletConnectivityInterface, NON_RESPONSIVE_LATENCY},
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface, UNKNOWN_LATENCY_MS},
     error::WalletStorageError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
@@ -135,7 +135,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
 };
-use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
+use tari_comms::{connectivity::ConnectivityStatus, peer_manager::NodeId, types::CommsPublicKey};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
@@ -277,10 +277,23 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
+        let (node_id, public_key) = match self.wallet.wallet_connectivity.get_connectivity_status().await {
+            OnlineStatus::Connecting | OnlineStatus::Offline => (NodeId::default(), CommsPublicKey::default()),
+            OnlineStatus::Online {
+                node_id, public_key, ..
+            } |
+            OnlineStatus::Degraded {
+                node_id, public_key, ..
+            } => (
+                NodeId::from_hex(&node_id).map_err(|e| Status::internal(format!("{e:?}")))?,
+                CommsPublicKey::from_hex(&public_key).map_err(|e| Status::internal(format!("{e:?}")))?,
+            ),
+        };
+
         Ok(Response::new(GetIdentityResponse {
-            public_key: vec![],
+            public_key: public_key.to_vec(),
             public_address: self.wallet.wallet_connectivity.get_address().await,
-            node_id: vec![],
+            node_id: node_id.to_vec(),
         }))
     }
 
@@ -1742,9 +1755,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
         // This mapping is to comply to the legacy interface
         let (status, latency) = match self.wallet.wallet_connectivity.get_connectivity_status().await {
-            OnlineStatus::Connecting => (ConnectivityStatus::Initializing, NON_RESPONSIVE_LATENCY),
+            OnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS),
             OnlineStatus::Online { latency_ms, .. } => (ConnectivityStatus::Online(1), latency_ms),
-            OnlineStatus::Offline => (ConnectivityStatus::Offline, NON_RESPONSIVE_LATENCY),
+            OnlineStatus::Offline => (ConnectivityStatus::Offline, UNKNOWN_LATENCY_MS),
             OnlineStatus::Degraded { latency_ms, .. } => (ConnectivityStatus::Degraded(1), latency_ms),
         };
 
@@ -1765,9 +1778,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let url = self.wallet.wallet_connectivity.get_address().await;
         let (is_online, last_latency, node_id, public_key) =
             match self.wallet.wallet_connectivity.get_connectivity_status().await {
-                OnlineStatus::Connecting | OnlineStatus::Offline => {
-                    (false, NON_RESPONSIVE_LATENCY, "".to_string(), "".to_string())
-                },
+                OnlineStatus::Connecting | OnlineStatus::Offline => (
+                    false,
+                    UNKNOWN_LATENCY_MS,
+                    NodeId::default().to_hex(),
+                    CommsPublicKey::default().to_hex(),
+                ),
                 OnlineStatus::Online {
                     latency_ms,
                     node_id,

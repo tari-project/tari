@@ -39,7 +39,7 @@ use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::{
-    connectivity_service::OnlineStatus,
+    connectivity_service::{OnlineStatus, DEGRADED_LATENCY_THRESHOLD},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -343,11 +343,26 @@ where
                                     ..
                                 }=> {
                                     self.scanned_height_changed(current_height);
-                                    if !matches!(online_status.clone(), OnlineStatus::Online { .. })  {
-                                        online_status = OnlineStatus::Online { latency_ms: 1234, node_id: "".to_string(), public_key: "".to_string(), url: "".to_string() };
+                                    if matches!(online_status.clone(), OnlineStatus::Online { .. })  {
+                                        self.connectivity_status_changed(online_status.clone());
+                                    } else {
+                                        online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
+                                            OnlineStatus::Degraded {
+                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                                node_id: String::new(),
+                                                public_key: String::new(),
+                                                url: String::new()
+                                            }
+                                        } else {
+                                            OnlineStatus::Online {
+                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                                node_id: String::new(),
+                                                public_key: String::new(),
+                                                url: String::new()
+                                            }
+                                        };
                                         self.connectivity_status_changed(online_status.clone());
                                     }
-                                    self.connectivity_status_changed(online_status.clone());
                                     base_node_state.best_block_height = tip_height;
                                     base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
                                     self.base_node_state_changed(base_node_state);
@@ -359,7 +374,21 @@ where
                                 }=> {
                                 self.scanned_height_changed(final_height);
                                     if !matches!(online_status.clone(), OnlineStatus::Online { .. }) {
-                                        online_status = OnlineStatus::Online { latency_ms: 1234, node_id: "".to_string(), public_key: "".to_string(), url: "".to_string()  };
+                                        online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
+                                            OnlineStatus::Degraded {
+                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                                node_id: String::new(),
+                                                public_key: String::new(),
+                                                url: String::new()
+                                            }
+                                        } else {
+                                            OnlineStatus::Online {
+                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                                node_id: String::new(),
+                                                public_key: String::new(),
+                                                url: String::new()
+                                            }
+                                        };
                                         self.connectivity_status_changed(online_status.clone());
                                     }
                                     base_node_state.best_block_height = final_height;

@@ -22,13 +22,15 @@
 
 use std::time::Duration;
 
-use minotari_node_wallet_client::BaseNodeWalletClient;
+use minotari_node_wallet_client::{BaseNodeWalletClient, NodeIdPublicKeyPair};
 use tokio::sync::watch;
 
 use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
 
-/// The latency in milliseconds that is considered non-responsive for the base node.
-pub const NON_RESPONSIVE_LATENCY: u64 = 1234567890;
+/// Sentinel used when the latency is unknown/unavailable.
+pub const UNKNOWN_LATENCY_MS: u64 = 0;
+/// Requests slower than this are considered degraded.
+pub const DEGRADED_LATENCY_THRESHOLD: Duration = Duration::from_secs(10);
 
 /// Connection status of the Base Node
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -92,11 +94,11 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
 
     async fn get_connectivity_status(&self) -> OnlineStatus {
         let client = self.obtain_base_node_wallet_rpc_client().await;
-        let status = if let Some((node_id, public_key)) = client.is_online().await {
+        let status = if let Some(NodeIdPublicKeyPair { node_id, public_key }) = client.is_online().await {
             let url = client.get_address().await;
             if let Some(latency) = client.get_last_request_latency().await {
-                let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(NON_RESPONSIVE_LATENCY);
-                if latency > Duration::from_secs(10) {
+                let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(UNKNOWN_LATENCY_MS);
+                if latency >= DEGRADED_LATENCY_THRESHOLD {
                     OnlineStatus::Degraded {
                         latency_ms,
                         node_id,
@@ -114,7 +116,7 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
             } else {
                 // This branch will never trigger in practice, as the client will always return a latency when online
                 OnlineStatus::Degraded {
-                    latency_ms: NON_RESPONSIVE_LATENCY,
+                    latency_ms: DEGRADED_LATENCY_THRESHOLD.as_secs(),
                     node_id,
                     public_key,
                     url,

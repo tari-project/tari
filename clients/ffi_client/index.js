@@ -32,7 +32,7 @@ try {
 
 
   console.log("Create Comms config...");
-  let comms = lib.comms_config_create(
+  let comms = lib.wallet_db_config_create(
     "/ip4/0.0.0.0/tcp/9838",
     tor,
     "wallet.dat",

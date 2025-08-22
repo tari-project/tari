@@ -77,6 +77,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use minotari_wallet::{
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -5452,11 +5453,11 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 /// null or a problem is encountered when constructing the NetAddress a ptr::null_mut() is returned
 ///
 /// # Safety
-/// The ```comms_config_destroy``` method must be called when finished with a TariWalletDbConfig to prevent a memory
+/// The ```wallet_db_config_destroy``` method must be called when finished with a TariWalletDbConfig to prevent a memory
 /// leak
 #[no_mangle]
 #[allow(clippy::too_many_lines)]
-pub unsafe extern "C" fn comms_config_create(
+pub unsafe extern "C" fn wallet_db_config_create(
     database_name: *const c_char,
     datastore_path: *const c_char,
     error_out: *mut c_int,
@@ -5518,9 +5519,52 @@ pub unsafe extern "C" fn comms_config_create(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariWalletDbConfig) {
+pub unsafe extern "C" fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig) {
     if !wc.is_null() {
         drop(Box::from_raw(wc))
+    }
+}
+
+/// This function lists the public keys of all connected peers
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter. Returns a null pointer if any pointer argument is null.
+///
+/// ## Returns
+/// `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
+///
+/// # Safety
+/// The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
+#[no_mangle]
+pub unsafe extern "C" fn comms_list_connected_public_keys(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPublicKeys {
+    if error_out.is_null() {
+        return ptr::null_mut();
+    }
+    *error_out = 0;
+
+    if wallet.is_null() {
+        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        return ptr::null_mut();
+    }
+
+    let public_key_str = (*wallet).runtime.block_on(async {
+        match (*wallet).wallet.wallet_connectivity.get_connectivity_status().await {
+            OnlineStatus::Connecting | OnlineStatus::Offline => TariPublicKey::default().to_hex(),
+            OnlineStatus::Online { public_key, .. } | OnlineStatus::Degraded { public_key, .. } => public_key,
+        }
+    });
+    let public_key_res = TariPublicKey::from_hex(&public_key_str);
+    match public_key_res {
+        Ok(pk) => Box::into_raw(Box::new(TariPublicKeys(vec![pk]))),
+        Err(e) => {
+            *error_out = LibWalletError::from(e).code;
+            ptr::null_mut()
+        },
     }
 }
 
@@ -5740,7 +5784,7 @@ unsafe fn init_logging(
 }
 
 /// Helper function to create the main wallet database path.
-pub(crate) fn get_wallet_database_path(config: TariWalletDbConfig) -> PathBuf {
+pub(crate) fn get_wallet_database_path(config: &TariWalletDbConfig) -> PathBuf {
     config
         .datastore_path
         .join(config.database_name.clone())
@@ -6002,7 +6046,7 @@ pub unsafe extern "C" fn wallet_create(
     };
     let factories = CryptoFactories::default();
 
-    let main_wallet_database_sql_database_path = get_wallet_database_path((*config).clone());
+    let main_wallet_database_sql_database_path = get_wallet_database_path(&*config);
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
@@ -6189,7 +6233,8 @@ pub unsafe extern "C" fn wallet_create(
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+/// `*mut c_char` - Returns a newly allocated UTF-8 string containing the last network version, or null on error/if
+/// not available.
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
@@ -6208,7 +6253,7 @@ pub unsafe extern "C" fn wallet_get_last_version(
         return ptr::null_mut();
     }
 
-    let sql_database_path = get_wallet_database_path((*config).clone());
+    let sql_database_path = get_wallet_database_path(&*config);
     match get_last_version(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(version)) => {
@@ -6230,7 +6275,8 @@ pub unsafe extern "C" fn wallet_get_last_version(
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+/// `*mut c_char` - Returns a newly allocated UTF-8 string containing the last network name, or null on error/if not
+/// available.
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
@@ -6249,7 +6295,7 @@ pub unsafe extern "C" fn wallet_get_last_network(
         return ptr::null_mut();
     }
 
-    let sql_database_path = get_wallet_database_path((*config).clone());
+    let sql_database_path = get_wallet_database_path(&*config);
     match get_last_network(sql_database_path) {
         Ok(None) => ptr::null_mut(),
         Ok(Some(network)) => {
@@ -10231,7 +10277,7 @@ mod test {
             let alice_network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Hello from Alasca").unwrap()) as *const c_char;
@@ -10275,7 +10321,7 @@ mod test {
             assert_eq!(*error_ptr, 0, "No error expected");
             wallet_destroy(alice_wallet);
 
-            let sql_database_path = get_wallet_database_path((*alice_config).clone());
+            let sql_database_path = get_wallet_database_path(&*alice_config);
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(
@@ -10365,7 +10411,7 @@ mod test {
             string_destroy(original_path_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
         }
     }
 
@@ -10387,7 +10433,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("dolphis dancing in the coastal waters").unwrap()) as *const c_char;
@@ -10483,7 +10529,7 @@ mod test {
             string_destroy(passphrase_const_str as *mut c_char);
             private_key_destroy(secret_key_alice);
 
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -10605,7 +10651,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(db_name_str, db_path_str, error_ptr);
+            let config = wallet_db_config_create(db_name_str, db_path_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a cat outside in Istanbul").unwrap()) as *const c_char;
@@ -10658,7 +10704,7 @@ mod test {
             let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
 
-            let config = comms_config_create(db_name_str, db_path_str, error_ptr);
+            let config = wallet_db_config_create(db_name_str, db_path_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("a wave in teahupoo").unwrap()) as *const c_char;
@@ -10731,7 +10777,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("Satoshi Nakamoto").unwrap()) as *const c_char;
@@ -10910,7 +10956,7 @@ mod test {
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -10933,7 +10979,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("J-bay open corona").unwrap()) as *const c_char;
@@ -11037,7 +11083,7 @@ mod test {
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -11060,7 +11106,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
@@ -11168,7 +11214,7 @@ mod test {
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -11191,7 +11237,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char =
                 CString::into_raw(CString::new("The master and margarita").unwrap()) as *const c_char;
@@ -11423,7 +11469,7 @@ mod test {
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -11446,7 +11492,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let http_base_node_address: *const c_char =
@@ -11686,7 +11732,7 @@ mod test {
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -11709,7 +11755,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
+            let alice_config = wallet_db_config_create(db_name_alice_str, db_path_alice_str, error_ptr);
 
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let http_base_node_address: *const c_char =
@@ -11777,7 +11823,7 @@ mod test {
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }
@@ -11961,7 +12007,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let config = comms_config_create(db_name_str, db_path_str, error_ptr);
+            let config = wallet_db_config_create(db_name_str, db_path_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let http_base_node_address: *const c_char =
                 CString::new("http://127.0.0.1:2222").unwrap().into_raw() as *const c_char;
@@ -12221,7 +12267,7 @@ mod test {
             string_destroy(db_name_str as *mut c_char);
             string_destroy(db_path_str as *mut c_char);
 
-            comms_config_destroy(config);
+            wallet_db_config_destroy(config);
             wallet_destroy(wallet_ptr);
         }
     }
@@ -12319,7 +12365,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let alice_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let alice_config = comms_config_create(alice_db_name_str, alice_db_path_str, error_ptr);
+            let alice_config = wallet_db_config_create(alice_db_name_str, alice_db_path_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let http_base_node_address: *const c_char =
@@ -12360,7 +12406,7 @@ mod test {
             string_destroy(alice_network_str as *mut c_char);
             string_destroy(alice_db_name_str as *mut c_char);
             string_destroy(alice_db_path_str as *mut c_char);
-            comms_config_destroy(alice_config);
+            wallet_db_config_destroy(alice_config);
 
             // Create a new wallet for bob
             let db_name = CString::new(random::string(8).as_str()).unwrap();
@@ -12371,7 +12417,7 @@ mod test {
             let network = CString::new(NETWORK_STRING).unwrap();
             let bob_network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
-            let bob_config = comms_config_create(bob_db_name_str, bob_db_path_str, error_ptr);
+            let bob_config = wallet_db_config_create(bob_db_name_str, bob_db_path_str, error_ptr);
             let passphrase: *const c_char = CString::into_raw(CString::new("niao").unwrap()) as *const c_char;
             let void_ptr: *mut c_void = &mut (5) as *mut _ as *mut c_void;
             let http_base_node_address: *const c_char =
@@ -12412,7 +12458,7 @@ mod test {
             string_destroy(bob_network_str as *mut c_char);
             string_destroy(bob_db_name_str as *mut c_char);
             string_destroy(bob_db_path_str as *mut c_char);
-            comms_config_destroy(bob_config);
+            wallet_db_config_destroy(bob_config);
 
             // Trigger wallet shutdown (same as `pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet)`
             wallet_destroy(alice_wallet_ptr);

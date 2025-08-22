@@ -25,7 +25,7 @@ use tari_utilities::hex::Hex;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
 
-use crate::{BaseNodeWalletClient, JsonRpcResponse};
+use crate::{BaseNodeWalletClient, JsonRpcResponse, NodeIdPublicKeyPair};
 
 const LOG_TARGET: &str = "tari::wallet::client::http";
 
@@ -120,9 +120,12 @@ impl BaseNodeWalletClient for Client {
         }
     }
 
-    async fn is_online(&self) -> Option<(String, String)> {
+    async fn is_online(&self) -> Option<NodeIdPublicKeyPair> {
         if let Ok(res) = self.get_tip_info().await {
-            Some((res.node_id, res.public_key))
+            Some(NodeIdPublicKeyPair {
+                node_id: res.node_id,
+                public_key: res.public_key,
+            })
         } else {
             None
         }

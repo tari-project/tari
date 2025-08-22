@@ -80,7 +80,6 @@ mod test {
         pub callback_txo_validation_already_busy: bool,
         pub callback_balance_updated: u32,
         pub callback_transaction_validation_complete: u32,
-        pub saf_messages_received: bool,
         pub connectivity_status_callback_called: u64,
         pub wallet_scanner_height_callback_called: u64,
         pub base_node_state_changed_callback_invoked: bool,
@@ -109,7 +108,6 @@ mod test {
                 tx_cancellation_callback_called_completed: false,
                 tx_cancellation_callback_called_inbound: false,
                 tx_cancellation_callback_called_outbound: false,
-                saf_messages_received: false,
                 connectivity_status_callback_called: 0,
                 wallet_scanner_height_callback_called: 0,
                 base_node_state_changed_callback_invoked: false,
@@ -812,14 +810,13 @@ mod test {
         assert!(lock.tx_cancellation_callback_called_inbound);
         assert!(lock.tx_cancellation_callback_called_completed);
         assert!(lock.tx_cancellation_callback_called_outbound);
-        assert!(lock.saf_messages_received);
         assert!(lock.callback_txo_validation_completed);
         assert!(lock.callback_txo_validation_communication_failure);
         assert!(lock.callback_txo_validation_already_busy);
         assert!(lock.callback_txo_validation_internal_failure);
         assert_eq!(lock.callback_balance_updated, 7);
         assert_eq!(lock.callback_transaction_validation_complete, 13);
-        assert_eq!(lock.connectivity_status_callback_called, 4);
+        assert_eq!(lock.connectivity_status_callback_called, 2);
         assert_eq!(lock.wallet_scanner_height_callback_called, 1100);
 
         drop(lock);

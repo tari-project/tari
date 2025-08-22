@@ -105,12 +105,7 @@ where KeyManagerInterface: TransactionKeyManagerInterface
             event_monitor_started: Arc::new(AtomicBool::new(false)),
             last_scan_activity: Arc::new(AtomicU64::new(scanned_height + 1)), /* Add 1 to pass initial connectivity
                                                                                * check */
-            connection_status: Arc::new(Mutex::new(OnlineStatus::Online {
-                latency_ms: 1234,
-                node_id: "".to_string(),
-                public_key: "".to_string(),
-                url: "".to_string(),
-            })),
+            connection_status: Arc::new(Mutex::new(OnlineStatus::Connecting)),
         }
     }
 
@@ -323,28 +318,9 @@ where KeyManagerInterface: TransactionKeyManagerInterface
         }
     }
 
-    /// Check if height has changed since last scan
-    /// if not then get tip info if we get response we got online otherwise offline
+    /// Check the online status by querying the wallet connectivity service directly
     async fn check_connectivity(&self) -> OnlineStatus {
-        let scanned_height = self.scanned_height.load(Ordering::SeqCst);
-        let last_scan_activity = self.last_scan_activity.load(Ordering::SeqCst);
-
-        // If no recent scanning activity, test connectivity
-        let connectivity = if last_scan_activity == scanned_height {
-            // No new blocks scanned - test if we can reach the base node
-            let connectivity = self.wallet.wallet_connectivity.clone();
-            connectivity.get_connectivity_status().await
-        } else {
-            // Recent scanning activity indicates we're online
-            trace!(target: LOG_TARGET, "Recent scanning activity detected - wallet is online");
-            OnlineStatus::Online {
-                latency_ms: 1234,
-                node_id: "".to_string(),
-                public_key: "".to_string(),
-                url: "".to_string(),
-            }
-        };
-        // Update connection status
+        let connectivity = self.wallet.wallet_connectivity.get_connectivity_status().await;
         let mut connection_status_guard = self.connection_status.lock().await;
         *connection_status_guard = connectivity.clone();
         connectivity

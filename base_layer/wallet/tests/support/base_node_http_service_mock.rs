@@ -25,7 +25,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::Error;
 use async_trait::async_trait;
 use itertools::Itertools;
-use minotari_node_wallet_client::BaseNodeWalletClient;
+use minotari_node_wallet_client::{BaseNodeWalletClient, NodeIdPublicKeyPair};
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
 use tari_core::{
     base_node::rpc::models::{
@@ -100,7 +100,7 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         todo!()
     }
 
-    async fn is_online(&self) -> Option<(String, String)> {
+    async fn is_online(&self) -> Option<NodeIdPublicKeyPair> {
         todo!()
     }
 

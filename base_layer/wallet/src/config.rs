@@ -59,7 +59,8 @@ where D: serde::Deserializer<'de> {
 #[serde(deny_unknown_fields)]
 pub struct WalletConfig {
     pub override_from: Option<String>,
-    /// The p2p config settings
+    /// DEPRECATED: The p2p config settings
+    #[serde(default)]
     pub p2p: P2pConfig,
     /// The transaction_service_config config settings
     #[serde(rename = "transactions")]
@@ -118,7 +119,7 @@ pub struct WalletConfig {
     /// DEPRECATED: Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet
     /// DEPRECATED: was built with the optional "libtor" feature flag.
     pub use_libtor: bool,
-    /// DEPRECATED: A path to the file that stores the base node identity and secret key
+    /// DEPRECATED: A path to the file that stores the wallet identity and secret key
     pub identity_file: Option<PathBuf>,
     /// The cool down period between balance enquiry checks in seconds; requests faster than this will be ignored.
     /// For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain

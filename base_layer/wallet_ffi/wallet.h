@@ -2762,12 +2762,12 @@ void transaction_send_status_destroy(TariTransactionSendStatus *status);
  * null or a problem is encountered when constructing the NetAddress a ptr::null_mut() is returned
  *
  * # Safety
- * The ```comms_config_destroy``` method must be called when finished with a TariWalletDbConfig to prevent a memory
+ * The ```wallet_db_config_destroy``` method must be called when finished with a TariWalletDbConfig to prevent a memory
  * leak
  */
-struct TariWalletDbConfig *comms_config_create(const char *database_name,
-                                               const char *datastore_path,
-                                               int *error_out);
+struct TariWalletDbConfig *wallet_db_config_create(const char *database_name,
+                                                   const char *datastore_path,
+                                                   int *error_out);
 
 /**
  * Frees memory for a TariWalletDbConfig
@@ -2781,7 +2781,24 @@ struct TariWalletDbConfig *comms_config_create(const char *database_name,
  * # Safety
  * None
  */
-void comms_config_destroy(struct TariWalletDbConfig *wc);
+void wallet_db_config_destroy(struct TariWalletDbConfig *wc);
+
+/**
+ * This function lists the public keys of all connected peers
+ *
+ * ## Arguments
+ * `wallet` - The TariWallet pointer
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter. Returns a null pointer if any pointer argument is null.
+ *
+ * ## Returns
+ * `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
+ *
+ * # Safety
+ * The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
+ */
+struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *wallet,
+                                                        int *error_out);
 
 /**
  * Gets the length of the public keys vector
@@ -2985,7 +3002,8 @@ struct TariWallet *wallet_create(void *context,
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+ * `*mut c_char` - Returns a newly allocated UTF-8 string containing the last network version, or null on error/if
+ * not available.
  *
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
@@ -3002,7 +3020,8 @@ char *wallet_get_last_version(struct TariWalletDbConfig *config,
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `*mut c_char` - Returns the pointer to the hexadecimal representation of the signature and
+ * `*mut c_char` - Returns a newly allocated UTF-8 string containing the last network name, or null on error/if not
+ * available.
  *
  * # Safety
  * The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
@@ -4298,7 +4317,7 @@ unsigned long long basenode_state_get_height_of_the_longest_chain(struct TariBas
  * as an out parameter.
  *
  * ## Returns
- * `c_ulonglong` - Latency value measured in microseconds.
+ * `c_ulonglong` - Latency value measured in milliseconds.
  *
  * # Safety
  * None

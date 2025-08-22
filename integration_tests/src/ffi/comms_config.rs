@@ -32,7 +32,7 @@ pub struct CommsConfig {
 
 impl Drop for CommsConfig {
     fn drop(&mut self) {
-        unsafe { ffi_import::comms_config_destroy(self.ptr) };
+        unsafe { ffi_import::wallet_db_config_destroy(self.ptr) };
         self.ptr = null_mut();
     }
 }
@@ -42,7 +42,7 @@ impl CommsConfig {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::comms_config_create(
+            ptr = ffi_import::wallet_db_config_create(
                 CString::new("wallet.dat").unwrap().into_raw(),
                 CString::new(base_dir).unwrap().into_raw(),
                 &mut error,

@@ -348,12 +348,13 @@ extern "C" {
     pub fn pending_inbound_transaction_destroy(transaction: *mut TariPendingInboundTransaction);
     pub fn transaction_send_status_decode(status: *const TariTransactionSendStatus, error_out: *mut c_int) -> c_uint;
     pub fn transaction_send_status_destroy(status: *mut TariTransactionSendStatus);
-    pub fn comms_config_create(
+    pub fn wallet_db_config_create(
         database_name: *const c_char,
         datastore_path: *const c_char,
         error_out: *mut c_int,
     ) -> *mut TariWalletDbConfig;
-    pub fn comms_config_destroy(wc: *mut TariWalletDbConfig);
+    pub fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig);
+    pub fn comms_list_connected_public_keys(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKeys;
     pub fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint;
     pub fn public_keys_get_at(
         public_keys: *const TariPublicKeys,

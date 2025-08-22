@@ -72,7 +72,7 @@
 # Number of required transaction confirmations used for UI purposes (default = 3)
 #num_required_confirmations = 3
 
-# DEPRECATED: Spin up and use a built-in Tor instance, only works on macos/linux and must comment out 4
+# DEPRECATED: Spin up and use a built-in Tor instance, only works on macos/linux and must comment out
 # DEPRECATED: 'tor.control_address' below. This requires that the base node was built with the optional "libtor"
 # DEPRECATED: feature flag. (default = true)
 #use_libtor = false
