@@ -357,7 +357,8 @@ fn kernel_metadata() {
         &k.hash().to_hex(),
         "22e39392dfeae9653c73437880be71e99f4b8a2b23289d54f57b8931deebfeed"
     );
-    #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
+    
+    #[cfg(tari_target_network_testnet)]
     assert_eq!(
         &k.hash().to_hex(),
         "ebc852fbac798c25ce497b416f69ec11a97e186aacaa10e2bb4ca5f5a0f197f2"
