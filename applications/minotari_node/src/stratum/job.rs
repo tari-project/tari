@@ -1,8 +1,7 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::tari_address::TariAddress;
 use tari_core::proof_of_work::PowAlgorithm;
-use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Job {
@@ -24,13 +23,7 @@ pub struct Job {
 pub struct SubmittedJob {
     pub job_id: String,
     pub nonce: u64,
-    pub target: u64,
-    pub chain_target: u64,
-    pub blob: Vec<u8>,
-    pub algo: String,
     pub pow_algo: PowAlgorithm,
-    pub miner_address: String,
     pub original_mining_hash: Vec<u8>,
-    pub result: Vec<u8>,
     pub cuckaroo_nonces: Vec<u64>,
 }

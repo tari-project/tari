@@ -144,7 +144,7 @@ loggers:
     additive: false  
 
   minotari::base_node::stratum:
-    level: debug
+    level: info
     appenders:
       - stratum
     additive: false    

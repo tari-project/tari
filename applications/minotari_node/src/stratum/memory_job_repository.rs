@@ -1,6 +1,5 @@
 use dashmap::DashMap;
 use log::debug;
-use uuid::Uuid;
 
 use crate::stratum::{job::Job, job_repository::JobRepository};
 

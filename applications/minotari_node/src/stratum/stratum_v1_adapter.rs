@@ -21,23 +21,9 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
                 let agent = params.get(0);
                 let agent = agent.and_then(|v| v.as_str()).map(|s| s.to_string());
 
-                // let address_and_worker = params
-                //     .get(1)
-                //     .and_then(|v| v.as_str())
-                //     .ok_or(anyhow::anyhow!("Invalid JSON. address missing"))?
-                //     .to_string();
-                // let address_parts = address_and_worker.split('.').collect::<Vec<_>>();
-                // let address = address_parts[0].to_string();
-                // let worker = if address_parts.len() > 1 {
-                //     Some(address_parts[1].to_string())
-                // } else {
-                //     None
-                // };
                 Ok(StratumRequest::Subscribe {
                     id,
                     agent: agent.unwrap_or_default(),
-                    // address,
-                    // worker,
                 })
             },
             "mining.authorize" => {
@@ -49,17 +35,11 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
                     .and_then(|v| v.as_str())
                     .ok_or(anyhow::anyhow!("Invalid JSON. login missing"))?
                     .to_string();
-                let (worker_name, mut login) = if login.contains(".") {
+                let (worker_name, login) = if login.contains(".") {
                     let parts: Vec<&str> = login.split('.').collect();
                     (Some(parts[1].to_string()), parts[0].to_string())
                 } else {
                     (None, login)
-                };
-                let is_solo = if login.starts_with("solo:") {
-                    login = login.replace("solo:", "");
-                    true
-                } else {
-                    false
                 };
                 let pass = params
                     .get(1)
@@ -69,7 +49,6 @@ impl StratumStreamAdapter for StratumV1StreamAdapter {
                 Ok(StratumRequest::Authorize {
                     id,
                     login,
-                    is_solo,
                     pass,
                     worker_name,
                 })

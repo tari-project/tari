@@ -1,12 +1,9 @@
-use std::{io::Cursor, marker::PhantomData, path::MAIN_SEPARATOR, sync::Arc, time::Duration};
+use std::{marker::PhantomData, time::Duration};
 
 use anyhow::Error;
 use log::{debug, info, warn};
 use serde::Serialize;
-use tari_core::{
-    base_node::LocalNodeCommsInterface,
-    consensus::{self, ConsensusManager},
-};
+use tari_core::{base_node::LocalNodeCommsInterface, consensus::ConsensusManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -17,14 +14,12 @@ use tokio::{
 use tonic::async_trait;
 
 use crate::stratum::{
-    self,
     block_template_repository::DefaultBlockTemplateRepository,
     job_repository_service::{JobRepositoryClient, JobRepositoryService},
     memory_job_repository::MemoryJobRepository,
     multi_stratum_stream_adapter::MultiVersionStratumStreamAdapter,
     stream_adapter::StratumStreamAdapter,
     tari_sha3x_stratum_handler::TariSha3xStratumHandler,
-    LatestBlockBroadcastReceiver,
     StratumRequest,
 };
 
@@ -54,7 +49,6 @@ impl TariStratumServer {
         let mut servers = vec![];
         let shutdown1 = shutdown.clone();
         let stratum_port = self.port;
-        let min_difficulty = 10_000_000; // Default minimum difficulty
         let (submit_tx, submit_job_queue_rx) = tokio::sync::mpsc::channel(100);
         let block_creater = DefaultBlockTemplateRepository::new(local_node, consensus_manager);
         let block_creater_clone = block_creater.clone();
@@ -63,7 +57,6 @@ impl TariStratumServer {
             let stratum_server = StratumServerBuilder::<_, MultiVersionStratumStreamAdapter>::new()
                 .with_port(stratum_port)
                 .with_job_handler(job_handler)
-                // .with_min_difficulty(min_difficulty)
                 .build();
 
             stratum_server.start(shutdown1).await
@@ -105,11 +98,6 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServerBuilder<
 
     pub fn with_job_handler(mut self, handler: T) -> Self {
         self.with_job_handler = Some(handler);
-        self
-    }
-
-    pub fn with_min_difficulty(mut self, min_difficulty: u64) -> Self {
-        self.min_difficulty = Some(min_difficulty);
         self
     }
 
@@ -171,7 +159,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                 info!(target: LOG_TARGET, "Connection closed by client");
                                                                 break;
                                                             },
-                                                            Err(e) => {
+                                                            Err(_) => {
                                                                 // timeout, let's check if there is a new block and notify the client.
 
                                                                 // Check for new blocks and notify the client
@@ -222,7 +210,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 
                                                                         // Handle the request based on its type
                                                                         match request {
-                                                                            StratumRequest::Login { id, login, address, pass, agent, algo, worker: _worker } => {
+                                                                            StratumRequest::Login { id, login, address, pass: _pass, agent: _agent, algo, worker: _worker } => {
 
                                                                                 // let algo = algo.first().cloned().unwrap_or_else(|| "sha3x".to_string());
                                                                                 let login_parts = login.split("=").collect::<Vec<_>>();
@@ -251,7 +239,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                     continue;
                                                                                 }
 
-                                                                                let response = handler.login(id.clone(), login_address, address,  &algo, pass, agent, login_difficulty).await;
+                                                                                let response = handler.login(id.clone(), login_address, address,  &algo).await;
                                                                                 match response {
                                                                                     Ok(resp) => {
                                                                                         info!(target: LOG_TARGET, "Handled login request with id: {}", id);
@@ -277,9 +265,8 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                 };
                                                                                 let response = handler.submit(job_id, nonce, result, id.clone(), pow).await;
                                                                                 match response {
-                                                                                    Ok(resp) => {
+                                                                                    Ok(_resp) => {
                                                                                         info!(target: LOG_TARGET, "Handled submit request with id: {}", id);
-                                                                                        let json_response = serde_json::to_string(&resp).unwrap();
                                                                                         let _res = writer.write_all(format!("{{\"id\": \"{}\", \"result\": true, \"error\": null}}\n", id).as_bytes()).await.inspect_err(|e| {
                                                                                             warn!(target: LOG_TARGET, "Failed to write response: {}", e);
                                                                                         }       );
@@ -332,7 +319,7 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
                                                                                 // This is a no-op in this implementation, but you can handle it if needed
                                                                                 let _res = writer.write_all(format!("{{\"id\": \"{}\", \"jsonrpc\": \"2.0\", \"result\": true, \"error\": null}}\n", id).as_bytes()).await;
                                                                             },
-                                                                            StratumRequest::Authorize { id, login, worker_name, pass, is_solo : _ } => {
+                                                                            StratumRequest::Authorize { id, login, worker_name, pass } => {
                                                                                  let sub;
                                                                                  println!("here");
                                                                                     if let Some(subscription_id) = current_subscription_id.clone() {
@@ -445,16 +432,8 @@ impl<T: StratumJobHandler, TAdapter: StratumStreamAdapter> StratumServer<T, TAda
 #[async_trait]
 pub trait StratumJobHandler: Clone + Send + Sync + 'static {
     // fn handle_request(&self, request: StratumRequest) -> anyhow::Result<Value>;
-    async fn login(
-        &self,
-        id: String,
-        login: String,
-        address: String,
-        algo: &[String],
-        pass: String,
-        agent: String,
-        endpoint_difficulty: u64,
-    ) -> anyhow::Result<LoginResponse>;
+    async fn login(&self, id: String, login: String, address: String, algo: &[String])
+        -> anyhow::Result<LoginResponse>;
 
     async fn submit(
         &self,
@@ -517,11 +496,9 @@ pub(crate) struct SubscribeResponse {
 }
 
 pub(crate) struct AuthorizeResponse {
-    pub difficulty: String,
     pub blob: String,
     pub extra_nonce_hex: String,
     pub height: u64,
-    pub job_id: String,
 }
 
 pub(crate) struct NotifyResponse {

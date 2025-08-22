@@ -1,15 +1,13 @@
-use std::{cmp, str::FromStr, vec};
+use std::{str::FromStr, vec};
 
 use async_trait::async_trait;
-use minotari_app_grpc::conversions::chain_metadata;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::tari_address::TariAddress;
 use tari_core::proof_of_work::PowAlgorithm;
-use tokio::sync::watch;
 
 use crate::stratum::{
-    block_template_repository::{self, BlockTemplate, BlockTemplateRepository},
-    job::{self, Job, SubmittedJob},
+    block_template_repository::{BlockTemplate, BlockTemplateRepository},
+    job::{Job, SubmittedJob},
     job_repository::JobRepository,
     stratum_server::{
         AuthorizeResponse,
@@ -20,7 +18,6 @@ use crate::stratum::{
         SubmitResponse,
         SubscribeResponse,
     },
-    LatestBlockBroadcastReceiver,
     SubmitJobQueueSender,
 };
 
@@ -64,14 +61,10 @@ impl<
         _login: String,
         address: String,
         algo: &[String],
-        pass: String,
-        agent: String,
-        endpoint_difficulty: u64,
     ) -> anyhow::Result<LoginResponse> {
         // Handle login request
         let address = TariAddress::from_str(&address)?;
 
-        let is_solo = true;
         let main_algo;
         if algo.is_empty() {
             main_algo = "cuckaroo".to_string();
@@ -89,8 +82,8 @@ impl<
             height,
             target,
             seed_hash,
-            extra_nonce,
             prev_block_hash,
+            ..
         } = self
             .block_template_repository
             .get_block_template(algo, Some(address.clone()))
@@ -100,8 +93,6 @@ impl<
 
         let id = hex::encode(r.next_u64().to_le_bytes());
         let random_bytes = rand::random::<u16>();
-        let xn = hex::encode(&random_bytes.to_le_bytes());
-        // let algo = "sha3x".to_string();
         let job_target = hex::encode((u64::MAX / target).to_le_bytes());
         let chain_target = hex::encode(target.to_le_bytes());
 
@@ -178,21 +169,9 @@ impl<
         }
         let job = job.unwrap();
 
-        // Quick check the nonce against extra nonce.
-        let extra_nonce = job.xn;
-        // dbg!(extra_nonce);
-        // dbg!(extra_nonce.to_le_bytes());
-        let nonce_bytes = nonce.to_be_bytes();
-        // dbg!(nonce_bytes);
-        // if nonce.to_be_bytes()[..2] != extra_nonce.to_le_bytes()[..2] {
-        //     return Err(anyhow::anyhow!("Nonce does not match extra nonce"));
-        // }
-
         // Quick check for the target.
         let result = hex::decode(result)?;
         let target = &hex::decode(job.target)?;
-        dbg!(&result);
-        dbg!(&target);
         let result_u64 = if job.pow_algo == PowAlgorithm::RandomXT {
             let result = &result[result.len() - 8..];
             dbg!(&result);
@@ -207,23 +186,9 @@ impl<
         let target_u64 = u64::from_le_bytes([
             target[0], target[1], target[2], target[3], target[4], target[5], target[6], target[7],
         ]);
-        dbg!(result_u64);
-        dbg!(target_u64);
         if result_u64 > target_u64 {
-            dbg!("Result is greater than target");
             return Err(anyhow::anyhow!("Result is greater than target"));
         }
-        let chain_target = hex::decode(job.chain_target)?;
-        let chain_target_u64 = u64::from_le_bytes([
-            chain_target[0],
-            chain_target[1],
-            chain_target[2],
-            chain_target[3],
-            chain_target[4],
-            chain_target[5],
-            chain_target[6],
-            chain_target[7],
-        ]);
 
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _res = self
@@ -232,14 +197,8 @@ impl<
                 SubmittedJob {
                     job_id: job.job_id.to_string(),
                     nonce,
-                    algo: job.algo.clone(),
                     pow_algo: job.pow_algo.clone(),
-                    target: target_u64,
-                    chain_target: chain_target_u64,
-                    blob: job.blob.clone(),
                     original_mining_hash: job.original_mining_hash.clone(),
-                    miner_address: job.miner_address.to_string(),
-                    result,
                     cuckaroo_nonces: cuckaroo_nonces.unwrap_or_default(),
                 },
                 tx,
@@ -261,24 +220,15 @@ impl<
         // Handle submit request
     }
 
-    async fn subscribe(&self, id: String, agent: String) -> anyhow::Result<SubscribeResponse> {
-        dbg!("here");
-
+    async fn subscribe(&self, _id: String, _agent: String) -> anyhow::Result<SubscribeResponse> {
         let mut r = OsRng;
         let subscription_id = hex::encode(r.next_u64().to_le_bytes());
-        // let job_id = hex::encode(r.next_u64().to_le_bytes());
 
-        // let id = hex::encode(r.next_u64().to_le_bytes());
         let nonce = rand::random::<u16>();
 
         let xn = hex::encode(&nonce.to_le_bytes());
-        dbg!("here");
 
         Ok(SubscribeResponse {
-            // difficulty: job_target,
-            // block_template: hex::encode(blob),
-            // nonce: xn,
-            // height,
             subscription_id: subscription_id.clone(),
             nonce_hex: xn.clone(),
             nonce,
@@ -287,30 +237,23 @@ impl<
 
     async fn authorize(
         &self,
-        id: String,
+        _id: String,
         main_algo: String,
         login: String,
-        worker_name: Option<String>,
-        pass: String,
+        _worker_name: Option<String>,
+        _pass: String,
         nonce: Option<u16>,
     ) -> anyhow::Result<AuthorizeResponse> {
-        dbg!("here");
         let algo = main_algo.parse()?;
         let address = TariAddress::from_str(&login)?;
-        // dbg!("here");
 
         let job_record = create_job_from_blob(&self.block_template_repository, algo, address, nonce).await?;
-        dbg!("here");
         self.job_repository.insert_job(job_record.clone()).await?;
 
         Ok(AuthorizeResponse {
-            difficulty: job_record.target,
             blob: hex::encode(job_record.blob.clone()),
             extra_nonce_hex: job_record.xn.to_string(),
             height: job_record.height,
-            job_id: job_record.job_id.clone(),
-            // subscription_id: subscription_id.clone(),
-            // extra_nonce: xn.clone(),
         })
     }
 
@@ -338,7 +281,6 @@ impl<
             Some(last_job.xn.clone()),
         )
         .await?;
-        dbg!("here");
         self.job_repository.insert_job(job_record.clone()).await?;
         Ok(Some(NotifyResponse {
             job_id: job_record.job_id,
@@ -353,30 +295,26 @@ async fn create_job_from_blob<TBlockRepo: BlockTemplateRepository>(
     block_template_repository: &TBlockRepo,
     algo: PowAlgorithm,
     address: TariAddress,
-    nonce: Option<u16>,
+    _nonce: Option<u16>,
 ) -> anyhow::Result<Job> {
     let BlockTemplate {
         blob,
         height,
         target,
-        seed_hash,
-        extra_nonce,
         prev_block_hash,
+        ..
     } = block_template_repository
         .get_block_template(algo, Some(address.clone()))
         .await?;
-    dbg!("here");
     let mut r = OsRng;
-    // let subscription_id = hex::encode(r.next_u64().to_le_bytes());
     let job_id = hex::encode(r.next_u64().to_le_bytes());
 
     let id = hex::encode(r.next_u64().to_le_bytes());
     let random_bytes = rand::random::<u16>();
-    let xn = nonce
-        .map(|n| hex::encode(n.to_le_bytes()))
-        .clone()
-        .unwrap_or_else(|| hex::encode(&random_bytes.to_le_bytes()));
-    // let algo = "sha3x".to_string();
+    // let xn = nonce
+    // .map(|n| hex::encode(n.to_le_bytes()))
+    // .clone()
+    // .unwrap_or_else(|| hex::encode(&random_bytes.to_le_bytes()));
     let job_target = hex::encode((u64::MAX / target).to_le_bytes());
     let chain_target = hex::encode(target.to_le_bytes());
 
@@ -403,7 +341,6 @@ async fn create_job_from_blob<TBlockRepo: BlockTemplateRepository>(
     } else {
         blob
     };
-    dbg!("here");
     let job_record = Job {
         id: id.clone(),
         algo: algo.to_string(),

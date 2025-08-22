@@ -3,8 +3,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use dashmap::DashMap;
 use log::{debug, warn};
-use minotari_app_grpc::tari_rpc::{self, MinerData, NewBlockCoinbase, PowAlgo};
-use sha3::{Digest, Sha3_256};
+use minotari_app_grpc::tari_rpc::{MinerData, PowAlgo};
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
@@ -16,11 +15,10 @@ use tari_common_types::{
         UncompressedSignature,
     },
 };
-use tari_comms::types::{CompressedSignature, Signature};
+use tari_comms::types::CompressedSignature;
 use tari_core::{
-    base_node::{comms_interface::CommsInterfaceError, LocalNodeCommsInterface},
+    base_node::LocalNodeCommsInterface,
     blocks::Block,
-    chain_storage::ChainStorageError,
     consensus::ConsensusManager,
     proof_of_work::{cuckaroo_pow::pack_nonces, PowAlgorithm},
     transactions::{
@@ -39,7 +37,6 @@ use tari_core::{
     validation::tari_rx_vm_key_height,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::hex::Hex;
 use tokio::select;
 
 use crate::stratum::SubmitJobQueueReceiver;
@@ -51,7 +48,6 @@ pub struct BlockTemplate {
     pub height: u64,
     pub target: u64,
     pub seed_hash: Option<Vec<u8>>,
-    pub extra_nonce: Option<u64>,
     pub prev_block_hash: Vec<u8>,
 }
 #[async_trait::async_trait]
@@ -90,100 +86,58 @@ impl DefaultBlockTemplateRepository {
         tokio::spawn(async move {
             loop {
                 select! {
-                                  _ = shutdown_signal.wait() => {
-                                      debug!(target: LOG_TARGET, "Shutting down Block Template Repository");
-                                      break;
-                                  }
-                                  Some((job, responder)) = job_receiver.recv() => {
-                                      debug!(target: LOG_TARGET, "Received job submission for job ID: {}", job.job_id);
-                                      let block_template =templates.get(&job.original_mining_hash);
-                                      if let Some(block) = block_template {
-                                          debug!(target: LOG_TARGET, "Found block template for job ID: {}", job.job_id);
+                    _ = shutdown_signal.wait() => {
+                        debug!(target: LOG_TARGET, "Shutting down Block Template Repository");
+                        break;
+                    }
+                    Some((job, responder)) = job_receiver.recv() => {
+                        debug!(target: LOG_TARGET, "Received job submission for job ID: {}", job.job_id);
+                        let block_template =templates.get(&job.original_mining_hash);
+                        if let Some(block) = block_template {
+                            debug!(target: LOG_TARGET, "Found block template for job ID: {}", job.job_id);
 
-                                          let mut block = block.clone();
-                                          match job.pow_algo {
-                                            PowAlgorithm::RandomXT => {
-                                              block.header.nonce = job.nonce;
-                                            }
-                                            PowAlgorithm::Sha3x => {
-                                              block.header.nonce = job.nonce.to_be();
-                                            }
-                                            PowAlgorithm::Cuckaroo => {
-                                              block.header.nonce = job.nonce;
-                                              block.header.pow.pow_algo = PowAlgorithm::Cuckaroo;
-                                              block.header.pow.pow_data = match pack_nonces(&job.cuckaroo_nonces, 29).try_into() {
-                                                Ok(r) => r,
-                                                Err(e) => {
-                                                  warn!(target: LOG_TARGET, "Failed to pack nonces: {}", e);
-                                                  let _ = responder.send(Err(format!("Failed to pack nonces: {}", e)));
-                                                  continue;
-                                                }
-                                              }
-                                            }
-                                            _ => {
-                                              warn!(target: LOG_TARGET, "Unsupported PoW algorithm for job ID: {}", job.job_id);
-                                               let _ = responder.send(Err("Unsupported PoW algorithm".to_string()));
-
-                                              continue;
-                                            }
-                                          }
-
-                let mut mining_hash: Vec<u8> = job.blob.clone();
-                // let mining_hash2: Vec<u8> = Hex::from_hex("5cf4f1ea1092bac8cf446433d9e61f3e97f3a61053ff1ceec7f8ac6dc7b9babb").unwrap();
-                let block_mining_hash = block.header.mining_hash();
-                dbg!("Block mining hash:", block_mining_hash);
-                dbg!("Job blob:", job.blob);
-
-                      // let nonce: Vec<u8> = Hex::from_hex("4e7c132263077f46").unwrap();
-                      let nonce: Vec<u8> = job.nonce.to_be_bytes().to_vec();
-                      // let nonce: Vec<u8> = Hex::from_hex("bc03000018bee902").unwrap();
-                    //   let nonce: [u8; 8] = nonce.try_into().unwrap();
-                      // let nonce = u64::from_be_bytes(nonce);
-                    //   let nonce = u64::from_le_bytes(nonce);
-                      // assert_eq!(nonce, 5079787027052067918);
-                      // bc03000018bee902
-                    //   let nonce2: Vec<u8> =Hex::from_hex("257060c86b765176").unwrap();
-
-
-
-                      // mining_hash.reverse();
-                      let hash = Sha3_256::new()
-                          // .chain_update(nonce.to_le_bytes())
-                          .chain_update(nonce)
-                          .chain_update(mining_hash)
-                          .chain_update(vec![1u8])
-                          .finalize()
-                          .to_vec();
-                      let hash = Sha3_256::digest(hash);
-                      let hash = Sha3_256::digest(hash);
-                      let hash = hash.to_vec();
-                      // let difficulty = Difficulty::big_endian_difficulty(&hash)?;
-                    //   assert_eq!(
-                        //   hash.to_hex(),
-                        //   "0000000060e258b8e4104f8d407822e68b6c69b75d2d954f59e75035f00def53".to_string()
-                    //   );
-
-
-
-
-                                          let res = node_service
-                                              .submit_block(block)
-                                              .await
-                                              .inspect_err(|e| warn!(target: LOG_TARGET, "Failed to submit block: {}", e))
-                                              .map(|_| ())
-                                              .map_err(|e| format!("Failed to submit block: {}", e));
-
-                                          let _ = responder.send(res);
-                                      } else {
-                                          warn!(target: LOG_TARGET, "No block template found for job ID: {}", job.job_id);
-                                          let _ = responder.send(Err(format!("No block template found for job ID: {}", job.job_id)));
-                                      }
-
-                                      // debug!(target: LOG_TARGET, "Received job submission for job ID: {}", job.id);
-                                      // let result = self.create_block(job.algo, job.solo_address).await;
-                                      // let _ = responder.send(result);
-                                  }
+                            let mut block = block.clone();
+                            match job.pow_algo {
+                              PowAlgorithm::RandomXT => {
+                                block.header.nonce = job.nonce;
                               }
+                              PowAlgorithm::Sha3x => {
+                                block.header.nonce = job.nonce.to_be();
+                              }
+                              PowAlgorithm::Cuckaroo => {
+                                block.header.nonce = job.nonce;
+                                block.header.pow.pow_algo = PowAlgorithm::Cuckaroo;
+                                block.header.pow.pow_data = match pack_nonces(&job.cuckaroo_nonces, 29).try_into() {
+                                  Ok(r) => r,
+                                  Err(e) => {
+                                    warn!(target: LOG_TARGET, "Failed to pack nonces: {}", e);
+                                    let _ = responder.send(Err(format!("Failed to pack nonces: {}", e)));
+                                    continue;
+                                  }
+                                }
+                              }
+                              _ => {
+                                warn!(target: LOG_TARGET, "Unsupported PoW algorithm for job ID: {}", job.job_id);
+                                 let _ = responder.send(Err("Unsupported PoW algorithm".to_string()));
+
+                                continue;
+                              }
+                            }
+                            let res = node_service
+                                .submit_block(block)
+                                .await
+                                .inspect_err(|e| warn!(target: LOG_TARGET, "Failed to submit block: {}", e))
+                                .map(|_| ())
+                                .map_err(|e| format!("Failed to submit block: {}", e));
+
+                            let _ = responder.send(res);
+                        } else {
+                            warn!(target: LOG_TARGET, "No block template found for job ID: {}", job.job_id);
+                            let _ = responder.send(Err(format!("No block template found for job ID: {}", job.job_id)));
+                        }
+
+                    }
+                }
             }
         });
         Ok(())
@@ -239,7 +193,6 @@ impl DefaultBlockTemplateRepository {
 
         let mut total_excess = UncompressedCommitment::default();
         let mut total_nonce = UncompressedPublicKey::default();
-        let mut kernel_message = [0; 32];
         let range_proof_type = RangeProofType::RevealedValue;
         let (_, coinbase_output, coinbase_kernel, wallet_output) = generate_coinbase_with_wallet_output(
             0.into(),
@@ -272,7 +225,7 @@ impl DefaultBlockTemplateRepository {
                 .to_commitment()
                 .map_err(|e| anyhow!("Failed to get commitment: {}", e))?;
         let (spending_key_id, nonce) = (wallet_output.spending_key_id, new_nonce.key_id);
-        kernel_message = TransactionKernel::build_kernel_signature_message(
+        let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
             coinbase_kernel.fee,
             coinbase_kernel.lock_height,
@@ -314,9 +267,6 @@ impl DefaultBlockTemplateRepository {
                 return Err(anyhow!("Failed to get new block: {}", e));
             },
         };
-        let gen_hash = handler.get_header(0).await?.unwrap().hash().to_vec();
-        // construct response
-        let block_hash = new_block.hash().to_vec();
         let mining_hash = match new_block.header.pow.pow_algo {
             PowAlgorithm::Sha3x => new_block.header.mining_hash().to_vec(),
             PowAlgorithm::RandomXT => new_block.header.mining_hash().to_vec(),
@@ -329,18 +279,9 @@ impl DefaultBlockTemplateRepository {
             .unwrap()
             .hash();
 
-        // let response = tari_rpc::GetNewBlockResult {
-        // block_hash,
-        // block,
-        // merge_mining_hash: mining_hash,
-        // tari_unique_id: gen_hash,
-        // miner_data: Some(miner_data),
-        // vm_key: vm_key.to_vec(),
-        // };
         self.block_templates.insert(mining_hash.clone(), new_block.clone());
 
         Ok((new_block, mining_hash, vm_key.to_vec(), miner_data))
-        // todo!("Return the response to the caller")
     }
 }
 
@@ -358,10 +299,10 @@ impl BlockTemplateRepository for DefaultBlockTemplateRepository {
                 blob: mining_hash,
                 height: block.header.height,
                 target: miner_data.target_difficulty,
-                extra_nonce: match algo {
-                    PowAlgorithm::RandomXT | PowAlgorithm::Sha3x | PowAlgorithm::RandomXM => None,
-                    PowAlgorithm::Cuckaroo => Some(block.header.nonce),
-                },
+                // extra_nonce: match algo {
+                //     PowAlgorithm::RandomXT | PowAlgorithm::Sha3x | PowAlgorithm::RandomXM => None,
+                //     PowAlgorithm::Cuckaroo => Some(block.header.nonce),
+                // },
                 seed_hash: match algo {
                     PowAlgorithm::RandomXT => Some(vm_key),
                     PowAlgorithm::Sha3x | PowAlgorithm::RandomXM | PowAlgorithm::Cuckaroo => None,

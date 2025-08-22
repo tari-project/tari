@@ -1,4 +1,4 @@
-use tokio::sync::{oneshot, watch};
+use tokio::sync::oneshot;
 
 use crate::stratum::{job::SubmittedJob, job_repository_service::JobRepositoryRequest};
 
@@ -19,8 +19,6 @@ pub(crate) type SubmitJobQueueReceiver =
     tokio::sync::mpsc::Receiver<(SubmittedJob, oneshot::Sender<Result<(), String>>)>;
 pub type JobRepositorySender = tokio::sync::mpsc::Sender<JobRepositoryRequest>;
 pub type JobRepositoryReceiver = tokio::sync::mpsc::Receiver<JobRepositoryRequest>;
-pub type LatestBlockBroadcastReceiver = watch::Receiver<(Vec<u8>, u64, u64)>; // (blob, height, target)
-pub type LatestBlockBroadcastSender = watch::Sender<(Vec<u8>, u64, u64)>; // (blob, height, target)
 
 #[derive(Debug, Clone)]
 pub enum StratumRequest {
@@ -43,13 +41,10 @@ pub enum StratumRequest {
     Subscribe {
         id: String,
         agent: String,
-        // address: String,
-        // worker: Option<String>,
     },
     Authorize {
         id: String,
         login: String,
-        is_solo: bool,
         worker_name: Option<String>,
         pass: String,
     },

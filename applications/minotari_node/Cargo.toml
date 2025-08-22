@@ -79,8 +79,6 @@ tower-http = { version = "0.6", features = ["limit"] }
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
 
-# TODO: remove
-sha3 = "*"
 
 [features]
 default = ["libtor"]
