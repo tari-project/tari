@@ -933,7 +933,7 @@ impl ConsensusConstants {
         con_4.proof_of_work = algos;
 
         let mut con_5 = con_4.clone();
-        con_5.effective_from_height = 95_180;
+        con_5.effective_from_height = 95_000;
         con_5.blockchain_version = BlockVersion::V2;
         con_5.valid_blockchain_version_range = 2..=2;
         let mut algos = HashMap::new();
