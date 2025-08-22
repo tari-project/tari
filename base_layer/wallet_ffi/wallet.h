@@ -111,8 +111,6 @@ struct TariPendingInboundTransactions;
 
 struct TariPendingOutboundTransactions;
 
-struct TariPublicKeys;
-
 struct TariSeedWords;
 
 struct TariUnblindedOutputs;
@@ -681,20 +679,6 @@ TariPublicKey *public_key_create(struct ByteVector *bytes,
 void public_key_destroy(TariPublicKey *pk);
 
 /**
- * Frees memory for TariPublicKeys
- *
- * ## Arguments
- * `pks` - The pointer to TariPublicKeys
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void public_keys_destroy(struct TariPublicKeys *pks);
-
-/**
  * Gets a ByteVector from a TariPublicKey
  *
  * ## Arguments
@@ -871,7 +855,7 @@ struct ByteVector *tari_address_get_bytes(TariWalletAddress *address,
  * if key is null or if there was an error creating the TariWalletAddress from key
  *
  * # Safety
- * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
 TariWalletAddress *tari_address_from_base58(const char *address,
                                             int *error_out);
@@ -1064,7 +1048,7 @@ struct ByteVector *tari_address_get_user_payment_id_as_bytes(TariWalletAddress *
  * `*mut c_char` - Returns a pointer to a TariWalletAddress. Note that it returns null on error.
  *
  * # Safety
- * The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+ * The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
  */
 TariWalletAddress *emoji_id_to_tari_address(const char *emoji,
                                             int *error_out);
@@ -2784,7 +2768,9 @@ struct TariWalletDbConfig *wallet_db_config_create(const char *database_name,
 void wallet_db_config_destroy(struct TariWalletDbConfig *wc);
 
 /**
- * This function lists the public keys of all connected peers
+ * -------------------------------------------------------------------------------------------- ///
+ * -------------------------------- Connected base node public key -----------------------------///
+ * This function returns the connected base_node's public key
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
@@ -2792,50 +2778,14 @@ void wallet_db_config_destroy(struct TariWalletDbConfig *wc);
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
  * ## Returns
- * `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
+ * `TariPublicKey` -  Returns the connected base_node's public key - a default (zeroed) value will indicate that no
+ * base node is connected. Note the result will be null if there was an error.
  *
  * # Safety
- * The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
+ * The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
  */
-struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *wallet,
-                                                        int *error_out);
-
-/**
- * Gets the length of the public keys vector
- *
- * ## Arguments
- * `public_keys` - Pointer to TariPublicKeys
- *
- * ## Returns
- * `c_uint` - Length of the TariPublicKeys vector, 0 if is null
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * # Safety
- * None
- */
-unsigned int public_keys_get_length(const struct TariPublicKeys *public_keys,
-                                    int *error_out);
-
-/**
- * Gets a ByteVector at position in a EmojiSet
- *
- * ## Arguments
- * `public_keys` - The pointer to a TariPublicKeys
- * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
- * is null or if the position is invalid
- *
- * # Safety
- * The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
- */
-TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
-                                  unsigned int position,
-                                  int *error_out);
+TariPublicKey *get_connected_base_node_public_key(struct TariWallet *wallet,
+                                                  int *error_out);
 
 /**
  * Creates a TariWallet

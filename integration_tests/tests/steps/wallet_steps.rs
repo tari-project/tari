@@ -1717,26 +1717,26 @@ async fn send_num_one_sided_transactions_to_wallets_at_fee(
     }
 }
 
-#[then(expr = "I wait for {word} to have {int} node connections")]
-async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String, connections: u64) {
+#[then(expr = "I wait for {word} to have a node connection")]
+async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let num_retries = 100;
 
-    cucumber_steps_log(format!("Waiting for wallet {wallet} to have {connections} connections"));
-    let mut actual_connections = 0_u32;
+    cucumber_steps_log(format!("Waiting for wallet {wallet} to have a connection"));
+    let mut connections = 0_u32;
 
     for _ in 0..num_retries {
         let network_status_res = wallet_client.get_network_status(Empty {}).await.unwrap().into_inner();
-        actual_connections = network_status_res.num_node_connections;
-        if u64::from(actual_connections) >= connections {
-            cucumber_steps_log(format!("Wallet {wallet} has at least {connections} connections"));
+        connections = network_status_res.num_node_connections;
+        if u64::from(connections) >= 1 {
+            cucumber_steps_log(format!("Wallet {wallet} has a connection"));
             break;
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    if u64::from(actual_connections) != connections {
-        panic!("Wallet {wallet} does not have {connections} connections");
+    if u64::from(connections) < 1 {
+        panic!("Wallet {wallet} does not have a connection");
     }
 }
 

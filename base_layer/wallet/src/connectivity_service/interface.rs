@@ -23,7 +23,7 @@
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tokio::sync::watch;
 
-use crate::connectivity_service::handle::OnlineStatus;
+use crate::connectivity_service::handle::{ExtendedOnlineStatus, OnlineStatus};
 
 #[async_trait::async_trait]
 pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
@@ -40,8 +40,14 @@ pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     /// Get the current connectivity status of the base node.
     async fn get_connectivity_status(&self) -> OnlineStatus;
 
+    /// Get the current connectivity status of the base node - richer reply.
+    async fn get_extended_connectivity_status(&self) -> ExtendedOnlineStatus;
+
     /// Get a watch receiver for the connectivity status of the base node.
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus>;
+
+    /// Get a watch receiver for the extended connectivity status of the base node.
+    fn get_extended_connectivity_status_watch(&self) -> watch::Receiver<ExtendedOnlineStatus>;
 
     /// Get the last request latency to the base node.
     async fn get_last_request_latency(&self) -> Option<std::time::Duration>;

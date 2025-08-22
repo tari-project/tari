@@ -5,8 +5,8 @@
 ########################################################################################################################
 
 [wallet]
-# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
-# (min value = 300, default value = 50000).
+# DEPRECATED: The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the
+# domain layer: (min value = 300, default value = 50000).
 #buffer_size = 50000
 
 # The relative path to store persistent data (default = "data/wallet")

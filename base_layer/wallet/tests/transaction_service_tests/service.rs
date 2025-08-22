@@ -27,7 +27,6 @@ use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{Days, Utc};
 use digest::consts::U32;
-use futures::channel::{mpsc, mpsc::Sender};
 use minotari_wallet::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
@@ -89,7 +88,6 @@ use tari_core::{
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     one_sided::shared_secret_to_output_encryption_key,
-    proto::base_node as base_node_proto,
     transactions::{
         tari_amount::*,
         transaction_components::{
@@ -118,7 +116,7 @@ use tari_crypto::{
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
-use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
+use tari_p2p::Network;
 use tari_script::{push_pubkey_script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -151,9 +149,6 @@ async fn setup_transaction_service(
     MemoryDbKeyManager,
     OutputManagerSqliteDatabase,
 ) {
-    let (_publisher, subscription_factory) = pubsub_connector(100);
-    let subscription_factory = Arc::new(subscription_factory);
-
     let passphrase = SafePassword::from("My lovely secret passphrase");
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), passphrase).unwrap());
 
@@ -214,7 +209,6 @@ async fn setup_transaction_service(
                 num_confirmations_required: 0,
                 ..Default::default()
             },
-            subscription_factory,
             ts_backend,
             node_identity.clone(),
             Network::LocalNet,
@@ -260,8 +254,6 @@ pub struct TransactionServiceNoCommsInterface {
     transaction_service_handle: TransactionServiceHandle,
     output_manager_service_handle: OutputManagerHandle<MemoryDbKeyManager>,
     key_manager_handle: MemoryDbKeyManager,
-    _base_node_response_message_channel:
-        Sender<DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>>,
     _shutdown: Shutdown,
     _mock_rpc_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     base_node_identity: Arc<NodeIdentity>,
@@ -288,7 +280,6 @@ async fn setup_transaction_service_no_comms(
     let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);
     let transaction_service_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-    let (base_node_response_message_channel, base_node_response_receiver) = mpsc::channel(20);
 
     let service = BaseNodeWalletRpcMockService::new();
     let base_node_rpc_mock_state = service.get_state();
@@ -377,7 +368,6 @@ async fn setup_transaction_service_no_comms(
         ts_db.clone(),
         wallet_db.clone(),
         ts_request_receiver,
-        base_node_response_receiver,
         output_manager_service_handle.clone(),
         key_manager.clone(),
         wallet_connectivity_service_mock.clone(),
@@ -399,7 +389,6 @@ async fn setup_transaction_service_no_comms(
         transaction_service_handle,
         output_manager_service_handle,
         key_manager_handle: key_manager,
-        _base_node_response_message_channel: base_node_response_message_channel,
         _shutdown: shutdown,
         _mock_rpc_server: mock_rpc_server,
         base_node_identity: node_identity,

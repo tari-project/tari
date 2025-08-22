@@ -46,7 +46,7 @@ use super::{
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKeys,
+    PublicKey,
     WalletAddress,
     WalletDbConfig,
 };
@@ -259,17 +259,17 @@ impl Wallet {
         WalletAddress::from_ptr(ptr)
     }
 
-    pub fn connected_public_keys(&self) -> PublicKeys {
+    pub fn connected_base_node_public_key(&self) -> PublicKey {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::comms_list_connected_public_keys(self.ptr, &mut error);
+            ptr = ffi_import::get_connected_base_node_public_key(self.ptr, &mut error);
             if error > 0 {
-                println!("comms_list_connected_public_keys error {error}");
-                panic!("comms_list_connected_public_keys error");
+                println!("get_connected_base_node_public_key error {error}");
+                panic!("get_connected_base_node_public_key error");
             }
         }
-        PublicKeys::from_ptr(ptr)
+        PublicKey::from_ptr(ptr)
     }
 
     pub fn get_balance(&self) -> Balance {

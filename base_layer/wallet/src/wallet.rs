@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -71,10 +71,7 @@ use tari_key_manager::{
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
-use tari_p2p::{
-    auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
-    comms_connector::pubsub_connector,
-};
+use tari_p2p::auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService};
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
@@ -108,8 +105,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet";
-/// The minimum buffer size for the wallet pubsub_connector channel
-const WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 // Domain separator for signing arbitrary messages with a wallet secret key
 hash_domain!(
@@ -168,12 +163,6 @@ where
         wallet_type: Option<WalletType>,
     ) -> Result<Self, WalletError> {
         let wallet_type = Arc::new(read_or_create_wallet_type(wallet_type, &wallet_database)?);
-        let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
-
-        // Note: This is a temporary solution to remove comms from the wallet. It will be removed
-        // when the Transaction Service is refactored to remove interactive transactions.
-        let (_publisher, subscription_factory) = pubsub_connector(buf_size);
-        let peer_message_subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         info!(
@@ -205,7 +194,6 @@ where
                 THttpClientFactory,
             >::new(
                 config.transaction_service_config.clone(),
-                peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 config.network,

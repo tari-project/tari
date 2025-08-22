@@ -33,7 +33,7 @@ const libWallet = ffi.Library("./libminotari_wallet_ffi.dylib", {
     commsConfigRef,
     ["string", transportRef, "string", "string", u64, u64, errPtr],
   ],
-  comms_list_connected_public_keys: [publicKeyArrPtr, [walletRef, errPtr]],
+  get_connected_base_node_public_key: [publicKeyArrPtr, [walletRef, errPtr]],
   public_key_create: [publicKeyRef, [byteVectorRef, errPtr]],
   public_keys_destroy: ["void", [publicKeyArrPtr]],
   public_key_get_bytes: [u8ArrayPtr, [publicKeyRef, errPtr]],

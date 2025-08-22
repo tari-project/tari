@@ -14,6 +14,7 @@ use tari_core::{
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
         TipInfoResponse,
+        TipInfoResponseWithId,
         TxQueryResponse,
         TxSubmissionResponse,
     },
@@ -120,8 +121,12 @@ impl BaseNodeWalletClient for Client {
         }
     }
 
-    async fn is_online(&self) -> Option<NodeIdPublicKeyPair> {
-        if let Ok(res) = self.get_tip_info().await {
+    async fn is_online(&self) -> bool {
+        self.get_tip_info().await.is_ok()
+    }
+
+    async fn is_online_with_id(&self) -> Option<NodeIdPublicKeyPair> {
+        if let Ok(res) = self.get_tip_info_with_id().await {
             Some(NodeIdPublicKeyPair {
                 node_id: res.node_id,
                 public_key: res.public_key,
@@ -153,6 +158,31 @@ impl BaseNodeWalletClient for Client {
             ))
         } else {
             Ok(res.json::<TipInfoResponse>().await?)
+        }
+    }
+
+    async fn get_tip_info_with_id(&self) -> Result<TipInfoResponseWithId, anyhow::Error> {
+        let server_address = self.http_server_address().await?;
+        debug!(target: LOG_TARGET, "Requesting tip info from Base Node wallet service at {}", server_address);
+        let timer = Instant::now();
+        let res = self
+            .http_client
+            .get(server_address.join("/get_tip_info_with_id")?)
+            .send()
+            .await?;
+        self.set_last_latency(timer.elapsed()).await;
+
+        if res.status().is_client_error() || res.status().is_server_error() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+            warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
+            Err(anyhow!(
+                "Received error response from Base Node wallet service: {}. {}",
+                status,
+                body
+            ))
+        } else {
+            Ok(res.json::<TipInfoResponseWithId>().await?)
         }
     }
 

@@ -118,15 +118,13 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
 
     for _i in 0..100 {
         if let NodeClient::Wallet(ref mut client) = node_client {
-            let res: tonic::Response<tari_rpc::ListConnectedHttpPeersResponse> =
-                client.list_connected_peers(Empty {}).await.unwrap();
+            let res: tonic::Response<tari_rpc::GetConnectedHttpPeerResponse> =
+                client.get_connected_http_peer(Empty {}).await.unwrap();
             let res = res.into_inner();
-            if res
-                .connected_peers
-                .iter()
-                .any(|p| p.public_key == second_client_pubkey_str)
-            {
-                return;
+            if let Some(peer) = res.connected_peer {
+                if peer.public_key == second_client_pubkey_str {
+                    return;
+                }
             }
         }
         if let NodeClient::BaseNode(ref mut client) = node_client {
@@ -150,11 +148,13 @@ async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, n
     let mut connected_peers = 0;
     for _i in 0..100 {
         if let NodeClient::Wallet(ref mut client) = node_client {
-            let res: tonic::Response<tari_rpc::ListConnectedHttpPeersResponse> =
-                client.list_connected_peers(Empty {}).await.unwrap();
+            if num_connections > 1 {
+                panic!("Wallets can only have a single connection, not {connected_peers}");
+            }
+            let res: tonic::Response<tari_rpc::GetConnectedHttpPeerResponse> =
+                client.get_connected_http_peer(Empty {}).await.unwrap();
             let res = res.into_inner();
-            connected_peers = res.connected_peers.len();
-            if res.connected_peers.len() >= num_connections {
+            if res.connected_peer.is_some() {
                 return;
             }
         }

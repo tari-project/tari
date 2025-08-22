@@ -22,6 +22,7 @@ use crate::{
                 SyncUtxosByBlockRequest,
                 SyncUtxosByBlockResponse,
                 TipInfoResponse,
+                TipInfoResponseWithId,
                 TxLocation,
                 TxQueryResponse,
             },
@@ -329,6 +330,22 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let metadata = self.db.get_chain_metadata().await?;
 
         Ok(TipInfoResponse {
+            metadata: Some(metadata),
+            is_synced,
+        })
+    }
+
+    async fn get_tip_info_with_id(&self) -> Result<TipInfoResponseWithId, Self::Error> {
+        let state_machine = self.state_machine();
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match status_watch.borrow().state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let metadata = self.db.get_chain_metadata().await?;
+
+        Ok(TipInfoResponseWithId {
             metadata: Some(metadata),
             is_synced,
             node_id: self.node_id.to_hex(),

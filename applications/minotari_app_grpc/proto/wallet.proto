@@ -705,8 +705,8 @@ service Wallet {
 
   // Returns a list of HTTP peers currently connected to the wallet.
   //
-  // The `ListConnectedPeers` call retrieves information about HTTP peers that the wallet is currently
-  // connected to. The response is a `ListConnectedHttpPeersResponse` containing a list of `HttpPeer` objects.
+  // The `GetConnectedHttpPeer` call retrieves information about the HTTP peer that the wallet is currently
+  // connected to. The response is a `GetConnectedHttpPeerResponse` containing a list of `HttpPeer` objects.
   //
   // ### Request Parameters:
   //
@@ -724,7 +724,7 @@ service Wallet {
   // ### Example JavaScript gRPC client usage:
   //
   // ```javascript
-  // client.listConnectedPeers({}, (err, response) => {
+  // client.GetConnectedHttpPeer({}, (err, response) => {
   //   if (err) console.error(err);
   //   else console.log("Connected Peers:", response);
   // });
@@ -734,16 +734,14 @@ service Wallet {
   //
   // ```json
   // {
-  //   "connected_peers": [
-  //     {
+  //   "connected_peers": {
   //       "url": "http://127.0.0.1:18080",
   //       "last_latency": { "value": 42 },
   //       "is_online": true
-  //     }
-  //   ]
+  //    }
   // }
   // ```
-  rpc ListConnectedPeers(Empty) returns (ListConnectedHttpPeersResponse);
+  rpc GetConnectedHttpPeer(Empty) returns (GetConnectedHttpPeerResponse);
 
   // Cancels a specific transaction by its ID.
   //
@@ -1930,10 +1928,10 @@ message SignMessageResponse {
   string public_nonce = 2;
 }
 
-// Response message for ListConnectedHttpPeersResponse
-message ListConnectedHttpPeersResponse {
-  // List of connected HTTP peers
-  repeated HttpPeer connected_peers = 1;
+// Response message for GetConnectedHttpPeerResponse
+message GetConnectedHttpPeerResponse {
+  // The connected HTTP base node
+  HttpPeer connected_peer = 1;
 }
 
 // The HttpPeer message represents a connected HTTP peer in the wallet.

@@ -32,8 +32,14 @@ pub struct NodeIdPublicKeyPair {
 #[async_trait::async_trait]
 pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
     async fn get_address(&self) -> String;
-    async fn is_online(&self) -> Option<NodeIdPublicKeyPair>;
+
+    async fn is_online(&self) -> bool;
+
+    async fn is_online_with_id(&self) -> Option<NodeIdPublicKeyPair>;
+
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error>;
+
+    async fn get_tip_info_with_id(&self) -> Result<models::TipInfoResponseWithId, Error>;
 
     async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, Error>;
 

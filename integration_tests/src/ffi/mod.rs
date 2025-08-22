@@ -20,18 +20,16 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_config;
 pub mod ffi_bytes;
 pub mod ffi_import;
-pub use comms_config::WalletDbConfig;
+mod wallet_db_config;
+pub use wallet_db_config::WalletDbConfig;
 mod wallet_address;
 pub use wallet_address::WalletAddress;
 mod wallet;
 pub use wallet::Wallet;
 mod public_key;
 pub use public_key::PublicKey;
-mod public_keys;
-pub use public_keys::PublicKeys;
 mod private_key;
 pub use private_key::PrivateKey;
 mod ffi_string;

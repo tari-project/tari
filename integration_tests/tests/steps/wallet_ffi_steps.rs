@@ -70,12 +70,9 @@ async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String, node:
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let node = world.get_node(&node).unwrap().identity.public_key();
     for _ in 0..10 {
-        let public_keys = ffi_wallet.connected_public_keys();
-        for i in 0..public_keys.get_length() {
-            let public_key = public_keys.get_public_key_at(u32::try_from(i).unwrap());
-            if public_key.get_bytes().get_as_hex() == node.to_hex() {
-                return;
-            }
+        let public_key = ffi_wallet.connected_base_node_public_key();
+        if public_key.get_bytes().get_as_hex() == node.to_hex() {
+            return;
         }
         tokio::time::sleep(Duration::from_secs(3)).await;
     }

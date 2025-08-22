@@ -56,6 +56,8 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
 
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Self::Error>;
 
+    async fn get_tip_info_with_id(&self) -> Result<models::TipInfoResponseWithId, Self::Error>;
+
     async fn get_header_by_height(&self, height: u64) -> Result<models::BlockHeader, Self::Error>;
 
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error>;

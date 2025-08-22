@@ -77,7 +77,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
+    connectivity_service::{ExtendedOnlineStatus, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -248,9 +248,6 @@ pub struct EmojiSet(Vec<ByteVector>);
 
 #[derive(Debug, PartialEq)]
 pub struct TariSeedWords(SeedWords);
-
-#[derive(Debug, PartialEq)]
-pub struct TariPublicKeys(Vec<TariPublicKey>);
 
 pub struct TariWallet {
     pub wallet: WalletSqlite,
@@ -1285,23 +1282,6 @@ pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     }
 }
 
-/// Frees memory for TariPublicKeys
-///
-/// ## Arguments
-/// `pks` - The pointer to TariPublicKeys
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn public_keys_destroy(pks: *mut TariPublicKeys) {
-    if !pks.is_null() {
-        drop(Box::from_raw(pks))
-    }
-}
-
 /// Gets a ByteVector from a TariPublicKey
 ///
 /// ## Arguments
@@ -1636,7 +1616,7 @@ pub unsafe extern "C" fn tari_address_get_bytes(
 /// if key is null or if there was an error creating the TariWalletAddress from key
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn tari_address_from_base58(
     address: *const c_char,
@@ -2015,7 +1995,7 @@ pub unsafe extern "C" fn tari_address_get_user_payment_id_as_bytes(
 /// `*mut c_char` - Returns a pointer to a TariWalletAddress. Note that it returns null on error.
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn emoji_id_to_tari_address(
     emoji: *const c_char,
@@ -5525,7 +5505,9 @@ pub unsafe extern "C" fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig) {
     }
 }
 
-/// This function lists the public keys of all connected peers
+/// -------------------------------------------------------------------------------------------- ///
+/// -------------------------------- Connected base node public key -----------------------------///
+/// This function returns the connected base_node's public key
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -5533,15 +5515,16 @@ pub unsafe extern "C" fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig) {
 /// as an out parameter. Returns a null pointer if any pointer argument is null.
 ///
 /// ## Returns
-/// `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
+/// `TariPublicKey` -  Returns the connected base_node's public key - a default (zeroed) value will indicate that no
+/// base node is connected. Note the result will be null if there was an error.
 ///
 /// # Safety
-/// The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
+/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn comms_list_connected_public_keys(
+pub unsafe extern "C" fn get_connected_base_node_public_key(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
-) -> *mut TariPublicKeys {
+) -> *mut TariPublicKey {
     if error_out.is_null() {
         return ptr::null_mut();
     }
@@ -5553,85 +5536,26 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
     }
 
     let public_key_str = (*wallet).runtime.block_on(async {
-        match (*wallet).wallet.wallet_connectivity.get_connectivity_status().await {
-            OnlineStatus::Connecting | OnlineStatus::Offline => TariPublicKey::default().to_hex(),
-            OnlineStatus::Online { public_key, .. } | OnlineStatus::Degraded { public_key, .. } => public_key,
+        match (*wallet)
+            .wallet
+            .wallet_connectivity
+            .get_extended_connectivity_status()
+            .await
+        {
+            ExtendedOnlineStatus::Connecting | ExtendedOnlineStatus::Offline => TariPublicKey::default().to_hex(),
+            ExtendedOnlineStatus::Online { public_key, .. } | ExtendedOnlineStatus::Degraded { public_key, .. } => {
+                public_key
+            },
         }
     });
     let public_key_res = TariPublicKey::from_hex(&public_key_str);
     match public_key_res {
-        Ok(pk) => Box::into_raw(Box::new(TariPublicKeys(vec![pk]))),
+        Ok(pk) => Box::into_raw(Box::new(pk)),
         Err(e) => {
             *error_out = LibWalletError::from(e).code;
             ptr::null_mut()
         },
     }
-}
-
-/// Gets the length of the public keys vector
-///
-/// ## Arguments
-/// `public_keys` - Pointer to TariPublicKeys
-///
-/// ## Returns
-/// `c_uint` - Length of the TariPublicKeys vector, 0 if is null
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// # Safety
-/// None
-// casting here is okay as we wont have more than u32 public keys
-#[allow(clippy::cast_possible_truncation)]
-#[no_mangle]
-pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint {
-    if error_out.is_null() {
-        return 0;
-    }
-    *error_out = 0;
-
-    if public_keys.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
-        return 0;
-    }
-    (*public_keys).0.len() as c_uint
-}
-
-/// Gets a ByteVector at position in a EmojiSet
-///
-/// ## Arguments
-/// `public_keys` - The pointer to a TariPublicKeys
-/// `position` - The integer position
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `ByteVector` - Returns a ByteVector. Note that the ByteVector will be null if ptr
-/// is null or if the position is invalid
-///
-/// # Safety
-/// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
-#[no_mangle]
-pub unsafe extern "C" fn public_keys_get_at(
-    public_keys: *const TariPublicKeys,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut TariPublicKey {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if public_keys.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("public_keys".to_string())).code;
-        return ptr::null_mut();
-    }
-    let last_index = public_keys_get_length(public_keys, error_out) - 1;
-    if position > last_index {
-        *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
-        return ptr::null_mut();
-    }
-    let result = (&(*public_keys).0)[position as usize].clone();
-    Box::into_raw(Box::new(result))
 }
 
 /// ---------------------------------------------------------------------------------------------- ///

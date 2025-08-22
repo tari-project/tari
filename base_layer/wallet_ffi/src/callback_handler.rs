@@ -39,7 +39,7 @@ use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::{
-    connectivity_service::{OnlineStatus, DEGRADED_LATENCY_THRESHOLD},
+    connectivity_service::{ExtendedOnlineStatus, DEGRADED_LATENCY_THRESHOLD},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -236,7 +236,7 @@ where
             .expect("Callback Handler started without shutdown signal");
 
         info!(target: LOG_TARGET, "Transaction Service Callback Handler starting");
-        let mut online_status = OnlineStatus::Offline;
+        let mut online_status = ExtendedOnlineStatus::Offline;
         let mut base_node_state = TariBaseNodeState::default();
 
         loop {
@@ -343,18 +343,18 @@ where
                                     ..
                                 }=> {
                                     self.scanned_height_changed(current_height);
-                                    if matches!(online_status.clone(), OnlineStatus::Online { .. })  {
+                                    if matches!(online_status.clone(), ExtendedOnlineStatus::Online { .. })  {
                                         self.connectivity_status_changed(online_status.clone());
                                     } else {
                                         online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
-                                            OnlineStatus::Degraded {
+                                            ExtendedOnlineStatus::Degraded {
                                                 latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                                 node_id: String::new(),
                                                 public_key: String::new(),
                                                 url: String::new()
                                             }
                                         } else {
-                                            OnlineStatus::Online {
+                                            ExtendedOnlineStatus::Online {
                                                 latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                                 node_id: String::new(),
                                                 public_key: String::new(),
@@ -373,16 +373,16 @@ where
                                     ..
                                 }=> {
                                 self.scanned_height_changed(final_height);
-                                    if !matches!(online_status.clone(), OnlineStatus::Online { .. }) {
+                                    if !matches!(online_status.clone(), ExtendedOnlineStatus::Online { .. }) {
                                         online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
-                                            OnlineStatus::Degraded {
+                                            ExtendedOnlineStatus::Degraded {
                                                 latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                                 node_id: String::new(),
                                                 public_key: String::new(),
                                                 url: String::new()
                                             }
                                         } else {
-                                            OnlineStatus::Online {
+                                            ExtendedOnlineStatus::Online {
                                                 latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                                 node_id: String::new(),
                                                 public_key: String::new(),
@@ -634,7 +634,7 @@ where
         }
     }
 
-    fn connectivity_status_changed(&mut self, status: OnlineStatus) {
+    fn connectivity_status_changed(&mut self, status: ExtendedOnlineStatus) {
         debug!(
             target: LOG_TARGET,
             "Calling Connectivity Status changed callback function"

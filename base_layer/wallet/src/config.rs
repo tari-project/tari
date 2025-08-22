@@ -68,7 +68,8 @@ pub struct WalletConfig {
     /// The output_manager_service_config config settings
     #[serde(rename = "outputs")]
     pub output_manager_service_config: OutputManagerServiceConfig,
-    /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
+    /// DEPRECATED: The buffer size for the publish/subscribe connector channel, connecting comms messages to the
+    /// domain layer
     pub buffer_size: usize,
     /// Selected network
     pub network: Network,
@@ -150,7 +151,7 @@ impl Default for WalletConfig {
             p2p: P2pConfig { ..Default::default() }, // DEPRECATED
             transaction_service_config: Default::default(),
             output_manager_service_config: Default::default(),
-            buffer_size: 50_000,
+            buffer_size: 50_000, // DEPRECATED
             network: Default::default(),
             base_node_service_config: Default::default(), // DEPRECATED
             data_dir: PathBuf::from_str("data/wallet").unwrap(),

@@ -22,21 +22,13 @@
 
 use std::{marker::PhantomData, sync::Arc};
 
-use futures::{Stream, StreamExt};
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
 use tari_core::{
     consensus::ConsensusManager,
-    proto::base_node as base_node_proto,
     transactions::{transaction_key_manager::TransactionKeyManagerInterface, CryptoFactories},
-};
-use tari_p2p::{
-    comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
-    services::utils::map_decode,
-    tari_message::TariMessageType,
 };
 use tari_service_framework::{
     async_trait,
@@ -72,7 +64,6 @@ pub mod storage;
 mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
-const SUBSCRIPTION_LABEL: &str = "Transaction Service";
 
 pub struct TransactionServiceInitializer<T, W, TKeyManagerInterface, THttpClientFactory>
 where
@@ -82,7 +73,6 @@ where
     THttpClientFactory: HttpClientFactory,
 {
     config: TransactionServiceConfig,
-    subscription_factory: Arc<SubscriptionFactory>,
     tx_backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     network: Network,
@@ -104,7 +94,6 @@ where
 {
     pub fn new(
         config: TransactionServiceConfig,
-        subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
         node_identity: Arc<NodeIdentity>,
         network: Network,
@@ -115,7 +104,6 @@ where
     ) -> Self {
         Self {
             config,
-            subscription_factory,
             tx_backend: Some(backend),
             node_identity,
             network,
@@ -126,20 +114,6 @@ where
             _phantom_data_key_manager: Default::default(),
             _phantom_data_http_interface: Default::default(),
         }
-    }
-
-    fn base_node_response_stream(
-        &self,
-    ) -> impl Stream<Item = DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::BaseNodeResponse
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<base_node_proto::BaseNodeServiceResponse>)
     }
 }
 
@@ -154,7 +128,6 @@ where
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
-        let base_node_response_stream = self.base_node_response_stream();
 
         let (publisher, _) = broadcast::channel(self.config.transaction_event_channel_size);
 
@@ -192,7 +165,6 @@ where
                 TransactionDatabase::new(tx_backend),
                 wallet_database,
                 receiver,
-                base_node_response_stream,
                 output_manager_service,
                 core_key_manager_service,
                 connectivity,

@@ -354,7 +354,7 @@ extern "C" {
         error_out: *mut c_int,
     ) -> *mut TariWalletDbConfig;
     pub fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig);
-    pub fn comms_list_connected_public_keys(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKeys;
+    pub fn get_connected_base_node_public_key(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKey;
     pub fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint;
     pub fn public_keys_get_at(
         public_keys: *const TariPublicKeys,

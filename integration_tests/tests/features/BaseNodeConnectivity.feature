@@ -14,7 +14,7 @@ Feature: Base Node Connectivity
         Given I have a seed node SEED_A
         When I have wallet WALLET_A connected to all seed nodes
         Then I wait for WALLET_A to connect to SEED_A
-        Then I wait for WALLET_A to have 1 node connections
+        Then I wait for WALLET_A to have a node connection
         Then I wait for WALLET_A to have ONLINE connectivity
 
     @base-node @wallet
