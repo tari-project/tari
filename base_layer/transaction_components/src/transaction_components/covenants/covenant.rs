@@ -194,7 +194,8 @@ mod test {
 
     use crate::{
         covenant,
-        test_helpers::{create_memory_key_manager, UtxoTestParams},
+        key_manager::create_memory_key_manager,
+        test_helpers::UtxoTestParams,
         transaction_components::covenants::{
             test::{create_input, create_outputs},
             Covenant,

@@ -858,11 +858,11 @@ mod test {
     use super::*;
     use crate::{
         crypto_factories::CryptoFactories,
+        key_manager::create_memory_key_manager,
         tari_amount::{uT, MicroMinotari},
         test_helpers::{
             create_consensus_constants,
             create_consensus_manager,
-            create_memory_key_manager,
             create_test_input,
             create_wallet_output_with_data,
             TestParams,

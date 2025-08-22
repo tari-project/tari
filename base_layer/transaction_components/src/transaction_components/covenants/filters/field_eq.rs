@@ -85,7 +85,7 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        test_helpers::create_memory_key_manager,
+        key_manager::create_memory_key_manager,
         transaction_components::{
             covenants::test::{create_context, create_input, create_outputs},
             OutputType,

@@ -38,15 +38,14 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    key_manager::TransactionKeyManagerInterface,
-    tari_amount::{uT, T},
-    test_helpers,
-    test_helpers::{
+    key_manager::{
         create_memory_key_manager,
         memory_key_manager::create_memory_key_manager_with_range_proof_size,
-        TestParams,
-        UtxoTestParams,
+        TransactionKeyManagerInterface,
     },
+    tari_amount::{uT, T},
+    test_helpers,
+    test_helpers::{TestParams, UtxoTestParams},
     transaction_components::{
         covenants::Covenant,
         memo_field::MemoField,

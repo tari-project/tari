@@ -36,8 +36,8 @@ use tari_core::{
 use tari_max_size::MaxSizeBytes;
 use tari_transaction_components::{
     generate_coinbase,
+    key_manager::{create_memory_key_manager, MemoryKeyManager},
     tari_proof_of_work::Difficulty,
-    test_helpers::{create_memory_key_manager, MemoryKeyManager},
     transaction_components::{memo_field::MemoField, CoinBaseExtra, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::{hex::Hex, ByteArray};

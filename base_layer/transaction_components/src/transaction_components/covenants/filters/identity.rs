@@ -43,7 +43,7 @@ mod tests {
     use super::*;
     use crate::{
         covenant,
-        test_helpers::create_memory_key_manager,
+        key_manager::create_memory_key_manager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
     #[tokio::test]

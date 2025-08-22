@@ -256,7 +256,7 @@ mod test {
         use super::*;
         use crate::{
             aggregated_body::AggregateBody,
-            test_helpers::create_memory_key_manager,
+            key_manager::create_memory_key_manager,
             transaction_components::{RangeProofType, TransactionError},
         };
 

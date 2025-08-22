@@ -397,8 +397,8 @@ mod test {
         mod is_eq {
             use super::*;
             use crate::{
+                key_manager::create_memory_key_manager,
                 tari_amount::MicroMinotari,
-                test_helpers::create_memory_key_manager,
                 transaction_components::RangeProofType,
             };
 
@@ -497,7 +497,7 @@ mod test {
         mod is_eq_input {
 
             use super::*;
-            use crate::test_helpers::create_memory_key_manager;
+            use crate::key_manager::create_memory_key_manager;
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
@@ -568,7 +568,7 @@ mod test {
 
     mod output_fields {
         use super::*;
-        use crate::test_helpers::create_memory_key_manager;
+        use crate::key_manager::create_memory_key_manager;
 
         mod construct_challenge_from {
             use digest::Update;

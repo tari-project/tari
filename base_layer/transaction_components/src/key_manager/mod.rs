@@ -52,6 +52,9 @@ pub use tari_common_types::key_branches::TransactionKeyManagerBranch;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
 
+pub mod memory_key_manager;
+pub use memory_key_manager::{create_memory_key_manager, MemoryKeyManager};
+
 pub mod tari_key_manager;
 
 pub const HASHER_LABEL_DERIVE_KEY: &str = "derive_key";

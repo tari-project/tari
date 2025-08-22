@@ -587,11 +587,12 @@ mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::{
         crypto_factories::CryptoFactories,
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{create_memory_key_manager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
-        test_helpers::{create_memory_key_manager, TestParams, UtxoTestParams},
+        test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
     };
+
     #[tokio::test]
     async fn it_builds_correctly() {
         let factories = CryptoFactories::default();

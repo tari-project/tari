@@ -527,8 +527,8 @@ mod test {
 
     use super::*;
     use crate::{
+        key_manager::create_memory_key_manager,
         test_helpers,
-        test_helpers::create_memory_key_manager,
         transaction_components::{covenants::Covenant, KernelFeatures, OutputFeatures, TransactionInputVersion},
     };
 
