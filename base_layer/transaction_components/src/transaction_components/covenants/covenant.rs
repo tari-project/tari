@@ -203,7 +203,7 @@ mod test {
 
     #[tokio::test]
     async fn it_succeeds_when_empty() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         let input = create_input(&key_manager).await;
         let covenant = covenant!().unwrap();
@@ -213,7 +213,7 @@ mod test {
 
     #[tokio::test]
     async fn it_executes_the_covenant() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
@@ -231,7 +231,7 @@ mod test {
 
     #[tokio::test]
     async fn test_borsh_de_serialization() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;

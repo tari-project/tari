@@ -1187,7 +1187,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             prev_coinbase_value += u128::from(coinbase.value);
         }
 
-        let key_manager = create_memory_db_key_manager().map_err(|e| {
+        let key_manager = create_memory_db_key_manager().await.map_err(|e| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: '{e}'")))
         })?;
         let height = new_template.header.height;
@@ -1430,7 +1430,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::invalid_argument("Malformed coinbase amounts".to_string()),
             ));
         }
-        let key_manager = create_memory_db_key_manager().map_err(|s| {
+        let key_manager = create_memory_db_key_manager().await.map_err(|s| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: {s}")))
         })?;
         let height = block_template.header.height;

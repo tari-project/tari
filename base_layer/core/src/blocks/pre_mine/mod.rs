@@ -813,7 +813,7 @@ pub async fn create_pre_mine_genesis_block_info(
         for key in public_keys {
             total_script_key = total_script_key + key.to_public_key().map_err(|e| e.to_string())?;
         }
-        let key_manager = create_memory_db_key_manager().map_err(|e| e.to_string())?;
+        let key_manager = create_memory_db_key_manager().await.map_err(|e| e.to_string())?;
         let view_key = public_key_to_output_encryption_key(&CompressedPublicKey::new_from_pk(total_script_key))
             .map_err(|e| e.to_string())?;
         let view_key_id = key_manager

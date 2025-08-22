@@ -81,7 +81,8 @@ where T: TransactionKeyManagerBackend + 'static
             backend,
             self.crypto_factories.clone(),
             self.wallet_type.clone(),
-        )?;
+        )
+        .await?;
         context.register_handle(key_manager);
 
         Ok(())

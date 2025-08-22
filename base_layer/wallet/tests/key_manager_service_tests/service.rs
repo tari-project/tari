@@ -48,6 +48,7 @@ async fn get_key_at_test_with_encryption() {
         factory,
         Arc::new(WalletType::default()),
     )
+    .await
     .unwrap();
     key_manager.add_new_branch("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
@@ -85,6 +86,7 @@ async fn key_manager_multiple_branches() {
         factory,
         Arc::new(WalletType::default()),
     )
+    .await
     .unwrap();
 
     assert_eq!(

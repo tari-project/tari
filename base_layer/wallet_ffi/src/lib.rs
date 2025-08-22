@@ -12198,14 +12198,14 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn test_create_external_utxo() {
+    #[tokio::test]
+    pub async fn test_create_external_utxo() {
         let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_db_key_manager().await.unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop).unwrap(),
@@ -12567,14 +12567,14 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn test_utxo_json() {
+    #[tokio::test]
+    pub async fn test_utxo_json() {
         let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let key_manager = create_memory_db_key_manager().unwrap();
+            let key_manager = create_memory_db_key_manager().await.unwrap();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop).unwrap(),

@@ -93,11 +93,12 @@ impl<TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorag
     }
 }
 
+#[async_trait::async_trait]
 impl<TTransactionKeyManagerDbConnection> TransactionKeyManagerBackend
     for TransactionKeyManagerSqliteDatabase<TTransactionKeyManagerDbConnection>
 where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Send + Sync + Clone
 {
-    fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+    async fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection
@@ -128,7 +129,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         Ok(result)
     }
 
-    fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
+    async fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection
@@ -155,7 +156,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         Ok(())
     }
 
-    fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
+    async fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection
@@ -188,7 +189,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         Ok(())
     }
 
-    fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
+    async fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection
@@ -218,7 +219,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         Ok(())
     }
 
-    fn insert_imported_key(
+    async fn insert_imported_key(
         &self,
         public_key: CompressedPublicKey,
         private_key: PrivateKey,
@@ -229,7 +230,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
             .get_pooled_connection()
             .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         // check if we already have the key:
-        if self.get_imported_key(&public_key).is_ok() {
+        if self.get_imported_key(&public_key).await.is_ok() {
             // we already have the key so we dont have to add it in
             return Ok(());
         }
@@ -254,7 +255,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         Ok(())
     }
 
-    fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
+    async fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection

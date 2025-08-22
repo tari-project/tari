@@ -56,7 +56,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_output_with_specific_hash() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let output = create_outputs(1, Default::default(), &key_manager).await.remove(0);
         let output_hash = output.hash();
         let covenant = covenant!(output_hash_eq(@hash(output_hash))).unwrap();

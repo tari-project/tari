@@ -56,7 +56,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_compliment_of_filter() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let script = script!(CheckHeight(100)).unwrap();
         let covenant = covenant!(not(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))))).unwrap();
         let input = create_input(&key_manager).await;

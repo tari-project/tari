@@ -8066,6 +8066,7 @@ dependencies = [
 name = "tari_transaction_key_manager"
 version = "5.0.0-pre.4"
 dependencies = [
+ "async-trait",
  "chacha20poly1305",
  "chrono",
  "diesel",

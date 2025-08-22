@@ -37,9 +37,9 @@ use tari_max_size::MaxSizeBytes;
 use tari_transaction_components::{
     generate_coinbase,
     tari_proof_of_work::Difficulty,
+    test_helpers::{create_memory_key_manager, MemoryKeyManager},
     transaction_components::{memo_field::MemoField, CoinBaseExtra, TransactionKernel, TransactionOutput},
 };
-use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -56,20 +56,20 @@ pub(crate) struct BlockTemplateManager<'a> {
     config: Arc<MergeMiningProxyConfig>,
     base_node_client: &'a mut BaseNodeGrpcClient,
     p2pool_client: Option<ShaP2PoolGrpcClient>,
-    key_manager: MemoryDbKeyManager,
+    key_manager: MemoryKeyManager,
     wallet_payment_address: TariAddress,
     consensus_manager: BaseConsensusManager,
 }
 
 impl<'a> BlockTemplateManager<'a> {
-    pub fn try_create(
+    pub async fn try_create(
         base_node_client: &'a mut BaseNodeGrpcClient,
         p2pool_client: Option<ShaP2PoolGrpcClient>,
         config: Arc<MergeMiningProxyConfig>,
         consensus_manager: BaseConsensusManager,
         wallet_payment_address: TariAddress,
     ) -> Result<BlockTemplateManager<'a>, MmProxyError> {
-        let key_manager = create_memory_db_key_manager()?;
+        let key_manager = create_memory_key_manager().await?;
         Ok(Self {
             config,
             base_node_client,
