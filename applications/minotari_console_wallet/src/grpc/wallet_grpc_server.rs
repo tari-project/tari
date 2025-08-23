@@ -136,7 +136,6 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
 };
-
 use tari_core::transactions::legacy_transaction_protocol::recipient::RecipientState;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
@@ -162,7 +161,9 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
+use tari_comms::{connectivity::ConnectivityStatus, peer_manager::NodeId, types::CommsPublicKey};
 use tari_crypto::hash_domain;
+
 // Domain separator for signing arbitrary messages with a wallet secret key
 hash_domain!(
     WalletMessageSigningDomain,
@@ -215,7 +216,7 @@ impl WalletGrpcServer {
             debouncer: Arc::new(Mutex::new(debouncer)),
             rules,
             avg_latencies_ms: Arc::new(Mutex::new(VecDeque::with_capacity(10))),
-        })
+        }
     }
 
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
@@ -255,7 +256,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let debouncer = self.debouncer.lock().await;
         let connection_status = debouncer.get_connection_status().await;
         Ok(Response::new(CheckConnectivityResponse {
-            status: connection_status as i32,
+            status: i32::from(connection_status.as_u8()),
         }))
     }
 

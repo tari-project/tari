@@ -46,10 +46,8 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsSecretKey, NodeIdentity};
-
 use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
-
-
+use tari_p2p::auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService};
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;

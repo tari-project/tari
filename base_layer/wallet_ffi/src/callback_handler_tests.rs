@@ -52,7 +52,6 @@ mod test {
         },
     };
     use tari_transaction_key_manager::MemoryDbKeyManager;
-    use tari_shutdown::Shutdown;
     use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
 
     use crate::{

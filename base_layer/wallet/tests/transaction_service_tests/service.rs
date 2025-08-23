@@ -82,12 +82,9 @@ use tari_comms::{
     types::CommsDHKE,
     PeerConnection,
 };
-use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryResponse},
-        rpc::BaseNodeWalletRpcServer,
-    },
-
+use tari_core::base_node::{
+    proto::wallet_rpc::{TxLocation, TxQueryResponse},
+    rpc::BaseNodeWalletRpcServer,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,

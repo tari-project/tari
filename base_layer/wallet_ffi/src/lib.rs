@@ -108,7 +108,10 @@ use minotari_wallet::{
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
-use tari_common::{configuration::MultiaddrList, network_check::set_network_if_choice_valid};
+use tari_common::{
+    configuration::{MultiaddrList, Network},
+    network_check::set_network_if_choice_valid,
+};
 use tari_common_types::{
     emoji::{emoji_set, EMOJI},
     payment_reference::generate_payment_reference,
@@ -136,6 +139,7 @@ use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{ByteArray, Hidden},
 };
+use tari_p2p::auto_update::AutoUpdateConfig;
 use tari_script::TariScript;
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
@@ -5988,13 +5992,9 @@ pub unsafe extern "C" fn wallet_create(
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
 
         let node_features = wallet_database.get_node_features()?.unwrap_or_default();
-        let node_addresses = if comms_config.public_addresses.is_empty() {
-            match wallet_database.get_node_address()? {
-                Some(addr) => MultiaddrList::from(vec![addr]),
-                None => MultiaddrList::default(),
-            }
-        } else {
-            comms_config.public_addresses.clone()
+        let node_addresses = match wallet_database.get_node_address()? {
+            Some(addr) => MultiaddrList::from(vec![addr]),
+            None => MultiaddrList::default(),
         };
         debug!(target: LOG_TARGET, "We have the following addresses");
         for address in &node_addresses {
@@ -9396,7 +9396,6 @@ mod test {
     use once_cell::sync::Lazy;
     use tari_common_types::{emoji, seeds::mnemonic_wordlists, tari_address::TariAddressFeatures, types::PrivateKey};
     use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, transports::MemoryTransport};
-    use tari_p2p::initialization::MESSAGING_PROTOCOL_ID;
     use tari_script::script;
     use tari_test_utils::random;
     use tari_transaction_components::{

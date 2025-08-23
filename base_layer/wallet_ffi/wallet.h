@@ -8,11 +8,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/**
- * The number of unique fields available. This always matches the number of variants in `OutputField`.
- */
-#define OutputFields_NUM_FIELDS 10
-
 enum TariTypeTag {
   Text = 0,
   Utxo = 1,
@@ -51,15 +46,7 @@ struct CompressedCommitmentAndPublicKeySignature_RistrettoPublicKey__RistrettoSe
  */
 struct CompressedKey_RistrettoPublicKey;
 
-/**
- * A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
- * See https://rfc.tari.com/RFC-0250_Covenants.html for details.
- */
-struct Covenant;
-
 struct EmojiSet;
-
-struct EncryptedData;
 
 struct FeePerGramStat;
 
@@ -68,11 +55,6 @@ struct FeePerGramStatsResponse;
 struct InboundTransaction;
 
 struct OutboundTransaction;
-
-/**
- * Options for UTXO's
- */
-struct OutputFeatures;
 
 /**
  * The [SecretKey](trait.SecretKey.html) implementation for [Ristretto](https://ristretto.group) is a thin wrapper
@@ -122,23 +104,7 @@ struct TariWallet;
  */
 struct TariWalletDbConfig;
 
-/**
- * The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
- * why it is necessary, refer to the
- * [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
- * The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
- * this transaction can be mined) and the transaction fee, in cleartext.
- */
-struct TransactionKernel;
-
 struct TransactionSendStatus;
-
-/**
- * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
- * build both inputs and outputs (every input comes from an output). This is only used for import and export where
- * serialization is important.
- */
-struct UnblindedOutput;
 
 /**
  * -------------------------------- Vector ------------------------------------------------ ///
@@ -168,7 +134,7 @@ struct TariUtxo {
   const char *mined_in_block;
 };
 
-typedef struct TransactionKernel TariTransactionKernel;
+typedef TransactionKernel TariTransactionKernel;
 
 /**
  * Define the explicit Public key implementation for the Tari base layer
@@ -198,13 +164,13 @@ typedef CompressedRistrettoComAndPubSig ComAndPubSignature;
 
 typedef ComAndPubSignature TariComAndPubSignature;
 
-typedef struct UnblindedOutput TariUnblindedOutput;
+typedef UnblindedOutput TariUnblindedOutput;
 
-typedef struct OutputFeatures TariOutputFeatures;
+typedef OutputFeatures TariOutputFeatures;
 
-typedef struct Covenant TariCovenant;
+typedef Covenant TariCovenant;
 
-typedef struct EncryptedData TariEncryptedOpenings;
+typedef EncryptedData TariEncryptedOpenings;
 
 /**
  * Specify the range proof

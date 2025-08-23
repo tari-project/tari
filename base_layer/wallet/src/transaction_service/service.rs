@@ -56,7 +56,6 @@ use tari_common_types::{
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
-use tari_core::proto::base_node as base_node_proto;
 use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,

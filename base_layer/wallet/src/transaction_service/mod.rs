@@ -26,14 +26,6 @@ use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::wallet_types::WalletType;
 use tari_comms::NodeIdentity;
-
-use tari_core::proto::base_node as base_node_proto;
-use tari_p2p::{
-    comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
-    services::utils::map_decode,
-    tari_message::TariMessageType,
-};
 use tari_service_framework::{
     async_trait,
     reply_channel,

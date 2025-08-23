@@ -55,12 +55,12 @@ use tari_integration_tests::{
     world::NodeClient,
     TariWorld,
 };
-use tari_utilities::{hex::Hex, ByteArray};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     helpers::borsh::SerializedSize,
     weight::TransactionWeight,
 };
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
