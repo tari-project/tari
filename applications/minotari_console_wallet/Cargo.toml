@@ -12,6 +12,7 @@ minotari_app_utilities = { workspace = true }
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
+tari_transaction_components = { workspace = true, features = ["ledger"] }
 tari_comms = { workspace = true }
 tari_core = { workspace = true, default-features = false, features = [
     "transactions",
@@ -19,7 +20,6 @@ tari_core = { workspace = true, default-features = false, features = [
     "base_node_proto",
 ] }
 tari_crypto = { workspace = true }
-tari_key_manager = { workspace = true }
 tari_libtor = { workspace = true, optional = true }
 tari_max_size = { workspace = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }

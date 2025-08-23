@@ -47,11 +47,7 @@ use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::types::CommsPublicKey;
-use tari_core::{
-    blocks::Block,
-    borsh::SerializedSize,
-    transactions::{aggregated_body::AggregateBody, weight::TransactionWeight},
-};
+use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
@@ -60,6 +56,11 @@ use tari_integration_tests::{
     TariWorld,
 };
 use tari_utilities::{hex::Hex, ByteArray};
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    helpers::borsh::SerializedSize,
+    weight::TransactionWeight,
+};
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 

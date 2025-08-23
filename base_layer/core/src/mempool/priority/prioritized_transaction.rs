@@ -27,12 +27,11 @@ use std::{
 };
 
 use tari_common_types::types::{HashOutput, PrivateKey, UncompressedPublicKey};
-use tari_utilities::{hex::Hex, ByteArray};
-
-use crate::transactions::{
+use tari_transaction_components::{
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
+use tari_utilities::{hex::Hex, ByteArray};
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the priority key unique so it can be used with a BTreeMap.
@@ -137,13 +136,13 @@ impl Display for PrioritizedTransaction {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::transactions::{
+    use tari_transaction_components::{
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::create_tx,
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     };
+    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 
+    use super::*;
     async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &MemoryDbKeyManager) -> Transaction {
         let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
             .await

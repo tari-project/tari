@@ -37,17 +37,21 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus},
         types::{CompressedPublicKey, PrivateKey},
     };
-    use tari_core::transactions::{
-        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
+    use tari_core::transactions::legacy_transaction_protocol::{
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    };
+    use tari_crypto::keys::SecretKey;
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::Shutdown;
+    use tari_transaction_components::{
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             memo_field::{MemoField, TxType},
             Transaction,
         },
-        transaction_key_manager::MemoryDbKeyManager,
     };
-    use tari_crypto::keys::SecretKey;
-    use tari_service_framework::reply_channel;
+    use tari_transaction_key_manager::MemoryDbKeyManager;
     use tari_shutdown::Shutdown;
     use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
 

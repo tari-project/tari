@@ -66,47 +66,46 @@ use tari_common_types::{
     emoji::EmojiId,
     epoch::VnEpoch,
     key_branches::TransactionKeyManagerBranch,
+    seeds::{cipher_seed::CipherSeed, seed_words::SeedWords},
     tari_address::TariAddress,
     transaction::TxId,
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
         HashOutput,
         PrivateKey,
-        Signature,
         UncompressedPublicKey,
         UncompressedSignature,
     },
     wallet_types::WalletType,
 };
-use tari_core::{
-    blocks::pre_mine::get_pre_mine_items,
-    covenants::Covenant,
-    one_sided::shared_secret_to_output_encryption_key,
-    transactions::{
-        tari_amount::{uT, MicroMinotari, Minotari},
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            EncryptedData,
-            OutputFeatures,
-            Transaction,
-            TransactionInput,
-            TransactionInputVersion,
-            TransactionKernel,
-            TransactionOutput,
-            TransactionOutputVersion,
-            UnblindedOutput,
-            WalletOutput,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    },
-};
+
+use tari_core::blocks::pre_mine::get_pre_mine_items;
 use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoSecretKey};
-use tari_key_manager::{cipher_seed::CipherSeed, SeedWords};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig};
 use tari_script::{push_pubkey_script, CompressedCheckSigSchnorrSignature};
 use tari_shutdown::Shutdown;
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::{uT, MicroMinotari, Minotari},
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        one_sided::shared_secret_to_output_encryption_key,
+        EncryptedData,
+        OutputFeatures,
+        Transaction,
+        TransactionInput,
+        TransactionInputVersion,
+        TransactionKernel,
+        TransactionOutput,
+        TransactionOutputVersion,
+        UnblindedOutput,
+        WalletOutput,
+    },
+};
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -248,8 +247,8 @@ async fn spend_backup_pre_mine_utxo(
 async fn finalise_aggregate_utxo(
     mut wallet_transaction_service: TransactionServiceHandle,
     tx_id: u64,
-    meta_signatures: Vec<Signature>,
-    script_signatures: Vec<Signature>,
+    meta_signatures: Vec<CompressedSignature>,
+    script_signatures: Vec<CompressedSignature>,
     wallet_script_secret_key: PrivateKey,
 ) -> Result<TxId, CommandError> {
     trace!(target: LOG_TARGET, "finalise_aggregate_utxo: start");
@@ -267,8 +266,8 @@ async fn finalise_aggregate_utxo(
     wallet_transaction_service
         .finalize_aggregate_utxo(
             tx_id,
-            Signature::new_from_schnorr(meta_sig),
-            Signature::new_from_schnorr(script_sig),
+            CompressedSignature::new_from_schnorr(meta_sig),
+            CompressedSignature::new_from_schnorr(script_sig),
             wallet_script_secret_key,
         )
         .await
@@ -330,7 +329,7 @@ pub async fn register_validator_node(
     amount: MicroMinotari,
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: CompressedPublicKey,
-    validator_node_signature: Signature,
+    validator_node_signature: CompressedSignature,
     validator_node_claim_public_key: CompressedPublicKey,
     sidechain_deployment_key: Option<PrivateKey>,
     epoch: VnEpoch,
@@ -1572,8 +1571,8 @@ pub async fn command_runner(
                         },
                     };
 
-                    if script_signature.get_signature() == Signature::default().get_signature() ||
-                        metadata_signature.get_signature() == Signature::default().get_signature()
+                    if script_signature.get_signature() == CompressedSignature::default().get_signature() ||
+                        metadata_signature.get_signature() == CompressedSignature::default().get_signature()
                     {
                         eprintln!(
                             "\nError: Script and/or metadata signatures not created (index {})!\n",
@@ -1853,7 +1852,7 @@ pub async fn command_runner(
                                 i + 1,
                                 utxo.0.value,
                                 if args.with_private_keys {
-                                    utxo.0.spending_key.to_hex()
+                                    utxo.0.commitment_mask_key.to_hex()
                                 } else {
                                     "*hidden*".to_string()
                                 },
@@ -1922,7 +1921,7 @@ pub async fn command_runner(
                                 i + 1,
                                 utxo.0.value,
                                 if args.with_private_keys {
-                                    utxo.0.spending_key.to_hex()
+                                    utxo.0.commitment_mask_key.to_hex()
                                 } else {
                                     "*hidden*".to_string()
                                 },
@@ -2034,7 +2033,7 @@ pub async fn command_runner(
                     args.amount,
                     transaction_service.clone(),
                     args.validator_node_public_key.into(),
-                    Signature::new(
+                    CompressedSignature::new(
                         args.validator_node_public_nonce.into(),
                         RistrettoSecretKey::from_vec(args.validator_node_signature.first().expect("Already checked"))?,
                     ),
@@ -2751,7 +2750,7 @@ fn write_utxos_to_csv_file(
             i + 1,
             utxo.version.as_u8(),
             utxo.value.0,
-            if with_private_keys { utxo.spending_key.to_hex() } else { "*hidden*".to_string() },
+            if with_private_keys { utxo.commitment_mask_key.to_hex() } else { "*hidden*".to_string() },
             commitment.to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,

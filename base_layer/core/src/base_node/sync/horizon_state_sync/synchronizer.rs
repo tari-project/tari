@@ -32,6 +32,11 @@ use log::*;
 use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::commitment::HomomorphicCommitment;
+use tari_transaction_components::{
+    transaction_components::{transaction_output::batch_verify_range_proofs, TransactionKernel, TransactionOutput},
+    validation::{aggregate_body::validate_individual_output, helpers::validate_output_version},
+    BanPeriod,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::task;
 
@@ -48,19 +53,10 @@ use crate::{
     },
     blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
-    common::{rolling_avg::RollingAverageTime, BanPeriod},
-    consensus::ConsensusManager,
+    common::rolling_avg::RollingAverageTime,
+    consensus::BaseConsensusManager,
     proto::base_node::{sync_utxos_response::Txo, SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
-    transactions::transaction_components::{
-        transaction_output::batch_verify_range_proofs,
-        TransactionKernel,
-        TransactionOutput,
-    },
-    validation::{
-        aggregate_body::validate_individual_output,
-        helpers::validate_output_version,
-        FinalHorizonStateValidation,
-    },
+    validation::FinalHorizonStateValidation,
     PrunedKernelMmr,
 };
 
@@ -71,7 +67,7 @@ const MAX_LATENCY_INCREASES: usize = 5;
 pub struct HorizonStateSynchronization<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
-    rules: ConsensusManager,
+    rules: BaseConsensusManager,
     sync_peers: &'a mut Vec<SyncPeer>,
     horizon_sync_height: u64,
     prover: Arc<RangeProofService>,
@@ -90,7 +86,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
-        rules: ConsensusManager,
+        rules: BaseConsensusManager,
         sync_peers: &'a mut Vec<SyncPeer>,
         horizon_sync_height: u64,
         prover: Arc<RangeProofService>,

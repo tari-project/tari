@@ -134,23 +134,20 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
+    types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
 };
-use tari_comms::{connectivity::ConnectivityStatus, peer_manager::NodeId, types::CommsPublicKey};
-use tari_core::{
-    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
-    transactions::{
-        legacy_transaction_protocol::recipient::RecipientState,
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-            UnblindedOutput,
-        },
-        transaction_key_manager::TransactionKeyManagerInterface,
+
+use tari_core::transactions::legacy_transaction_protocol::recipient::RecipientState;
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, ConsensusManager},
+    key_manager::TransactionKeyManagerInterface,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
-use tari_crypto::hash_domain;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
@@ -165,7 +162,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
-
+use tari_crypto::hash_domain;
 // Domain separator for signing arbitrary messages with a wallet secret key
 hash_domain!(
     WalletMessageSigningDomain,
@@ -198,7 +195,7 @@ pub struct WalletGrpcServer {
 
 impl WalletGrpcServer {
     #[allow(dead_code)]
-    pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
+    pub fn new(wallet: WalletSqlite) -> Self {
         let scanned_height = wallet
             .db
             .get_last_scanned_height()
@@ -212,8 +209,8 @@ impl WalletGrpcServer {
             wallet.shutdown_signal.clone(),
             scanned_height,
         );
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
-        Ok(Self {
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build();
+        Self {
             wallet,
             debouncer: Arc::new(Mutex::new(debouncer)),
             rules,
@@ -258,7 +255,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let debouncer = self.debouncer.lock().await;
         let connection_status = debouncer.get_connection_status().await;
         Ok(Response::new(CheckConnectivityResponse {
-            status: i32::from(connection_status.as_u8()),
+            status: connection_status as i32,
         }))
     }
 
@@ -1238,7 +1235,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .unwrap_or(&Signature::default())
+                            .unwrap_or(&CompressedSignature::default())
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
@@ -1376,7 +1373,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     excess_sig: txn
                         .transaction
                         .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
+                        .unwrap_or(&CompressedSignature::default())
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),
@@ -1537,7 +1534,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .unwrap_or(&Signature::default())
+                            .unwrap_or(&CompressedSignature::default())
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
@@ -1679,7 +1676,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 excess_sig: txn
                     .transaction
                     .first_kernel_excess_sig()
-                    .unwrap_or(&Signature::default())
+                    .unwrap_or(&CompressedSignature::default())
                     .get_signature()
                     .to_vec(),
                 raw_payment_id: txn.payment_id.to_bytes(),
@@ -2161,7 +2158,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     excess_sig: txn
                         .transaction
                         .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
+                        .unwrap_or(&CompressedSignature::default())
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),

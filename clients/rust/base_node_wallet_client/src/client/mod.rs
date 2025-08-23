@@ -13,9 +13,9 @@ use tari_core::{
         SyncUtxosByBlockResponse,
     },
     mempool::FeePerGramStat,
-    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::transaction_components::{Transaction, TransactionOutput};
 use tokio::sync::mpsc;
 
 use crate::client::models::TxSubmissionResponse;

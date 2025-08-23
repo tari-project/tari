@@ -7,12 +7,21 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+
+[features]
+default = ["bundled_sqlite"]
+c_integration = []
+bundled_sqlite = ["libsqlite3-sys"]
+ledger = ["tari_core/ledger"]
+
 [dependencies]
 tari_core = { workspace = true, default-features = false, features = [
     "transactions",
     "mempool_proto",
     "base_node_proto",
 ] }
+tari_transaction_components = { workspace = true, features = ["ledger"] }
+tari_transaction_key_manager = { workspace = true, features = ["ledger"] }
 tari_common = { workspace = true }
 tari_common_sqlite = { workspace = true }
 tari_common_types = { workspace = true }
@@ -20,7 +29,6 @@ tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_crypto = { workspace = true }
 tari_max_size = { workspace = true }
-tari_key_manager = { workspace = true, features = ["key_manager_service"] }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_script = { workspace = true }
 tari_service_framework = { workspace = true }
@@ -59,7 +67,7 @@ log = "0.4.6"
 rand = "0.8"
 serde = { version = "1.0.89", features = ["derive"] }
 serde_json = "1.0.39"
-strum = "0.22"
+strum = { version = "0.22", features = ["derive"] }
 strum_macros = "0.22"
 tempfile = "3.1.0"
 thiserror = "1.0.26"
@@ -90,11 +98,6 @@ tari_core = { workspace = true, default-features = false, features = [
 env_logger = "0.7.1"
 prost = "0.13.3"
 
-[features]
-default = ["bundled_sqlite"]
-c_integration = []
-bundled_sqlite = ["libsqlite3-sys"]
-ledger = ["tari_core/ledger"]
 
 [package.metadata.cargo-machete]
 ignored = [

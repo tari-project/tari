@@ -28,7 +28,7 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
-    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::hex::{Hex, HexError};
@@ -141,7 +141,7 @@ impl TryFrom<UniNodeId> for CompressedPublicKey {
 }
 
 #[derive(Debug, Clone)]
-pub struct UniSignature(Signature);
+pub struct UniSignature(CompressedSignature);
 
 impl FromStr for UniSignature {
     type Err = HexError;
@@ -151,12 +151,12 @@ impl FromStr for UniSignature {
         let signature = PrivateKey::from_hex(data.first().ok_or(HexError::LengthError {})?)?;
         let public_nonce = CompressedPublicKey::from_hex(data.get(1).ok_or(HexError::LengthError {})?)?;
 
-        let signature = Signature::new(public_nonce, signature);
+        let signature = CompressedSignature::new(public_nonce, signature);
         Ok(Self(signature))
     }
 }
 
-impl From<UniSignature> for Signature {
+impl From<UniSignature> for CompressedSignature {
     fn from(id: UniSignature) -> Self {
         id.0
     }

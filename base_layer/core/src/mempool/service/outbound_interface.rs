@@ -24,9 +24,10 @@ use std::sync::Arc;
 
 use log::*;
 use tari_comms::peer_manager::NodeId;
+use tari_transaction_components::transaction_components::Transaction;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{mempool::service::MempoolServiceError, transactions::transaction_components::Transaction};
+use crate::mempool::service::MempoolServiceError;
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 

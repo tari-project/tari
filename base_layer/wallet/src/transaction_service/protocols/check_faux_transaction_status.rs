@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_common_types::types::FixedHash;
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,

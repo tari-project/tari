@@ -23,7 +23,7 @@
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use clap::Parser;
-use tari_common_types::types::{CompressedPublicKey, PrivateKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey};
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
@@ -45,14 +45,14 @@ pub struct Args {
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        let kernel_sig = Signature::new(args.public_nonce.0, args.signature.0);
+        let kernel_sig = CompressedSignature::new(args.public_nonce.0, args.signature.0);
         self.search_kernel(kernel_sig).await
     }
 }
 
 impl CommandContext {
     /// Function to process the search kernel command
-    pub async fn search_kernel(&mut self, excess_sig: Signature) -> Result<(), Error> {
+    pub async fn search_kernel(&mut self, excess_sig: CompressedSignature) -> Result<(), Error> {
         let hex_sig = excess_sig.get_signature().to_hex();
         let v = self
             .node_service

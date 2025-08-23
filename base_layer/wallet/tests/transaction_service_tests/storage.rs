@@ -46,28 +46,27 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{CompressedPublicKey, FixedHash, PrivateKey, Signature},
+    types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
-        tari_amount::MicroMinotari,
-        test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_builder::TransactionBuilder,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-            Transaction,
-            TransactionOutputVersion,
-            WalletOutput,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
-    },
-};
+use tari_core::transactions::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::MicroMinotari,
+    test_helpers::{create_wallet_output_with_data, TestParams},
+    transaction_builder::TransactionBuilder,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        OutputFeatures,
+        Transaction,
+        TransactionOutputVersion,
+        WalletOutput,
+    },
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
@@ -312,7 +311,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             send_count: 0,
             last_send_timestamp: None,
 
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,

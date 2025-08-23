@@ -69,9 +69,10 @@ use minotari_wallet::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{
+    seeds::cipher_seed::CipherSeed,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
     wallet_types::{ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{
@@ -86,28 +87,7 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse},
         rpc::BaseNodeWalletRpcServer,
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
-    one_sided::shared_secret_to_output_encryption_key,
-    transactions::{
-        tari_amount::*,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            KernelBuilder,
-            OutputFeatures,
-            RangeProofType,
-            Transaction,
-        },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInitializer,
-            TransactionKeyManagerInterface,
-        },
-        CryptoFactories,
-    },
-    ConfidentialOutputHasher,
+
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -115,12 +95,35 @@ use tari_crypto::{
     keys::SecretKey as SK,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::Network;
 use tari_script::{push_pubkey_script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
+use tari_transaction_components::{
+    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    crypto_factories::CryptoFactories,
+    key_manager::{
+        ConfidentialOutputHasher,
+        TariKeyId,
+        TransactionKeyManagerInitializer,
+        TransactionKeyManagerInterface,
+    },
+    tari_amount::*,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        one_sided::shared_secret_to_output_encryption_key,
+        KernelBuilder,
+        OutputFeatures,
+        RangeProofType,
+        Transaction,
+    },
+};
+use tari_transaction_key_manager::{
+    create_memory_db_key_manager,
+    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
+    MemoryDbKeyManager,
+};
 use tari_utilities::{ByteArray, SafePassword};
 use tempfile::tempdir;
 use tokio::{
@@ -297,7 +300,7 @@ async fn setup_transaction_service_no_comms(
         .create_connection(node_identity.to_peer(), protocol_name.into())
         .await;
 
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet).build();
 
     let shutdown = Shutdown::new();
@@ -404,7 +407,7 @@ async fn setup_transaction_service_no_comms(
 #[tokio::test]
 async fn large_coin_split_transaction() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -487,7 +490,7 @@ async fn large_coin_split_transaction() {
 async fn single_transaction_burn_tari() {
     // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -617,7 +620,7 @@ async fn single_transaction_burn_tari() {
 #[tokio::test]
 async fn send_one_sided_transaction_to_other() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -732,7 +735,7 @@ async fn send_one_sided_transaction_to_other() {
 #[tokio::test]
 async fn recover_one_sided_transaction() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -855,7 +858,7 @@ async fn recover_one_sided_transaction() {
 #[tokio::test]
 async fn recover_stealth_one_sided_transaction() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -969,7 +972,7 @@ async fn recover_stealth_one_sided_transaction() {
 #[tokio::test]
 async fn test_htlc_send_and_claim() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -1537,7 +1540,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
 
     let kernel = KernelBuilder::new()
         .with_excess(&CompressedCommitment::from_commitment(factories.commitment.zero()))
-        .with_signature(Signature::default())
+        .with_signature(CompressedSignature::default())
         .build()
         .unwrap();
 
@@ -1573,7 +1576,10 @@ async fn broadcast_all_completed_transactions_on_startup() {
         direction: TransactionDirection::Outbound,
         send_count: 0,
         last_send_timestamp: None,
-        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+        transaction_signature: tx
+            .first_kernel_excess_sig()
+            .unwrap_or(&CompressedSignature::default())
+            .clone(),
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: None,
@@ -2072,7 +2078,7 @@ fn create_mock_completed_transaction(
         direction,
         send_count: 0,
         last_send_timestamp: None,
-        transaction_signature: Signature::default(),
+        transaction_signature: CompressedSignature::default(),
         mined_height: None,
         mined_in_block: None,
         mined_timestamp: Utc::now().checked_add_days(Days::new(1)),

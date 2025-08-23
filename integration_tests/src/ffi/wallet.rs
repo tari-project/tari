@@ -29,7 +29,7 @@ use std::{
 
 use callbacks::Callbacks;
 use libc::{c_ulonglong, c_void};
-use tari_core::transactions::transaction_components::memo_field::MemoField;
+use tari_transaction_components::transaction_components::memo_field::MemoField;
 
 use super::{
     ffi_import::{

@@ -37,19 +37,17 @@ use std::marker::PhantomData;
 
 use futures::future;
 use log::*;
-use tari_core::{
-    consensus::NetworkConsensus,
-    transactions::{
-        transaction_key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
-        CryptoFactories,
-    },
-};
 use tari_service_framework::{
     async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+};
+use tari_transaction_components::{
+    consensus::NetworkConsensus,
+    crypto_factories::CryptoFactories,
+    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
 };
 use tokio::sync::broadcast;
 

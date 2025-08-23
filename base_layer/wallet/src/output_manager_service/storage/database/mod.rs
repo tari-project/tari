@@ -32,7 +32,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash, HashOutput},
 };
-use tari_core::transactions::{
+use tari_transaction_components::{
     tari_amount::MicroMinotari,
     transaction_components::{OutputType, TransactionOutput},
 };

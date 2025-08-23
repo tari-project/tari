@@ -38,9 +38,9 @@ use tari_core::{
         TxSubmissionResponse,
     },
     mempool::FeePerGramStat,
-    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::transaction_components::{Transaction, TransactionOutput};
 use tari_utilities::ByteArray;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;

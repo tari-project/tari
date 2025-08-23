@@ -40,8 +40,8 @@ use minotari_wallet::{
     utxo_scanner_service::handle::{UtxoScannerEvent, UtxoScannerHandle},
     WalletSqlite,
 };
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::sync::Mutex;
 use tonic::Status;
 

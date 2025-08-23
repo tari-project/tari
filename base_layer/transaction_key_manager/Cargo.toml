@@ -1,0 +1,48 @@
+[package]
+name = "tari_transaction_key_manager"
+description = "Core Tari key manager with storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+ledger = []
+
+[dependencies]
+tari_common_types = { workspace = true}
+tari_common_sqlite = { workspace = true }
+tari_transaction_components = { workspace = true, features = ["ledger"] }
+tari_utilities = { workspace = true, features = ["borsh"] }
+
+chacha20poly1305 = "0.10.1"
+chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+diesel = { version = "2.2.10", features = [
+    "sqlite",
+    "serde_json",
+    "chrono",
+    "64-column-tables",
+] }
+diesel_migrations = { version = "2.2" }
+log = "0.4"
+rand = "0.8"
+tokio = { version = "1.44", features = ["sync"] }
+zeroize = "1"
+
+[dev-dependencies]
+chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+
+tempfile = "3.1.0"
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(tari_target_network_mainnet)',
+    'cfg(tari_target_network_nextnet)',
+    'cfg(tari_target_network_testnet)',
+] }
+
+
+[package.metadata.cargo-machete]

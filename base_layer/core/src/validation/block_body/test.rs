@@ -27,41 +27,46 @@ use tari_common::configuration::Network;
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::ConsensusConstantsBuilder,
+    crypto_factories::CryptoFactories,
+    key_manager::TariKeyId,
+    tari_amount::{uT, T},
+    tari_proof_of_work::Difficulty,
+    test_helpers::schema_to_transaction,
+    transaction_components::{
+        encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
+        memo_field::MemoField,
+        EncryptedData,
+        RangeProofType,
+        TransactionError,
+    },
+    txn_schema,
+    validation::AggregatedBodyValidationError,
+    CoinbaseBuilder,
+};
 use tokio::time::Instant;
 
 use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
     blocks::BlockValidationError,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
-    proof_of_work::Difficulty,
+    consensus::BaseConsensusManager,
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::{uT, T},
-        test_helpers::schema_to_transaction,
-        transaction_components::{
-            encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-            memo_field::MemoField,
-            EncryptedData,
-            RangeProofType,
-            TransactionError,
-        },
-        transaction_key_manager::TariKeyId,
-        CoinbaseBuilder,
-        CryptoFactories,
-    },
-    txn_schema,
     validation::{BlockBodyValidator, ValidationError},
 };
-async fn setup_with_rules(rules: ConsensusManager, check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
+async fn setup_with_rules(
+    rules: BaseConsensusManager,
+    check_rangeproof: bool,
+) -> (TestBlockchain, BlockBodyFullValidator) {
     let blockchain = TestBlockchain::create(rules.clone()).await;
     let validator = BlockBodyFullValidator::new(rules, check_rangeproof);
     (blockchain, validator)
 }
 
 async fn setup(check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -384,12 +389,15 @@ async fn it_checks_txo_sort_order() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateOutput)
+    ));
 }
 
 #[tokio::test]
 async fn it_limits_the_script_byte_size() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -410,12 +418,15 @@ async fn it_limits_the_script_byte_size() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::TariScriptExceedsMaxSize { .. }));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::TariScriptExceedsMaxSize { .. })
+    ));
 }
 
 #[tokio::test]
 async fn it_limits_the_encrypted_data_byte_size() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -432,18 +443,23 @@ async fn it_limits_the_encrypted_data_byte_size() {
     let (txs, _) = schema_to_transaction(&[schema1], &blockchain.km).await;
     let mut txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
     let mut outputs = txs[0].body.outputs().clone();
-    outputs[0].encrypted_data = EncryptedData::from_vec_unsafe(vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 250]);
+    outputs[0].encrypted_data = EncryptedData::from_bytes(&vec![0; STATIC_ENCRYPTED_DATA_SIZE_TOTAL + 250]).unwrap();
     txs[0].body = AggregateBody::new(txs[0].body.inputs().clone(), outputs, txs[0].body.kernels().clone());
     let (block, _) = blockchain.create_next_tip(block_spec!("B", transactions: txs)).await;
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::EncryptedDataExceedsMaxSize { .. }));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(
+            AggregatedBodyValidationError::EncryptedDataExceedsMaxSize { .. }
+        )
+    ));
 }
 
 #[tokio::test]
 async fn it_rejects_invalid_input_metadata() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
+    let rules = BaseConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -492,7 +508,10 @@ async fn it_rejects_zero_conf_double_spends() {
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, &unmined).unwrap_err();
-    assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
+    assert!(matches!(
+        err,
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
+    ));
 }
 
 mod body_only {
@@ -500,7 +519,7 @@ mod body_only {
 
     #[tokio::test]
     async fn it_rejects_invalid_input_metadata() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
@@ -530,16 +549,14 @@ mod body_only {
 }
 
 mod orphan_validator {
+    use tari_transaction_components::{transaction_components::OutputType, txn_schema};
+
     use super::*;
-    use crate::{
-        transactions::transaction_components::OutputType,
-        txn_schema,
-        validation::block_body::BlockBodyInternalConsistencyValidator,
-    };
+    use crate::validation::block_body::BlockBodyInternalConsistencyValidator;
 
     #[tokio::test]
     async fn it_rejects_zero_conf_double_spends() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
@@ -571,12 +588,15 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
+        assert!(matches!(
+            err,
+            ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
+        ));
     }
 
     #[tokio::test]
     async fn it_rejects_unpermitted_output_types() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_output_types(&[OutputType::Coinbase])
@@ -598,13 +618,14 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        unpack_enum!(ValidationError::OutputTypeNotPermitted { output_type } = err);
+        unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
+        unpack_enum!(AggregatedBodyValidationError::OutputTypeNotPermitted { output_type } = err);
         assert_eq!(output_type, OutputType::Standard);
     }
 
     #[tokio::test]
     async fn it_rejects_unpermitted_range_proof_types() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[
@@ -632,13 +653,14 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        unpack_enum!(ValidationError::RangeProofTypeNotPermitted { range_proof_type } = err);
+        unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
+        unpack_enum!(AggregatedBodyValidationError::RangeProofTypeNotPermitted { range_proof_type } = err);
         assert_eq!(range_proof_type, RangeProofType::BulletProofPlus);
     }
 
     #[tokio::test]
     async fn it_accepts_permitted_range_proof_types() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[
@@ -672,7 +694,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_when_output_types_are_not_matched() {
-        let rules = ConsensusManager::builder(Network::LocalNet)
+        let rules = BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[(OutputType::CodeTemplateRegistration, &[
@@ -696,7 +718,8 @@ mod orphan_validator {
             .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
             .await;
         let err = validator.validate(&unmined).unwrap_err();
-        unpack_enum!(ValidationError::OutputTypeNotMatchedToRangeProofType { output_type } = err);
+        unpack_enum!(ValidationError::AggregatedBodyValidationError(err) = err);
+        unpack_enum!(AggregatedBodyValidationError::OutputTypeNotMatchedToRangeProofType { output_type } = err);
         assert!(output_type == OutputType::Standard || output_type == OutputType::Coinbase);
     }
 }

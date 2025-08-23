@@ -47,38 +47,16 @@ use tari_common_types::{
         CommitmentFactory,
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
         HashOutput,
         PrivateKey,
-        Signature,
         UncompressedPublicKey,
     },
     wallet_types::WalletType,
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
-use tari_core::{
-    consensus::ConsensusManager,
-    covenants::Covenant,
-    one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            BuildInfo,
-            CodeTemplateRegistration,
-            EncryptedData,
-            KernelFeatures,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
-            TransactionOutput,
-            ValidatorNodeSignature,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        CryptoFactories,
-    },
-};
+use tari_core::proto::base_node as base_node_proto;
 use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
@@ -95,6 +73,27 @@ use tari_script::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_sidechain::EvictionProof;
+use tari_transaction_components::{
+    consensus::ConsensusManager,
+    crypto_factories::CryptoFactories,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
+        BuildInfo,
+        CodeTemplateRegistration,
+        EncryptedData,
+        KernelFeatures,
+        OutputFeatures,
+        TemplateType,
+        Transaction,
+        TransactionOutput,
+        ValidatorNodeSignature,
+        WalletOutputBuilder,
+    },
+};
 use tokio::{
     sync::{mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -1143,8 +1142,8 @@ where
     pub async fn finalized_aggregate_encumbed_tx(
         &mut self,
         tx_id: TxId,
-        total_meta_data_signature: Signature,
-        total_script_data_signature: Signature,
+        total_meta_data_signature: CompressedSignature,
+        total_script_data_signature: CompressedSignature,
         script_offset: PrivateKey,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2093,7 +2092,7 @@ where
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         validator_node_claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
@@ -2186,7 +2185,7 @@ where
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
         selection_criteria: UtxoSelectionCriteria,
         max_epoch: VnEpoch,
@@ -2375,7 +2374,7 @@ where
             .await?;
         let mut template_registration = CodeTemplateRegistration {
             author_public_key: author_key.clone(),
-            author_signature: Signature::default(),
+            author_signature: CompressedSignature::default(),
             template_name,
             template_version,
             template_type,
@@ -3332,7 +3331,7 @@ where
         ) {
             (Some(change), Some(original)) => {
                 let mut change = change.clone();
-                change.spending_key_id = original.output_pair.output.spending_key_id;
+                change.commitment_mask_key_id = original.output_pair.output.commitment_mask_key_id;
                 Some(vec![change])
             },
             _ => None,

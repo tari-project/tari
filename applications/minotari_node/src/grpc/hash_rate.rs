@@ -22,24 +22,22 @@
 
 use std::collections::VecDeque;
 
-use tari_core::{
-    consensus::ConsensusManager,
-    proof_of_work::{Difficulty, PowAlgorithm},
-};
+use tari_core::consensus::BaseConsensusManager;
+use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
 const HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
 
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
     pow_algo: PowAlgorithm,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     window_size: usize,
     hash_rates: VecDeque<u64>,
     average: u64,
 }
 
 impl HashRateMovingAverage {
-    pub fn new(pow_algo: PowAlgorithm, consensus_manager: ConsensusManager) -> Self {
+    pub fn new(pow_algo: PowAlgorithm, consensus_manager: BaseConsensusManager) -> Self {
         let window_size = HASH_RATE_MOVING_AVERAGE_WINDOW;
         let hash_rates = VecDeque::with_capacity(window_size);
 
@@ -97,11 +95,12 @@ impl HashRateMovingAverage {
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use tari_core::{
-        consensus::{ConsensusConstants, ConsensusManagerBuilder},
-        proof_of_work::{Difficulty, PowAlgorithm},
-    };
+    use tari_core::consensus::BaseConsensusManagerBuilder;
     use tari_p2p::Network;
+    use tari_transaction_components::{
+        consensus::ConsensusConstants,
+        tari_proof_of_work::{Difficulty, PowAlgorithm},
+    };
 
     use super::HashRateMovingAverage;
 
@@ -177,7 +176,7 @@ mod test {
     fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
         let mut constants = ConsensusConstants::esmeralda()[0].clone();
         constants.set_pow_target_block_interval(pow_algo, 240);
-        let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda)
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::Esmeralda)
             .add_consensus_constants(constants)
             .build()
             .unwrap();

@@ -54,8 +54,7 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::wallet_types::WalletType;
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
