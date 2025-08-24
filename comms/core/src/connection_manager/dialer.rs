@@ -604,6 +604,8 @@ where
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
+        debug!(target: LOG_TARGET, "[DEBUG] exclude ipv6: {}", exclude_ipv6);
+
         let supported_address_protocols: Vec<AddressProtocol> = transport
             .supported_address_protocols()
             .into_iter()
@@ -617,8 +619,10 @@ where
             .clone()
             .into_vec()
             .iter()
-            .filter(|&a| !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)))
-            .filter(|&a| supported_address_protocols.contains(a.into()))
+            .filter(|&a| {
+                !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a))
+                    && supported_address_protocols.contains(a.into())
+            })
             .cloned()
             .collect::<Vec<_>>();
         debug!(target: LOG_TARGET, "[DEBUG] Addresses to dial: {:?}", addresses);

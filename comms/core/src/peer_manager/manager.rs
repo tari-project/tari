@@ -22,6 +22,7 @@
 
 use std::{fmt, time::Duration};
 
+use log::debug;
 use multiaddr::Multiaddr;
 
 #[cfg(feature = "metrics")]
@@ -29,15 +30,8 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        peer::Peer,
-        peer_id::PeerId,
-        peer_storage_sql::PeerStorageSql,
-        NodeDistance,
-        NodeId,
-        PeerFeatures,
-        PeerFlags,
-        PeerManagerError,
-        ThisPeerIdentity,
+        peer::Peer, peer_id::PeerId, peer_storage_sql::PeerStorageSql, NodeDistance, NodeId, PeerFeatures, PeerFlags,
+        PeerManagerError, ThisPeerIdentity,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
@@ -78,6 +72,7 @@ impl PeerManager {
             #[allow(clippy::cast_possible_wrap)]
             metrics::peer_list_size().set(count as i64);
         }
+        debug!(target:  "comms::connection_manager::dialer", "Total peers: {}", self.count().await);
         Ok(peer_id)
     }
 

@@ -239,8 +239,8 @@ where
         );
 
         // check if this machine has ipv6 address. If not it's means that we can't use ipv6
-        if local_ip_address::local_ipv6().is_ok() {
-            config.exclude_ipv6 = false;
+        if local_ip_address::local_ipv6().is_err() {
+            config.exclude_ipv6 = true;
         }
 
         let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {

@@ -99,6 +99,10 @@ impl Transport for TcpWithTorTransport {
     }
 
     fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
-        vec![AddressProtocol::Onion, AddressProtocol::Ipv4, AddressProtocol::Ipv6]
+        let mut protocols = vec![AddressProtocol::Ipv4, AddressProtocol::Ipv6];
+        if self.socks_transport.is_some() {
+            protocols.push(AddressProtocol::Onion);
+        }
+        protocols
     }
 }
