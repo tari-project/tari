@@ -31,9 +31,9 @@ use tokio::net::TcpStream;
 
 use crate::{
     multiaddr::Multiaddr,
-    socks,
-    socks::Socks5Client,
+    socks::{self, Socks5Client},
     transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
+    types::AddressProtocol,
 };
 
 const LOG_TARGET: &str = "comms::transports::socks";
@@ -117,6 +117,10 @@ impl Transport for SocksTransport {
 
         let socket = Self::socks_connect(self.tcp_transport.clone(), &self.socks_config, addr).await?;
         Ok(socket)
+    }
+
+    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
+        vec![AddressProtocol::Onion, AddressProtocol::Ipv4, AddressProtocol::Ipv6]
     }
 }
 

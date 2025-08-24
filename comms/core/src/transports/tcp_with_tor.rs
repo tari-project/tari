@@ -26,7 +26,10 @@ use multiaddr::Multiaddr;
 use tokio::net::TcpStream;
 
 use super::Transport;
-use crate::transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport};
+use crate::{
+    transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport},
+    types::AddressProtocol,
+};
 
 /// Transport implementation for TCP with Tor support
 #[derive(Clone, Default)]
@@ -93,5 +96,9 @@ impl Transport for TcpWithTorTransport {
             let socket = self.tcp_transport.dial(addr).await?;
             Ok(socket)
         }
+    }
+
+    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
+        vec![AddressProtocol::Onion, AddressProtocol::Ipv4, AddressProtocol::Ipv6]
     }
 }

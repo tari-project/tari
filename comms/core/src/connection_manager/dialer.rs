@@ -39,21 +39,17 @@ use tokio::{
     time,
 };
 use tokio_stream::StreamExt;
-use tracing::{span, Instrument, Level};
+use tracing::{field::debug, span, Instrument, Level};
 
 use super::{
-    direction::ConnectionDirection,
-    error::ConnectionManagerError,
-    peer_connection::PeerConnection,
-    PeerConnectionInfo,
+    direction::ConnectionDirection, error::ConnectionManagerError, peer_connection::PeerConnection, PeerConnectionInfo,
 };
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
 use crate::{
     backoff::Backoff,
     connection_manager::{
-        common,
-        common::ValidatedPeerIdentityExchange,
+        common::{self, ValidatedPeerIdentityExchange},
         dial_state::DialState,
         manager::{ConnectionManagerConfig, ConnectionManagerEvent},
         peer_connection,
@@ -65,7 +61,7 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::CommsPublicKey,
+    types::{AddressProtocol, CommsPublicKey},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -236,9 +232,12 @@ where
             Ok((conn, peer_identity)) => {
                 // try save the peer back to the peer manager
                 let peer = dial_state.peer_mut();
-                peer.update_addresses(&peer_identity.claim.addresses, &PeerAddressSource::FromPeerConnection {
-                    peer_identity_claim: peer_identity.claim.clone(),
-                });
+                peer.update_addresses(
+                    &peer_identity.claim.addresses,
+                    &PeerAddressSource::FromPeerConnection {
+                        peer_identity_claim: peer_identity.claim.clone(),
+                    },
+                );
                 peer.supported_protocols = peer_identity.metadata.supported_protocols;
                 peer.user_agent = peer_identity.metadata.user_agent;
 
@@ -537,6 +536,7 @@ where
                         &current_transport,
                         config.network_info.network_wire_byte,
                         config.excluded_dial_addresses.clone(),
+                        config.exclude_ipv6
                     )
                     .await
                     {
@@ -589,7 +589,7 @@ where
         }
     }
 
-    /// Attempts to dial a peer sequentially on all addresses; if connections are to be minimized only.
+    /// Attempts to dial a peer sequentially on supported addresses; if connections are to be minimized only.
     /// Returns ownership of the given `DialState` and a success or failure result for the dial,
     /// or None if the dial was cancelled inflight
     #[allow(clippy::too_many_lines)]
@@ -599,10 +599,18 @@ where
         transport: &TTransport,
         network_byte: u8,
         excluded_dial_addresses: Vec<MultiaddrRange>,
+        exclude_ipv6: bool,
     ) -> (
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
+        let supported_address_protocols: Vec<AddressProtocol> = transport
+            .supported_address_protocols()
+            .into_iter()
+            .filter(|protocol| *protocol != AddressProtocol::Ipv6 || !exclude_ipv6)
+            .collect();
+        debug!(target: LOG_TARGET, "[DEBUG] Supported address protocols: {:?}", supported_address_protocols);
+
         let addresses = dial_state
             .peer()
             .addresses
@@ -610,8 +618,11 @@ where
             .into_vec()
             .iter()
             .filter(|&a| !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)))
+            .filter(|&a| supported_address_protocols.contains(a.into()))
             .cloned()
             .collect::<Vec<_>>();
+        debug!(target: LOG_TARGET, "[DEBUG] Addresses to dial: {:?}", addresses);
+
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();
             trace!(

@@ -29,6 +29,7 @@ use tokio::sync::RwLock;
 use crate::{
     tor::{HiddenServiceController, TorIdentity},
     transports::{tcp::TcpInbound, SocksTransport, Transport},
+    types::AddressProtocol,
 };
 
 const LOG_TARGET: &str = "comms::transports::hidden_service_transport";
@@ -122,5 +123,9 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
             io::Error::other("BUG: Hidden service transport not initialized before dialling".to_string())
         })?;
         transport.dial(addr).await
+    }
+
+    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
+        vec![AddressProtocol::Onion, AddressProtocol::Ipv4, AddressProtocol::Ipv6]
     }
 }

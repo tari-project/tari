@@ -29,8 +29,7 @@ use time::Duration;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc, oneshot},
-    task,
-    time,
+    task, time,
 };
 use tracing::{span, Instrument, Level};
 
@@ -55,8 +54,7 @@ use crate::{
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
-    Minimized,
-    PeerManager,
+    Minimized, PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
@@ -139,6 +137,8 @@ pub struct ConnectionManagerConfig {
     pub peer_validation_config: PeerValidatorConfig,
     /// Addresses that should never be dialed
     pub excluded_dial_addresses: Vec<MultiaddrRange>,
+    /// Flag indicating whether addresses with ipv6 are allowed
+    pub exclude_ipv6: bool,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -162,6 +162,7 @@ impl Default for ConnectionManagerConfig {
             noise_handshake_recv_timeout: Duration::from_secs(6),
             noise_dial_timeout: Duration::from_secs(60),
             excluded_dial_addresses: vec![],
+            exclude_ipv6: false,
         }
     }
 }
@@ -236,6 +237,11 @@ where
             node_identity.clone(),
             shutdown_signal.clone(),
         );
+
+        // check if this machine has ipv6 address. If not it's means that we can't use ipv6
+        if local_ip_address::local_ipv6().is_ok() {
+            config.exclude_ipv6 = false;
+        }
 
         let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
             info!(target: LOG_TARGET, "Starting auxiliary listener on {addr}");

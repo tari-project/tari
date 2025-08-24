@@ -36,6 +36,7 @@ use tokio_stream::Stream;
 use super::{dns::DnsResolver, Transport};
 use crate::{
     transports::dns::{DnsResolverRef, SystemDnsResolver},
+    types::AddressProtocol,
     utils::multiaddr::socketaddr_to_multiaddr,
 };
 
@@ -135,6 +136,10 @@ impl Transport for TcpTransport {
         let socket = TcpOutbound::new(TcpStream::connect(socket_addr).boxed(), self.clone()).await?;
         Ok(socket)
     }
+
+    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
+        vec![AddressProtocol::Ipv4, AddressProtocol::Ipv6]
+    }
 }
 
 pub struct TcpOutbound<F> {
@@ -149,7 +154,8 @@ impl<F> TcpOutbound<F> {
 }
 
 impl<F> Future for TcpOutbound<F>
-where F: Future<Output = io::Result<TcpStream>> + Unpin
+where
+    F: Future<Output = io::Result<TcpStream>> + Unpin,
 {
     type Output = io::Result<TcpStream>;
 

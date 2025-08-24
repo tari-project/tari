@@ -53,7 +53,7 @@ impl Starting {
         // Check for DHT bootstrap completion first
         info!(target: LOG_TARGET, "[BN STARTING] Checking DHT bootstrap status before proceeding");
         let mut dht_events = shared.dht_event_stream.resubscribe();
-        let bootstrap_timeout = sleep(Duration::from_secs(120));
+        let bootstrap_timeout = sleep(Duration::from_secs(300));
         tokio::pin!(bootstrap_timeout);
         let mut timeout = bootstrap_timeout.fuse();
         // Check for any recent DHT bootstrap events
