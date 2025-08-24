@@ -819,7 +819,7 @@ mod test {
         assert!(lock.callback_txo_validation_internal_failure);
         assert_eq!(lock.callback_balance_updated, 7);
         assert_eq!(lock.callback_transaction_validation_complete, 13);
-        assert_eq!(lock.connectivity_status_callback_called, 2);
+        assert_eq!(lock.connectivity_status_callback_called, 5);
         assert_eq!(lock.wallet_scanner_height_callback_called, 1100);
 
         drop(lock);
