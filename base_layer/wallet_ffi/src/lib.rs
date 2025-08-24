@@ -5801,13 +5801,14 @@ pub(crate) fn get_wallet_database_path(config: &TariWalletDbConfig) -> PathBuf {
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
-/// `callback_connectivity_status` -  This callback is called when the status of connection to the set base node
-/// changes. it will return an enum encoded as an integer as follows:
-/// pub enum OnlineStatus {
-///     Connecting,     // 0
-///     Online,         // 1
-///     Offline,        // 2
-/// }
+/// `callback_connectivity_status` - This callback is called when the status of connection to the base node changes.
+/// It will return an enum encoded as an integer as the first parameter and latency in ms as the second as follows:
+///   status (u64)    | latency in ms (u64)
+///   ------------    | -------------------
+///   Connecting => 0 | 0
+///   Online => 1     | <measured latency>
+///   Offline => 2    | 0
+///   Degraded => 3   | <measured latency>
 /// `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
 /// that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -5860,7 +5861,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
     recovery_in_progress: *mut bool,
@@ -9646,7 +9647,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn connectivity_status_callback(_context: *mut c_void, _status: u64) {
+    unsafe extern "C" fn connectivity_status_callback(_context: *mut c_void, _status: u64, _latency: u64) {
         // assert!(true); //optimized out by compiler
     }
 

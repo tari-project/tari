@@ -34,12 +34,21 @@
 //! `callback_base_node_sync_complete` - This is called when a Base Node Sync process is completed or times out. The
 //! request_key is used to identify which request this callback references and a result of true means it was successful
 //! and false that the process timed out and new one will be started
+//!
+//! `connectivity_status_changed` - This will be called when the base node state changes. It will return the status
+//! and latency as one of the following:
+//!   status (u64)    | latency in ms (u64)
+//!   ------------    | -------------------
+//!   Connecting => 0 | 0
+//!   Online => 1     | <measured latency>
+//!   Offline => 2    | 0
+//!   Degraded => 3   | <measured latency>
 
 use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::{
-    connectivity_service::{ExtendedOnlineStatus, DEGRADED_LATENCY_THRESHOLD},
+    connectivity_service::{ExtendedOnlineStatus, DEGRADED_LATENCY_THRESHOLD, UNKNOWN_LATENCY_MS},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -84,7 +93,7 @@ where TBackend: TransactionBackend + 'static
     callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+    callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64, u64),
     callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
     callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
     db: TransactionDatabase<TBackend>,
@@ -134,7 +143,7 @@ where
         callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-        callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+        callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
     ) -> Self {
@@ -236,7 +245,7 @@ where
             .expect("Callback Handler started without shutdown signal");
 
         info!(target: LOG_TARGET, "Transaction Service Callback Handler starting");
-        let mut online_status = ExtendedOnlineStatus::Offline;
+        self.connectivity_status_changed(ExtendedOnlineStatus::Connecting);
         let mut base_node_state = TariBaseNodeState::default();
 
         loop {
@@ -341,28 +350,24 @@ where
                                     latency,
                                     tip_height,
                                     ..
-                                }=> {
+                                } => {
                                     self.scanned_height_changed(current_height);
-                                    if matches!(online_status.clone(), ExtendedOnlineStatus::Online { .. })  {
-                                        self.connectivity_status_changed(online_status.clone());
+                                    let online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
+                                        ExtendedOnlineStatus::Degraded {
+                                            latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                            node_id: String::new(),
+                                            public_key: String::new(),
+                                            url: String::new()
+                                        }
                                     } else {
-                                        online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
-                                            ExtendedOnlineStatus::Degraded {
-                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                                node_id: String::new(),
-                                                public_key: String::new(),
-                                                url: String::new()
-                                            }
-                                        } else {
-                                            ExtendedOnlineStatus::Online {
-                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                                node_id: String::new(),
-                                                public_key: String::new(),
-                                                url: String::new()
-                                            }
-                                        };
-                                        self.connectivity_status_changed(online_status.clone());
-                                    }
+                                        ExtendedOnlineStatus::Online {
+                                            latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                            node_id: String::new(),
+                                            public_key: String::new(),
+                                            url: String::new()
+                                        }
+                                    };
+                                    self.connectivity_status_changed(online_status.clone());
                                     base_node_state.best_block_height = tip_height;
                                     base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
                                     self.base_node_state_changed(base_node_state);
@@ -371,31 +376,31 @@ where
                                     final_height,
                                     latency,
                                     ..
-                                }=> {
+                                } => {
                                 self.scanned_height_changed(final_height);
-                                    if !matches!(online_status.clone(), ExtendedOnlineStatus::Online { .. }) {
-                                        online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
-                                            ExtendedOnlineStatus::Degraded {
-                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                                node_id: String::new(),
-                                                public_key: String::new(),
-                                                url: String::new()
-                                            }
-                                        } else {
-                                            ExtendedOnlineStatus::Online {
-                                                latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                                node_id: String::new(),
-                                                public_key: String::new(),
-                                                url: String::new()
-                                            }
-                                        };
-                                        self.connectivity_status_changed(online_status.clone());
-                                    }
+                                    let online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
+                                        ExtendedOnlineStatus::Degraded {
+                                            latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                            node_id: String::new(),
+                                            public_key: String::new(),
+                                            url: String::new()
+                                        }
+                                    } else {
+                                        ExtendedOnlineStatus::Online {
+                                            latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
+                                            node_id: String::new(),
+                                            public_key: String::new(),
+                                            url: String::new()
+                                        }
+                                    };
+                                    self.connectivity_status_changed(online_status.clone());
                                     base_node_state.best_block_height = final_height;
                                     base_node_state.latency = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
                                     self.base_node_state_changed(base_node_state);
                                 },
-                                _ => {}
+                                UtxoScannerEvent::ScanningRoundFailed { .. } => {
+                                    self.connectivity_status_changed(ExtendedOnlineStatus::Offline);
+                                }
                             }
                         },
                         Err(e) => {
@@ -639,8 +644,14 @@ where
             target: LOG_TARGET,
             "Calling Connectivity Status changed callback function"
         );
+        let latency = match status {
+            ExtendedOnlineStatus::Connecting | ExtendedOnlineStatus::Offline => UNKNOWN_LATENCY_MS,
+            ExtendedOnlineStatus::Online { latency_ms, .. } | ExtendedOnlineStatus::Degraded { latency_ms, .. } => {
+                latency_ms
+            },
+        };
         unsafe {
-            (self.callback_connectivity_status)(self.context.0, u64::from(status.as_u8()));
+            (self.callback_connectivity_status)(self.context.0, u64::from(status.as_u8()), latency);
         }
     }
 

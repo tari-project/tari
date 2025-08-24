@@ -245,7 +245,7 @@ mod test {
         drop(lock);
     }
 
-    unsafe extern "C" fn connectivity_status_callback(_context: *mut c_void, status: u64) {
+    unsafe extern "C" fn connectivity_status_callback(_context: *mut c_void, status: u64, _latency: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.connectivity_status_callback_called += status + 1;
         drop(lock);

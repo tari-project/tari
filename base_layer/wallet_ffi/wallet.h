@@ -2840,13 +2840,14 @@ TariPublicKey *get_connected_base_node_public_key(struct TariWallet *wallet,
  * `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
  * is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
  * for it.
- * `callback_connectivity_status` -  This callback is called when the status of connection to the set base node
- * changes. it will return an enum encoded as an integer as follows:
- * pub enum OnlineStatus {
- *     Connecting,     // 0
- *     Online,         // 1
- *     Offline,        // 2
- * }
+ * `callback_connectivity_status` - This callback is called when the status of connection to the base node changes.
+ * It will return an enum encoded as an integer as the first parameter and latency in ms as the second as follows:
+ *   status (u64)    | latency in ms (u64)
+ *   ------------    | -------------------
+ *   Connecting => 0 | 0
+ *   Online => 1     | <measured latency>
+ *   Offline => 2    | 0
+ *   Degraded => 3   | <measured latency>
  * `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
  * that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -2902,7 +2903,9 @@ struct TariWallet *wallet_create(void *context,
                                  void (*callback_transaction_validation_complete)(void *context,
                                                                                   uint64_t,
                                                                                   uint64_t),
-                                 void (*callback_connectivity_status)(void *context, uint64_t),
+                                 void (*callback_connectivity_status)(void *context,
+                                                                      uint64_t,
+                                                                      uint64_t),
                                  void (*callback_wallet_scanned_height)(void *context, uint64_t),
                                  void (*callback_base_node_state)(void *context,
                                                                   struct TariBaseNodeState*),
