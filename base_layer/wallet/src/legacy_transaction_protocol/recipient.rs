@@ -29,7 +29,7 @@ use tari_common_types::{
 };
 use tari_transaction_components::transaction_components::TransactionOutput;
 
-use crate::transactions::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError};
+use crate::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum RecipientState {

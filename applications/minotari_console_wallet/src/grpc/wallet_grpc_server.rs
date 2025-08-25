@@ -135,7 +135,7 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
-use tari_core::transactions::legacy_transaction_protocol::recipient::RecipientState;
+use minotari_wallet::legacy_transaction_protocol::recipient::RecipientState;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,

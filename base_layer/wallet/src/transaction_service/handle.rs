@@ -36,7 +36,6 @@ use tari_common_types::{
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::proto;
 use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
@@ -683,13 +682,6 @@ pub struct FeePerGramStatsResponse {
     pub stats: Vec<FeePerGramStat>,
 }
 
-impl From<proto::base_node::GetMempoolFeePerGramStatsResponse> for FeePerGramStatsResponse {
-    fn from(value: proto::base_node::GetMempoolFeePerGramStatsResponse) -> Self {
-        Self {
-            stats: value.stats.into_iter().map(Into::into).collect(),
-        }
-    }
-}
 
 /// Enhanced payment details for PayRef functionality
 #[derive(Debug, Clone, PartialEq, Eq)]

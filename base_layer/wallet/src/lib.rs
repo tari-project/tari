@@ -17,6 +17,7 @@ pub mod output_manager_service;
 pub mod storage;
 pub mod test_utils;
 pub mod transaction_service;
+pub mod legacy_transaction_protocol;
 
 pub use tari_common_types::types::WalletHasher;
 use tari_transaction_components::key_manager::TransactionKeyManagerWrapper;

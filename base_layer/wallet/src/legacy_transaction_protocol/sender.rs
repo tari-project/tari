@@ -44,7 +44,7 @@ use tari_transaction_components::{
     },
 };
 
-use crate::transactions::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
+use crate::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

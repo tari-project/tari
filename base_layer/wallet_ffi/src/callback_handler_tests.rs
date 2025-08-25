@@ -38,7 +38,7 @@ mod test {
         types::{CompressedPublicKey, PrivateKey},
     };
     use tari_comms_dht::event::DhtEvent;
-    use tari_core::transactions::legacy_transaction_protocol::{
+    use minotari_wallet::legacy_transaction_protocol::{
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };

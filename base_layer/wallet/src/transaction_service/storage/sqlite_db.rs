@@ -2603,7 +2603,7 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{CompressedPublicKey, CompressedSignature, PrivateKey},
     };
-    use tari_core::transactions::legacy_transaction_protocol::{
+    use crate::legacy_transaction_protocol::{
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };

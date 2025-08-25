@@ -224,7 +224,6 @@ where
                 THttpClientFactory,
             >::new(
                 config.transaction_service_config.clone(),
-                peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 config.network,

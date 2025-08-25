@@ -48,7 +48,7 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
-use tari_core::transactions::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
+use minotari_wallet::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
