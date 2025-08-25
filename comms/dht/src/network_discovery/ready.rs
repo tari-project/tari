@@ -21,7 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::peer_manager::{PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION};
+use tari_comms::{
+    peer_manager::{Peer, PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION},
+    types::AddressProtocol,
+};
 
 use super::{
     state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
@@ -43,10 +46,10 @@ async fn select_peers_for_discovery_round(
     last_round_info: Option<&DhtNetworkDiscoveryRoundInfo>,
     excluded_peers: &[tari_comms::peer_manager::NodeId],
     config: &DhtConfig,
+    address_protocols: &Vec<AddressProtocol>,
 ) -> Result<Vec<tari_comms::peer_manager::NodeId>, NetworkDiscoveryError> {
-    let peers_to_request_from = match last_round_info {
+    let peers_to_request_from: Vec<Peer> = match last_round_info {
         Some(stats) if stats.has_new_peers() => {
-            // If the last round had new peers, try to sync from those first or closest ones
             debug!(
                 target: LOG_TARGET,
                 "Last peer sync round found {} new peer(s). Selecting peers for discovery based on a 'closest' strategy.",
@@ -54,7 +57,7 @@ async fn select_peers_for_discovery_round(
             );
             context
                 .peer_manager
-                .closest_n_active_peers(
+                .closest_n_active_peers_filtered_by_protocols(
                     context.node_identity.node_id(),
                     config.network_discovery.max_sync_peers,
                     excluded_peers,
@@ -64,6 +67,7 @@ async fn select_peers_for_discovery_round(
                     true,
                     None,
                     true,
+                    address_protocols,
                 )
                 .await?
         },
@@ -76,14 +80,22 @@ async fn select_peers_for_discovery_round(
                 last_round_info.is_some(),
                 last_round_info.map(|s| s.has_new_peers()).unwrap_or(false),
             );
-            context
+            let peers = context
                 .peer_manager
                 .random_peers(
                     config.network_discovery.max_sync_peers,
                     excluded_peers,
                     Some(PeerFlags::NONE),
                 )
-                .await?
+                .await?;
+            peers
+                .into_iter()
+                .filter(|peer| {
+                    peer.addresses
+                        .iter()
+                        .any(|addr| address_protocols.contains(addr.address().into()))
+                })
+                .collect()
         },
     };
     Ok(peers_to_request_from.into_iter().map(|p| p.node_id).collect::<Vec<_>>())
@@ -103,14 +115,18 @@ impl DiscoveryReady {
         // Get current number of rounds before processing
         let current_num_rounds = self.context.num_rounds();
 
-        match self.process(current_num_rounds).await {
+        match self.process(current_num_rounds, &self.context.protocols().await).await {
             Ok(event) => event,
             Err(err) => err.into(),
         }
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn process(&mut self, current_num_rounds: usize) -> Result<StateEvent, NetworkDiscoveryError> {
+    async fn process(
+        &mut self,
+        current_num_rounds: usize,
+        protocols: &Vec<AddressProtocol>,
+    ) -> Result<StateEvent, NetworkDiscoveryError> {
         let num_peers = self.context.peer_manager.count().await;
         debug!(
             target: LOG_TARGET,
@@ -139,7 +155,8 @@ impl DiscoveryReady {
             let excluded_peers = self.context.all_attempted_peers.read().await.clone();
             // Use helper to get peers
             let peers_for_discovery =
-                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?;
+                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config(), protocols)
+                    .await?;
 
             if peers_for_discovery.is_empty() {
                 debug!(target: LOG_TARGET, "No peers available to attempt discovery (num_peers < min_desired_peers path). Idling.");
@@ -162,7 +179,7 @@ impl DiscoveryReady {
 
             let peers_for_discovery = {
                 let excluded_peers = self.context.all_attempted_peers.read().await;
-                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config()).await?
+                select_peers_for_discovery_round(&self.context, None, &excluded_peers, self.config(), protocols).await?
             };
 
             if peers_for_discovery.is_empty() {
@@ -251,6 +268,7 @@ impl DiscoveryReady {
             last_round_info_option.as_ref(),
             &excluded_peers,
             self.config(),
+            protocols,
         )
         .await?;
 

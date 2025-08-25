@@ -37,7 +37,7 @@ use crate::{
         PeerFlags,
         PeerManagerError,
     },
-    types::{CommsDatabase, CommsPublicKey},
+    types::{AddressProtocol, CommsDatabase, CommsPublicKey},
 };
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage_sql";
@@ -254,6 +254,33 @@ impl PeerStorageSql {
             exclude_if_all_address_failed,
             exclusion_distance,
             external_addresses_only,
+        )?)
+    }
+
+    pub fn closest_n_active_peers_filtered_by_protocols(
+        &self,
+        region_node_id: &NodeId,
+        n: usize,
+        excluded_peers: &[NodeId],
+        features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
+        stale_peer_threshold: Option<Duration>,
+        exclude_if_all_address_failed: bool,
+        exclusion_distance: Option<NodeDistance>,
+        external_addresses_only: bool,
+        protocols: &Vec<AddressProtocol>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        Ok(self.peer_db.get_closest_n_active_peers_filtered_by_protocols(
+            region_node_id,
+            n,
+            excluded_peers,
+            features,
+            peer_flags,
+            stale_peer_threshold,
+            exclude_if_all_address_failed,
+            exclusion_distance,
+            external_addresses_only,
+            protocols,
         )?)
     }
 

@@ -105,7 +105,10 @@ mod state_machine {
 }
 
 mod discovery_ready {
-    use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
+    use tari_comms::{
+        test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities},
+        types::AddressProtocol,
+    };
     use tokio::sync::RwLock;
 
     use super::*;
@@ -144,6 +147,7 @@ mod discovery_ready {
             last_round: Default::default(),
             bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
             bootstrap_started_at: Arc::new(RwLock::new(None)),
+            protocols: Arc::new(RwLock::new(AddressProtocol::get_all())),
         };
 
         let ready = DiscoveryReady::new(context.clone());

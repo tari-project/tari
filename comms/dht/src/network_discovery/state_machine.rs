@@ -33,7 +33,13 @@ use std::{
 
 use futures::{future, future::Either};
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, NodeIdentity, PeerManager};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    types::AddressProtocol,
+    NodeIdentity,
+    PeerManager,
+};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{broadcast, RwLock},
@@ -176,9 +182,15 @@ pub(super) struct NetworkDiscoveryContext {
     pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
     pub bootstrap_method: Arc<RwLock<BootstrapMethod>>,
     pub bootstrap_started_at: Arc<RwLock<Option<Instant>>>,
+    pub protocols: Arc<RwLock<Vec<AddressProtocol>>>,
 }
 
 impl NetworkDiscoveryContext {
+    /// Get supported address protocols
+    pub async fn protocols(&self) -> Vec<AddressProtocol> {
+        self.protocols.read().await.clone()
+    }
+
     /// Increment the number of rounds by 1
     pub(super) fn increment_num_rounds(&self) -> usize {
         self.num_rounds.fetch_add(1, Ordering::SeqCst)
@@ -293,6 +305,7 @@ impl DhtNetworkDiscovery {
                 event_tx,
                 bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
                 bootstrap_started_at: Arc::new(RwLock::new(None)),
+                protocols: Arc::new(RwLock::new(vec![])),
             },
             shutdown_signal,
         }

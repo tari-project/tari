@@ -64,8 +64,32 @@ pub enum AddressProtocol {
     Memory,
 }
 
+impl AddressProtocol {
+    pub fn get_all() -> Vec<AddressProtocol> {
+        vec![
+            AddressProtocol::Ipv4,
+            AddressProtocol::Ipv6,
+            AddressProtocol::Onion,
+            AddressProtocol::Memory,
+        ]
+    }
+}
+
 impl From<Multiaddr> for AddressProtocol {
     fn from(addr: Multiaddr) -> Self {
+        match addr.iter().next() {
+            Some(Protocol::Ip4(_)) => AddressProtocol::Ipv4,
+            Some(Protocol::Ip6(_)) => AddressProtocol::Ipv6,
+            Some(Protocol::Onion(_, _)) => AddressProtocol::Onion,
+            Some(Protocol::Onion3(_)) => AddressProtocol::Onion,
+            Some(Protocol::Memory(_)) => AddressProtocol::Memory,
+            _ => AddressProtocol::Ipv4,
+        }
+    }
+}
+
+impl From<&Multiaddr> for AddressProtocol {
+    fn from(addr: &Multiaddr) -> Self {
         match addr.iter().next() {
             Some(Protocol::Ip4(_)) => AddressProtocol::Ipv4,
             Some(Protocol::Ip6(_)) => AddressProtocol::Ipv6,

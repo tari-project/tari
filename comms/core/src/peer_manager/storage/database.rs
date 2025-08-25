@@ -53,7 +53,7 @@ use crate::{
         PeerId,
     },
     protocol::ProtocolId,
-    types::CommsPublicKey,
+    types::{AddressProtocol, CommsPublicKey},
     utils::datetime::safe_future_datetime_from_duration,
 };
 
@@ -1510,6 +1510,72 @@ impl PeerDatabaseSql {
             let selected_node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
             let mut peers = self.get_peers_by_node_ids_str(&selected_node_ids_hex, external_addresses_only, conn)?;
 
+            peers.sort_by(|a, b| {
+                a.node_id
+                    .distance(region_node_id)
+                    .cmp(&b.node_id.distance(region_node_id))
+            });
+
+            Ok(peers)
+        })
+    }
+
+    pub fn get_closest_n_active_peers_filtered_by_protocols(
+        &self,
+        region_node_id: &NodeId,
+        n: usize,
+        excluded_peers: &[NodeId],
+        features: Option<PeerFeatures>,
+        peer_flags: Option<PeerFlags>,
+        stale_peer_threshold: Option<Duration>,
+        exclude_if_all_address_failed: bool,
+        exclusion_distance: Option<NodeDistance>,
+        external_addresses_only: bool,
+        protocols: &Vec<AddressProtocol>,
+    ) -> Result<Vec<Peer>, StorageError> {
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        conn.transaction::<_, StorageError, _>(|conn| {
+            let node_ids_hex = self.get_active_peer_node_ids(
+                excluded_peers,
+                features,
+                peer_flags,
+                stale_peer_threshold,
+                exclude_if_all_address_failed,
+                external_addresses_only,
+                None,
+                conn,
+            )?;
+
+            let mut node_ids = node_ids_hex
+                .into_iter()
+                .filter_map(|id| NodeId::from_hex(&id).ok())
+                .filter(|id| {
+                    exclusion_distance
+                        .clone()
+                        .map(|d| id.distance(region_node_id) < d)
+                        .unwrap_or(true)
+                })
+                .collect::<Vec<_>>();
+            node_ids.sort_by_key(|a| a.distance(region_node_id));
+
+            let selected_node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+            let mut peers = self.get_peers_by_node_ids_str(&selected_node_ids_hex, external_addresses_only, conn)?;
+
+            // Filter peers by address protocol so we don't dial those that are assured to be unreachable
+            peers = peers
+                .into_iter()
+                .filter(|peer| {
+                    peer.addresses
+                        .iter()
+                        .any(|addr| protocols.contains(addr.address().into()))
+                })
+                .collect::<Vec<_>>();
+            peers.truncate(n);
             peers.sort_by(|a, b| {
                 a.node_id
                     .distance(region_node_id)

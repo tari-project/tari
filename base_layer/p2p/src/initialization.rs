@@ -57,8 +57,7 @@ use tari_comms::{
         NodeNetworkInfo,
         ProtocolId,
     },
-    tor,
-    tor::{HiddenServiceControllerError, TorIdentity},
+    tor::{self, HiddenServiceControllerError, TorIdentity},
     transports::{
         predicate::FalsePredicate,
         HiddenServiceTransport,
