@@ -46,7 +46,6 @@ use super::{
     FeePerGramStats,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKey,
     WalletAddress,
     WalletDbConfig,
 };
@@ -138,9 +137,9 @@ extern "C" fn callback_transaction_validation_complete(
     // println!("callback_transaction_validation_complete");
 }
 
-extern "C" fn callback_connectivity_status(_context: *mut c_void, status: u64) {
+extern "C" fn callback_connectivity_status(_context: *mut c_void, status: u64, latency: u64) {
     let callbacks = Callbacks::instance();
-    callbacks.on_connectivity_status(status);
+    callbacks.on_connectivity_status(status, latency);
     // println!("callback_connectivity_status");
 }
 
@@ -257,19 +256,6 @@ impl Wallet {
             }
         }
         WalletAddress::from_ptr(ptr)
-    }
-
-    pub fn connected_base_node_public_key(&self) -> PublicKey {
-        let ptr;
-        let mut error = 0;
-        unsafe {
-            ptr = ffi_import::get_connected_base_node_public_key(self.ptr, &mut error);
-            if error > 0 {
-                println!("get_connected_base_node_public_key error {error}");
-                panic!("get_connected_base_node_public_key error");
-            }
-        }
-        PublicKey::from_ptr(ptr)
     }
 
     pub fn get_balance(&self) -> Balance {

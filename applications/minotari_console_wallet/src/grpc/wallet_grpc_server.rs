@@ -162,7 +162,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
-use tari_comms::{connectivity::ConnectivityStatus, peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
 use tari_crypto::hash_domain;
 
 // Domain separator for signing arbitrary messages with a wallet secret key
@@ -285,8 +285,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let identity = self.wallet.node_identity.clone();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_vec(),
-            // Note: Without comms this will always resolve to be empty
-            public_address: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
+            public_address: String::new(), // Note: Without comms this will always resolve to be empty
             node_id: identity.node_id().to_vec(),
         }))
     }
@@ -1778,40 +1777,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::GetConnectedHttpPeerResponse>, Status> {
         let url = self.wallet.wallet_connectivity.get_address().await;
-        let (is_online, last_latency, node_id, public_key) =
-            match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
-                ExtendedOnlineStatus::Connecting => (
-                    false,
-                    UNKNOWN_LATENCY_MS,
-                    NodeId::default().to_hex(),
-                    CommsPublicKey::default().to_hex(),
-                ),
-                ExtendedOnlineStatus::Offline => (
-                    false,
-                    u64::MAX,
-                    NodeId::default().to_hex(),
-                    CommsPublicKey::default().to_hex(),
-                ),
-                ExtendedOnlineStatus::Online {
-                    latency_ms,
-                    node_id,
-                    public_key,
-                    ..
-                } |
-                ExtendedOnlineStatus::Degraded {
-                    latency_ms,
-                    node_id,
-                    public_key,
-                    ..
-                } => (true, latency_ms, node_id, public_key),
-            };
+        let (is_online, last_latency) = match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
+            ExtendedOnlineStatus::Connecting => (false, UNKNOWN_LATENCY_MS),
+            ExtendedOnlineStatus::Offline => (false, u64::MAX),
+            ExtendedOnlineStatus::Online { latency_ms, .. } | ExtendedOnlineStatus::Degraded { latency_ms, .. } => {
+                (true, latency_ms)
+            },
+        };
 
         let peer = tari_rpc::HttpPeer {
             url,
             last_latency,
             is_online,
-            node_id,
-            public_key,
         };
         let resp = tari_rpc::GetConnectedHttpPeerResponse {
             connected_peer: Some(peer),

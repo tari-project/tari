@@ -27,6 +27,27 @@ use libc::c_void;
 use super::{Balance, CompletedTransaction, PendingInboundTransaction, Wallet};
 use crate::ffi::TransactionSendStatus;
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum FfiConnectivityStatus {
+    #[default]
+    Connecting = 0,
+    Online = 1,
+    Offline = 2,
+    Degraded = 3,
+}
+
+impl From<u64> for FfiConnectivityStatus {
+    fn from(value: u64) -> Self {
+        match value {
+            0 => FfiConnectivityStatus::Connecting,
+            1 => FfiConnectivityStatus::Online,
+            2 => FfiConnectivityStatus::Offline,
+            3 => FfiConnectivityStatus::Degraded,
+            _ => FfiConnectivityStatus::Connecting,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Callbacks {
     transaction_received: Mutex<u64>,
@@ -43,6 +64,7 @@ pub struct Callbacks {
     tx_validation_complete: Mutex<bool>,
     tx_validation_result: Mutex<u64>,
     basenode_state_updated: Mutex<u64>,
+    connectivity_status: Mutex<(FfiConnectivityStatus, u64)>,
     pub wallet: Option<Arc<Mutex<Wallet>>>,
 }
 
@@ -82,6 +104,11 @@ impl Callbacks {
 
     pub fn get_transaction_faux_unconfirmed(&self) -> u64 {
         *self.transaction_faux_unconfirmed.lock().unwrap()
+    }
+
+    /// Reply with status (connecting = 0, online = 1, offline = 2, degraded = 3) and latency (ms)
+    pub fn get_connectivity_status(&self) -> (FfiConnectivityStatus, u64) {
+        (*self.connectivity_status.lock().unwrap()).clone()
     }
 
     #[allow(dead_code)]
@@ -248,12 +275,15 @@ impl Callbacks {
         *self.tx_validation_result.lock().unwrap() = validation_results;
     }
 
-    pub fn on_connectivity_status(&mut self, status: u64) {
+    pub fn on_connectivity_status(&mut self, status: u64, latency: u64) {
         println!(
-            "{} Connectivity Status Changed to {}.",
+            "{} Connectivity Status Changed to {} / latency {} ms.",
             chrono::Local::now().format("%Y/%m/%d %H:%M:%S"),
-            status
+            status,
+            latency
         );
+
+        *self.connectivity_status.lock().unwrap() = (FfiConnectivityStatus::from(status), latency);
     }
 
     pub fn callback_wallet_scanned_height(&mut self, height: u64) {

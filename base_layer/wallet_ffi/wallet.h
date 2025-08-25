@@ -2734,26 +2734,6 @@ struct TariWalletDbConfig *wallet_db_config_create(const char *database_name,
 void wallet_db_config_destroy(struct TariWalletDbConfig *wc);
 
 /**
- * -------------------------------------------------------------------------------------------- ///
- * -------------------------------- Connected base node public key -----------------------------///
- * This function returns the connected base_node's public key
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `TariPublicKey` -  Returns the connected base_node's public key - a default (zeroed) value will indicate that no
- * base node is connected. Note the result will be null if there was an error.
- *
- * # Safety
- * The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
- */
-TariPublicKey *get_connected_base_node_public_key(struct TariWallet *wallet,
-                                                  int *error_out);
-
-/**
  * Creates a TariWallet
  *
  * ## Arguments

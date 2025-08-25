@@ -7,13 +7,13 @@ Feature: Base Node Connectivity
     Scenario: Basic connectivity between 2 nodes
         Given I have a seed node SEED_A
         When I have a base node NODE_A connected to all seed nodes
-        When I wait for NODE_A to connect to SEED_A
+        When I wait for base node NODE_A to connect to base node SEED_A
 
     @base-node @wallet
     Scenario: Basic connectivity between nodes and wallet
         Given I have a seed node SEED_A
         When I have wallet WALLET_A connected to all seed nodes
-        Then I wait for WALLET_A to connect to SEED_A
+        Then I wait for wallet WALLET_A to have connectivity
         Then I wait for WALLET_A to have a node connection
         Then I wait for WALLET_A to have ONLINE connectivity
 

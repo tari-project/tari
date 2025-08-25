@@ -35,9 +35,9 @@ use super::ffi::{
     Callbacks,
     CompletedTransactions,
     FeePerGramStats,
+    FfiConnectivityStatus,
     PendingInboundTransactions,
     PendingOutboundTransactions,
-    PublicKey,
     WalletAddress,
 };
 use crate::{
@@ -99,8 +99,8 @@ impl WalletFFI {
         self.wallet.lock().unwrap().get_address()
     }
 
-    pub fn connected_base_node_public_key(&self) -> PublicKey {
-        self.wallet.lock().unwrap().connected_base_node_public_key()
+    pub fn get_connectivity_status(&self) -> (FfiConnectivityStatus, u64) {
+        self.get_counters().get_connectivity_status()
     }
 
     pub fn get_balance(&self) -> Balance {

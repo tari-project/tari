@@ -6,7 +6,6 @@ use std::cmp;
 use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_transaction_components::transaction_components::TransactionOutput;
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use thiserror::Error;
@@ -23,7 +22,6 @@ use crate::{
                 SyncUtxosByBlockRequest,
                 SyncUtxosByBlockResponse,
                 TipInfoResponse,
-                TipInfoResponseWithId,
                 TxLocation,
                 TxQueryResponse,
             },
@@ -66,24 +64,14 @@ pub struct Service<B> {
     db: AsyncBlockchainDb<B>,
     state_machine: StateMachineHandle,
     mempool: MempoolHandle,
-    node_id: NodeId,
-    public_key: CommsPublicKey,
 }
 
 impl<B: BlockchainBackend + 'static> Service<B> {
-    pub fn new(
-        db: AsyncBlockchainDb<B>,
-        state_machine: StateMachineHandle,
-        mempool: MempoolHandle,
-        node_id: NodeId,
-        public_key: CommsPublicKey,
-    ) -> Self {
+    pub fn new(db: AsyncBlockchainDb<B>, state_machine: StateMachineHandle, mempool: MempoolHandle) -> Self {
         Self {
             db,
             state_machine,
             mempool,
-            node_id,
-            public_key,
         }
     }
 
@@ -332,24 +320,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         Ok(TipInfoResponse {
             metadata: Some(metadata),
             is_synced,
-        })
-    }
-
-    async fn get_tip_info_with_id(&self) -> Result<TipInfoResponseWithId, Self::Error> {
-        let state_machine = self.state_machine();
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match status_watch.borrow().state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
-
-        let metadata = self.db.get_chain_metadata().await?;
-
-        Ok(TipInfoResponseWithId {
-            metadata: Some(metadata),
-            is_synced,
-            node_id: self.node_id.to_hex(),
-            public_key: self.public_key.to_hex(),
         })
     }
 

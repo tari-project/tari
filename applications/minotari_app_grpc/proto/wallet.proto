@@ -681,7 +681,7 @@ service Wallet {
   // {
   //   "status": "ONLINE",
   //   "avg_latency_ms": 142,
-  //   "num_node_connections": 8
+  //   "num_node_connections": 1
   // }
   // ```
   //
@@ -689,13 +689,16 @@ service Wallet {
   //
   // The `status` field indicates the current network connectivity of the wallet. Possible values are:
   //
+  // - `INITIALIZING`:
+  //   - The wallet connectivity is busy initializing.
+  //
   // - `ONLINE`:
   //   - The wallet is fully connected to the network and functioning normally.
-  //   - The node has enough active peer connections to operate efficiently.
   //
   // - `DEGRADED`:
-  //   - The wallet is connected to some peers but not enough to maintain full functionality.
-  //   - This could indicate issues with network connectivity, such as intermittent disconnections or insufficient peers, leading to reduced performance or reliability.
+  //   - The wallet is connected but has high latency.
+  //   - This could indicate issues with network connectivity, such as as a congested network, leading to reduced
+  //     performance or reliability.
   //
   // - `OFFLINE`:
   //   - The wallet is not connected to any peers.
@@ -1942,8 +1945,4 @@ message HttpPeer {
   uint64 last_latency = 2;
   // Online status of the peer
   bool is_online = 3;
-  // The node_id of the peer
-  string node_id = 4;
-  // The public key of the peer
-  string public_key = 5;
 }

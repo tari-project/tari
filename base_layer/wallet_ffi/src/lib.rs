@@ -77,7 +77,6 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use minotari_wallet::{
-    connectivity_service::{ExtendedOnlineStatus, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         error::OutputManagerError,
@@ -5505,59 +5504,6 @@ pub unsafe extern "C" fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig) {
 }
 
 /// -------------------------------------------------------------------------------------------- ///
-/// -------------------------------- Connected base node public key -----------------------------///
-/// This function returns the connected base_node's public key
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `TariPublicKey` -  Returns the connected base_node's public key - a default (zeroed) value will indicate that no
-/// base node is connected. Note the result will be null if there was an error.
-///
-/// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn get_connected_base_node_public_key(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> *mut TariPublicKey {
-    if error_out.is_null() {
-        return ptr::null_mut();
-    }
-    *error_out = 0;
-
-    if wallet.is_null() {
-        *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        return ptr::null_mut();
-    }
-
-    let public_key_str = (*wallet).runtime.block_on(async {
-        match (*wallet)
-            .wallet
-            .wallet_connectivity
-            .get_extended_connectivity_status()
-            .await
-        {
-            ExtendedOnlineStatus::Connecting | ExtendedOnlineStatus::Offline => TariPublicKey::default().to_hex(),
-            ExtendedOnlineStatus::Online { public_key, .. } | ExtendedOnlineStatus::Degraded { public_key, .. } => {
-                public_key
-            },
-        }
-    });
-    let public_key_res = TariPublicKey::from_hex(&public_key_str);
-    match public_key_res {
-        Ok(pk) => Box::into_raw(Box::new(pk)),
-        Err(e) => {
-            *error_out = LibWalletError::from(e).code;
-            ptr::null_mut()
-        },
-    }
-}
-
-/// ---------------------------------------------------------------------------------------------- ///
 /// ------------------------------------- Wallet -------------------------------------------------///
 /// Inits logging, this function is deliberately not exposed externally in the header
 ///

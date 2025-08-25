@@ -42,12 +42,9 @@ use grpc::{
     UserPayForFeeRequest,
     ValidateRequest,
 };
-use minotari_app_grpc::tari_rpc::{
-    self as grpc,
-    GetBalanceResponse,
-    GetStateRequest,
-    TransactionStatus,
-    TxOutputsToSpendTransfer,
+use minotari_app_grpc::{
+    tari_rpc,
+    tari_rpc::{self as grpc, GetBalanceResponse, GetStateRequest, TransactionStatus, TxOutputsToSpendTransfer},
 };
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
@@ -1738,6 +1735,27 @@ async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: 
     }
 }
 
+#[when(expr = "I wait for wallet {word} to have connectivity")]
+#[then(expr = "I wait for wallet {word} to have connectivity")]
+async fn wallet_pending_connection(world: &mut TariWorld, wallet: String) {
+    let mut wallet_client = world.get_wallet_client(&wallet).await.unwrap();
+
+    for _i in 0..30 {
+        let res: tonic::Response<tari_rpc::GetConnectedHttpPeerResponse> =
+            wallet_client.get_connected_http_peer(Empty {}).await.unwrap();
+        let res = res.into_inner();
+        if let Some(peer) = res.connected_peer {
+            if peer.is_online {
+                return;
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+
+    panic!("Peer was not connected in time");
+}
+
 #[then(expr = "I wait for {word} to have {word} connectivity")]
 async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wallet: String, connectivity: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
@@ -1748,6 +1766,13 @@ async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wa
     ));
     let connectivity = connectivity.to_uppercase();
 
+    // applications/minotari_app_grpc/proto/network.proto ->
+    // enum ConnectivityStatus {
+    //     Initializing = 0;
+    //     Online = 1;
+    //     Degraded = 2;
+    //     Offline = 3;
+    // }
     let connectivity_index = match connectivity.as_str() {
         "INITIALIZING" => 0,
         "ONLINE" => 1,

@@ -20,14 +20,6 @@ use tokio::sync::mpsc;
 
 use crate::client::models::TxSubmissionResponse;
 
-/// A convenience struct to pass back the node_id and public_key
-pub struct NodeIdPublicKeyPair {
-    /// The NodeId in hex format
-    pub node_id: String,
-    /// The CommsPublicKey in hex format
-    pub public_key: String,
-}
-
 /// Trait that a base node wallet client must implement.
 #[async_trait::async_trait]
 pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
@@ -35,11 +27,7 @@ pub trait BaseNodeWalletClient: Send + Sync + Clone + 'static {
 
     async fn is_online(&self) -> bool;
 
-    async fn is_online_with_id(&self) -> Option<NodeIdPublicKeyPair>;
-
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error>;
-
-    async fn get_tip_info_with_id(&self) -> Result<models::TipInfoResponseWithId, Error>;
 
     async fn get_header_by_height(&self, height: u64) -> Result<Option<BlockHeader>, Error>;
 

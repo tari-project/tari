@@ -25,7 +25,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::Error;
 use async_trait::async_trait;
 use itertools::Itertools;
-use minotari_node_wallet_client::{BaseNodeWalletClient, NodeIdPublicKeyPair};
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
 use tari_core::{
     base_node::rpc::models::{
@@ -52,7 +52,6 @@ struct State {
     utxos_by_block: HashMap<u64, UtxosByBlock>,
     blocks: HashMap<u64, tari_core::blocks::BlockHeader>,
     tip_info: Option<models::TipInfoResponse>,
-    tip_info_with_id: Option<models::TipInfoResponseWithId>,
     online: bool,
     http_address: Option<String>,
     last_request_latency: Option<Duration>,
@@ -69,10 +68,6 @@ impl State {
 
     fn set_tip_info(&mut self, tip_info: models::TipInfoResponse) {
         self.tip_info = Some(tip_info);
-    }
-
-    fn set_tip_info_with_id(&mut self, tip_info: models::TipInfoResponseWithId) {
-        self.tip_info_with_id = Some(tip_info);
     }
 
     fn set_onlie_status(&mut self, is_online: bool) {
@@ -113,12 +108,6 @@ impl HttpBaseNodeMock {
         Ok(())
     }
 
-    pub async fn set_tip_info_with_id(&self, tip_info: models::TipInfoResponseWithId) -> Result<(), Error> {
-        let mut state = self.state.write().await;
-        state.set_tip_info_with_id(tip_info);
-        Ok(())
-    }
-
     pub async fn set_onlie_status(&self, is_online: bool) -> Result<(), Error> {
         let mut state = self.state.write().await;
         state.set_onlie_status(is_online);
@@ -151,26 +140,10 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
 
     async fn is_online(&self) -> bool {
         let state = self.state.read().await;
-        if state.tip_info.is_some() || state.tip_info_with_id.is_some() {
+        if state.tip_info.is_some() {
             state.online
         } else {
             false
-        }
-    }
-
-    async fn is_online_with_id(&self) -> Option<NodeIdPublicKeyPair> {
-        let state = self.state.read().await;
-        if let Some(info) = &state.tip_info_with_id {
-            if state.online {
-                Some(NodeIdPublicKeyPair {
-                    node_id: info.node_id.clone(),
-                    public_key: info.public_key.clone(),
-                })
-            } else {
-                None
-            }
-        } else {
-            None
         }
     }
 
@@ -218,15 +191,6 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     async fn get_tip_info(&self) -> Result<models::TipInfoResponse, Error> {
         let state = self.state.read().await;
         if let Some(tip_info) = &state.tip_info {
-            Ok(tip_info.clone())
-        } else {
-            Err(Error::msg("Tip info not set"))
-        }
-    }
-
-    async fn get_tip_info_with_id(&self) -> Result<models::TipInfoResponseWithId, Error> {
-        let state = self.state.read().await;
-        if let Some(tip_info) = &state.tip_info_with_id {
             Ok(tip_info.clone())
         } else {
             Err(Error::msg("Tip info not set"))

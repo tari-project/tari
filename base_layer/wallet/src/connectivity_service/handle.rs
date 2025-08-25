@@ -22,7 +22,7 @@
 
 use std::time::Duration;
 
-use minotari_node_wallet_client::{BaseNodeWalletClient, NodeIdPublicKeyPair};
+use minotari_node_wallet_client::BaseNodeWalletClient;
 use tokio::sync::watch;
 
 use crate::{client::http_client_factory::HttpClientFactory, connectivity_service::WalletConnectivityInterface};
@@ -44,19 +44,9 @@ pub enum OnlineStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExtendedOnlineStatus {
     Connecting,
-    Online {
-        latency_ms: u64,
-        node_id: String,
-        public_key: String,
-        url: String,
-    },
+    Online { latency_ms: u64, url: String },
     Offline,
-    Degraded {
-        latency_ms: u64,
-        node_id: String,
-        public_key: String,
-        url: String,
-    },
+    Degraded { latency_ms: u64, url: String },
 }
 
 impl ExtendedOnlineStatus {
@@ -113,31 +103,19 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
 
     async fn get_extended_connectivity_status(&self) -> ExtendedOnlineStatus {
         let client = self.obtain_base_node_wallet_rpc_client().await;
-        let status = if let Some(NodeIdPublicKeyPair { node_id, public_key }) = client.is_online_with_id().await {
+        let status = if client.is_online().await {
             let url = client.get_address().await;
             if let Some(latency) = client.get_last_request_latency().await {
                 let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
                 if latency >= DEGRADED_LATENCY_THRESHOLD {
-                    ExtendedOnlineStatus::Degraded {
-                        latency_ms,
-                        node_id,
-                        public_key,
-                        url,
-                    }
+                    ExtendedOnlineStatus::Degraded { latency_ms, url }
                 } else {
-                    ExtendedOnlineStatus::Online {
-                        latency_ms,
-                        node_id,
-                        public_key,
-                        url,
-                    }
+                    ExtendedOnlineStatus::Online { latency_ms, url }
                 }
             } else {
                 // Latency unavailable; report degraded with unknown latency sentinel.
                 ExtendedOnlineStatus::Degraded {
                     latency_ms: UNKNOWN_LATENCY_MS,
-                    node_id,
-                    public_key,
                     url,
                 }
             }

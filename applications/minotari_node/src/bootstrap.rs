@@ -280,8 +280,6 @@ where B: BlockchainBackend + 'static
             handles.expect_handle::<StateMachineHandle>(),
             handles.expect_handle::<MempoolHandle>(),
             shutdown_signal.clone(),
-            comms.node_identity().node_id().clone(),
-            comms.node_identity().public_key().clone(),
         );
         match wallet_http_server.start::<B>().await {
             Ok(_) => {

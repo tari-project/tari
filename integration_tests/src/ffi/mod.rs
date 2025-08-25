@@ -57,7 +57,7 @@ pub use completed_transaction::CompletedTransaction;
 mod kernel;
 pub use kernel::Kernel;
 mod callbacks;
-pub use callbacks::Callbacks;
+pub use callbacks::{Callbacks, FfiConnectivityStatus};
 mod transaction_send_status;
 pub use transaction_send_status::TransactionSendStatus;
 mod fee_per_gram_stats;

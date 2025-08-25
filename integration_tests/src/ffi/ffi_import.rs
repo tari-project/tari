@@ -354,7 +354,6 @@ extern "C" {
         error_out: *mut c_int,
     ) -> *mut TariWalletDbConfig;
     pub fn wallet_db_config_destroy(wc: *mut TariWalletDbConfig);
-    pub fn get_connected_base_node_public_key(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariPublicKey;
     pub fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint;
     pub fn public_keys_get_at(
         public_keys: *const TariPublicKeys,
@@ -406,7 +405,7 @@ extern "C" {
         callback_txo_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_balance_updated: unsafe extern "C" fn(context: *mut c_void, *mut TariBalance),
         callback_transaction_validation_complete: unsafe extern "C" fn(context: *mut c_void, u64, u64),
-        callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64),
+        callback_connectivity_status: unsafe extern "C" fn(context: *mut c_void, u64, u64),
         callback_wallet_scanned_height: unsafe extern "C" fn(context: *mut c_void, u64),
         callback_base_node_state: unsafe extern "C" fn(context: *mut c_void, *mut TariBaseNodeState),
         recovery_in_progress: *mut bool,

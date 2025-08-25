@@ -14,15 +14,6 @@ pub struct TipInfoResponse {
     pub is_synced: bool,
 }
 
-#[derive(Serialize, Deserialize, ToSchema, Clone)]
-pub struct TipInfoResponseWithId {
-    #[schema(schema_with = optional_chain_metadata_schema)]
-    pub metadata: Option<tari_common_types::chain_metadata::ChainMetadata>,
-    pub is_synced: bool,
-    pub node_id: String,
-    pub public_key: String,
-}
-
 pub fn optional_chain_metadata_schema() -> Schema {
     Schema::OneOf(
         OneOf::builder()

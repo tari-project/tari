@@ -355,15 +355,11 @@ where
                                     let online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
                                         ExtendedOnlineStatus::Degraded {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                            node_id: String::new(),
-                                            public_key: String::new(),
                                             url: String::new()
                                         }
                                     } else {
                                         ExtendedOnlineStatus::Online {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                            node_id: String::new(),
-                                            public_key: String::new(),
                                             url: String::new()
                                         }
                                     };
@@ -381,15 +377,11 @@ where
                                     let online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
                                         ExtendedOnlineStatus::Degraded {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                            node_id: String::new(),
-                                            public_key: String::new(),
                                             url: String::new()
                                         }
                                     } else {
                                         ExtendedOnlineStatus::Online {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
-                                            node_id: String::new(),
-                                            public_key: String::new(),
                                             url: String::new()
                                         }
                                     };
