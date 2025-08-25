@@ -1,0 +1,1 @@
+-- This file should not undo anything in `up.sql` - contacts service has been removed

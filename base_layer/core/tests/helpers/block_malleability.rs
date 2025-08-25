@@ -20,13 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_core::{
-    blocks::Block,
-    transactions::{
-        tari_amount::T,
-        test_helpers::schema_to_transaction,
-        transaction_components::{TransactionInputVersion, TransactionOutputVersion},
-    },
+use tari_core::blocks::Block;
+use tari_transaction_components::{
+    tari_amount::T,
+    test_helpers::schema_to_transaction,
+    transaction_components::{TransactionInputVersion, TransactionOutputVersion},
     txn_schema,
 };
 

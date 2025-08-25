@@ -23,18 +23,17 @@
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_sqlite::error::SqliteStorageError;
-use tari_common_types::tari_address::TariAddressError;
+use tari_common_types::{seeds::error::MnemonicError, tari_address::TariAddressError};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{
-    transaction_components::{EncryptedDataError, TransactionError},
-    transaction_key_manager::error::KeyManagerServiceError,
-    transaction_protocol::TransactionProtocolError,
-};
 use tari_crypto::errors::RangeProofError;
-use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_transaction_components::{
+    key_manager::error::KeyManagerServiceError,
+    transaction_components::{EncryptedDataError, TransactionError},
+    TransactionBuilderError,
+};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
@@ -50,16 +49,14 @@ pub enum OutputManagerError {
     BuildError(String),
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
-    #[error("Transaction protocol error: `{0}`")]
-    TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
+    #[error("Transaction builder error: `{0}`")]
+    TransactionBuilderError(#[from] TransactionBuilderError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]
     MnemonicError(#[from] MnemonicError),
-    #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("DHT outbound error: `{0}`")]

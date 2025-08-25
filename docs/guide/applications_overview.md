@@ -313,8 +313,6 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.db_file=<path>` - Database file path (default: "db/console_wallet.db")
 - `wallet.db_connection_pool_size=<num>` - Database connection pool size (default: 16)
 - `wallet.password=<password>` - Wallet password
-- `wallet.contacts_auto_ping_interval=<seconds>` - Contact ping interval (default: 30)
-- `wallet.contacts_online_ping_window=<seconds>` - Contact online window (default: 30)
 - `wallet.command_send_wait_timeout=<seconds>` - Command mode timeout (default: 300)
 - `wallet.command_send_wait_stage=<stage>` - Transaction wait stage (default: "Broadcast")
 - `wallet.autoignore_onesided_utxos=<bool>` - Auto-ignore one-sided UTXOs

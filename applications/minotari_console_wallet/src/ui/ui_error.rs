@@ -27,7 +27,6 @@ use minotari_wallet::{
 };
 use tari_common_types::tari_address::TariAddressError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
-use tari_contacts::contacts_service::error::ContactsServiceError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
 
@@ -37,8 +36,6 @@ pub enum UiError {
     TransactionService(#[from] TransactionServiceError),
     #[error(transparent)]
     OutputManager(#[from] OutputManagerError),
-    #[error(transparent)]
-    ContactsService(#[from] ContactsServiceError),
     #[error(transparent)]
     Connectivity(#[from] ConnectivityError),
     #[error("Conversion: `{0}`")]

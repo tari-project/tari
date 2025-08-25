@@ -38,12 +38,12 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash},
 };
-use tari_core::transactions::{
-    transaction_components::{OutputType, TransactionOutput},
-    transaction_key_manager::TariKeyId,
-};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
+    transaction_components::{OutputType, TransactionOutput},
+};
 use tokio::time::Instant;
 
 use crate::{
@@ -869,11 +869,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn confirm_encumbered_outputs(
         &self,
         tx_id: TxId,
-        change_outputs_to_update: &[DbWalletOutput],
+        change_outputs_to_add: &[DbWalletOutput],
     ) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
+
+        // Add the change outputs to be correct
+        for output in change_outputs_to_add {
+            let new_output =
+                NewOutputSql::new(output.clone(), Some(OutputStatus::EncumberedToBeReceived), Some(tx_id))?;
+            new_output.commit(&mut conn)?;
+        }
 
         conn.transaction::<_, _, _>(|conn| {
             update_outputs_with_tx_id_and_status_to_new_status(
@@ -882,29 +889,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::ShortTermEncumberedToBeReceived,
                 OutputStatus::EncumberedToBeReceived,
             )?;
-            // Update the change outputs to be correct
-            for output in change_outputs_to_update {
-                let db_output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, conn)?;
-                db_output.update(
-                    // Note: Only the `ephemeral_pubkey` and `u_y` portion needs to be updated at this time as the rest
-                    // was already correct
-                    UpdateOutput {
-                        metadata_signature_ephemeral_commitment: Some(
-                            output.wallet_output.metadata_signature.ephemeral_commitment().to_vec(),
-                        ),
-                        metadata_signature_ephemeral_pubkey: Some(
-                            output.wallet_output.metadata_signature.ephemeral_pubkey().to_vec(),
-                        ),
-                        metadata_signature_u_a: Some(output.wallet_output.metadata_signature.u_a().to_vec()),
-                        metadata_signature_u_x: Some(output.wallet_output.metadata_signature.u_x().to_vec()),
-                        metadata_signature_u_y: Some(output.wallet_output.metadata_signature.u_y().to_vec()),
-                        encrypted_data: Some(output.wallet_output.encrypted_data.to_byte_vec()),
-                        hash: Some(output.hash.to_vec()),
-                        ..Default::default()
-                    },
-                    conn,
-                )?;
-            }
 
             update_outputs_with_tx_id_and_status_to_new_status(
                 conn,
@@ -1525,14 +1509,14 @@ mod test {
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
-    use tari_core::transactions::{
+    use tari_script::script;
+    use tari_test_utils::random;
+    use tari_transaction_components::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     };
-    use tari_script::script;
-    use tari_test_utils::random;
+    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
     use tempfile::tempdir;
 
     use crate::output_manager_service::storage::{

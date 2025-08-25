@@ -22,7 +22,7 @@
 
 use std::{collections::HashMap, convert::TryFrom, iter::FromIterator};
 
-use tari_core::{consensus::ConsensusConstants, proof_of_work::PowAlgorithm};
+use tari_transaction_components::{consensus::ConsensusConstants, tari_proof_of_work::PowAlgorithm};
 
 use crate::tari_rpc as grpc;
 

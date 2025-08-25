@@ -49,8 +49,8 @@ use tari_common_types::{
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
-        Signature,
         UncompressedCommitment,
         UncompressedPublicKey,
         UncompressedSignature,
@@ -67,26 +67,28 @@ use tari_core::{
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
-    consensus::{ConsensusManager, NetworkConsensus},
+    consensus::BaseConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
-    proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{
-        generate_coinbase_with_wallet_output,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            CoinBaseExtra,
-            KernelBuilder,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    },
     validation::tari_rx_vm_key_height,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tari_transaction_components::{
+    consensus::NetworkConsensus,
+    generate_coinbase_with_wallet_output,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        CoinBaseExtra,
+        KernelBuilder,
+        RangeProofType,
+        Transaction,
+        TransactionKernel,
+        TransactionKernelVersion,
+    },
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};
@@ -126,7 +128,7 @@ pub struct BaseNodeGrpcServer {
     mempool_service: LocalMempoolService,
     network: NetworkConsensus,
     state_machine_handle: StateMachineHandle,
-    consensus_rules: ConsensusManager,
+    consensus_rules: BaseConsensusManager,
     software_updater: SoftwareUpdaterHandle,
     comms: CommsNode,
     liveness: LivenessHandle,
@@ -1236,7 +1238,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
+            private_keys.push((wallet_output.commitment_mask_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
@@ -1270,7 +1272,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
             .with_excess(&CompressedCommitment::from_commitment(total_excess))
-            .with_signature(Signature::new_from_schnorr(kernel_signature))
+            .with_signature(CompressedSignature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1479,7 +1481,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .excess
                     .to_commitment()
                     .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
-            private_keys.push((wallet_output.spending_key_id, new_nonce.key_id));
+            private_keys.push((wallet_output.commitment_mask_key_id, new_nonce.key_id));
             kernel_message = TransactionKernel::build_kernel_signature_message(
                 &TransactionKernelVersion::get_current_version(),
                 coinbase_kernel.fee,
@@ -1513,7 +1515,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .with_features(last_kernel.features)
             .with_lock_height(last_kernel.lock_height)
             .with_excess(&CompressedCommitment::from_commitment(total_excess))
-            .with_signature(Signature::new_from_schnorr(kernel_signature))
+            .with_signature(CompressedSignature::new_from_schnorr(kernel_signature))
             .build()
             .unwrap();
 
@@ -1844,7 +1846,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.check_method_enabled(GrpcMethod::TransactionState)?;
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
-        let excess_sig: Signature = request
+        let excess_sig: CompressedSignature = request
             .excess_sig
             .ok_or_else(|| {
                 obscure_error_if_true(
@@ -2296,7 +2298,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let block_height = request.into_inner().block_height;
 
-        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+        let consensus_manager = BaseConsensusManager::builder(self.network.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -2389,7 +2391,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+        let consensus_manager = BaseConsensusManager::builder(self.network.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(

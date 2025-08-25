@@ -29,43 +29,35 @@ use tari_common_types::{
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         PrivateKey,
-        Signature,
         UncompressedPublicKey,
         UncompressedSignature,
     },
 };
 use tari_crypto::keys::SecretKey as SkTrait;
 use tari_script::{script, ExecutionStack};
-use tari_utilities::ByteArray;
-
-use crate::{
-    one_sided::public_key_to_output_encryption_key,
-    transactions::{
-        tari_amount::{MicroMinotari, Minotari},
-        transaction_components::{
-            memo_field::MemoField,
-            CoinBaseExtra,
-            KernelFeatures,
-            OutputFeatures,
-            OutputFeaturesVersion,
-            OutputType,
-            RangeProofType,
-            TransactionKernel,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            SecretTransactionKeyManagerInterface,
-            TransactionKeyManagerInterface,
-        },
-        transaction_protocol::TransactionMetadata,
+use tari_transaction_components::{
+    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    tari_amount::{MicroMinotari, Minotari},
+    transaction_components::{
+        memo_field::MemoField,
+        one_sided::public_key_to_output_encryption_key,
+        CoinBaseExtra,
+        KernelFeatures,
+        OutputFeatures,
+        OutputFeaturesVersion,
+        OutputType,
+        RangeProofType,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutputBuilder,
     },
 };
-
+use tari_transaction_key_manager::create_memory_db_key_manager;
+use tari_utilities::ByteArray;
 /// The average amount of blocks per day based on the target block time
 pub const BLOCKS_PER_DAY: u64 = 24 * 60 / 2;
 
@@ -893,16 +885,18 @@ pub async fn create_pre_mine_genesis_block_info(
     }
     // lets create a single kernel for all the outputs
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::empty());
     let total_public_key = CompressedPublicKey::from_secret_key(&total_private_key);
-    let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+    let e = TransactionKernel::build_kernel_signature_challenge(
         &TransactionKernelVersion::get_current_version(),
         &CompressedPublicKey::from_secret_key(&r),
         &total_public_key,
-        &tx_meta,
+        0.into(),
+        0,
+        &KernelFeatures::empty(),
+        &None,
     );
     let signature = UncompressedSignature::sign_raw_uniform(&total_private_key, r, &e).map_err(|e| e.to_string())?;
-    let compressed_signature = Signature::new_from_schnorr(signature);
+    let compressed_signature = CompressedSignature::new_from_schnorr(signature);
     let excess = CompressedCommitment::from_compressed_key(total_public_key);
     let kernel = TransactionKernel::new_current_version(
         KernelFeatures::empty(),
@@ -923,6 +917,11 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::{tari_address::TariAddress, types::CompressedPublicKey};
     use tari_script::{Opcode, Opcode::CheckHeight};
+    use tari_transaction_components::{
+        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission},
+        tari_amount::{MicroMinotari, Minotari},
+        transaction_components::{TransactionKernel, TransactionOutput},
+    };
 
     use crate::{
         blocks::pre_mine::{
@@ -944,11 +943,7 @@ mod test {
             ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
-        consensus::{consensus_constants::MAINNET_PRE_MINE_VALUE, emission::Emission, ConsensusManager},
-        transactions::{
-            tari_amount::{MicroMinotari, Minotari},
-            transaction_components::{TransactionKernel, TransactionOutput},
-        },
+        consensus::BaseConsensusManager,
     };
 
     async fn genesis_block_test_info(
@@ -1474,7 +1469,7 @@ mod test {
         //                                                          | 15000 -> | (180) |
 
         let network = Network::MainNet;
-        let consensus_manager = ConsensusManager::builder(network)
+        let consensus_manager = BaseConsensusManager::builder(network)
             .build()
             .map_err(|e| e.to_string())
             .unwrap();

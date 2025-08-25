@@ -23,7 +23,7 @@
 use std::{fmt, fmt::Formatter};
 
 use crate::{
-    common::waiting_requests::RequestKey,
+    common::RequestKey,
     mempool::{FeePerGramStat, StateResponse, StatsResponse, TxStorageResponse},
 };
 

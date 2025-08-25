@@ -19,15 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#[macro_use]
-extern crate bitflags;
 
 pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;
 pub mod consensus;
-#[macro_use]
-pub mod covenants;
 #[cfg(feature = "base_node")]
 pub mod iterators;
 pub mod proof_of_work;
@@ -53,7 +49,6 @@ mod common;
 
 #[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;
-pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 
 #[cfg(feature = "base_node")]
 mod domain_hashing {
@@ -99,11 +94,6 @@ mod domain_hashing {
     pub fn kernel_mr_hash_from_pruned_mmr(kernel_mmr: &PrunedKernelMmr) -> Result<FixedHash, MrHashError> {
         Ok(FixedHash::try_from(kernel_mmr.get_merkle_root()?)?)
     }
-
-    // #[inline]
-    // pub fn output_mr_hash_from_smt(output_smt: &mut OutputSmt) -> Result<FixedHash, MrHashError> {
-    //     Ok(FixedHash::try_from(output_smt.hash().as_slice())?)
-    // }
 
     #[inline]
     pub fn input_mr_hash_from_pruned_mmr(input_mmr: &PrunedInputMmr) -> Result<FixedHash, MrHashError> {

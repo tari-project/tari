@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     convert::{TryFrom, TryInto},
     str::FromStr,
@@ -125,6 +124,7 @@ use minotari_wallet::{
         offline_signing::models::{SignedOneSidedTransactionResult, TransactionResult},
         storage::models::{self, WalletTransaction},
     },
+    WalletKeyManager,
     WalletSqlite,
 };
 use rand::rngs::OsRng;
@@ -132,23 +132,20 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{BlockHash, CompressedPublicKey, PrivateKey, Signature, SignatureWithDomain},
+    types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
-use tari_core::{
-    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-            UnblindedOutput,
-        },
-        transaction_key_manager::TransactionKeyManagerInterface,
-        transaction_protocol::recipient::RecipientState,
+use tari_core::transactions::legacy_transaction_protocol::recipient::RecipientState;
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, ConsensusManager},
+    key_manager::TransactionKeyManagerInterface,
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        memo_field::{MemoField, TxType},
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
-use tari_crypto::hash_domain;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{broadcast, Mutex},
@@ -163,7 +160,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
-
+use tari_crypto::hash_domain;
 // Domain separator for signing arbitrary messages with a wallet secret key
 hash_domain!(
     WalletMessageSigningDomain,
@@ -189,12 +186,12 @@ async fn send_transaction_event(
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
     rules: ConsensusManager,
-    debouncer: Arc<Mutex<WalletDebouncer>>,
+    debouncer: Arc<Mutex<WalletDebouncer<WalletKeyManager>>>,
 }
 
 impl WalletGrpcServer {
     #[allow(dead_code)]
-    pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
+    pub fn new(wallet: WalletSqlite) -> Self {
         let scanned_height = wallet
             .db
             .get_last_scanned_height()
@@ -208,12 +205,12 @@ impl WalletGrpcServer {
             wallet.comms.shutdown_signal(),
             scanned_height,
         );
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
-        Ok(Self {
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build();
+        Self {
             wallet,
             debouncer: Arc::new(Mutex::new(debouncer)),
             rules,
-        })
+        }
     }
 
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
@@ -229,7 +226,7 @@ impl WalletGrpcServer {
         self.wallet.transaction_service.clone()
     }
 
-    fn get_output_manager_service(&self) -> OutputManagerHandle {
+    fn get_output_manager_service(&self) -> OutputManagerHandle<WalletKeyManager> {
         self.wallet.output_manager_service.clone()
     }
 
@@ -858,6 +855,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut transfers = Vec::new();
         for (hex_address, address, amount, fee_per_gram, payment_type, user_payment_id, raw_payment_id) in recipients {
+            if payment_type == PaymentType::StandardMimblewimble as i32 {
+                return Err(Status::invalid_argument(
+                    "Standard Mimblewimble transactions are not supported in this method".to_string(),
+                ));
+            }
             let payment_id = if !raw_payment_id.is_empty() {
                 MemoField::open_unchecked(raw_payment_id.to_vec(), TxType::PaymentToOther)
             } else if let Some(user_pay_id) = user_payment_id {
@@ -883,18 +885,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             transfers.push(async move {
                 (
                     hex_address,
-                    if payment_type == PaymentType::StandardMimblewimble as i32 {
-                        transaction_service
-                            .send_transaction(
-                                address,
-                                amount.into(),
-                                UtxoSelectionCriteria::default(),
-                                OutputFeatures::default(),
-                                fee_per_gram.into(),
-                                payment_id,
-                            )
-                            .await
-                    } else if payment_type == PaymentType::OneSided as i32 {
+                    if payment_type == PaymentType::OneSided as i32 {
                         transaction_service
                             .send_one_sided_transaction(
                                 address,
@@ -1245,7 +1236,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .unwrap_or(&Signature::default())
+                            .unwrap_or(&CompressedSignature::default())
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
@@ -1383,7 +1374,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     excess_sig: txn
                         .transaction
                         .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
+                        .unwrap_or(&CompressedSignature::default())
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),
@@ -1544,7 +1535,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
-                            .unwrap_or(&Signature::default())
+                            .unwrap_or(&CompressedSignature::default())
                             .get_signature()
                             .to_vec(),
                         raw_payment_id: txn.payment_id.to_bytes(),
@@ -1686,7 +1677,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 excess_sig: txn
                     .transaction
                     .first_kernel_excess_sig()
-                    .unwrap_or(&Signature::default())
+                    .unwrap_or(&CompressedSignature::default())
                     .get_signature()
                     .to_vec(),
                 raw_payment_id: txn.payment_id.to_bytes(),
@@ -2173,7 +2164,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     excess_sig: txn
                         .transaction
                         .first_kernel_excess_sig()
-                        .unwrap_or(&Signature::default())
+                        .unwrap_or(&CompressedSignature::default())
                         .get_signature()
                         .to_vec(),
                     raw_payment_id: txn.payment_id.to_bytes(),

@@ -50,14 +50,14 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_types::{
+    seeds::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage},
     types::{CompressedPublicKey, PrivateKey},
     wallet_types::{LedgerWallet, ProvidedKeysWallet, WalletType},
 };
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, types::CommsPublicKey, NodeIdentity};
-use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{auto_update::AutoUpdateConfig, PeerSeedsConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
 use tari_utilities::{encoding::MBase58, hex::Hex, ByteArray, SafePassword};
 use zxcvbn::zxcvbn;
 
@@ -287,7 +287,7 @@ pub async fn init_wallet(
     let db_path = &config.db_file;
 
     // wallet should be encrypted from the beginning, so we must require a password to be provided by the user
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, key_manager_backend) =
         initialize_sqlite_database_backends(db_path, arg_password, config.db_connection_pool_size)?;
 
     let wallet_db = WalletDatabase::new(wallet_backend);
@@ -313,9 +313,7 @@ pub async fn init_wallet(
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
-    let consensus_manager = ConsensusManager::builder(config.network)
-        .build()
-        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error consensus manager. {e}")))?;
+    let consensus_manager = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
 
     let now = Instant::now();
@@ -331,7 +329,6 @@ pub async fn init_wallet(
         output_db,
         transaction_backend,
         output_manager_backend,
-        contacts_backend,
         key_manager_backend,
         shutdown_signal,
         master_seed,
@@ -421,11 +418,6 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, wallet_mode: &WalletMode) -
         if let Err(e) = wallet.transaction_service.revalidate_rejected_transactions().await {
             error!(target: LOG_TARGET, "Failed to revalidate rejected transactions: {e}");
         }
-        debug!("restarting transaction protocols");
-        if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
-            error!(target: LOG_TARGET, "Problem restarting transaction protocols: {e}");
-        }
-
         // validate transaction outputs
         validate_txos(wallet).await?;
     }

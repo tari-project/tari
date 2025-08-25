@@ -14,9 +14,7 @@ minotari_app_grpc
 minotari_app_utilities
 minotari_node
 minotari_node_grpc_client
-tari_chat_ffi
 minotari_console_wallet
-tari_contacts
 tari_features
 tari_integration_tests
 tari_libtor

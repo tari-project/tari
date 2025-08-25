@@ -37,6 +37,7 @@ pub fn siphash24(v: &[u64; 4], nonce: u64) -> u64 {
 /// truncated to its closest block start, up to the end of the block. Returns
 /// the resulting hash at the nonce's position.
 #[allow(clippy::indexing_slicing)]
+#[allow(clippy::cast_possible_truncation)]
 pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8) -> u64 {
     // beginning of the block of hashes
     let edge0 = nonce & !SIPHASH_BLOCK_MASK;
@@ -52,15 +53,10 @@ pub fn siphash_block(v: &[u64; 4], nonce: u64, rot_e: u8) -> u64 {
     }
     let last = nonce_hash[SIPHASH_BLOCK_SIZE - 1];
 
-    // let mut siphashb = SipHash24::new(v);
     let last_nonce = nonce & SIPHASH_BLOCK_MASK;
-    for i in 0..SIPHASH_BLOCK_MASK as usize {
-        dbg!(i);
-        // siphashb.hash(edge0 + i, rot_e);
-        nonce_hash[i] = nonce_hash[i] ^ last;
+    for item in nonce_hash.iter_mut().take(SIPHASH_BLOCK_MASK as usize) {
+        *item ^= last;
     }
-    // let b_hash = siphashb.digest();
-    // b_hash ^ last
     nonce_hash[last_nonce as usize]
 }
 

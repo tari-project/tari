@@ -5,7 +5,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash},
 };
-use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
+use tari_transaction_components::transaction_components::{OutputType, TransactionOutput};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,

@@ -33,29 +33,26 @@ use tari_common_types::{
     epoch::VnEpoch,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TxId},
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, PrivateKey, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::{
-    mempool::FeePerGramStat,
-    proto,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::MemoField,
-            BuildInfo,
-            CodeTemplateRegistration,
-            OutputFeatures,
-            TemplateType,
-            Transaction,
-            TransactionOutput,
-        },
-    },
-};
+use tari_core::{mempool::FeePerGramStat, proto};
 use tari_max_size::MaxSizeString;
 use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    transaction_components::{
+        memo_field::MemoField,
+        BuildInfo,
+        CodeTemplateRegistration,
+        OutputFeatures,
+        TemplateType,
+        Transaction,
+        TransactionOutput,
+    },
+};
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -103,14 +100,6 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     ImportTransaction(WalletTransaction),
-    SendTransaction {
-        destination: TariAddress,
-        amount: MicroMinotari,
-        selection_criteria: UtxoSelectionCriteria,
-        output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-    },
     BurnTari {
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
@@ -144,14 +133,14 @@ pub enum TransactionServiceRequest {
     },
     FinalizeSentAggregateTransaction {
         tx_id: u64,
-        total_meta_data_signature: Signature,
-        total_script_data_signature: Signature,
+        total_meta_data_signature: CompressedSignature,
+        total_script_data_signature: CompressedSignature,
         script_offset: PrivateKey,
     },
     RegisterValidatorNode {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         validator_node_claim_public_key: CommsPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
@@ -162,7 +151,7 @@ pub enum TransactionServiceRequest {
     SubmitValidatorNodeExit {
         amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
@@ -241,7 +230,6 @@ pub enum TransactionServiceRequest {
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, MemoField),
     SetLowPowerMode,
     SetNormalPowerMode,
-    RestartTransactionProtocols,
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
@@ -291,15 +279,6 @@ impl fmt::Display for TransactionServiceRequest {
                     "ScrapeWallet (destination: {destination}, fee_per_gram: {fee_per_gram})"
                 )
             },
-            Self::SendTransaction {
-                destination,
-                amount,
-                payment_id,
-                ..
-            } => write!(
-                f,
-                "SendTransaction (amount: {amount}, to: {destination}, payment_id: {payment_id})"
-            ),
             Self::BurnTari { amount, payment_id, .. } => write!(f, "Burning Tari ({amount}, {payment_id})"),
             Self::SpendBackupPreMineUtxo {
                 fee_per_gram,
@@ -457,7 +436,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({tx_id})"),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
             Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
-            Self::RestartTransactionProtocols => write!(f, "RestartTransactionProtocols"),
             Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
             Self::GetNumConfirmationsRequired => write!(f, "GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => write!(f, "SetNumConfirmationsRequired"),
@@ -748,32 +726,6 @@ impl TransactionServiceHandle {
         self.event_stream_sender.subscribe()
     }
 
-    pub async fn send_transaction(
-        &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
-        selection_criteria: UtxoSelectionCriteria,
-        output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
-        payment_id: MemoField,
-    ) -> Result<TxId, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SendTransaction {
-                destination,
-                amount,
-                selection_criteria,
-                output_features: Box::new(output_features),
-                fee_per_gram,
-                payment_id,
-            })
-            .await??
-        {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn scrape_wallet(
         &mut self,
         destination: TariAddress,
@@ -796,7 +748,7 @@ impl TransactionServiceHandle {
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CompressedPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         validator_node_claim_public_key: CompressedPublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
@@ -828,7 +780,7 @@ impl TransactionServiceHandle {
         &mut self,
         amount: MicroMinotari,
         validator_node_public_key: CompressedPublicKey,
-        validator_node_signature: Signature,
+        validator_node_signature: CompressedSignature,
         sidechain_deployment_key: Option<PrivateKey>,
         max_epoch: VnEpoch,
         selection_criteria: UtxoSelectionCriteria,
@@ -1120,8 +1072,8 @@ impl TransactionServiceHandle {
     pub async fn finalize_aggregate_utxo(
         &mut self,
         tx_id: u64,
-        total_meta_data_signature: Signature,
-        total_script_data_signature: Signature,
+        total_meta_data_signature: CompressedSignature,
+        total_script_data_signature: CompressedSignature,
         script_offset: PrivateKey,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -1438,17 +1390,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::NumConfirmationsSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn restart_transaction_protocols(&mut self) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::RestartTransactionProtocols)
-            .await??
-        {
-            TransactionServiceResponse::ProtocolsRestarted => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

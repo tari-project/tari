@@ -26,9 +26,10 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::{BlockHash, Signature},
+    types::{BlockHash, CompressedSignature},
 };
 use tari_core::{self, base_node::rpc::models::TxLocation};
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -50,20 +51,22 @@ use crate::{
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
 #[derive(Clone)]
-pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity> {
+pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface> {
     operation_id: OperationId,
     db: TransactionDatabase<TTransactionBackend>,
     connectivity: TWalletConnectivity,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
-    output_manager: OutputManagerHandle,
+    output_manager: OutputManagerHandle<TKeyManagerInterface>,
 }
 
 #[allow(unused_variables)]
-impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
+impl<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TTransactionBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         operation_id: OperationId,
@@ -71,7 +74,7 @@ where
         connectivity: TWalletConnectivity,
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
-        output_manager: OutputManagerHandle,
+        output_manager: OutputManagerHandle<TKeyManagerInterface>,
     ) -> Self {
         Self {
             operation_id,
@@ -277,7 +280,7 @@ where
         let mut batch_signatures = HashMap::new();
         for tx_info in batch {
             // Imported transactions do not have a signature; this is represented by the default signature in info
-            if tx_info.signature != Signature::default() {
+            if tx_info.signature != CompressedSignature::default() {
                 batch_signatures.insert(tx_info.signature.clone(), tx_info);
             }
         }

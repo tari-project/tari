@@ -1,10 +1,8 @@
 ./applications/minotari_node/assets/tari_banner.rs
 ./applications/minotari_node/assets/tari_logo.rs
 ./applications/minotari_node/osx-pkg/entitlements.xml
-./base_layer/contacts/src/schema.rs
 ./base_layer/core/src/blocks/gen_block/Tari.Manifesto
-./base_layer/core/src/transactions/transaction_key_manager/schema.rs
-./base_layer/key_manager/src/schema.rs
+./base_layer/transaction_key_manager/src/schema.rs
 ./base_layer/wallet/src/schema.rs
 ./docs/src/theme/book.js
 ./docs/src/theme/highlight.js

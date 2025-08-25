@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_core::transactions::transaction_components::{
+use tari_transaction_components::transaction_components::{
     CoinBaseExtra,
     OutputFeatures,
     OutputFeaturesVersion,

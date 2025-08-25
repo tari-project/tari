@@ -24,14 +24,15 @@ use std::convert::TryInto;
 
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{emission::Emission, ConsensusManager},
-    proof_of_work::Difficulty,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::Transaction,
-        transaction_key_manager::MemoryDbKeyManager,
-    },
+    consensus::BaseConsensusManager,
 };
+use tari_transaction_components::{
+    consensus::emission::Emission,
+    tari_amount::MicroMinotari,
+    tari_proof_of_work::Difficulty,
+    transaction_components::Transaction,
+};
+use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::helpers::block_builders::create_coinbase;
 
@@ -41,7 +42,7 @@ use crate::helpers::block_builders::create_coinbase;
 pub async fn create_orphan_block(
     block_height: u64,
     transactions: Vec<Transaction>,
-    consensus: &ConsensusManager,
+    consensus: &BaseConsensusManager,
     key_manager: &MemoryDbKeyManager,
 ) -> Block {
     let mut coinbase_value = consensus.emission_schedule().block_reward(block_height);

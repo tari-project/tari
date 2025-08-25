@@ -254,10 +254,7 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
-            let grpc = WalletGrpcServer::new(wallet.clone()).map_err(|e| ExitError {
-                exit_code: ExitCode::UnknownError,
-                details: Some(e.to_string()),
-            })?;
+            let grpc = WalletGrpcServer::new(wallet.clone());
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
@@ -368,10 +365,7 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
     if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
         #[cfg(feature = "grpc")]
         {
-            let grpc = WalletGrpcServer::new(wallet.clone()).map_err(|e| ExitError {
-                exit_code: ExitCode::UnknownError,
-                details: Some(e.to_string()),
-            })?;
+            let grpc = WalletGrpcServer::new(wallet.clone());
             let auth = config.grpc_authentication.clone();
 
             let mut tls_identity = None;
@@ -465,9 +459,6 @@ mod test {
 
             discover-peer f6b2ca781342a3ebe30ee1643655c96f1d7c14f4d49f077695395de98ae73665
 
-            send-minotari --payment-id Our_secret! 125T \
-                      f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb
-
             burn-minotari --payment-id Ups_these_funds_will_be_burned! 100T
 
             pre-mine-spend-get-output-status
@@ -501,7 +492,6 @@ mod test {
         let commands = parse_command_file(script).unwrap();
 
         let mut get_balance = false;
-        let mut send_tari = false;
         let mut burn_tari = false;
         let mut pre_mine_spend_get_output_status = false;
         let mut pre_mine_spend_session_info = false;
@@ -518,7 +508,6 @@ mod test {
         for command in commands {
             match command {
                 CliCommands::GetBalance => get_balance = true,
-                CliCommands::SendMinotari(_) => send_tari = true,
                 CliCommands::BurnMinotari(_) => burn_tari = true,
                 CliCommands::PreMineSpendGetOutputStatus => pre_mine_spend_get_output_status = true,
                 CliCommands::PreMineStart(_) => pre_mine_spend_session_info = true,
@@ -565,7 +554,6 @@ mod test {
         }
         assert!(
             get_balance &&
-                send_tari &&
                 burn_tari &&
                 pre_mine_spend_get_output_status &&
                 pre_mine_spend_session_info &&

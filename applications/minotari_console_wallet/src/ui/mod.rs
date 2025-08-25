@@ -29,7 +29,6 @@ mod app;
 mod components;
 pub mod state;
 mod ui_burnt_proof;
-mod ui_contact;
 mod ui_error;
 mod widgets;
 
@@ -56,8 +55,6 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
         .block_on(async {
             trace!(target: LOG_TARGET, "Refreshing transaction state");
             app.app_state.refresh_transaction_state().await?;
-            trace!(target: LOG_TARGET, "Refreshing contacts state");
-            app.app_state.refresh_contacts_state().await?;
             trace!(target: LOG_TARGET, "Refreshing burnt proofs state");
             app.app_state.refresh_burnt_proofs_state().await?;
             trace!(target: LOG_TARGET, "Starting balance enquiry debouncer");

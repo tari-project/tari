@@ -11,7 +11,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus},
 };
-use tari_core::transactions::transaction_components::memo_field::TxType;
+use tari_transaction_components::transaction_components::memo_field::TxType;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -740,9 +740,6 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 self.payref_search.clear();
             },
             'p' => {
-                if let Err(e) = Handle::current().block_on(app_state.restart_transaction_protocols()) {
-                    error!(target: LOG_TARGET, "Error rebroadcasting transactions: {e}");
-                }
                 self.completed_list_state.select(None);
                 self.selected_tx_list = SelectedTransactionList::PendingTxs;
                 self.pending_list_state.set_num_items(app_state.get_pending_txs().len());

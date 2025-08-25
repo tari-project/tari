@@ -33,7 +33,7 @@ use tari_common::{
 };
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::transaction_components::RangeProofType;
+use tari_transaction_components::transaction_components::RangeProofType;
 
 // The default Monero fail URL for mainnet
 pub(crate) const MONERO_FAIL_MAINNET_URL: &str = "https://monero.fail/?chain=monero&network=mainnet&all=true";

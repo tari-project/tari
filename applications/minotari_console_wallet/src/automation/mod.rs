@@ -30,14 +30,14 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
-};
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{EncryptedData, OutputFeatures},
-    transaction_key_manager::TariKeyId,
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
+    tari_amount::MicroMinotari,
+    transaction_components::{EncryptedData, OutputFeatures},
+};
 
 // Step 1 outputs for all with `PreMineSpendSessionInfo`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -51,7 +51,6 @@ struct PreMineSpendStep1SessionInfo {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct RecipientInfo {
     output_to_be_spend: usize,
-    #[serde(with = "tari_common_types::tari_address::tari_address_json_bs58")]
     recipient_address: TariAddress,
 }
 
@@ -142,8 +141,8 @@ struct PreMineSpendStep4OutputsForLeader {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct Step4OutputsForLeader {
     output_index: usize,
-    script_signature: Signature,
-    metadata_signature: Signature,
+    script_signature: CompressedSignature,
+    metadata_signature: CompressedSignature,
     script_offset: PrivateKey,
 }
 

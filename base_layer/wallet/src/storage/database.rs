@@ -27,20 +27,19 @@ use std::{
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::{chain_metadata::ChainMetadata, wallet_types::WalletType};
+use tari_common_types::{chain_metadata::ChainMetadata, seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
     tor::TorIdentity,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::SafePassword;
 
 use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
 
 const LOG_TARGET: &str = "wallet::database";
 
-/// This trait defines the functionality that a database backend need to provide for the Contacts Service
+/// This trait defines the functionality that a database backend need
 pub trait WalletBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
@@ -443,7 +442,7 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageErro
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use tari_key_manager::cipher_seed::CipherSeed;
+    use tari_common_types::seeds::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tari_utilities::SafePassword;
     use tempfile::tempdir;

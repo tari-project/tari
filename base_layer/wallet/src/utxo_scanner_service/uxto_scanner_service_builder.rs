@@ -23,8 +23,8 @@
 use std::fmt::Debug;
 
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -143,7 +143,7 @@ impl<T: HttpClientFactory + Clone + Send + Sync + 'static> UtxoScannerServiceBui
     >(
         &mut self,
         db: WalletDatabase<TBackend>,
-        output_manager_service: OutputManagerHandle,
+        output_manager_service: OutputManagerHandle<TKeyManager>,
         transaction_service: TransactionServiceHandle,
         one_sided_tari_address: TariAddress,
         shutdown_signal: ShutdownSignal,

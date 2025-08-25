@@ -54,9 +54,9 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, CompressedPublicKey, FixedHash, PrivateKey, Signature},
+    types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
+use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::memo_field::MemoField};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -2393,10 +2393,10 @@ impl CompletedTransaction {
             .map_err(CompletedTransactionConversionError::AeadError)?;
         let transaction_signature = match CompressedPublicKey::from_vec(&c.transaction_signature_nonce) {
             Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
-                Ok(signature) => Signature::new(public_nonce, signature),
-                Err(_) => Signature::default(),
+                Ok(signature) => CompressedSignature::new(public_nonce, signature),
+                Err(_) => CompressedSignature::default(),
             },
-            Err(_) => Signature::default(),
+            Err(_) => CompressedSignature::default(),
         };
         let mined_in_block = match c.mined_in_block {
             Some(v) => v.try_into().ok(),
@@ -2461,7 +2461,7 @@ pub struct UpdateCompletedTransactionSql {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
-    pub signature: Signature,
+    pub signature: CompressedSignature,
     pub status: TransactionStatus,
     pub payment_id: MemoField,
 }
@@ -2472,7 +2472,7 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
     fn try_from(i: UnconfirmedTransactionInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
-            signature: Signature::new(
+            signature: CompressedSignature::new(
                 CompressedPublicKey::from_vec(&i.transaction_signature_nonce)?,
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
@@ -2601,24 +2601,26 @@ mod test {
         encryption::Encryptable,
         tari_address::TariAddress,
         transaction::{TransactionDirection, TransactionStatus, TxId},
-        types::{CompressedPublicKey, PrivateKey, Signature},
+        types::{CompressedPublicKey, CompressedSignature, PrivateKey},
     };
-    use tari_core::transactions::{
+    use tari_core::transactions::legacy_transaction_protocol::{
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    };
+    use tari_crypto::keys::SecretKey as SecretKeyTrait;
+    use tari_script::script;
+    use tari_test_utils::random::string;
+    use tari_transaction_components::{
         tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
+        transaction_builder::TransactionBuilder,
         transaction_components::{
             memo_field::{MemoField, TxType},
             OutputFeatures,
             Transaction,
         },
-        transaction_key_manager::create_memory_db_key_manager,
-        transaction_protocol::sender::TransactionSenderMessage,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
     };
-    use tari_crypto::keys::SecretKey as SecretKeyTrait;
-    use tari_script::{inputs, script};
-    use tari_test_utils::random::string;
+    use tari_transaction_key_manager::create_memory_db_key_manager;
     use tempfile::tempdir;
 
     use crate::{
@@ -2642,7 +2644,6 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
         let key_manager = create_memory_db_key_manager().unwrap();
-        let consensus_constants = create_consensus_constants(0);
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -2672,7 +2673,9 @@ mod test {
         sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
+        let mut builder = TransactionBuilder::new(constants, key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
         let test_params = TestParams::new(&key_manager).await;
         let input = create_wallet_output_with_data(
             script!(Nop).unwrap(),
@@ -2684,45 +2687,26 @@ mod test {
         .await
         .unwrap();
         let amount = MicroMinotari::from(10_000);
-        let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroMinotari::from(177 / 5))
-            .with_payment_id(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
+            .with_memo(MemoField::open_from_string("Yo!", TxType::PaymentToOther))
             .with_input(input)
             .await
-            .unwrap()
-            .with_recipient_data(
-                script!(Nop).unwrap(),
-                OutputFeatures::default(),
-                Default::default(),
-                MicroMinotari::zero(),
-                amount,
-                TariAddress::default(),
-            )
-            .await
-            .unwrap()
-            .with_change_data(
-                script!(Nop).unwrap(),
-                inputs!(change.script_key_pk),
-                change.script_key_id,
-                change.commitment_mask_key_id,
-                Default::default(),
-                TariAddress::default(),
-            );
-        let mut stp = builder.build().await.unwrap();
+            .unwrap();
 
         let address = TariAddress::new_single_address_with_interactive_only(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         )
         .unwrap();
+        let fee = builder.get_fee_estimate().unwrap();
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64.into(),
             destination_address: address,
             amount,
-            fee: stp.get_fee_amount().unwrap(),
-            sender_protocol: stp.clone(),
+            fee,
+            sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
@@ -2742,8 +2726,8 @@ mod test {
                 tx_id: 2u64.into(),
                 destination_address: address,
                 amount,
-                fee: stp.get_fee_amount().unwrap(),
-                sender_protocol: stp.clone(),
+                fee,
+                sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
                 timestamp: Utc::now(),
@@ -2784,34 +2768,36 @@ mod test {
                 .unwrap()
         );
 
+        let receiver_test_params = TestParams::new(&key_manager).await;
         let output = create_wallet_output_with_data(
             script!(Nop).unwrap(),
             OutputFeatures::default(),
-            &test_params,
+            &receiver_test_params,
             MicroMinotari::from(100_000),
             &key_manager,
         )
         .await
         .unwrap();
 
-        let rtp = ReceiverTransactionProtocol::new(
-            TransactionSenderMessage::Single(Box::new(stp.build_single_round_message(&key_manager).await.unwrap())),
-            output,
-            &key_manager,
-            &consensus_constants,
-        )
-        .await;
-        let address = TariAddress::new_dual_address_with_default_features(
+        let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         )
         .unwrap();
+        builder
+            .add_recipient(
+                source_address.clone(),
+                output,
+                Some(receiver_test_params.sender_offset_key_id),
+            )
+            .await
+            .unwrap();
         let inbound_tx1 = InboundTransaction {
             tx_id: 2u64.into(),
-            source_address: address,
+            source_address: source_address.clone(),
             amount,
-            receiver_protocol: rtp.clone(),
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
@@ -2821,17 +2807,11 @@ mod test {
             last_send_timestamp: None,
             received_output_hashes: vec![],
         };
-        let address = TariAddress::new_dual_address_with_default_features(
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        )
-        .unwrap();
         let inbound_tx2 = InboundTransaction {
             tx_id: 3u64.into(),
-            source_address: address,
+            source_address,
             amount,
-            receiver_protocol: rtp,
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             payment_id: MemoField::open_from_string("Yo!", TxType::PaymentToOther),
             timestamp: Utc::now(),
@@ -2905,7 +2885,10 @@ mod test {
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -2939,7 +2922,10 @@ mod test {
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -3183,7 +3169,7 @@ mod test {
             sent_output_hashes: vec![],
             received_output_hashes: vec![],
             change_output_hashes: vec![],
-            transaction_signature: Signature::default(),
+            transaction_signature: CompressedSignature::default(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,
@@ -3320,7 +3306,7 @@ mod test {
                 sent_output_hashes: vec![],
                 received_output_hashes: vec![],
                 change_output_hashes: vec![],
-                transaction_signature: Signature::default(),
+                transaction_signature: CompressedSignature::default(),
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,
@@ -3463,7 +3449,7 @@ mod test {
                 sent_output_hashes: vec![],
                 received_output_hashes: vec![],
                 change_output_hashes: vec![],
-                transaction_signature: Signature::default(),
+                transaction_signature: CompressedSignature::default(),
                 mined_height: None,
                 mined_in_block: None,
                 mined_timestamp: None,

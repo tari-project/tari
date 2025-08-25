@@ -4,9 +4,10 @@
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BadBlock, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
 use tari_sidechain::ShardGroup;
+use tari_transaction_components::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 use super::{
     lmdb_db::lmdb_tree_reader::OwnedLmdbTreeReader,
@@ -31,9 +32,7 @@ use crate::{
         OutputMinedInfo,
         Reorg,
     },
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
-
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
 /// operation within it must succeed, or they all fail. Failure to support this contract could lead to
@@ -95,7 +94,7 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// is in
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
     /// Fetch all UTXOs and spends in the block

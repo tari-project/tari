@@ -49,17 +49,16 @@ use chrono::{DateTime, Utc};
 use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
+use tari_transaction_components::{
+    consensus::DomainSeparatedConsensusHasher,
+    tari_proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
+};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 
+use crate::blocks::BlocksHashDomain;
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-use crate::{
-    blocks::BlocksHashDomain,
-    consensus::DomainSeparatedConsensusHasher,
-    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
-};
-
 #[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
     #[error("The Genesis block header is incorrectly chained")]

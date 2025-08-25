@@ -26,8 +26,8 @@ use futures::future;
 use log::*;
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 use url::Url;
 
@@ -110,7 +110,7 @@ where
 
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
-            let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle<TKeyManagerInterface>>();
             let key_manager = handles.expect_handle::<TKeyManagerInterface>();
 
             let view_key = key_manager

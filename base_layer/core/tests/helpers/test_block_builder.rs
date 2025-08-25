@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_core::transactions::transaction_components::Transaction;
+use tari_transaction_components::transaction_components::Transaction;
 
 #[derive(Default)]
 pub struct TestBlockBuilder {}

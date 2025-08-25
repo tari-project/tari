@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_core::proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
+use tari_transaction_components::tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork};
 
 use crate::tari_rpc as grpc;
 

@@ -48,6 +48,7 @@ pub struct DualAddress {
     features: TariAddressFeatures,
     public_view_key: CompressedPublicKey,
     public_spend_key: CompressedPublicKey,
+    #[serde(alias = "payment_id_user_data")]
     memo_field_payment_id: MaxSizeBytes<MAX_ENCRYPTED_DATA_SIZE>,
 }
 

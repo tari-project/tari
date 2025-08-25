@@ -4,8 +4,9 @@
 use std::convert::{TryFrom, TryInto};
 
 use log::*;
-use tari_common_types::types::{FixedHash, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 use url::Url;
@@ -45,7 +46,6 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
@@ -88,7 +88,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
         self.state_machine.clone()
     }
 
-    async fn fetch_kernel(&self, signature: Signature) -> Result<TxQueryResponse, RpcStatus> {
+    async fn fetch_kernel(&self, signature: CompressedSignature) -> Result<TxQueryResponse, RpcStatus> {
         let db = self.db();
         let chain_metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
         let state_machine = self.state_machine();
@@ -264,7 +264,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         };
 
         let message = request.into_message();
-        let signature = Signature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+        let signature =
+            CompressedSignature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
 
         let mut response = self.fetch_kernel(signature).await?;
         response.is_synced = is_synced;
@@ -295,7 +296,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         for sig in message.sigs {
-            let signature = Signature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+            let signature =
+                CompressedSignature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
             let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
             responses.push(TxQueryBatchResponse {
                 signature: Some(SignatureProto::from(&signature)),

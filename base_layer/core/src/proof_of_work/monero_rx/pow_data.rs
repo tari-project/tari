@@ -43,7 +43,7 @@ use tiny_keccak::{Hasher, Keccak};
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
 use crate::{
     blocks::BlockHeader,
-    consensus::ConsensusManager,
+    consensus::BaseConsensusManager,
     proof_of_work::monero_rx::helpers::create_block_hashing_blob,
 };
 
@@ -114,7 +114,7 @@ impl MoneroPowData {
     /// Create a new MoneroPowData struct from the given header
     pub fn from_header(
         tari_header: &BlockHeader,
-        consensus: &ConsensusManager,
+        consensus: &BaseConsensusManager,
     ) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_bytes();
         let pow_data: MoneroPowData =
@@ -208,17 +208,12 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
+    use tari_transaction_components::{consensus::NetworkConsensus, tari_proof_of_work::PowData};
     use tari_utilities::ByteArray;
     use tiny_keccak::{Hasher, Keccak};
 
     use super::MoneroPowData;
-    use crate::{
-        consensus::NetworkConsensus,
-        proof_of_work::{
-            monero_rx::{merkle_tree::MerkleProof, FixedByteArray},
-            PowData,
-        },
-    };
+    use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
 
     #[test]
     fn test_borsh_de_serialization() {

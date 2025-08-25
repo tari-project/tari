@@ -25,7 +25,7 @@ use log::*;
 use minotari_wallet::{utxo_scanner_service::handle::UtxoScannerEvent, WalletSqlite};
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic, SeedWords};
+use tari_common_types::seeds::{cipher_seed::CipherSeed, mnemonic::Mnemonic, seed_words::SeedWords};
 use tari_utilities::{Hidden, SafePassword};
 use tokio::sync::broadcast;
 

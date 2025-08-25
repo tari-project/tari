@@ -26,16 +26,13 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
-
-use crate::{
-    blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
-    transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
-    },
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
+    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
 
+use crate::blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
 /// Placeholder root hash for an empty validator node Merkle tree.
 /// This hash was embedded previously in genesis blocks from the balanced merkle tree implementation, so now if the
 /// validator set is empty, we define this hash as the resulting Merkle root.
@@ -419,22 +416,24 @@ mod test {
     use serial_test::serial;
     use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
     use tari_mmr::pruned_hashset::PrunedHashSet;
+    use tari_transaction_components::{
+        aggregated_body::AggregateBody,
+        crypto_factories::CryptoFactories,
+        transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, TransactionOutput},
+    };
     use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{BlockchainBackend, SmtHasher},
-        consensus::ConsensusManager,
+        consensus::BaseConsensusManager,
         input_mr_hash_from_pruned_mmr,
         kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
-        transactions::{
-            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures},
-            CryptoFactories,
-        },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
+        MrHashError,
         PrunedInputMmr,
         PrunedOutputMmr,
     };
@@ -650,9 +649,9 @@ mod test {
         assert_eq!(smt_root.0.to_vec().to_hex(), block.header().output_mr.to_vec().to_hex(),);
 
         let coinbases = block.block().body.get_coinbase_outputs().into_iter().cloned().collect();
-        let normal_output_mr = block.block().body.calculate_header_normal_output_mr().unwrap();
+        let normal_output_mr = calculate_header_normal_output_mr(&block.block().body).unwrap();
         assert_eq!(
-            AggregateBody::calculate_header_block_output_mr(normal_output_mr, &coinbases)
+            calculate_header_block_output_mr(normal_output_mr, &coinbases)
                 .unwrap()
                 .to_vec()
                 .to_hex(),
@@ -670,11 +669,6 @@ mod test {
             input_mr_hash_from_pruned_mmr(&input_mmr).unwrap().to_vec().to_hex(),
             block.header().input_mr.to_vec().to_hex(),
         );
-
-        // assert_eq!(
-        //     calculate_validator_node_mr(&vn_nodes).to_vec().to_hex(),
-        //     block.header().validator_node_mr.to_vec().to_hex()
-        // );
 
         // Check that the pre_mine UTXOs balance (the pre_mine_value consensus constant is set correctly and pre_mine
         // kernel is correct)
@@ -707,15 +701,18 @@ mod test {
         let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(
-                &*lock,
-                0,
-                &CompressedCommitment::from_commitment(total_utxo_sum),
-                &kernel_sum,
-                &CompressedCommitment::default(),
-            )
-            .unwrap();
+        ChainBalanceValidator::new(
+            BaseConsensusManager::builder(network).build().unwrap(),
+            Default::default(),
+        )
+        .validate(
+            &*lock,
+            0,
+            &CompressedCommitment::from_commitment(total_utxo_sum),
+            &kernel_sum,
+            &CompressedCommitment::default(),
+        )
+        .unwrap();
     }
 
     fn set_network_by_env_var_or_force_set(network: Network) {
@@ -746,5 +743,27 @@ mod test {
             println!("\nNetwork mismatch!! Required: {network:?}, current: {current_network:?}.\n");
             false
         }
+    }
+
+    pub fn calculate_header_block_output_mr(
+        normal_output_mr: FixedHash,
+        coinbases: &Vec<TransactionOutput>,
+    ) -> Result<FixedHash, MrHashError> {
+        let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in coinbases {
+            block_output_mmr.push(o.hash().to_vec())?;
+        }
+        block_output_mmr.push(normal_output_mr.to_vec())?;
+        block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+    }
+
+    pub fn calculate_header_normal_output_mr(body: &AggregateBody) -> Result<FixedHash, MrHashError> {
+        let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+        for o in body.outputs() {
+            if !o.features.is_coinbase() {
+                normal_output_mmr.push(o.hash().to_vec())?;
+            }
+        }
+        Ok(FixedHash::try_from(normal_output_mmr.get_merkle_root()?)?)
     }
 }

@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-pre.5](https://github.com/tari-project/tari/compare/v5.0.0-pre.4...v5.0.0-pre.5) (2025-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* update c29 fork block (#7434)
+
+### Features
+
+* update c29 fork block ([#7434](https://github.com/tari-project/tari/issues/7434)) ([344dde7](https://github.com/tari-project/tari/commit/344dde703fbb06314a39566c425a8f6715810783))
+
+
+### Bug Fixes
+
+* siphash calcs for c29 ([#7433](https://github.com/tari-project/tari/issues/7433)) ([80e0528](https://github.com/tari-project/tari/commit/80e0528bfecc602132d531af3e0e755a632bd63e))
+* tari address serialization ([#7424](https://github.com/tari-project/tari/issues/7424)) ([e5e40ab](https://github.com/tari-project/tari/commit/e5e40abea087053bd1f36b98f512f9cb1050168f))
+
+## [5.0.0-pre.4](https://github.com/tari-project/tari/compare/v5.0.0-pre.3...v5.0.0-pre.4) (2025-08-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove contacts service (#7423)
+
+### Features
+
+* add cli payref search for minotari node ([#7422](https://github.com/tari-project/tari/issues/7422)) ([ca6eb97](https://github.com/tari-project/tari/commit/ca6eb97ffeb71747769b1242a2c6fe400855704d))
+* add seed peer exclusion to liveness if other peers are available ([#7418](https://github.com/tari-project/tari/issues/7418)) ([8c6f8b5](https://github.com/tari-project/tari/commit/8c6f8b528b1519c84d08f70288ab48e941f0a3d5))
+* remove contacts service ([#7423](https://github.com/tari-project/tari/issues/7423)) ([2f14dda](https://github.com/tari-project/tari/commit/2f14ddaf9254aa56a45c06750b5c71325cf617e9))
+
+
+### Bug Fixes
+
+* add c29 test parameters ([#7427](https://github.com/tari-project/tari/issues/7427)) ([2faf76d](https://github.com/tari-project/tari/commit/2faf76d6cb6795490f26104ea1a84e59997ddc7c))
+* allow network discovery to exit Waiting state on Ready event ([#7417](https://github.com/tari-project/tari/issues/7417)) ([336dc2a](https://github.com/tari-project/tari/commit/336dc2a9957e63fd77622c5218ed34026381c8ea))
+* set cuckoo cycle params for esme ([5610dff](https://github.com/tari-project/tari/commit/5610dffb08bb8b0f312e5b0883c65fcd35ad6ae4))
+
 ## [5.0.0-pre.3](https://github.com/tari-project/tari/compare/v5.0.0-pre.2...v5.0.0-pre.3) (2025-08-14)
 
 
