@@ -26,6 +26,7 @@ use std::mem::size_of;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{DateTime, Utc};
 use minotari_wallet::{
+    legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
     transaction_service::storage::{
@@ -48,7 +49,6 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
-use minotari_wallet::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;

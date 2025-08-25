@@ -12,7 +12,7 @@ license.workspace = true
 default = ["bundled_sqlite"]
 c_integration = []
 bundled_sqlite = ["libsqlite3-sys"]
-ledger = ["tari_common_types/ledger", "tari_transaction_components/ledger", "tari_transaction_key_manager/ledger"]
+ledger = ["tari_transaction_components/ledger", "tari_transaction_key_manager/ledger"]
 
 [dependencies]
 tari_transaction_components = { workspace = true }

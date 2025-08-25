@@ -2603,10 +2603,6 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{CompressedPublicKey, CompressedSignature, PrivateKey},
     };
-    use crate::legacy_transaction_protocol::{
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_script::script;
     use tari_test_utils::random::string;
@@ -2624,6 +2620,7 @@ mod test {
     use tempfile::tempdir;
 
     use crate::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         test_utils::create_consensus_constants,
         transaction_service::storage::{

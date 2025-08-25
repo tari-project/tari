@@ -682,7 +682,6 @@ pub struct FeePerGramStatsResponse {
     pub stats: Vec<FeePerGramStat>,
 }
 
-
 /// Enhanced payment details for PayRef functionality
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaymentDetails {

@@ -117,7 +117,6 @@ where
             _phantom_data_http_interface: Default::default(),
         }
     }
-
 }
 
 #[async_trait]

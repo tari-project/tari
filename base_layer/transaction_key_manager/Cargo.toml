@@ -8,7 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [features]
-ledger = ["tari_common_types/ledger", "tari_transaction_components/ledger"]
+ledger = ["tari_transaction_components/ledger"]
 
 [dependencies]
 tari_common_types = { workspace = true}

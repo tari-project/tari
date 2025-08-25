@@ -173,8 +173,8 @@ pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKe
     validation_in_progress: Arc<Mutex<()>>,
 }
 
-impl< TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
-    TransactionService< TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
+impl<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
@@ -2846,7 +2846,6 @@ where
             },
         }
     }
-
 
     async fn set_power_mode(&mut self, mode: PowerMode) -> Result<(), TransactionServiceError> {
         let timeout = match mode {

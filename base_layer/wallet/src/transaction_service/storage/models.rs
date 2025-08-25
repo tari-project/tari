@@ -33,7 +33,6 @@ use tari_common_types::{
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, CompressedCommitment, CompressedSignature, FixedHash, PrivateKey},
 };
-use crate::legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol};
 use tari_transaction_components::{
     consensus::ConsensusConstants,
     fee::Fee,
@@ -41,7 +40,10 @@ use tari_transaction_components::{
     transaction_components::{memo_field::MemoField, Transaction},
 };
 
-use crate::transaction_service::error::TransactionStorageError;
+use crate::{
+    legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
+    transaction_service::error::TransactionStorageError,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
