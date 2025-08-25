@@ -57,7 +57,7 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        test_helpers::create_memory_key_manager,
+        key_manager::create_memory_key_manager,
         transaction_components::{
             covenants::{
                 filters::test::setup_filter_test,
@@ -71,7 +71,7 @@ mod test {
 
     #[tokio::test]
     async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let features = OutputFeatures {
             maturity: 42,
             sidechain_feature: Some(make_sample_sidechain_feature()),

@@ -8,7 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [features]
-ledger = ["minotari_ledger_wallet_comms"]
+ledger = ["minotari_ledger_wallet_comms", "tari_common_types/ledger"]
 wasm = ["wasm-bindgen"]
 [dependencies]
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
@@ -46,6 +46,7 @@ tokio = { version = "1.44", features = ["sync"] }
 log = "0.4"
 rand = "0.8"
 serde_repr = "0.1.8"
+serde_valid = "1.0.5"
 strum = "0.22"
 strum_macros = "0.22"
 tari_crypto = { workspace = true, features = ["borsh"] }
@@ -54,6 +55,8 @@ thiserror = "1.0.26"
 serde = { version = "1.0.106", features = ["derive"] }
 blake2 = "0.10"
 zeroize = "1"
+
+utoipa = "5.3.1"
 wasm-bindgen = { version = "0.2.100", optional = true }
 
 [dev-dependencies]

@@ -4319,7 +4319,6 @@ dependencies = [
  "tari_features",
  "tari_max_size",
  "tari_transaction_components",
- "tari_transaction_key_manager",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
@@ -4408,7 +4407,6 @@ dependencies = [
  "tari_shutdown",
  "tari_storage",
  "tari_transaction_components",
- "tari_transaction_key_manager",
  "tari_utilities",
  "thiserror 1.0.69",
  "tokio",
@@ -4438,7 +4436,6 @@ dependencies = [
  "reqwest 0.12.17",
  "serde",
  "serde_json",
- "tari_core",
  "tari_shutdown",
  "tari_transaction_components",
  "tari_utilities",
@@ -7738,7 +7735,6 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "utoipa",
 ]
 
 [[package]]
@@ -8040,6 +8036,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+ "serde_valid",
  "static_assertions",
  "strum",
  "strum_macros",
@@ -8056,6 +8053,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "toml 0.5.11",
+ "utoipa",
  "wasm-bindgen",
  "zeroize",
 ]
@@ -8064,6 +8062,7 @@ dependencies = [
 name = "tari_transaction_key_manager"
 version = "5.0.0-pre.5"
 dependencies = [
+ "async-trait",
  "chacha20poly1305",
  "chrono",
  "diesel",

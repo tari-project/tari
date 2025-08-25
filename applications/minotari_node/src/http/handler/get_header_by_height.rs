@@ -13,9 +13,10 @@ use axum::{
 use log::debug;
 use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{models::BlockHeader, query_service, BaseNodeWalletQueryService},
+    base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
+use tari_transaction_components::rpc::models::BlockHeader;
 use tonic::service::AxumBody;
 
 use crate::http::handler::{error_handler_with_message, ErrorResponse};

@@ -54,10 +54,10 @@ mod unconfirmed_pool;
 pub use error::MempoolError;
 #[cfg(feature = "base_node")]
 pub use mempool::Mempool;
+use tari_transaction_components::rpc::models::FeePerGramStat;
 
 #[cfg(feature = "base_node")]
 pub use self::config::{MempoolConfig, MempoolServiceConfig};
-
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod proto;
 
@@ -75,7 +75,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::CompressedSignature;
-use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::Transaction};
+use tari_transaction_components::transaction_components::Transaction;
 
 use crate::proto::base_node as base_node_proto;
 
@@ -137,15 +137,6 @@ impl Display for TxStorageResponse {
         fmt.write_str(storage)
     }
 }
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FeePerGramStat {
-    pub order: u64,
-    pub min_fee_per_gram: MicroMinotari,
-    pub avg_fee_per_gram: MicroMinotari,
-    pub max_fee_per_gram: MicroMinotari,
-}
-
 impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {
     fn from(value: base_node_proto::MempoolFeePerGramStat) -> Self {
         Self {

@@ -12,13 +12,10 @@ use axum::{
 use log::debug;
 use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{
-        models::{GetUtxosMinedInfoRequest, GetUtxosMinedInfoResponse},
-        query_service,
-        BaseNodeWalletQueryService,
-    },
+    base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
+use tari_transaction_components::rpc::models::{GetUtxosMinedInfoRequest, GetUtxosMinedInfoResponse};
 use tonic::service::AxumBody;
 
 use crate::http::handler::{error_handler_with_message, util::from_hex_comma_separated, ErrorResponse};

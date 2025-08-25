@@ -348,7 +348,7 @@ async fn setup_transaction_service_no_comms(
 
     let ts_service_db = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let ts_db = TransactionDatabase::new(ts_service_db.clone());
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection));
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());

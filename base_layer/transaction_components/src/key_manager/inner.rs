@@ -122,7 +122,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
     // Key manager section
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub fn new(
+    pub async fn new(
         master_seed: CipherSeed,
         db: TBackend,
         crypto_factories: CryptoFactories,
@@ -135,30 +135,30 @@ where TBackend: TransactionKeyManagerBackend + 'static
             crypto_factories,
             wallet_type,
         };
-        km.add_standard_core_branches()?;
+        km.add_standard_core_branches().await?;
         Ok(km)
     }
 
-    fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
+    async fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
         for branch in TransactionKeyManagerBranch::iter() {
-            self.add_key_manager_branch(&branch.get_branch_key())?;
+            self.add_key_manager_branch(&branch.get_branch_key()).await?;
         }
         Ok(())
     }
 
-    pub fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
+    pub async fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
         let result = if self.key_managers.contains_key(branch) {
             AddResult::AlreadyExists
         } else {
             AddResult::NewEntry
         };
-        let state = match self.db.get_key_manager(branch)? {
+        let state = match self.db.get_key_manager(branch).await? {
             None => {
                 let starting_state = KeyManagerState {
                     branch_seed: branch.to_string(),
                     primary_key_index: 0,
                 };
-                self.db.add_key_manager(starting_state.clone())?;
+                self.db.add_key_manager(starting_state.clone()).await?;
                 starting_state
             },
             Some(km) => km,
@@ -184,7 +184,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
                         .ok_or_else(|| self.unknown_key_branch_error("get_next_key", branch))?
                         .write()
                         .await;
-                    self.db.increment_key_index(branch)?;
+                    self.db.increment_key_index(branch).await?;
                     km.increment_key_index(1)
                 },
                 _ => OsRng.next_u64(),
@@ -374,7 +374,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         match key_id {
             TariKeyId::Zero => Ok(PrivateKey::default()),
             TariKeyId::Imported { key } => {
-                let pvt_key = self.db.get_imported_key(key)?;
+                let pvt_key = self.db.get_imported_key(key).await?;
                 Ok(pvt_key)
             },
             TariKeyId::Managed { branch, index } => {
@@ -535,7 +535,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
 
     pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         let public_key = CompressedPublicKey::from_secret_key(&private_key);
-        self.db.insert_imported_key(public_key.clone(), private_key)?;
+        self.db.insert_imported_key(public_key.clone(), private_key).await?;
         let key_id = TariKeyId::Imported { key: public_key };
         Ok(key_id)
     }

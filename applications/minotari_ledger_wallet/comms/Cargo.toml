@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 tari_utilities = { version = "0.8" }
 tari_common = { path = "../../../common" }
-tari_common_types = { path = "../../../base_layer/common_types" }
+tari_common_types = { path = "../../../base_layer/common_types", features = ["ledger"] }
 tari_script = { path = "../../../infrastructure/tari_script" }
 tari_crypto = { version = "0.22.1" }
 

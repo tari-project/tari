@@ -12,7 +12,7 @@ license.workspace = true
 default = ["bundled_sqlite"]
 c_integration = []
 bundled_sqlite = ["libsqlite3-sys"]
-ledger = ["tari_core/ledger"]
+ledger = ["tari_common_types/ledger", "tari_transaction_components/ledger", "tari_transaction_key_manager/ledger"]
 
 [dependencies]
 tari_core = { workspace = true, default-features = false, features = [
@@ -20,8 +20,8 @@ tari_core = { workspace = true, default-features = false, features = [
     "mempool_proto",
     "base_node_proto",
 ] }
-tari_transaction_components = { workspace = true, features = ["ledger"] }
-tari_transaction_key_manager = { workspace = true, features = ["ledger"] }
+tari_transaction_components = { workspace = true }
+tari_transaction_key_manager = { workspace = true }
 tari_common = { workspace = true }
 tari_common_sqlite = { workspace = true }
 tari_common_types = { workspace = true }

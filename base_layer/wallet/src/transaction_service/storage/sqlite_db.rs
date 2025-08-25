@@ -2643,7 +2643,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
