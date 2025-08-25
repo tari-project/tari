@@ -86,8 +86,6 @@ pub enum KeyManagerServiceError {
     EncryptionFailed(String),
     #[error("Failed to decrypt: `{0}`")]
     DecryptionFailed(String),
-    #[error("Duplicate key, key already exists in storage")]
-    DuplicateKey,
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {
