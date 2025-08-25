@@ -23,7 +23,7 @@
 use log::*;
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures, PeerFlags, STALE_PEER_THRESHOLD_DURATION},
-    types::AddressProtocol,
+    types::TransportProtocol,
 };
 
 use super::{
@@ -46,7 +46,7 @@ async fn select_peers_for_discovery_round(
     last_round_info: Option<&DhtNetworkDiscoveryRoundInfo>,
     excluded_peers: &[tari_comms::peer_manager::NodeId],
     config: &DhtConfig,
-    address_protocols: &Vec<AddressProtocol>,
+    transport_protocols: &Vec<TransportProtocol>,
 ) -> Result<Vec<tari_comms::peer_manager::NodeId>, NetworkDiscoveryError> {
     let peers_to_request_from: Vec<Peer> = match last_round_info {
         Some(stats) if stats.has_new_peers() => {
@@ -67,7 +67,7 @@ async fn select_peers_for_discovery_round(
                     true,
                     None,
                     true,
-                    address_protocols,
+                    transport_protocols,
                 )
                 .await?
         },
@@ -93,7 +93,7 @@ async fn select_peers_for_discovery_round(
                 .filter(|peer| {
                     peer.addresses
                         .iter()
-                        .any(|addr| address_protocols.contains(addr.address().into()))
+                        .any(|addr| transport_protocols.contains(addr.address().into()))
                 })
                 .collect()
         },
@@ -125,7 +125,7 @@ impl DiscoveryReady {
     async fn process(
         &mut self,
         current_num_rounds: usize,
-        protocols: &Vec<AddressProtocol>,
+        protocols: &Vec<TransportProtocol>,
     ) -> Result<StateEvent, NetworkDiscoveryError> {
         let num_peers = self.context.peer_manager.count().await;
         debug!(

@@ -36,7 +36,7 @@ use log::*;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
-    types::AddressProtocol,
+    types::TransportProtocol,
     NodeIdentity,
     PeerManager,
 };
@@ -182,12 +182,12 @@ pub(super) struct NetworkDiscoveryContext {
     pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
     pub bootstrap_method: Arc<RwLock<BootstrapMethod>>,
     pub bootstrap_started_at: Arc<RwLock<Option<Instant>>>,
-    pub protocols: Arc<RwLock<Vec<AddressProtocol>>>,
+    pub protocols: Arc<RwLock<Vec<TransportProtocol>>>,
 }
 
 impl NetworkDiscoveryContext {
     /// Get supported address protocols
-    pub async fn protocols(&self) -> Vec<AddressProtocol> {
+    pub async fn protocols(&self) -> Vec<TransportProtocol> {
         self.protocols.read().await.clone()
     }
 

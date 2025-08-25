@@ -57,59 +57,59 @@ pub type CommsDatabase = PeerDatabaseSql;
 
 /// Specify the address protocol
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum AddressProtocol {
+pub enum TransportProtocol {
     Ipv4,
     Ipv6,
     Onion,
     Memory,
 }
 
-impl AddressProtocol {
-    pub fn get_all() -> Vec<AddressProtocol> {
+impl TransportProtocol {
+    pub fn get_all() -> Vec<TransportProtocol> {
         vec![
-            AddressProtocol::Ipv4,
-            AddressProtocol::Ipv6,
-            AddressProtocol::Onion,
-            AddressProtocol::Memory,
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+            TransportProtocol::Onion,
+            TransportProtocol::Memory,
         ]
     }
 }
 
-impl From<Multiaddr> for AddressProtocol {
+impl From<Multiaddr> for TransportProtocol {
     fn from(addr: Multiaddr) -> Self {
         match addr.iter().next() {
-            Some(Protocol::Ip4(_)) => AddressProtocol::Ipv4,
-            Some(Protocol::Ip6(_)) => AddressProtocol::Ipv6,
-            Some(Protocol::Onion(_, _)) => AddressProtocol::Onion,
-            Some(Protocol::Onion3(_)) => AddressProtocol::Onion,
-            Some(Protocol::Memory(_)) => AddressProtocol::Memory,
-            _ => AddressProtocol::Ipv4,
+            Some(Protocol::Ip4(_)) => TransportProtocol::Ipv4,
+            Some(Protocol::Ip6(_)) => TransportProtocol::Ipv6,
+            Some(Protocol::Onion(_, _)) => TransportProtocol::Onion,
+            Some(Protocol::Onion3(_)) => TransportProtocol::Onion,
+            Some(Protocol::Memory(_)) => TransportProtocol::Memory,
+            _ => TransportProtocol::Ipv4,
         }
     }
 }
 
-impl From<&Multiaddr> for AddressProtocol {
+impl From<&Multiaddr> for TransportProtocol {
     fn from(addr: &Multiaddr) -> Self {
         match addr.iter().next() {
-            Some(Protocol::Ip4(_)) => AddressProtocol::Ipv4,
-            Some(Protocol::Ip6(_)) => AddressProtocol::Ipv6,
-            Some(Protocol::Onion(_, _)) => AddressProtocol::Onion,
-            Some(Protocol::Onion3(_)) => AddressProtocol::Onion,
-            Some(Protocol::Memory(_)) => AddressProtocol::Memory,
-            _ => AddressProtocol::Ipv4,
+            Some(Protocol::Ip4(_)) => TransportProtocol::Ipv4,
+            Some(Protocol::Ip6(_)) => TransportProtocol::Ipv6,
+            Some(Protocol::Onion(_, _)) => TransportProtocol::Onion,
+            Some(Protocol::Onion3(_)) => TransportProtocol::Onion,
+            Some(Protocol::Memory(_)) => TransportProtocol::Memory,
+            _ => TransportProtocol::Ipv4,
         }
     }
 }
 
-impl From<&Multiaddr> for &AddressProtocol {
+impl From<&Multiaddr> for &TransportProtocol {
     fn from(addr: &Multiaddr) -> Self {
         match addr.iter().next() {
-            Some(Protocol::Ip4(_)) => &AddressProtocol::Ipv4,
-            Some(Protocol::Ip6(_)) => &AddressProtocol::Ipv6,
-            Some(Protocol::Onion(_, _)) => &AddressProtocol::Onion,
-            Some(Protocol::Onion3(_)) => &AddressProtocol::Onion,
-            Some(Protocol::Memory(_)) => &AddressProtocol::Memory,
-            _ => &AddressProtocol::Ipv4,
+            Some(Protocol::Ip4(_)) => &TransportProtocol::Ipv4,
+            Some(Protocol::Ip6(_)) => &TransportProtocol::Ipv6,
+            Some(Protocol::Onion(_, _)) => &TransportProtocol::Onion,
+            Some(Protocol::Onion3(_)) => &TransportProtocol::Onion,
+            Some(Protocol::Memory(_)) => &TransportProtocol::Memory,
+            _ => &TransportProtocol::Ipv4,
         }
     }
 }

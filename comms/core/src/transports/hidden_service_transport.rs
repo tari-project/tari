@@ -29,7 +29,7 @@ use tokio::sync::RwLock;
 use crate::{
     tor::{HiddenServiceController, TorIdentity},
     transports::{tcp::TcpInbound, SocksTransport, Transport},
-    types::AddressProtocol,
+    types::TransportProtocol,
 };
 
 const LOG_TARGET: &str = "comms::transports::hidden_service_transport";
@@ -125,7 +125,11 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
         transport.dial(addr).await
     }
 
-    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
-        vec![AddressProtocol::Onion, AddressProtocol::Ipv4, AddressProtocol::Ipv6]
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        vec![
+            TransportProtocol::Onion,
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+        ]
     }
 }

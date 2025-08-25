@@ -53,7 +53,7 @@ use crate::{
         PeerId,
     },
     protocol::ProtocolId,
-    types::{AddressProtocol, CommsPublicKey},
+    types::{CommsPublicKey, TransportProtocol},
     utils::datetime::safe_future_datetime_from_duration,
 };
 
@@ -1531,7 +1531,7 @@ impl PeerDatabaseSql {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
-        protocols: &Vec<AddressProtocol>,
+        protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());

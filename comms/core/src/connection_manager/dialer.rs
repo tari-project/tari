@@ -64,7 +64,7 @@ use crate::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     protocol::ProtocolId,
     transports::Transport,
-    types::{AddressProtocol, CommsPublicKey},
+    types::{CommsPublicKey, TransportProtocol},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
@@ -604,12 +604,12 @@ where
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
-        let supported_address_protocols: Vec<AddressProtocol> = transport
-            .supported_address_protocols()
+        let supported_transport_protocols: Vec<TransportProtocol> = transport
+            .supported_protocols()
             .into_iter()
-            .filter(|protocol| *protocol != AddressProtocol::Ipv6 || !exclude_ipv6)
+            .filter(|protocol| *protocol != TransportProtocol::Ipv6 || !exclude_ipv6)
             .collect();
-        trace!(target: LOG_TARGET, "Supported address protocols: {:?}", supported_address_protocols);
+        debug!(target: LOG_TARGET, "[DEBUG] Supported transport protocols: {:?}", supported_transport_protocols);
 
         let addresses = dial_state
             .peer()
@@ -619,10 +619,11 @@ where
             .iter()
             .filter(|&a| {
                 !excluded_dial_addresses.iter().any(|excluded| excluded.contains(a)) &&
-                    supported_address_protocols.contains(a.into())
+                    supported_transport_protocols.contains(a.into())
             })
             .cloned()
             .collect::<Vec<_>>();
+        debug!(target: LOG_TARGET, "[DEBUG] Addresses to dial: {:?}", addresses);
 
         if addresses.is_empty() {
             let node_id_hex = dial_state.peer().node_id.clone().to_hex();

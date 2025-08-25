@@ -37,7 +37,7 @@ use multiaddr::{Multiaddr, Protocol};
 use crate::{
     memsocket::{self, MemoryListener, MemorySocket},
     transports::Transport,
-    types::AddressProtocol,
+    types::TransportProtocol,
 };
 
 /// Transport to build in-memory connections
@@ -80,8 +80,8 @@ impl Transport for MemoryTransport {
         Ok(MemorySocket::connect(port)?)
     }
 
-    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
-        vec![AddressProtocol::Memory]
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        vec![TransportProtocol::Memory]
     }
 }
 

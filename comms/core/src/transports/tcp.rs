@@ -36,7 +36,7 @@ use tokio_stream::Stream;
 use super::{dns::DnsResolver, Transport};
 use crate::{
     transports::dns::{DnsResolverRef, SystemDnsResolver},
-    types::AddressProtocol,
+    types::TransportProtocol,
     utils::multiaddr::socketaddr_to_multiaddr,
 };
 
@@ -137,8 +137,8 @@ impl Transport for TcpTransport {
         Ok(socket)
     }
 
-    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
-        vec![AddressProtocol::Ipv4, AddressProtocol::Ipv6]
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6]
     }
 }
 

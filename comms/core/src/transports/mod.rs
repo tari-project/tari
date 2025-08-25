@@ -52,7 +52,7 @@ mod tcp_with_tor;
 pub use hidden_service_transport::HiddenServiceTransport;
 pub use tcp_with_tor::TcpWithTorTransport;
 
-use crate::types::AddressProtocol;
+use crate::types::TransportProtocol;
 
 /// Defines an abstraction for implementations that can dial and listen for connections over a provided address.
 #[crate::async_trait]
@@ -70,6 +70,6 @@ pub trait Transport {
     /// Connect (dial) to the given multiaddr
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error>;
 
-    /// Returns the address formats that are supported by this transport
-    fn supported_address_protocols(&self) -> Vec<AddressProtocol>;
+    /// Returns the protocols that are supported by this transport
+    fn supported_protocols(&self) -> Vec<TransportProtocol>;
 }

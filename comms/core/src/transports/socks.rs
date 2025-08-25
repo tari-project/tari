@@ -33,7 +33,7 @@ use crate::{
     multiaddr::Multiaddr,
     socks::{self, Socks5Client},
     transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
-    types::AddressProtocol,
+    types::TransportProtocol,
 };
 
 const LOG_TARGET: &str = "comms::transports::socks";
@@ -119,8 +119,12 @@ impl Transport for SocksTransport {
         Ok(socket)
     }
 
-    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
-        vec![AddressProtocol::Onion, AddressProtocol::Ipv4, AddressProtocol::Ipv6]
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        vec![
+            TransportProtocol::Onion,
+            TransportProtocol::Ipv4,
+            TransportProtocol::Ipv6,
+        ]
     }
 }
 

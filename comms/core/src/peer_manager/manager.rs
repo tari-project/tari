@@ -39,7 +39,7 @@ use crate::{
         PeerManagerError,
         ThisPeerIdentity,
     },
-    types::{AddressProtocol, CommsDatabase, CommsPublicKey},
+    types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
 
 /// The PeerManager provides functionality to add, find and delete peers. It wraps synchronous
@@ -253,7 +253,7 @@ impl PeerManager {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
-        protocols: &Vec<AddressProtocol>,
+        protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.closest_n_active_peers_filtered_by_protocols(
             region_node_id,

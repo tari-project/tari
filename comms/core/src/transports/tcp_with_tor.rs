@@ -28,7 +28,7 @@ use tokio::net::TcpStream;
 use super::Transport;
 use crate::{
     transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport},
-    types::AddressProtocol,
+    types::TransportProtocol,
 };
 
 /// Transport implementation for TCP with Tor support
@@ -98,10 +98,10 @@ impl Transport for TcpWithTorTransport {
         }
     }
 
-    fn supported_address_protocols(&self) -> Vec<AddressProtocol> {
-        let mut protocols = vec![AddressProtocol::Ipv4, AddressProtocol::Ipv6];
+    fn supported_protocols(&self) -> Vec<TransportProtocol> {
+        let mut protocols = vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6];
         if self.socks_transport.is_some() {
-            protocols.push(AddressProtocol::Onion);
+            protocols.push(TransportProtocol::Onion);
         }
         protocols
     }
