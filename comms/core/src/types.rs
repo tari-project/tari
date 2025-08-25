@@ -22,7 +22,6 @@
 
 //! Common Tari comms types
 
-use log::debug;
 use multiaddr::{Multiaddr, Protocol};
 use tari_crypto::{
     compressed_key::CompressedKey,
@@ -73,10 +72,7 @@ impl From<Multiaddr> for AddressProtocol {
             Some(Protocol::Onion(_, _)) => AddressProtocol::Onion,
             Some(Protocol::Onion3(_)) => AddressProtocol::Onion,
             Some(Protocol::Memory(_)) => AddressProtocol::Memory,
-            unknown => {
-                debug!(target: "comms::connection_manager::dialer", "[DEBUG] Unknown protocol: {:?}", unknown);
-                AddressProtocol::Ipv4
-            },
+            _ => AddressProtocol::Ipv4,
         }
     }
 }
@@ -89,10 +85,7 @@ impl From<&Multiaddr> for &AddressProtocol {
             Some(Protocol::Onion(_, _)) => &AddressProtocol::Onion,
             Some(Protocol::Onion3(_)) => &AddressProtocol::Onion,
             Some(Protocol::Memory(_)) => &AddressProtocol::Memory,
-            unknown => {
-                debug!(target: "comms::connection_manager::dialer", "[DEBUG] Unknown protocol: {:?}", unknown);
-                &AddressProtocol::Ipv4
-            },
+            _ => &AddressProtocol::Ipv4,
         }
     }
 }

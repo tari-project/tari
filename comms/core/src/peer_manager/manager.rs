@@ -30,8 +30,15 @@ use crate::peer_manager::metrics;
 use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{
-        peer::Peer, peer_id::PeerId, peer_storage_sql::PeerStorageSql, NodeDistance, NodeId, PeerFeatures, PeerFlags,
-        PeerManagerError, ThisPeerIdentity,
+        peer::Peer,
+        peer_id::PeerId,
+        peer_storage_sql::PeerStorageSql,
+        NodeDistance,
+        NodeId,
+        PeerFeatures,
+        PeerFlags,
+        PeerManagerError,
+        ThisPeerIdentity,
     },
     types::{CommsDatabase, CommsPublicKey},
 };

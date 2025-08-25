@@ -81,6 +81,11 @@ minotari_app_utilities = { path = "applications/minotari_app_utilities" }
 minotari_wallet = { path = "base_layer/wallet" }
 minotari_node_grpc_client = { path = "clients/rust/base_node_grpc_client" }
 minotari_node_wallet_client = { path = "clients/rust/base_node_wallet_client" }
+minotari_console_wallet = { path = "applications/minotari_console_wallet" }
+minotari_merge_mining_proxy = { path = "applications/minotari_merge_mining_proxy" }
+minotari_miner = { path = "applications/minotari_miner" }
+minotari_node = { path = "applications/minotari_node" }
+minotari_wallet_ffi = { path = "base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "clients/rust/wallet_grpc_client" }
 minotari_ledger_wallet_comms = { path = "applications/minotari_ledger_wallet/comms" }
 minotari_ledger_wallet_common = { path = "applications/minotari_ledger_wallet/common" }

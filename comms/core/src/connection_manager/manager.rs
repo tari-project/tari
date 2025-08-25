@@ -29,7 +29,8 @@ use time::Duration;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc, oneshot},
-    task, time,
+    task,
+    time,
 };
 use tracing::{span, Instrument, Level};
 
@@ -54,7 +55,8 @@ use crate::{
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
-    Minimized, PeerManager,
+    Minimized,
+    PeerManager,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
