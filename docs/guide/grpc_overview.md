@@ -966,9 +966,10 @@ enum TransactionStatus {
 #### Network Connectivity
 ```protobuf
 enum ConnectivityStatus {
-    ONLINE = 0;     // Fully connected
-    DEGRADED = 1;   // Limited connectivity
-    OFFLINE = 2;    // No connectivity
+    INITIALIZING = 0; // Busy initializing
+    ONLINE = 1;       // Fully connected
+    DEGRADED = 2;     // Limited connectivity
+    OFFLINE = 3;      // No connectivity
 }
 ```
 

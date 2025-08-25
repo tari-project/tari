@@ -108,7 +108,7 @@ service Wallet {
   // The `Identify` RPC call returns the identity information of the wallet node.
   // This includes:
   // - **Public Key**: The wallet's cryptographic public key.
-  // - **Public Address**: The wallet's public address used to receive funds.
+  // - **Public Address**: This will always be empty as the wallet has no contactable public comms address.
   // - **Node ID**: The unique identifier of the wallet node in the network.
   //
   // Example usage (JavaScript):
@@ -128,7 +128,7 @@ service Wallet {
   // ```json
   // {
   //   "public_key": "0x04b2c5f3fe65bb1c3cde019e34f3eab1234598c820dca43bbf4d5686a980ddc69e0d4b180d85990d0a5e4aee46e0a6ad9283f0a41783992a70c548e53e47321fa",
-  //   "public_address": "14HVCEeZC2RGE4SDn3yGwqzXepJ2LDqXva7kb4fherYMQR9dF7341T3TjMZobB1a6xouGvS5SXwEvXKwK3zLz2rgReh",
+  //   "public_address": "",
   //   "node_id": "0x1234abcd5678efgh9012ijkl3456mnop"
   // }
   // ```

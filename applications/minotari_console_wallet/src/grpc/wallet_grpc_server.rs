@@ -190,7 +190,7 @@ pub struct WalletGrpcServer {
     wallet: WalletSqlite,
     rules: ConsensusManager,
     debouncer: Arc<Mutex<WalletDebouncer<WalletKeyManager>>>,
-    // avg_latency_ms with fixed queue
+    // Average latencies in ms with fixed/bounded queue
     avg_latencies_ms: Arc<Mutex<VecDeque<u64>>>,
 }
 
@@ -278,36 +278,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(resp))
     }
 
-    // Get the node_id, public_key and public_address of the connected base node - if the node is not connected, default
-    // values will be returned.
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
-        let (node_id, public_key, url) = match self.wallet.wallet_connectivity.get_extended_connectivity_status().await
-        {
-            ExtendedOnlineStatus::Connecting | ExtendedOnlineStatus::Offline => {
-                (NodeId::default(), CommsPublicKey::default(), String::new())
-            },
-            ExtendedOnlineStatus::Online {
-                node_id,
-                public_key,
-                url,
-                ..
-            } |
-            ExtendedOnlineStatus::Degraded {
-                node_id,
-                public_key,
-                url,
-                ..
-            } => (
-                NodeId::from_hex(&node_id).map_err(|e| Status::internal(format!("{e:?}")))?,
-                CommsPublicKey::from_hex(&public_key).map_err(|e| Status::internal(format!("{e:?}")))?,
-                url,
-            ),
-        };
-
+        let identity = self.wallet.node_identity.clone();
         Ok(Response::new(GetIdentityResponse {
-            public_key: public_key.to_vec(),
-            public_address: url,
-            node_id: node_id.to_vec(),
+            public_key: identity.public_key().to_vec(),
+            // Note: Without comms this will always resolve to be empty
+            public_address: identity.public_addresses().iter().map(|a| a.to_string()).collect(),
+            node_id: identity.node_id().to_vec(),
         }))
     }
 
@@ -1768,20 +1745,26 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
         // This mapping is to comply to the legacy interface
-        let (status, latency) = match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
-            ExtendedOnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS),
-            ExtendedOnlineStatus::Online { latency_ms, .. } => (ConnectivityStatus::Online(1), latency_ms),
-            ExtendedOnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX),
-            ExtendedOnlineStatus::Degraded { latency_ms, .. } => (ConnectivityStatus::Degraded(1), latency_ms),
-        };
-        let mut avg_latencies = self.avg_latencies_ms.lock().await;
-        avg_latencies.push_front(latency);
-        let avg_latency = avg_latencies.iter().sum::<u64>() / avg_latencies.len() as u64;
+        let (status, avg_latency, num_node_connections) =
+            match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
+                ExtendedOnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS, 0),
+                ExtendedOnlineStatus::Online { latency_ms, .. } => {
+                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
+                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
+                    (ConnectivityStatus::Online(1), latency_ms, 1)
+                },
+                ExtendedOnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX, 0),
+                ExtendedOnlineStatus::Degraded { latency_ms, .. } => {
+                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
+                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
+                    (ConnectivityStatus::Degraded(1), latency_ms, 1)
+                },
+            };
 
         let resp = tari_rpc::NetworkStatusResponse {
             status: tari_rpc::ConnectivityStatus::from(status) as i32,
             avg_latency_ms: u32::try_from(avg_latency).unwrap_or(u32::MAX),
-            num_node_connections: 1,
+            num_node_connections,
         };
 
         Ok(Response::new(resp))
@@ -2472,6 +2455,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             public_nonce: hex_nonce,
         }))
     }
+}
+
+// Helper function to update the latency history and compute the average latency
+fn update_and_average_latency(latencies: &mut VecDeque<u64>, new_latency: u64) -> u64 {
+    latencies.push_front(new_latency);
+    latencies.pop_back();
+    latencies.iter().sum::<u64>() / latencies.len() as u64
 }
 
 async fn handle_completed_tx(
