@@ -26,28 +26,25 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CompressedCommitment, CompressedPublicKey, PrivateKey, Signature, UncompressedCommitment},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey, UncompressedCommitment},
 };
-pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
-
-use crate::{
-    covenants::Covenant,
-    transactions::{
-        legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE},
-        tari_amount::*,
-        transaction_components::{
-            memo_field::MemoField,
-            OutputFeatures,
-            Transaction,
-            TransactionKernelVersion,
-            TransactionOutput,
-            TransactionOutputVersion,
-            WalletOutput,
-        },
-        transaction_key_manager::{TariKeyId, TransactionKeyManagerInterface},
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::*,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::MemoField,
+        OutputFeatures,
+        Transaction,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+        WalletOutput,
     },
 };
+
+use crate::transactions::legacy_transaction_protocol::{TransactionMetadata, TransactionProtocolError as TPE};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -82,7 +79,7 @@ pub(super) struct RawTransactionInfo {
     /// The partial kernel excess received from the recipient.
     pub recipient_partial_kernel_excess: CompressedPublicKey,
     /// The partial kernel signature received from the recipient.
-    pub recipient_partial_kernel_signature: Signature,
+    pub recipient_partial_kernel_signature: CompressedSignature,
     /// The partial kernel offset received from the recipient.
     pub recipient_partial_kernel_offset: PrivateKey,
     /// The change output details. This may be None if no change is required.

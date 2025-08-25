@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     cmp,
     cmp::{max, min, Ordering},
@@ -57,14 +56,20 @@ use tari_common_types::{
         BlockHash,
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         FixedHash,
         HashOutput,
-        Signature,
         UncompressedCommitment,
     },
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_transaction_components::{
+    consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
+    tari_proof_of_work::PowAlgorithm,
+    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    BanPeriod,
+};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::{
@@ -112,17 +117,11 @@ use crate::{
         Reorg,
         TargetDifficulties,
     },
-    common::{rolling_vec::RollingVec, BanPeriod},
-    consensus::{
-        chain_strength_comparer::ChainStrengthComparer,
-        ConsensusConstants,
-        ConsensusManager,
-        DomainSeparatedConsensusHasher,
-    },
+    common::rolling_vec::RollingVec,
+    consensus::{chain_strength_comparer::ChainStrengthComparer, BaseConsensusManager},
     input_mr_hash_from_pruned_mmr,
     kernel_mr_hash_from_pruned_mmr,
-    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    proof_of_work::{randomx_factory::RandomXFactory, TargetDifficultyWindow},
     validation::{
         helpers::calc_median_timestamp,
         tari_rx_vm_key_height,
@@ -237,7 +236,7 @@ pub struct BlockchainDatabase<B> {
     db: Arc<RwLock<B>>,
     validators: Validators<B>,
     config: BlockchainDatabaseConfig,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
     disable_add_block_flag: Arc<AtomicBool>,
 }
@@ -249,7 +248,7 @@ where B: BlockchainBackend
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
         db: B,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
@@ -268,7 +267,7 @@ where B: BlockchainBackend
 
     pub fn start_new(
         db: B,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseConsensusManager,
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
@@ -536,7 +535,7 @@ where B: BlockchainBackend
     }
 
     /// Returns a reference to the consensus rules
-    pub fn rules(&self) -> &ConsensusManager {
+    pub fn rules(&self) -> &BaseConsensusManager {
         &self.consensus_manager
     }
 
@@ -721,7 +720,7 @@ where B: BlockchainBackend
 
     pub fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: Signature,
+        excess_sig: CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_kernel_by_excess_sig(&excess_sig)
@@ -1409,7 +1408,10 @@ where B: BlockchainBackend
 
     /// Attempt to fetch the block corresponding to the provided kernel hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_kernel(&self, excess_sig: Signature) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+    pub fn fetch_block_with_kernel(
+        &self,
+        excess_sig: CompressedSignature,
+    ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_by_kernel_signature(&*db, excess_sig)
     }
@@ -1601,7 +1603,7 @@ impl std::fmt::Display for MmrRoots {
 #[allow(clippy::similar_names)]
 pub fn calculate_mmr_roots<T: BlockchainBackend>(
     db: &T,
-    rules: &ConsensusManager,
+    rules: &BaseConsensusManager,
     block: &Block,
 ) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
@@ -1869,7 +1871,7 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, 
 fn add_block<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
     header_validator: &dyn HeaderChainLinkedValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
@@ -1923,7 +1925,7 @@ fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64)
 #[allow(clippy::ptr_arg)]
 pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     db: &T,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
     pow_algo: PowAlgorithm,
     current_block_hash: &HashOutput,
 ) -> Result<TargetDifficultyWindow, ChainStorageError> {
@@ -2004,7 +2006,7 @@ fn fetch_blocks<T: BlockchainBackend>(
 
 fn fetch_block_by_kernel_signature<T: BlockchainBackend>(
     db: &T,
-    excess_sig: Signature,
+    excess_sig: CompressedSignature,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     match db.fetch_kernel_by_excess_sig(&excess_sig) {
         Ok(kernel) => match kernel {
@@ -2215,7 +2217,7 @@ fn rewind_to_hash<T: BlockchainBackend>(
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
     block_validator: &dyn CandidateBlockValidator<T>,
     header_validator: &dyn HeaderChainLinkedValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
@@ -2509,7 +2511,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     candidate_block: Arc<Block>,
     validator: &dyn HeaderChainLinkedValidator<T>,
-    rules: &ConsensusManager,
+    rules: &BaseConsensusManager,
 ) -> Result<(), ChainStorageError> {
     let hash = candidate_block.hash();
 
@@ -2729,7 +2731,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
 fn get_previous_timestamps<T: BlockchainBackend>(
     db: &mut T,
     header: &BlockHeader,
-    rules: &ConsensusManager,
+    rules: &BaseConsensusManager,
 ) -> Result<RollingVec<EpochTime>, ChainStorageError> {
     let median_timestamp_window_size = rules.consensus_constants(header.height).median_timestamp_count();
     let prev_height = usize::try_from(header.height)
@@ -3001,16 +3003,15 @@ mod test {
     use rand::seq::SliceRandom;
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_transaction_components::{
+        consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder},
+        tari_proof_of_work::Difficulty,
+    };
 
     use super::*;
     use crate::{
         block_specs,
-        consensus::{
-            chain_strength_comparer::strongest_chain,
-            consensus_constants::PowAlgorithmConstants,
-            ConsensusConstantsBuilder,
-        },
-        proof_of_work::Difficulty,
+        consensus::chain_strength_comparer::strongest_chain,
         test_helpers::{
             blockchain::{
                 create_chained_blocks,
@@ -3941,7 +3942,7 @@ mod test {
     struct TestHarness {
         db: BlockchainDatabase<TempDatabase>,
         config: BlockchainDatabaseConfig,
-        consensus: ConsensusManager,
+        consensus: BaseConsensusManager,
         chain_strength_comparer: Box<dyn ChainStrengthComparer>,
         post_orphan_body_validator: Box<dyn CandidateBlockValidator<TempDatabase>>,
         header_validator: Box<dyn HeaderChainLinkedValidator<TempDatabase>>,
@@ -4011,8 +4012,8 @@ mod test {
         Ok((results, chain))
     }
 
-    fn create_consensus_rules() -> ConsensusManager {
-        ConsensusManager::builder(Network::LocalNet)
+    fn create_consensus_rules() -> BaseConsensusManager {
+        BaseConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()

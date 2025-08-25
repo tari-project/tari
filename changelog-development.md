@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-pre.5](https://github.com/tari-project/tari/compare/v5.0.0-pre.4...v5.0.0-pre.5) (2025-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* update c29 fork block (#7434)
+
+### Features
+
+* update c29 fork block ([#7434](https://github.com/tari-project/tari/issues/7434)) ([344dde7](https://github.com/tari-project/tari/commit/344dde703fbb06314a39566c425a8f6715810783))
+
+
+### Bug Fixes
+
+* siphash calcs for c29 ([#7433](https://github.com/tari-project/tari/issues/7433)) ([80e0528](https://github.com/tari-project/tari/commit/80e0528bfecc602132d531af3e0e755a632bd63e))
+* tari address serialization ([#7424](https://github.com/tari-project/tari/issues/7424)) ([e5e40ab](https://github.com/tari-project/tari/commit/e5e40abea087053bd1f36b98f512f9cb1050168f))
+
 ## [5.0.0-pre.4](https://github.com/tari-project/tari/compare/v5.0.0-pre.3...v5.0.0-pre.4) (2025-08-20)
 
 

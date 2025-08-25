@@ -6,7 +6,6 @@
 // has lead to bundling of dependencies into a resources struct, which is then overused and is the
 // wrong abstraction
 #![allow(clippy::too_many_arguments)]
-
 #[macro_use]
 mod macros;
 pub mod base_node_service;
@@ -20,6 +19,7 @@ pub mod test_utils;
 pub mod transaction_service;
 
 pub use tari_common_types::types::WalletHasher;
+use tari_transaction_components::key_manager::TransactionKeyManagerWrapper;
 pub mod util;
 pub mod wallet;
 
@@ -34,10 +34,7 @@ mod config;
 pub mod schema;
 pub mod utxo_scanner_service;
 pub use config::{TransactionStage, WalletConfig};
-use tari_core::transactions::transaction_key_manager::{
-    storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
-    TransactionKeyManagerWrapper,
-};
+use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 pub use wallet::Wallet;
 
 use crate::{

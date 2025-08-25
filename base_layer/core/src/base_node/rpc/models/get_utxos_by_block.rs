@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 use serde::{Deserialize, Serialize};
 use serde_valid::Validate;
+use tari_transaction_components::transaction_components::TransactionOutput;
 use utoipa::{
     openapi::{schema::SchemaType, Object, OneOf, Schema, Type},
     ToSchema,
 };
-
-use crate::transactions::transaction_components::TransactionOutput;
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct GetUtxosByBlockRequest {

@@ -1,0 +1,92 @@
+//  Copyright 2022. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use blake2::Blake2b;
+use borsh::{BorshDeserialize, BorshSerialize};
+use digest::consts::U64;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, FixedHash};
+use tari_hashing::TransactionHashDomain;
+use tari_max_size::{MaxSizeBytes, MaxSizeString};
+
+use crate::consensus::DomainSeparatedConsensusHasher;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+pub struct CodeTemplateRegistration {
+    pub author_public_key: CompressedPublicKey,
+    pub author_signature: CompressedSignature,
+    pub template_name: MaxSizeString<32>,
+    pub template_version: u16,
+    pub template_type: TemplateType,
+    pub build_info: BuildInfo,
+    pub binary_sha: FixedHash,
+    pub binary_url: MaxSizeString<255>,
+}
+
+impl CodeTemplateRegistration {
+    pub fn author_signature(&self) -> &CompressedSignature {
+        &self.author_signature
+    }
+
+    pub fn build_info(&self) -> &BuildInfo {
+        &self.build_info
+    }
+
+    /// Creates a signature message used to prove knowledge of the author secret key
+    pub fn create_signature_message(&self, public_nonce: &CompressedPublicKey) -> [u8; 64] {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
+            .chain(&self.author_public_key)
+            .chain(public_nonce)
+            .chain(&self.template_name)
+            .chain(&self.template_version)
+            .chain(&self.template_type)
+            .chain(&self.build_info)
+            .chain(&self.binary_sha)
+            .chain(&self.binary_url)
+            .finalize()
+            .into()
+    }
+
+    pub fn sidechain_id_message(&self) -> [u8; 64] {
+        self.create_signature_message(self.author_signature.get_compressed_public_nonce())
+    }
+}
+
+// -------------------------------- TemplateType -------------------------------- //
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+pub enum TemplateType {
+    /// Indicates that the template is a WASM module
+    Wasm { abi_version: u16 },
+    /// A flow template
+    Flow,
+    /// A manifest template
+    Manifest,
+}
+
+// -------------------------------- BuildInfo -------------------------------- //
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+pub struct BuildInfo {
+    pub repo_url: MaxSizeString<255>,
+    pub commit_hash: MaxSizeBytes<32>,
+}

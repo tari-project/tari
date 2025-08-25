@@ -30,8 +30,8 @@ use tari_common_types::{
     types::{
         CompressedCommitment,
         CompressedPublicKey,
+        CompressedSignature,
         PrivateKey,
-        Signature,
         UncompressedPublicKey,
         UncompressedSignature,
     },
@@ -40,48 +40,44 @@ use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
     chain_storage::BlockchainDatabaseConfig,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    consensus::BaseConsensusManager,
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
-    proof_of_work::Difficulty,
     proto,
-    transactions::{
-        fee::Fee,
-        tari_amount::{uT, MicroMinotari, T},
-        test_helpers::{
-            create_wallet_output_with_data,
-            schema_to_transaction,
-            spend_utxos,
-            TestParams,
-            TransactionSchema,
-            UtxoTestParams,
-        },
-        transaction_components::{
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            OutputType,
-            RangeProofType,
-            Transaction,
-            TransactionKernel,
-            TransactionKernelVersion,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface, TxoStage},
-        CryptoFactories,
-    },
-    tx,
-    txn_schema,
-    validation::{
-        transaction::{
-            TransactionChainLinkedValidator,
-            TransactionFullValidator,
-            TransactionInternalConsistencyValidator,
-        },
-        ValidationError,
-    },
+    validation::transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
 };
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType, P2pConfig};
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
+use tari_transaction_components::{
+    consensus::ConsensusConstantsBuilder,
+    crypto_factories::CryptoFactories,
+    fee::Fee,
+    key_manager::{TransactionKeyManagerInterface, TxoStage},
+    tari_amount::{uT, MicroMinotari, T},
+    tari_proof_of_work::Difficulty,
+    test_helpers::{
+        create_wallet_output_with_data,
+        schema_to_transaction,
+        spend_utxos,
+        TestParams,
+        TransactionSchema,
+        UtxoTestParams,
+    },
+    transaction_components::{
+        KernelBuilder,
+        KernelFeatures,
+        OutputFeatures,
+        OutputType,
+        RangeProofType,
+        Transaction,
+        TransactionKernel,
+        TransactionKernelVersion,
+    },
+    tx,
+    txn_schema,
+    validation::{transaction::TransactionInternalConsistencyValidator, AggregatedBodyValidationError},
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tempfile::tempdir;
 
 use crate::helpers::{
@@ -1055,7 +1051,7 @@ async fn receive_and_propagate_transaction() {
         .build();
     let key_manager = create_memory_db_key_manager().unwrap();
     let (block0, utxo) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManager::builder(network)
+    let consensus_manager = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build()
@@ -1233,7 +1229,7 @@ async fn consensus_validation_large_tx() {
         .unwrap();
     let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
-            .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap()
             .to_public_key()
@@ -1258,7 +1254,10 @@ async fn consensus_validation_large_tx() {
         .unwrap();
         pub_excess = pub_excess +
             key_manager
-                .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &test_params.kernel_nonce_key_id)
+                .get_txo_kernel_signature_excess_with_offset(
+                    &output.commitment_mask_key_id,
+                    &test_params.kernel_nonce_key_id,
+                )
                 .await
                 .unwrap()
                 .to_public_key()
@@ -1279,12 +1278,12 @@ async fn consensus_validation_large_tx() {
         outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
         offset = &offset +
             &key_manager
-                .get_txo_private_kernel_offset(&output.spending_key_id, &nonce_id)
+                .get_txo_private_kernel_offset(&output.commitment_mask_key_id, &nonce_id)
                 .await
                 .unwrap();
         let sig = key_manager
             .get_partial_txo_kernel_signature(
-                &output.spending_key_id,
+                &output.commitment_mask_key_id,
                 &nonce_id,
                 &CompressedPublicKey::new_from_pk(pub_nonce.clone()),
                 &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1300,12 +1299,12 @@ async fn consensus_validation_large_tx() {
 
     offset = &offset -
         &key_manager
-            .get_txo_private_kernel_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
+            .get_txo_private_kernel_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
-            &input.spending_key_id,
+            &input.commitment_mask_key_id,
             &input_kernel_nonce.key_id,
             &CompressedPublicKey::new_from_pk(pub_nonce),
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1323,7 +1322,7 @@ async fn consensus_validation_large_tx() {
         .with_lock_height(0)
         .with_excess(&CompressedCommitment::from_public_key(pub_excess))
         .with_features(KernelFeatures::empty())
-        .with_signature(Signature::new_from_schnorr(agg_sig))
+        .with_signature(CompressedSignature::new_from_schnorr(agg_sig))
         .build()
         .unwrap();
     let kernels = vec![kernel];
@@ -1339,9 +1338,10 @@ async fn consensus_validation_large_tx() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager.clone(), factories);
+    let validator =
+        TransactionInternalConsistencyValidator::new(true, consensus_manager.consensus_manager(), factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
-    assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
+    assert!(matches!(err, AggregatedBodyValidationError::BlockTooLarge { .. }));
 
     let weighting = constants.transaction_weight_params();
     let weight = tx.calculate_weight(weighting).expect("Failed to calculate weight");
@@ -1399,7 +1399,7 @@ async fn validation_reject_min_fee() {
         .unwrap();
     let mut pub_excess = UncompressedPublicKey::default() -
         key_manager
-            .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
+            .get_txo_kernel_signature_excess_with_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap()
             .to_public_key()
@@ -1419,7 +1419,7 @@ async fn validation_reject_min_fee() {
     pub_excess = pub_excess +
         key_manager
             .get_txo_kernel_signature_excess_with_offset(
-                &wallet_output.spending_key_id,
+                &wallet_output.commitment_mask_key_id,
                 &test_params.kernel_nonce_key_id,
             )
             .await
@@ -1439,12 +1439,12 @@ async fn validation_reject_min_fee() {
     let tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
     offset = &offset +
         &key_manager
-            .get_txo_private_kernel_offset(&wallet_output.spending_key_id, &test_params.kernel_nonce_key_id)
+            .get_txo_private_kernel_offset(&wallet_output.commitment_mask_key_id, &test_params.kernel_nonce_key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
-            &wallet_output.spending_key_id,
+            &wallet_output.commitment_mask_key_id,
             &test_params.kernel_nonce_key_id,
             &CompressedPublicKey::new_from_pk(pub_nonce.clone()),
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1459,12 +1459,12 @@ async fn validation_reject_min_fee() {
 
     offset = &offset -
         &key_manager
-            .get_txo_private_kernel_offset(&input.spending_key_id, &input_kernel_nonce.key_id)
+            .get_txo_private_kernel_offset(&input.commitment_mask_key_id, &input_kernel_nonce.key_id)
             .await
             .unwrap();
     let sig = key_manager
         .get_partial_txo_kernel_signature(
-            &input.spending_key_id,
+            &input.commitment_mask_key_id,
             &input_kernel_nonce.key_id,
             &CompressedPublicKey::new_from_pk(pub_nonce),
             &CompressedPublicKey::new_from_pk(pub_excess.clone()),
@@ -1482,7 +1482,7 @@ async fn validation_reject_min_fee() {
         .with_lock_height(0)
         .with_excess(&CompressedCommitment::from_public_key(pub_excess))
         .with_features(KernelFeatures::empty())
-        .with_signature(Signature::new_from_schnorr(agg_sig))
+        .with_signature(CompressedSignature::new_from_schnorr(agg_sig))
         .build()
         .unwrap();
     let kernels = vec![kernel];
@@ -1495,7 +1495,8 @@ async fn validation_reject_min_fee() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager.clone(), factories);
+    let validator =
+        TransactionInternalConsistencyValidator::new(true, consensus_manager.consensus_manager(), factories);
     validator.validate(&tx, None, None, u64::MAX).unwrap();
     let response = mempool.insert(Arc::new(tx)).await.unwrap();
     // make sure the tx was not accepted into the mempool
@@ -1507,7 +1508,7 @@ async fn validation_reject_min_fee() {
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 async fn consensus_validation_versions() {
-    use tari_core::transactions::transaction_components::{
+    use tari_transaction_components::transaction_components::{
         OutputFeaturesVersion,
         TransactionInputVersion,
         TransactionKernelVersion,
@@ -1601,7 +1602,11 @@ async fn consensus_validation_versions() {
     )
     .await
     .unwrap();
-    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, CryptoFactories::default());
+    let validator = TransactionInternalConsistencyValidator::new(
+        true,
+        consensus_manager.consensus_manager(),
+        CryptoFactories::default(),
+    );
     // Cases:
     // invalid input version
     let tx_schema = TransactionSchema {
@@ -1724,7 +1729,7 @@ async fn block_event_and_reorg_event_handling() {
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManager::builder(network)
+    let consensus_manager = BaseConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
         .build()

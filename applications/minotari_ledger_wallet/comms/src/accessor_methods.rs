@@ -30,7 +30,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
-    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey, Signature},
+    types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
 };
 use tari_crypto::{dhke::DiffieHellmanSharedSecret, ristretto::RistrettoPublicKey};
 use tari_script::CompressedCheckSigSchnorrSignature;
@@ -479,7 +479,7 @@ pub fn ledger_get_raw_schnorr_signature(
     nonce_index: u64,
     nonce_branch: TransactionKeyManagerBranch,
     challenge: &[u8; 64],
-) -> Result<Signature, LedgerDeviceError> {
+) -> Result<CompressedSignature, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
         "ledger_get_raw_schnorr_signature: account '{}', pk index '{}', pk branch '{:?}', nonce index '{}', \
@@ -505,7 +505,7 @@ pub fn ledger_get_raw_schnorr_signature(
                 )));
             }
 
-            let signature = Signature::new(
+            let signature = CompressedSignature::new(
                 CompressedPublicKey::from_canonical_bytes(result.data().get(1..33).expect("Index should exist"))?,
                 PrivateKey::from_canonical_bytes(result.data().get(33..65).expect("Index should exist"))?,
             );

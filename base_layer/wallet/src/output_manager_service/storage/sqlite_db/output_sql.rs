@@ -35,7 +35,10 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, FixedHash, PrivateKey, RangeProof},
 };
-use tari_core::transactions::{
+use tari_crypto::tari_utilities::ByteArray;
+use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
     tari_amount::MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
@@ -45,10 +48,7 @@ use tari_core::transactions::{
         TransactionOutputVersion,
         WalletOutput,
     },
-    transaction_key_manager::TariKeyId,
 };
-use tari_crypto::tari_utilities::ByteArray;
-use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hex::Hex;
 
 use crate::{

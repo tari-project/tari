@@ -29,6 +29,7 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
+use tari_transaction_components::{aggregated_body::AggregateBody, BanPeriod};
 use tari_utilities::hex::Hex;
 
 use super::error::BlockSyncError;
@@ -39,12 +40,10 @@ use crate::{
     },
     blocks::{Block, ChainBlock},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    common::{rolling_avg::RollingAverageTime, BanPeriod},
+    common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,
-    transactions::aggregated_body::AggregateBody,
     validation::{BlockBodyValidator, ValidationError},
 };
-
 const LOG_TARGET: &str = "c::bn::block_sync";
 
 const MAX_LATENCY_INCREASES: usize = 5;

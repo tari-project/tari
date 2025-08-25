@@ -24,13 +24,17 @@ use std::cmp;
 
 use log::warn;
 use tari_common_types::types::FixedHash;
+use tari_transaction_components::{
+    consensus::ConsensusConstants,
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError, ProofOfWork},
+};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
-    consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError, ProofOfWork},
+    consensus::BaseConsensusManager,
+    proof_of_work::AchievedTargetDifficulty,
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
         DifficultyCalculator,
@@ -42,13 +46,13 @@ pub const LOG_TARGET: &str = "c::val::header_full_validator";
 
 #[derive(Clone)]
 pub struct HeaderFullValidator {
-    rules: ConsensusManager,
+    rules: BaseConsensusManager,
     difficulty_calculator: DifficultyCalculator,
     gen_hash: FixedHash,
 }
 
 impl HeaderFullValidator {
-    pub fn new(rules: ConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
+    pub fn new(rules: BaseConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
         let gen_hash = *rules.get_genesis_block().hash();
         Self {
             rules,
@@ -160,7 +164,7 @@ fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Res
 /// This function tests that the block timestamp is less than the FTL
 pub fn check_timestamp_ftl(
     block_header: &BlockHeader,
-    consensus_manager: &ConsensusManager,
+    consensus_manager: &BaseConsensusManager,
 ) -> Result<(), ValidationError> {
     if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
         warn!(

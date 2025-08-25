@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
-use tari_core::transactions::{
+use tari_transaction_components::{
+    key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
     transaction_builder::OutputPair,
-    transaction_key_manager::{error::KeyManagerServiceError, TariKeyId, TransactionKeyManagerInterface},
 };
 use tari_utilities::hex::{from_hex, Hex};
 
@@ -47,7 +47,7 @@ impl MarshalOutputPair {
             None => None,
         };
         let encrypted_output_commitment_mask =
-            MarshalOutputPair::encrypt_key(key_manager, &output_pair.output.spending_key_id).await?;
+            MarshalOutputPair::encrypt_key(key_manager, &output_pair.output.commitment_mask_key_id).await?;
 
         Ok(MarshalOutputPair {
             output_pair,
@@ -67,7 +67,7 @@ impl MarshalOutputPair {
             self.output_pair.sender_offset_key_id =
                 Some(MarshalOutputPair::import_encrypted_key(key_manager, sender_offset_key_id).await?);
         }
-        self.output_pair.output.spending_key_id =
+        self.output_pair.output.commitment_mask_key_id =
             MarshalOutputPair::import_encrypted_key(key_manager, &self.encrypted_output_commitment_mask).await?;
         Ok(())
     }

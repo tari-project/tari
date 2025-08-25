@@ -18,9 +18,12 @@ use tari_core::{
         TxSubmissionResponse,
     },
     mempool::FeePerGramStat,
-    transactions::{tari_amount::MicroMinotari, transaction_components::TransactionOutput},
 };
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    transaction_components::{Transaction, TransactionOutput},
+};
 use tari_utilities::hex::Hex;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
@@ -399,10 +402,7 @@ impl BaseNodeWalletClient for Client {
         Ok(res.json::<Option<TransactionOutput>>().await?)
     }
 
-    async fn submit_transaction(
-        &self,
-        transaction: tari_core::transactions::transaction_components::Transaction,
-    ) -> Result<TxSubmissionResponse, anyhow::Error> {
+    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {server_address}");
         let target_url = server_address.join("/json_rpc")?;

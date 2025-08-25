@@ -24,30 +24,30 @@ use std::collections::HashSet;
 
 use log::*;
 use tari_common_types::epoch::VnEpoch;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::ConsensusConstants,
+    transaction_components::{
+        OutputType,
+        SideChainId,
+        SpentOutput,
+        TransactionError,
+        TransactionInput,
+        ValidatorNodeRegistration,
+    },
+    validation::helpers::{check_tari_encrypted_data_byte_size, check_tari_script_byte_size},
+};
 use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::BlockHeader,
     chain_storage::BlockchainBackend,
-    consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{
-        aggregated_body::AggregateBody,
-        transaction_components::{
-            OutputType,
-            SideChainId,
-            SpentOutput,
-            TransactionError,
-            TransactionInput,
-            ValidatorNodeRegistration,
-        },
-    },
+    consensus::BaseConsensusManager,
     validation::{
         helpers::{
             check_eviction_proof,
             check_input_is_utxo,
             check_not_duplicate_txo,
-            check_tari_encrypted_data_byte_size,
-            check_tari_script_byte_size,
             check_validator_node_exit,
             check_validator_node_registration,
         },
@@ -60,11 +60,11 @@ pub const LOG_TARGET: &str = "c::val::aggregate_body_chain_linked_validator";
 /// This validator assumes that the body was already validated for internal consistency and it will skip that step.
 #[derive(Clone)]
 pub struct AggregateBodyChainLinkedValidator {
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseConsensusManager,
 }
 
 impl AggregateBodyChainLinkedValidator {
-    pub fn new(consensus_manager: ConsensusManager) -> Self {
+    pub fn new(consensus_manager: BaseConsensusManager) -> Self {
         Self { consensus_manager }
     }
 

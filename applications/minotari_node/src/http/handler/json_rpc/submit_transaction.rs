@@ -31,8 +31,8 @@ use tari_core::{
     },
     chain_storage::BlockchainBackend,
     mempool::{service::MempoolHandle, TxStorageResponse},
-    transactions::transaction_components::Transaction,
 };
+use tari_transaction_components::transaction_components::Transaction;
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc::submit_transaction";
 

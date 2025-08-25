@@ -30,6 +30,11 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
+use tari_transaction_components::{
+    tari_amount::MicroMinotari,
+    tari_proof_of_work::Difficulty,
+    transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
+};
 
 use crate::{
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
@@ -40,13 +45,7 @@ use crate::{
         TemplateRegistrationEntry,
         ValidatorNodeRegistrationInfo,
     },
-    proof_of_work::Difficulty,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
-    },
 };
-
 /// API Response enum
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]

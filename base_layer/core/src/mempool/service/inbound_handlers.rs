@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_comms::peer_manager::NodeId;
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
 #[cfg(feature = "metrics")]
@@ -36,7 +37,6 @@ use crate::{
         Mempool,
         TxStorageResponse,
     },
-    transactions::transaction_components::Transaction,
 };
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";

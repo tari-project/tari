@@ -25,8 +25,8 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{then, when};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use tari_common_types::tari_address::TariAddress;
-use tari_core::transactions::transaction_components::memo_field::{MemoField, TxType};
 use tari_integration_tests::{wallet_ffi::get_mnemonic_word_list_for_language, TariWorld};
+use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
 use tari_utilities::hex::Hex;
 
 use crate::steps::cucumber_steps_log;

@@ -30,9 +30,9 @@ use minotari_wallet::output_manager_service::{
     storage::models::DbWalletOutput,
 };
 use tari_common_types::transaction::TxId;
-use tari_core::transactions::transaction_key_manager::MemoryDbKeyManager;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_key_manager::MemoryDbKeyManager;
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 
 const LOG_TARGET: &str = "wallet::output_manager_service_mock";
