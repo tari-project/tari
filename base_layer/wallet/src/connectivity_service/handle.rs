@@ -116,7 +116,7 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
         let status = if let Some(NodeIdPublicKeyPair { node_id, public_key }) = client.is_online_with_id().await {
             let url = client.get_address().await;
             if let Some(latency) = client.get_last_request_latency().await {
-                let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(UNKNOWN_LATENCY_MS);
+                let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
                 if latency >= DEGRADED_LATENCY_THRESHOLD {
                     ExtendedOnlineStatus::Degraded {
                         latency_ms,

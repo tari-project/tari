@@ -645,7 +645,8 @@ where
             "Calling Connectivity Status changed callback function"
         );
         let latency = match status {
-            ExtendedOnlineStatus::Connecting | ExtendedOnlineStatus::Offline => UNKNOWN_LATENCY_MS,
+            ExtendedOnlineStatus::Connecting => UNKNOWN_LATENCY_MS,
+            ExtendedOnlineStatus::Offline => u64::MAX,
             ExtendedOnlineStatus::Online { latency_ms, .. } | ExtendedOnlineStatus::Degraded { latency_ms, .. } => {
                 latency_ms
             },

@@ -1771,7 +1771,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let (status, latency) = match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
             ExtendedOnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS),
             ExtendedOnlineStatus::Online { latency_ms, .. } => (ConnectivityStatus::Online(1), latency_ms),
-            ExtendedOnlineStatus::Offline => (ConnectivityStatus::Offline, UNKNOWN_LATENCY_MS),
+            ExtendedOnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX),
             ExtendedOnlineStatus::Degraded { latency_ms, .. } => (ConnectivityStatus::Degraded(1), latency_ms),
         };
         let mut avg_latencies = self.avg_latencies_ms.lock().await;
@@ -1794,9 +1794,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let url = self.wallet.wallet_connectivity.get_address().await;
         let (is_online, last_latency, node_id, public_key) =
             match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
-                ExtendedOnlineStatus::Connecting | ExtendedOnlineStatus::Offline => (
+                ExtendedOnlineStatus::Connecting => (
                     false,
                     UNKNOWN_LATENCY_MS,
+                    NodeId::default().to_hex(),
+                    CommsPublicKey::default().to_hex(),
+                ),
+                ExtendedOnlineStatus::Offline => (
+                    false,
+                    u64::MAX,
                     NodeId::default().to_hex(),
                     CommsPublicKey::default().to_hex(),
                 ),
