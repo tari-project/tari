@@ -250,9 +250,7 @@ struct BaseConsensusManagerInner {
 pub struct BaseConsensusManagerBuilder {
     consensus_manager_builder: ConsensusManagerBuilder,
     /// This is can only used be used if the network is localnet
-    #[cfg(feature = "base_node")]
     gen_block: Option<ChainBlock>,
-    #[cfg(feature = "base_node")]
     chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
 

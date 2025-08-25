@@ -12200,27 +12200,23 @@ mod test {
 
     #[tokio::test]
     pub async fn test_create_external_utxo() {
-        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
             let key_manager = create_memory_db_key_manager().await.unwrap();
-            let utxo_1 = runtime
-                .block_on(create_wallet_output_with_data(
+            let utxo_1 = create_wallet_output_with_data(
                     script!(Nop).unwrap(),
                     OutputFeatures::default(),
-                    &runtime.block_on(TestParams::new(&key_manager)),
+                    &TestParams::new(&key_manager).await,
                     MicroMinotari(1234u64),
                     &key_manager,
-                ))
+                ).await
                 .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.commitment_mask_key_id))
+            let spending_key =key_manager.get_private_key(&utxo_1.commitment_mask_key_id).await
                 .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await
                 .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let range_proof_ptr = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
@@ -12569,27 +12565,23 @@ mod test {
 
     #[tokio::test]
     pub async fn test_utxo_json() {
-        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
             let key_manager = create_memory_db_key_manager().await.unwrap();
-            let utxo_1 = runtime
-                .block_on(create_wallet_output_with_data(
+            let utxo_1 = create_wallet_output_with_data(
                     script!(Nop).unwrap(),
                     OutputFeatures::default(),
-                    &runtime.block_on(TestParams::new(&key_manager)),
+                    &TestParams::new(&key_manager).await,
                     MicroMinotari(1234u64),
                     &key_manager,
-                ))
+                ).await
                 .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.commitment_mask_key_id))
+            let spending_key = key_manager.get_private_key(&utxo_1.commitment_mask_key_id).await
                 .unwrap();
-            let script_private_key = runtime
-                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await
                 .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let proof_ptr_1 = Box::into_raw(Box::new(utxo_1.range_proof.clone().unwrap_or_default()));
