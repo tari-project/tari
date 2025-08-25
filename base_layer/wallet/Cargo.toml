@@ -18,7 +18,6 @@ tari_common_sqlite = { workspace = true }
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
-tari_contacts = { workspace = true }
 tari_crypto = { workspace = true }
 tari_max_size = { workspace = true }
 tari_key_manager = { workspace = true, features = ["key_manager_service"] }

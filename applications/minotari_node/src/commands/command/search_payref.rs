@@ -1,5 +1,4 @@
-//  Copyright 2022 The Tari Project
-//  SPDX-License-Identifier: BSD-3-Clause
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,36 +20,47 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::{DateTime, Local};
-use tari_contacts::contacts_service::types::Contact;
+use anyhow::Error;
+use async_trait::async_trait;
+use clap::Parser;
+use tari_common_types::types::FixedHash;
+use tari_utilities::hex::Hex;
 
-#[derive(Debug, Clone)]
-pub struct UiContact {
-    pub alias: String,
-    pub address: String,
-    pub emoji_id: String,
-    pub last_seen: String,
-    pub online_status: String,
+use super::{CommandContext, HandleCommand};
+use crate::commands::parser::FromHex;
+
+/// This will search the main chain for the utxo.
+/// If the utxo is found, it will print out
+/// the block it was found in.
+#[derive(Debug, Parser)]
+pub struct Args {
+    /// hex of commitment of the utxo
+    payref: FromHex<FixedHash>,
 }
 
-impl UiContact {
-    pub fn with_online_status(mut self, online_status: String) -> Self {
-        self.online_status = online_status;
-        self
+#[async_trait]
+impl HandleCommand<Args> for CommandContext {
+    async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
+        self.search_payref(args.payref.0).await
     }
 }
 
-impl From<Contact> for UiContact {
-    fn from(c: Contact) -> Self {
-        Self {
-            alias: c.alias,
-            address: c.address.to_base58(),
-            emoji_id: c.address.to_emoji_string(),
-            last_seen: match c.last_seen {
-                Some(val) => DateTime::<Local>::from(val).format("%m-%dT%H:%M").to_string(),
-                None => "".to_string(),
-            },
-            online_status: "".to_string(),
+impl CommandContext {
+    /// Function to process the search utxo command
+    pub async fn search_payref(&mut self, payref: FixedHash) -> Result<(), Error> {
+        let mined_info = self.node_service.fetch_mined_info_by_payref(&payref).await?;
+        if mined_info.output.is_none() {
+            println!("No output found for {}", payref);
+            return Ok(());
         }
+        println!(
+            "Found output for payref, commitment: {}",
+            mined_info.output.as_ref().unwrap().output.commitment().to_hex()
+        );
+
+        println!("---- Mined info ----");
+        println!("{mined_info}");
+
+        Ok(())
     }
 }

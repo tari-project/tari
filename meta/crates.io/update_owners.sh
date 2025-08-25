@@ -40,7 +40,6 @@ package_group_map["tari_protobuf_build"]="leads"
 package_group_map["tari_script"]="leads"
 package_group_map["tari_features"]="leads"
 package_group_map["tari_comms_rpc_macros"]="leads"
-package_group_map["tari_contacts"]="leads"
 package_group_map["tari_service_framework"]="leads"
 
 # Tari/DAN crates and libraries

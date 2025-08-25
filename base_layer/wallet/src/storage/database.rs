@@ -40,7 +40,7 @@ use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlo
 
 const LOG_TARGET: &str = "wallet::database";
 
-/// This trait defines the functionality that a database backend need to provide for the Contacts Service
+/// This trait defines the functionality that a database backend need
 pub trait WalletBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
