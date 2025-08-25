@@ -57,7 +57,7 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 
 use crate::blocks::BlocksHashDomain;
-#[cfg(feature = "base_node")]
+
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 #[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
@@ -180,7 +180,7 @@ impl BlockHeader {
         }
     }
 
-    #[cfg(feature = "base_node")]
+
     pub fn into_builder(self) -> BlockBuilder {
         BlockBuilder::new(self.version).with_header(self)
     }
@@ -276,7 +276,7 @@ impl BlockHeader {
     }
 }
 
-#[cfg(feature = "base_node")]
+
 impl From<NewBlockHeaderTemplate> for BlockHeader {
     fn from(header_template: NewBlockHeaderTemplate) -> Self {
         Self {

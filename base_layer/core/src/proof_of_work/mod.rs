@@ -25,38 +25,35 @@ pub(crate) mod accumulated_difficulty;
 pub use accumulated_difficulty::AccumulatedDifficulty;
 
 /// Crates for proof of work monero_rx
-#[cfg(feature = "base_node")]
+
 pub mod monero_rx;
-#[cfg(feature = "base_node")]
+
 pub use monero_rx::{monero_randomx_difficulty, tari_randomx_difficulty};
 
 /// Crates for proof of work sha3_pow
-#[cfg(feature = "base_node")]
+
 mod sha3x_pow;
-#[cfg(feature = "base_node")]
 pub use sha3x_pow::sha3x_difficulty;
-#[cfg(all(test, feature = "base_node"))]
-pub use sha3x_pow::test as sha3x_test;
 
 /// Crates for proof of work target_difficulty
 mod target_difficulty;
 pub use target_difficulty::AchievedTargetDifficulty;
 
 /// Crates for proof of work target_difficulty_window
-#[cfg(feature = "base_node")]
+
 mod target_difficulty_window;
-#[cfg(feature = "base_node")]
+
 pub use target_difficulty_window::TargetDifficultyWindow;
 
 /// Crates for proof of work lwma_diff
 pub mod lwma_diff;
 
 /// Crates for proof of work randomx_factory
-#[cfg(feature = "base_node")]
+
 pub mod randomx_factory;
 
-#[cfg(feature = "base_node")]
+
 pub mod siphash;
 
-#[cfg(feature = "base_node")]
+
 pub mod cuckaroo_pow;

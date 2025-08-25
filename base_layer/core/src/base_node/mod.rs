@@ -32,39 +32,36 @@
 //! More details about the implementation are presented in
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
-#[cfg(feature = "base_node")]
+
 pub mod chain_metadata_service;
 
-#[cfg(feature = "base_node")]
+
 pub mod comms_interface;
-#[cfg(feature = "base_node")]
+
 pub use comms_interface::LocalNodeCommsInterface;
 #[cfg(feature = "metrics")]
 mod metrics;
 
-#[cfg(feature = "base_node")]
+
 pub mod service;
 
-#[cfg(feature = "base_node")]
+
 pub mod state_machine_service;
-#[cfg(feature = "base_node")]
+
 pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig, StateMachineHandle};
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod sync;
 
-#[cfg(feature = "base_node")]
+
 pub use sync::{
     rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService},
     BlockchainSyncConfig,
     SyncValidators,
 };
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod proto;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod rpc;
 
-#[cfg(feature = "base_node")]
+
 pub mod tari_pulse_service;

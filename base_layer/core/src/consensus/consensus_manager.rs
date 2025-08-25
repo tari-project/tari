@@ -36,7 +36,7 @@ use tari_transaction_components::{
     transaction_components::TransactionKernel,
 };
 
-#[cfg(feature = "base_node")]
+
 use crate::{
     blocks::pre_mine::pre_mine_spendable_at_height,
     blocks::ChainBlock,

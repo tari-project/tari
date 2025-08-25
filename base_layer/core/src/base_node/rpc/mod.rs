@@ -1,13 +1,13 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
-#[cfg(feature = "base_node")]
+
 mod service;
-#[cfg(feature = "base_node")]
+
 pub mod sync_utxos_by_block_task;
-#[cfg(feature = "base_node")]
+
 pub use service::BaseNodeWalletRpcService;
 
-#[cfg(feature = "base_node")]
+
 pub mod query_service;
 
 use std::{error::Error, fmt::Debug};
@@ -15,10 +15,10 @@ use std::{error::Error, fmt::Debug};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 use tari_transaction_components::rpc::models;
-#[cfg(feature = "base_node")]
+
 use url::Url;
 
-#[cfg(feature = "base_node")]
+
 use crate::base_node::StateMachineHandle;
 use crate::proto::{
     self,
@@ -42,7 +42,7 @@ use crate::proto::{
     },
     types::{Signature, Transaction},
 };
-#[cfg(feature = "base_node")]
+
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
@@ -150,7 +150,7 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus>;
 }
 
-#[cfg(feature = "base_node")]
+
 pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,

@@ -20,18 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
 use tari_max_size::MaxSizeVec;
 
-#[cfg(feature = "base_node")]
 pub mod rolling_avg;
-#[cfg(feature = "base_node")]
 pub mod rolling_vec;
-#[cfg(feature = "base_node")]
 pub(crate) mod waiting_requests;
 
 /// AuxChainHashes is a vector of limited size
-#[cfg(feature = "base_node")]
 pub type AuxChainHashes = MaxSizeVec<monero::Hash, 128>;
 
 pub type RequestKey = u64;

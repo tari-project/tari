@@ -9,36 +9,23 @@ license.workspace = true
 
 
 [features]
-default = ["base_node"]
-transactions = []
-mempool_proto = []
-base_node = [
-    "tari_mmr",
-    "transactions",
-    "mempool_proto",
-    "base_node_proto",
-    "monero",
-    "randomx-rs",
-    "tari_comms/rpc",
-]
-base_node_proto = ["tari_comms/rpc"]
-benches = ["base_node"]
+default = []
+benches = []
 metrics = ["tari_metrics"]
 sqlite_bundled = ["tari_common_sqlite/bundled"]
-ledger = [ "tari_transaction_components/ledger", "tari_transaction_key_manager/ledger"]
 
 [dependencies]
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_common_sqlite = { workspace = true }
-tari_comms = { workspace = true }
+tari_comms = { workspace = true , features = ["rpc"]}
 tari_comms_dht = { workspace = true }
 tari_comms_rpc_macros = { workspace = true }
 tari_crypto = { workspace = true, features = ["borsh"] }
 tari_hashing = { workspace = true }
 tari_max_size = { workspace = true }
 tari_metrics = { workspace = true, optional = true }
-tari_mmr = { workspace = true, optional = true }
+tari_mmr = { workspace = true}
 tari_p2p = { workspace = true }
 tari_script = { workspace = true }
 tari_sidechain = { workspace = true }
@@ -67,11 +54,11 @@ integer-encoding = "3.0"
 jmt = { version = "0.11.0", features = ["mocks"] }
 lmdb-zero = "0.4.4"
 log = "0.4"
-monero = { version = "0.21.0", features = ["serde-crate"], optional = true }
+monero = { version = "0.21.0", features = ["serde-crate"] }
 once_cell = "1.8.0"
 prost = "0.13.3"
 rand = "0.8"
-randomx-rs = { version = "1.4", optional = true }
+randomx-rs = { version = "1.4" }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
 serde_valid = "1.0.5"

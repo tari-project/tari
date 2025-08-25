@@ -20,33 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
+
 mod error;
-#[cfg(feature = "base_node")]
+
 pub use error::MempoolServiceError;
 
-#[cfg(feature = "base_node")]
+
 mod inbound_handlers;
 
-#[cfg(feature = "base_node")]
+
 mod initializer;
-#[cfg(feature = "base_node")]
+
 pub use initializer::MempoolServiceInitializer;
 
-#[cfg(feature = "base_node")]
+
 mod local_service;
-#[cfg(feature = "base_node")]
+
 pub use local_service::LocalMempoolService;
 
-#[cfg(feature = "base_node")]
+
 mod outbound_interface;
-#[cfg(feature = "base_node")]
+
 pub use outbound_interface::OutboundMempoolServiceInterface;
 
 #[allow(clippy::module_inception)]
-#[cfg(feature = "base_node")]
+
 mod service;
-#[cfg(feature = "base_node")]
+
 pub use service::MempoolService;
 
 mod request;
@@ -55,7 +55,7 @@ pub use request::{MempoolRequest, MempoolServiceRequest};
 mod response;
 pub use response::{MempoolResponse, MempoolServiceResponse};
 
-#[cfg(feature = "base_node")]
+
 mod handle;
-#[cfg(feature = "base_node")]
+
 pub use handle::MempoolHandle;

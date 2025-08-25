@@ -15,10 +15,7 @@ tari_comms = { workspace = true, features = ["rpc"] }
 tari_common_types = { workspace = true }
 tari_transaction_components = { workspace = true }
 tari_comms_dht = { workspace = true }
-tari_core = { workspace = true, default-features = false, features = [
-    "transactions",
-    "base_node",
-] }
+tari_core = { workspace = true }
 tari_libtor = { workspace = true, optional = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_storage = { workspace = true }
