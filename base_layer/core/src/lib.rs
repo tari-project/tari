@@ -42,9 +42,6 @@ pub mod proto;
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
 
-#[cfg(feature = "transactions")]
-pub mod transactions;
-
 mod common;
 
 #[cfg(feature = "base_node")]

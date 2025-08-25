@@ -12,7 +12,7 @@ minotari_app_utilities = { workspace = true }
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
-tari_transaction_components = { workspace = true, features = ["ledger"] }
+tari_transaction_components = { workspace = true }
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_core = { workspace = true, default-features = false, features = [
@@ -83,7 +83,7 @@ tari_features = { workspace = true }
 [features]
 default = ["libtor", "ledger", "grpc"]
 grpc = []
-ledger = ["minotari_ledger_wallet_comms", "minotari_wallet/ledger", "tari_common_types/ledger"]
+ledger = ["minotari_ledger_wallet_comms", "minotari_wallet/ledger", "tari_transaction_components/ledger"]
 libtor = ["tari_libtor"]
 # If you are doing heap profiling, use 'dhat-heap' and enable debug symbols:
 #   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --bin minotari_console_wallet --features=dhat-heap            ...(Linux)

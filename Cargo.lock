@@ -4542,7 +4542,6 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_core",
  "tari_crypto",
  "tari_features",
  "tari_p2p",

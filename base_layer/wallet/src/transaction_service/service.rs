@@ -29,7 +29,7 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use digest::Digest;
-use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
+use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::rngs::OsRng;
@@ -57,13 +57,11 @@ use tari_common_types::{
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::proto::base_node as base_node_proto;
 use tari_crypto::{
     keys::{PublicKey as pkt, SecretKey},
     tari_utilities::ByteArray,
 };
 use tari_max_size::MaxSizeString;
-use tari_p2p::domain_message::DomainMessage;
 use tari_script::{
     push_pubkey_script,
     script,
@@ -156,16 +154,14 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 /// recipient
 /// `pending_inbound_transactions` - List of transaction protocols that have been received and responded to.
 /// `completed_transaction` - List of sent transactions that have been responded to and are completed.
-pub struct TransactionService<BNResponseStream, TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface> {
+pub struct TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface> {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
-    base_node_response_stream: Option<BNResponseStream>,
     request_stream: Option<
         reply_channel::Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>,
     >,
     event_publisher: TransactionEventSender,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-    base_node_response_senders: HashMap<TxId, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     #[allow(clippy::type_complexity)]
     finalized_transaction_senders: HashMap<TxId, (TariAddress, Sender<(TariAddress, TxId, Transaction)>)>,
@@ -177,11 +173,9 @@ pub struct TransactionService<BNResponseStream, TBackend, TWalletBackend, TWalle
     validation_in_progress: Arc<Mutex<()>>,
 }
 
-impl<BNResponseStream, TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
-    TransactionService<BNResponseStream, TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
+impl<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionService<TBackend, TWalletBackend, TWalletConnectivity, TKeyManagerInterface>
 where
-    BNResponseStream:
-        Stream<Item = DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>>,
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -195,7 +189,6 @@ where
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
         >,
-        base_node_response_stream: BNResponseStream,
         output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
         core_key_manager_service: TKeyManagerInterface,
         outbound_message_service: OutboundMessageRequester,
@@ -256,11 +249,9 @@ where
         Ok(Self {
             config,
             db,
-            base_node_response_stream: Some(base_node_response_stream),
             request_stream: Some(request_stream),
             event_publisher,
             resources,
-            base_node_response_senders: HashMap::new(),
             send_transaction_cancellation_senders: HashMap::new(),
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
@@ -280,12 +271,6 @@ where
             .expect("Transaction Service initialized without request_stream")
             .fuse();
         pin_mut!(request_stream);
-        let base_node_response_stream = self
-            .base_node_response_stream
-            .take()
-            .expect("Transaction Service initialized without base_node_response_stream")
-            .fuse();
-        pin_mut!(base_node_response_stream);
 
         let mut shutdown = self.resources.shutdown_signal.clone();
 
@@ -350,23 +335,6 @@ where
                         start.elapsed().as_millis()
                     );
                 },
-                // Incoming messages from the Comms layer
-                Some(msg) = base_node_response_stream.next() => {
-                    let start = Instant::now();
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
-                    let _result = self.handle_base_node_response(inner_msg).await.map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
-                        NodeID: {}, Trace: {}", origin_public_key, e, self.resources.node_identity.node_id().short_str(),
-                        msg.dht_header.message_tag.as_value());
-                        e
-                    });
-                    trace!(target: LOG_TARGET,
-                        "Handling Base Node Response, Trace: {}, processed in {}ms",
-                        msg.dht_header.message_tag,
-                        start.elapsed().as_millis(),
-                    );
-                }
                 Some(join_result) = send_transaction_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Send Protocol for Transaction has ended with result {join_result:?}");
                     match join_result {
@@ -2877,37 +2845,6 @@ where
                     .send(Arc::new(TransactionEvent::Error(format!("{error:?}"))));
             },
         }
-    }
-
-    /// Handle an incoming basenode response message
-    pub async fn handle_base_node_response(
-        &mut self,
-        response: Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>,
-    ) -> Result<(), TransactionServiceError> {
-        if let Err(e) = response {
-            // Should we switch base nodes?
-            return Err(TransactionServiceError::InvalidMessageError(format!(
-                "Could not decode BaseNodeServiceResponse: {e:?}"
-            )));
-        }
-        let response = response.unwrap();
-        let sender = match self.base_node_response_senders.get_mut(&response.request_key.into()) {
-            None => {
-                trace!(
-                    target: LOG_TARGET,
-                    "Received Base Node response with unexpected key: {}. Not for this service",
-                    response.request_key
-                );
-                return Ok(());
-            },
-            Some((_, s)) => s,
-        };
-        sender
-            .send(response.clone())
-            .await
-            .map_err(|_| TransactionServiceError::ProtocolChannelError)?;
-
-        Ok(())
     }
 
     async fn set_power_mode(&mut self, mode: PowerMode) -> Result<(), TransactionServiceError> {

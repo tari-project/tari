@@ -25,6 +25,7 @@ base_node_proto = ["tari_comms/rpc"]
 benches = ["base_node"]
 metrics = ["tari_metrics"]
 sqlite_bundled = ["tari_common_sqlite/bundled"]
+ledger = [ "tari_transaction_components/ledger", "tari_transaction_key_manager/ledger"]
 
 [dependencies]
 tari_common = { workspace = true }
@@ -44,8 +45,8 @@ tari_sidechain = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
 tari_storage = { workspace = true }
-tari_transaction_components = { workspace = true, features = ["ledger"] }
-tari_transaction_key_manager = { workspace = true, features = ["ledger"] }
+tari_transaction_components = { workspace = true }
+tari_transaction_key_manager = { workspace = true}
 tari_test_utils = { workspace = true }
 tari_utilities = { workspace = true, features = ["borsh"] }
 

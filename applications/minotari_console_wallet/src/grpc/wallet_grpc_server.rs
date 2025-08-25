@@ -117,6 +117,7 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     error::WalletStorageError,
+    legacy_transaction_protocol::recipient::RecipientState,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
@@ -135,7 +136,6 @@ use tari_common_types::{
     types::{BlockHash, CompressedPublicKey, CompressedSignature, PrivateKey, SignatureWithDomain},
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey, CommsNode};
-use tari_core::transactions::legacy_transaction_protocol::recipient::RecipientState;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
