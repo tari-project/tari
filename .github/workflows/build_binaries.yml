@@ -24,7 +24,7 @@ env:
   ## Must be a JSon string
   TS_FILES: '["minotari_node","minotari_console_wallet","minotari_miner","minotari_merge_mining_proxy"]'
   TS_FEATURES: "default, safe"
-  TS_LIBRARIES: "minotari_mining_helper_ffi"
+  TS_LIBRARIES: ""
   TS_DESCRIPTION: "Tari Suite"
   TS_URL: "https://tari.com"
   # For debug builds
