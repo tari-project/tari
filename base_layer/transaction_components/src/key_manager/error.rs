@@ -103,7 +103,7 @@ impl From<ByteArrayError> for KeyManagerServiceError {
 }
 
 /// Error enum for the [KeyManagerStorage]
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum KeyManagerStorageError {
     #[error("Value not found")]
     ValueNotFound,
