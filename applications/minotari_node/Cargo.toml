@@ -13,7 +13,7 @@ minotari_app_utilities = { workspace = true }
 tari_common = { workspace = true }
 tari_comms = { workspace = true, features = ["rpc"] }
 tari_common_types = { workspace = true }
-tari_transaction_components = { workspace = true, features = ["ledger"] }
+tari_transaction_components = { workspace = true }
 tari_comms_dht = { workspace = true }
 tari_core = { workspace = true, default-features = false, features = [
     "transactions",

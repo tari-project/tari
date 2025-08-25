@@ -23,7 +23,6 @@ base_node = [
 ]
 base_node_proto = ["tari_comms/rpc"]
 benches = ["base_node"]
-ledger = []
 metrics = ["tari_metrics"]
 sqlite_bundled = ["tari_common_sqlite/bundled"]
 

@@ -116,6 +116,15 @@ impl ImportedKeySql {
             .first::<ImportedKeySql>(conn)
             .map_err(|_| KeyManagerStorageError::KeyManagerNotInitialized)
     }
+
+    pub fn key_exists(key: &CompressedPublicKey, conn: &mut SqliteConnection) -> Result<bool, KeyManagerStorageError> {
+        let count: i64 = imported_keys::table
+            .filter(imported_keys::public_key.eq(key.to_hex()))
+            .count()
+            .get_result(conn)
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
+        Ok(count > 0)
+    }
 }
 
 impl Encryptable<XChaCha20Poly1305> for ImportedKeySql {

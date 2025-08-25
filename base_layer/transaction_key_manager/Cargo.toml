@@ -8,12 +8,12 @@ repository.workspace = true
 license.workspace = true
 
 [features]
-ledger = []
+ledger = ["tari_common_types/ledger", "tari_transaction_components/ledger"]
 
 [dependencies]
 tari_common_types = { workspace = true}
 tari_common_sqlite = { workspace = true }
-tari_transaction_components = { workspace = true, features = ["ledger"] }
+tari_transaction_components = { workspace = true}
 tari_utilities = { workspace = true, features = ["borsh"] }
 
 async-trait = { version = "0.1.50" }

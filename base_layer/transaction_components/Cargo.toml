@@ -8,7 +8,7 @@ repository.workspace = true
 license.workspace = true
 
 [features]
-ledger = ["minotari_ledger_wallet_comms"]
+ledger = ["minotari_ledger_wallet_comms", "tari_common_types/ledger"]
 wasm = ["wasm-bindgen"]
 [dependencies]
 minotari_ledger_wallet_comms = { workspace = true, optional = true }
