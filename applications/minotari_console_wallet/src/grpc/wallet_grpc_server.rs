@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp::max,
     collections::VecDeque,
     convert::{TryFrom, TryInto},
     str::FromStr,
@@ -186,6 +187,8 @@ async fn send_transaction_event(
     }
 }
 
+const AVG_LATENCIES_CAPACITY: usize = 10;
+
 pub struct WalletGrpcServer {
     wallet: WalletSqlite,
     rules: ConsensusManager,
@@ -215,7 +218,7 @@ impl WalletGrpcServer {
             wallet,
             debouncer: Arc::new(Mutex::new(debouncer)),
             rules,
-            avg_latencies_ms: Arc::new(Mutex::new(VecDeque::with_capacity(10))),
+            avg_latencies_ms: Arc::new(Mutex::new(VecDeque::with_capacity(AVG_LATENCIES_CAPACITY))),
         }
     }
 
@@ -2460,8 +2463,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
 // Helper function to update the latency history and compute the average latency
 fn update_and_average_latency(latencies: &mut VecDeque<u64>, new_latency: u64) -> u64 {
     latencies.push_front(new_latency);
-    latencies.pop_back();
-    latencies.iter().sum::<u64>() / latencies.len() as u64
+    while latencies.len() > AVG_LATENCIES_CAPACITY {
+        latencies.pop_back();
+    }
+    latencies.iter().sum::<u64>() / max(latencies.len() as u64, 1)
 }
 
 async fn handle_completed_tx(
