@@ -28,6 +28,7 @@ use crate::http::{
         __path_get_header_by_height,
         __path_get_height_at_time,
         __path_get_tip_info,
+        __path_get_tip_info_with_id,
         __path_sync_utxos_by_block,
     },
 };
@@ -41,7 +42,13 @@ pub enum Error {
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(get_tip_info, get_header_by_height, get_height_at_time, sync_utxos_by_block))]
+#[openapi(paths(
+    get_tip_info,
+    get_tip_info_with_id,
+    get_header_by_height,
+    get_height_at_time,
+    sync_utxos_by_block
+))]
 pub struct ApiDoc;
 
 pub struct Server<S> {
@@ -66,6 +73,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
         let port = self.port;
         let router = Router::new()
             .route("/get_tip_info", get(handler::get_tip_info::handle::<B>))
+            .route("/get_tip_info_with_id", get(handler::get_tip_info_with_id::handle::<B>))
             .route("/get_header_by_height", get(handler::get_header_by_height::handle::<B>))
             .route("/get_height_at_time", get(handler::get_height_at_time::handle::<B>))
             .route("/get_utxos_mined_info", get(handler::get_utxos_mined_info::handle::<B>))

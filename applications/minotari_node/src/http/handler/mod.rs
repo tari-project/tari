@@ -10,6 +10,8 @@ pub mod get_utxos_by_block;
 pub use get_header_by_height::__path_handle as __path_get_header_by_height;
 pub mod get_tip_info;
 pub use get_tip_info::__path_handle as __path_get_tip_info;
+pub mod get_tip_info_with_id;
+pub use get_tip_info_with_id::__path_handle as __path_get_tip_info_with_id;
 pub mod get_height_at_time;
 pub use get_height_at_time::__path_handle as __path_get_height_at_time;
 pub mod sync_utxos_by_block;
