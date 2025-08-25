@@ -50,7 +50,7 @@ pub struct UtxoScannerService<
     TKeyManagerInterface,
     TWalletClientFactory: HttpClientFactory + Clone + Send + Sync + 'static,
 > {
-    pub(crate) resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
+    pub(crate) resources: UtxoScannerResources<TBackend, TWalletClientFactory, TKeyManagerInterface>,
     pub(crate) retry_limit: usize,
     pub(crate) mode: UtxoScannerMode,
     pub(crate) shutdown_signal: ShutdownSignal,
@@ -69,7 +69,7 @@ where
     pub fn new(
         retry_limit: usize,
         mode: UtxoScannerMode,
-        resources: UtxoScannerResources<TBackend, TWalletClientFactory>,
+        resources: UtxoScannerResources<TBackend, TWalletClientFactory, TKeyManagerInterface>,
         shutdown_signal: ShutdownSignal,
         scanning_interval: u64,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
@@ -163,11 +163,11 @@ where
 }
 
 #[derive(Clone)]
-pub struct UtxoScannerResources<TBackend, THttpClientFactory>
+pub struct UtxoScannerResources<TBackend, THttpClientFactory, TKeyManagerInterface>
 where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
 {
     pub(crate) db: WalletDatabase<TBackend>,
-    pub(crate) output_manager_service: OutputManagerHandle,
+    pub(crate) output_manager_service: OutputManagerHandle<TKeyManagerInterface>,
     pub(crate) transaction_service: TransactionServiceHandle,
     pub(crate) one_sided_tari_address: TariAddress,
     pub(crate) birthday_offset: u16,

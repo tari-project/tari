@@ -7432,7 +7432,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
     amount: c_ulonglong,
     commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
-    one_sided: bool,
     payment_id_string: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
@@ -7474,43 +7473,24 @@ pub unsafe extern "C" fn wallet_send_transaction(
         }
     };
 
-    if one_sided {
-        match (*wallet).runtime.block_on(
-            (*wallet)
-                .wallet
-                .transaction_service
-                .send_one_sided_to_stealth_address_transaction(
-                    (*destination).clone(),
-                    MicroMinotari::from(amount),
-                    selection_criteria,
-                    OutputFeatures::default(),
-                    MicroMinotari::from(fee_per_gram),
-                    payment_id,
-                ),
-        ) {
-            Ok(tx_id) => tx_id.as_u64(),
-            Err(e) => {
-                *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                0
-            },
-        }
-    } else {
-        match (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.send_transaction(
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .send_one_sided_to_stealth_address_transaction(
                 (*destination).clone(),
                 MicroMinotari::from(amount),
                 selection_criteria,
                 OutputFeatures::default(),
                 MicroMinotari::from(fee_per_gram),
                 payment_id,
-            )) {
-            Ok(tx_id) => tx_id.as_u64(),
-            Err(e) => {
-                *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                0
-            },
-        }
+            ),
+    ) {
+        Ok(tx_id) => tx_id.as_u64(),
+        Err(e) => {
+            *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            0
+        },
     }
 }
 

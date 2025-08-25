@@ -31,16 +31,17 @@ use crate::transactions::{
     transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
 
-//----------------------------------------  Transaction Builder   ----------------------------------------------------//
-pub struct TransactionBuilder {
+//----------------------------------------  Core Transaction Builder
+//---------------------------------------- ----------------------------------------------------//
+pub struct CoreTransactionBuilder {
     body: AggregateBody,
     offset: Option<PrivateKey>,
     script_offset: Option<PrivateKey>,
     reward: Option<MicroMinotari>,
 }
 
-impl TransactionBuilder {
-    /// Create an new empty TransactionBuilder
+impl CoreTransactionBuilder {
+    /// Create an new empty CoreTransactionBuilder
     pub fn new() -> Self {
         Self::default()
     }
@@ -105,7 +106,7 @@ impl TransactionBuilder {
     }
 }
 
-impl Default for TransactionBuilder {
+impl Default for CoreTransactionBuilder {
     fn default() -> Self {
         Self {
             offset: None,

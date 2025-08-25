@@ -30,8 +30,6 @@ use crate::transaction_service::error::{TransactionServiceError, TransactionServ
 
 pub mod check_faux_transaction_status;
 pub mod transaction_broadcast_protocol;
-pub mod transaction_receive_protocol;
-pub mod transaction_send_protocol;
 pub mod transaction_validation_protocol;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols";
