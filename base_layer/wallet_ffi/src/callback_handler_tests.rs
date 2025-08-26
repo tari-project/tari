@@ -38,7 +38,6 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus},
         types::{CompressedPublicKey, PrivateKey},
     };
-    
     use tari_crypto::keys::SecretKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
