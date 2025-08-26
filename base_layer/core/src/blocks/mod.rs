@@ -20,9 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 mod accumulated_data;
-
 
 pub use accumulated_data::{
     BlockAccumulatedData,
@@ -36,34 +34,12 @@ use tari_crypto::hash_domain;
 mod error;
 pub use error::BlockError;
 
-
-mod block;
-
-pub use block::{Block, BlockBuilder, BlockValidationError, NewBlock};
-
-mod block_header;
-pub use block_header::{BlockHeader, BlockHeaderValidationError};
-
-
 pub mod genesis_block;
 
-
 pub mod pre_mine;
-
 
 mod historical_block;
 
 pub use historical_block::HistoricalBlock;
-
-
-mod new_block_template;
-
-pub use new_block_template::NewBlockTemplate;
-
-
-mod new_blockheader_template;
-
-
-pub use new_blockheader_template::NewBlockHeaderTemplate;
 
 hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);

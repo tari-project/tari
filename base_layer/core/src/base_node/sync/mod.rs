@@ -20,39 +20,31 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 pub mod ban;
-
 
 mod config;
 
 pub use self::config::BlockchainSyncConfig;
 
-
 mod block_sync;
 
 pub use block_sync::{BlockSyncError, BlockSynchronizer};
-
 
 mod header_sync;
 
 pub use header_sync::{AttemptSyncResult, BlockHeaderSyncError, HeaderSyncStatus, HeaderSynchronizer};
 
-
 mod horizon_state_sync;
 
 pub use horizon_state_sync::{HorizonStateSynchronization, HorizonSyncError, HorizonSyncInfo, HorizonSyncStatus};
-
 
 mod hooks;
 
 pub mod rpc;
 
-
 mod sync_peer;
 
 pub use sync_peer::SyncPeer;
-
 
 mod validators;
 

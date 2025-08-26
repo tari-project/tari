@@ -32,6 +32,7 @@ use log::*;
 use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::commitment::HomomorphicCommitment;
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     transaction_components::{transaction_output::batch_verify_range_proofs, TransactionKernel, TransactionOutput},
     validation::{aggregate_body::validate_individual_output, helpers::validate_output_version},
@@ -51,7 +52,7 @@ use crate::{
         BlockchainSyncConfig,
         SyncPeer,
     },
-    blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
+    blocks::{ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
     common::rolling_avg::RollingAverageTime,
     consensus::BaseConsensusManager,

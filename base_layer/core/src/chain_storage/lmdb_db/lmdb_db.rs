@@ -127,6 +127,7 @@ use tari_common_types::{
         UncompressedCommitment,
     },
 };
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER_MB};
 use tari_transaction_components::{
@@ -159,15 +160,7 @@ use super::{
     stats_collector::{DatabaseStats, LMDBStatsCollector},
 };
 use crate::{
-    blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        UpdateBlockAccumulatedData,
-    },
+    blocks::{BlockAccumulatedData, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},

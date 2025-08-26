@@ -24,6 +24,7 @@ use std::collections::HashSet;
 
 use log::*;
 use tari_common_types::epoch::VnEpoch;
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
@@ -40,7 +41,6 @@ use tari_transaction_components::{
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::BlockHeader,
     chain_storage::BlockchainBackend,
     consensus::BaseConsensusManager,
     validation::{

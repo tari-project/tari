@@ -24,10 +24,8 @@ use std::convert::TryInto;
 
 use minotari_app_grpc::tari_rpc::BlockHeader as grpc_header;
 use tari_common_types::types::FixedHash;
-use tari_core::{
-    blocks::BlockHeader,
-    proof_of_work::{randomx_factory::RandomXFactory, sha3x_difficulty, tari_randomx_difficulty},
-};
+use tari_core::proof_of_work::{randomx_factory::RandomXFactory, sha3x_difficulty, tari_randomx_difficulty};
+use tari_node_components::blocks::BlockHeader;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::errors::MinerError;

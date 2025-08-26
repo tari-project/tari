@@ -28,13 +28,11 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedSignature, PrivateKey};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
-use crate::{
-    blocks::Block,
-    mempool::{shrink_hashmap::shrink_hashmap, MempoolError},
-};
+use crate::mempool::{shrink_hashmap::shrink_hashmap, MempoolError};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 

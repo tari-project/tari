@@ -30,6 +30,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedPublicKey, FixedHash, HashOutput, PrivateKey},
 };
+use tari_node_components::blocks::{Block, NewBlockTemplate};
 use tari_transaction_components::{
     tari_amount::MicroMinotari,
     tari_proof_of_work::Difficulty,
@@ -37,7 +38,7 @@ use tari_transaction_components::{
 };
 
 use crate::{
-    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    blocks::{ChainHeader, HistoricalBlock},
     chain_storage::{
         InputMinedInfo,
         MinedInfo,

@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    convert::TryFrom,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -35,6 +34,7 @@ use tari_comms::{
     protocol::rpc::{RpcClient, RpcError},
     PeerConnection,
 };
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
 
@@ -48,7 +48,7 @@ use crate::{
         BlockchainSyncConfig,
         SyncPeer,
     },
-    blocks::{BlockHeader, ChainBlock, ChainHeader},
+    blocks::{ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     common::rolling_avg::RollingAverageTime,
     consensus::BaseConsensusManager,

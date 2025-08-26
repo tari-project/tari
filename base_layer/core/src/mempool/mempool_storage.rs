@@ -24,6 +24,7 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
@@ -32,7 +33,6 @@ use tari_transaction_components::{
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::Block,
     consensus::BaseConsensusManager,
     mempool::{
         error::MempoolError,

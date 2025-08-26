@@ -20,31 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
 mod error;
 
 pub use error::MempoolServiceError;
 
-
 mod inbound_handlers;
-
 
 mod initializer;
 
 pub use initializer::MempoolServiceInitializer;
 
-
 mod local_service;
 
 pub use local_service::LocalMempoolService;
-
 
 mod outbound_interface;
 
 pub use outbound_interface::OutboundMempoolServiceInterface;
 
 #[allow(clippy::module_inception)]
-
 mod service;
 
 pub use service::MempoolService;
@@ -54,7 +48,6 @@ pub use request::{MempoolRequest, MempoolServiceRequest};
 
 mod response;
 pub use response::{MempoolResponse, MempoolServiceResponse};
-
 
 mod handle;
 

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,34 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Crates for proof of work difficulty
-pub(crate) mod accumulated_difficulty;
-pub use accumulated_difficulty::AccumulatedDifficulty;
+// This is the string used to derive the comms/spend key of the wallet
+pub mod blocks;
 
-/// Crates for proof of work monero_rx
-pub mod monero_rx;
-
-pub use monero_rx::{monero_randomx_difficulty, tari_randomx_difficulty};
-
-/// Crates for proof of work sha3_pow
-mod sha3x_pow;
-pub use sha3x_pow::sha3x_difficulty;
-
-/// Crates for proof of work target_difficulty
-mod target_difficulty;
-pub use target_difficulty::AchievedTargetDifficulty;
-
-/// Crates for proof of work target_difficulty_window
-mod target_difficulty_window;
-
-pub use target_difficulty_window::TargetDifficultyWindow;
-
-/// Crates for proof of work lwma_diff
-pub mod lwma_diff;
-
-/// Crates for proof of work randomx_factory
-pub mod randomx_factory;
-
-pub mod siphash;
-
-pub mod cuckaroo_pow;
+// #[cfg(feature = "wasm")]
+// mod wasm;

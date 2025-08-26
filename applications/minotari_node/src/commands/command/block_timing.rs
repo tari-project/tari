@@ -23,7 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use tari_core::blocks::BlockHeader;
+use tari_node_components::blocks::BlockHeader;
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand};

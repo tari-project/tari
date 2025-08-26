@@ -24,6 +24,7 @@ use std::cmp;
 
 use log::warn;
 use tari_common_types::types::FixedHash;
+use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError};
 use tari_transaction_components::{
     consensus::ConsensusConstants,
     tari_proof_of_work::{Difficulty, PowAlgorithm, PowError, ProofOfWork},
@@ -31,7 +32,6 @@ use tari_transaction_components::{
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
-    blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
     consensus::BaseConsensusManager,
     proof_of_work::AchievedTargetDifficulty,

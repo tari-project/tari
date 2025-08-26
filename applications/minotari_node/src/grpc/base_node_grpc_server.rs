@@ -65,13 +65,13 @@ use tari_core::{
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
-    blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
     consensus::BaseConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     validation::tari_rx_vm_key_height,
 };
+use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_transaction_components::{
     consensus::NetworkConsensus,

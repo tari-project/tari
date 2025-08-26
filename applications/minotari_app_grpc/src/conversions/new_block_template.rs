@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{FixedHash, PrivateKey};
-use tari_core::blocks::{NewBlockHeaderTemplate, NewBlockTemplate};
+use tari_node_components::blocks::{NewBlockHeaderTemplate, NewBlockTemplate};
 use tari_transaction_components::tari_proof_of_work::ProofOfWork;
 use tari_utilities::ByteArray;
 

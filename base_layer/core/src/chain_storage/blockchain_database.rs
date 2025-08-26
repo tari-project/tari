@@ -64,6 +64,7 @@ use tari_common_types::{
 };
 use tari_hashing::TransactionHashDomain;
 use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError, NewBlockTemplate};
 use tari_transaction_components::{
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
     tari_proof_of_work::PowAlgorithm,
@@ -84,15 +85,11 @@ use crate::{
     block_output_mr_hash_from_pruned_mmr,
     blocks::{
         genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
-        Block,
         BlockAccumulatedData,
-        BlockHeader,
         BlockHeaderAccumulatedData,
-        BlockHeaderValidationError,
         ChainBlock,
         ChainHeader,
         HistoricalBlock,
-        NewBlockTemplate,
         UpdateBlockAccumulatedData,
     },
     chain_storage::{

@@ -151,8 +151,9 @@ impl Controller {
 
                         if submit {
                             // Mined a block fitting the difficulty
-                            let block_header: tari_core::blocks::BlockHeader =
-                                tari_core::blocks::BlockHeader::try_from(header).map_err(Error::MissingData)?;
+                            let block_header: tari_node_components::blocks::BlockHeader =
+                                tari_node_components::blocks::BlockHeader::try_from(header)
+                                    .map_err(Error::MissingData)?;
                             let hash = block_header.hash().to_hex();
                             info!(
                                 target: LOG_TARGET,
@@ -213,7 +214,7 @@ impl Controller {
             self.current_blob = blob.clone();
             self.current_difficulty_target = diff;
             let mut buffer = blob.as_bytes();
-            let tari_header: tari_core::blocks::BlockHeader = BorshDeserialize::deserialize(&mut buffer)
+            let tari_header: tari_node_components::blocks::BlockHeader = BorshDeserialize::deserialize(&mut buffer)
                 .map_err(|_| Error::General("Byte Blob is not a valid header".to_string()))?;
             self.current_header = Some(minotari_app_grpc::tari_rpc::BlockHeader::from(tari_header));
             Ok(true)

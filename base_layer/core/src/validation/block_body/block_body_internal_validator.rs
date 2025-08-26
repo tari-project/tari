@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::warn;
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::consensus_constants::ConsensusConstants,
@@ -30,7 +31,6 @@ use tari_transaction_components::{
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::Block,
     consensus::BaseConsensusManager,
     validation::{InternalConsistencyValidator, ValidationError},
 };

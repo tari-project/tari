@@ -55,7 +55,8 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{FixedHash, UncompressedPublicKey},
 };
-use tari_core::{blocks::BlockHeader, consensus::BaseConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
+use tari_core::{consensus::BaseConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     generate_coinbase,
     tari_amount::MicroMinotari,

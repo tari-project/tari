@@ -7,7 +7,6 @@ pub mod sync_utxos_by_block_task;
 
 pub use service::BaseNodeWalletRpcService;
 
-
 pub mod query_service;
 
 use std::{error::Error, fmt::Debug};
@@ -15,37 +14,34 @@ use std::{error::Error, fmt::Debug};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 use tari_transaction_components::rpc::models;
-
 use url::Url;
 
-
-use crate::base_node::StateMachineHandle;
-use crate::proto::{
-    self,
-    base_node::{
-        FetchMatchingUtxos,
-        FetchUtxosResponse,
-        GetMempoolFeePerGramStatsRequest,
-        GetMempoolFeePerGramStatsResponse,
-        GetWalletQueryHttpServiceAddressResponse,
-        QueryDeletedRequest,
-        QueryDeletedResponse,
-        Signatures,
-        SyncUtxosByBlockRequest,
-        SyncUtxosByBlockResponse,
-        TipInfoResponse,
-        TxQueryBatchResponses,
-        TxQueryResponse,
-        TxSubmissionResponse,
-        UtxoQueryRequest,
-        UtxoQueryResponses,
-    },
-    types::{Signature, Transaction},
-};
-
 use crate::{
+    base_node::StateMachineHandle,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
+    proto::{
+        self,
+        base_node::{
+            FetchMatchingUtxos,
+            FetchUtxosResponse,
+            GetMempoolFeePerGramStatsRequest,
+            GetMempoolFeePerGramStatsResponse,
+            GetWalletQueryHttpServiceAddressResponse,
+            QueryDeletedRequest,
+            QueryDeletedResponse,
+            Signatures,
+            SyncUtxosByBlockRequest,
+            SyncUtxosByBlockResponse,
+            TipInfoResponse,
+            TxQueryBatchResponses,
+            TxQueryResponse,
+            TxSubmissionResponse,
+            UtxoQueryRequest,
+            UtxoQueryResponses,
+        },
+        types::{Signature, Transaction},
+    },
 };
 
 /// Trait that a base node wallet query service must implement.
@@ -149,7 +145,6 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         request: Request<()>,
     ) -> Result<Response<GetWalletQueryHttpServiceAddressResponse>, RpcStatus>;
 }
-
 
 pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,

@@ -32,9 +32,7 @@
 //! More details about the implementation are presented in
 //! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
 
-
 pub mod chain_metadata_service;
-
 
 pub mod comms_interface;
 
@@ -42,16 +40,13 @@ pub use comms_interface::LocalNodeCommsInterface;
 #[cfg(feature = "metrics")]
 mod metrics;
 
-
 pub mod service;
-
 
 pub mod state_machine_service;
 
 pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig, StateMachineHandle};
 
 pub mod sync;
-
 
 pub use sync::{
     rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService},
@@ -62,6 +57,5 @@ pub use sync::{
 pub mod proto;
 
 pub mod rpc;
-
 
 pub mod tari_pulse_service;

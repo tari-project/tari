@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use futures::{future, Stream, StreamExt};
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
+use tari_node_components::blocks::NewBlock;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
@@ -49,7 +50,6 @@ use crate::{
         BaseNodeStateMachineConfig,
         StateMachineHandle,
     },
-    blocks::NewBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::BaseConsensusManager,
     mempool::Mempool,

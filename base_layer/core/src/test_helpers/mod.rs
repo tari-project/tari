@@ -48,6 +48,7 @@ use tari_comms::{
     PeerManager,
 };
 use tari_crypto::keys::SecretKey;
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
@@ -66,7 +67,7 @@ use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    blocks::{BlockHeaderAccumulatedData, ChainHeader},
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::BaseConsensusManager,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},

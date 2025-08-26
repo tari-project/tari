@@ -42,7 +42,6 @@ pub mod types {
     include!(concat!(env!("OUT_DIR"), "/tari.types.rs"));
 }
 
-
 mod block;
 mod block_header;
 mod sidechain_feature;

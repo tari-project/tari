@@ -22,7 +22,6 @@
 
 pub mod test_utils;
 
-
 mod config;
 
 mod error;
@@ -38,9 +37,7 @@ mod reorg_pool;
 
 mod rpc;
 
-pub use rpc::create_mempool_rpc_service;
-
-pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
+pub use rpc::{create_mempool_rpc_service, MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
 #[cfg(feature = "metrics")]
 mod metrics;
 
@@ -51,10 +48,8 @@ mod unconfirmed_pool;
 // Public re-exports
 
 pub use error::MempoolError;
-
 pub use mempool::Mempool;
 use tari_transaction_components::rpc::models::FeePerGramStat;
-
 
 pub use self::config::{MempoolConfig, MempoolServiceConfig};
 pub mod proto;
@@ -63,13 +58,11 @@ pub mod service;
 
 pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
 
-
 mod sync_protocol;
 use core::fmt::{Display, Error, Formatter};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::CompressedSignature;
 use tari_transaction_components::transaction_components::Transaction;

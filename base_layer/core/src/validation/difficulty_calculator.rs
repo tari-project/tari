@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_node_components::blocks::BlockHeader;
+
 use crate::{
-    blocks::BlockHeader,
     chain_storage::{fetch_target_difficulty_for_next_block, BlockchainBackend},
     consensus::BaseConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},

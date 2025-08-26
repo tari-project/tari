@@ -36,10 +36,8 @@ use tari_transaction_components::{
     transaction_components::TransactionKernel,
 };
 
-
 use crate::{
-    blocks::pre_mine::pre_mine_spendable_at_height,
-    blocks::ChainBlock,
+    blocks::{pre_mine::pre_mine_spendable_at_height, ChainBlock},
     consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
     proof_of_work::TargetDifficultyWindow,
 };

@@ -22,6 +22,7 @@
 
 use tari_common_types::types::FixedHash;
 use tari_comms_dht::outbound::DhtOutboundError;
+use tari_node_components::blocks::BlockHeaderValidationError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_transaction_components::{
     consensus::ConsensusManagerError,
@@ -33,7 +34,7 @@ use tari_transaction_components::{
 use thiserror::Error;
 
 use crate::{
-    blocks::{BlockError, BlockHeaderValidationError},
+    blocks::BlockError,
     chain_storage::ChainStorageError,
     mempool::MempoolError,
     proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},

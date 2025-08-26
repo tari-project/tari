@@ -30,13 +30,14 @@ use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
 };
 
 use crate::{
-    blocks::{error::BlockError, Block, BlockHeader},
+    blocks::error::BlockError,
     proof_of_work::{AccumulatedDifficulty, AchievedTargetDifficulty},
 };
 

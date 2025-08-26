@@ -24,11 +24,12 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{CompressedCommitment, FixedHash},
 };
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
+    blocks::ChainBlock,
     chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
     validation::error::ValidationError,

@@ -40,6 +40,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_sidechain::ShardGroup;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -55,7 +56,7 @@ use tari_utilities::ByteArray;
 
 use super::{create_block, mine_to_difficulty};
 use crate::{
-    blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    blocks::{BlockAccumulatedData, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
         create_lmdb_database,
         AccumulatedDataRebuildStatus,

@@ -31,8 +31,8 @@ pub mod validation;
 pub mod test_helpers;
 
 pub mod base_node;
-pub mod proto;
 pub mod mempool;
+pub mod proto;
 
 mod common;
 

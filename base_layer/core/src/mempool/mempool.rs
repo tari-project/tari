@@ -24,11 +24,11 @@ use std::sync::{Arc, RwLock};
 
 use log::debug;
 use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 use tokio::task;
 
 use crate::{
-    blocks::Block,
     consensus::BaseConsensusManager,
     mempool::{
         error::MempoolError,

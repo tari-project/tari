@@ -20,34 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Crates for proof of work difficulty
-pub(crate) mod accumulated_difficulty;
-pub use accumulated_difficulty::AccumulatedDifficulty;
+use tari_crypto::hash_domain;
 
-/// Crates for proof of work monero_rx
-pub mod monero_rx;
+mod block;
 
-pub use monero_rx::{monero_randomx_difficulty, tari_randomx_difficulty};
+pub use block::{Block, BlockBuilder, BlockValidationError, NewBlock};
 
-/// Crates for proof of work sha3_pow
-mod sha3x_pow;
-pub use sha3x_pow::sha3x_difficulty;
+mod block_header;
+pub use block_header::{BlockHeader, BlockHeaderValidationError};
 
-/// Crates for proof of work target_difficulty
-mod target_difficulty;
-pub use target_difficulty::AchievedTargetDifficulty;
+mod new_block_template;
 
-/// Crates for proof of work target_difficulty_window
-mod target_difficulty_window;
+pub use new_block_template::NewBlockTemplate;
 
-pub use target_difficulty_window::TargetDifficultyWindow;
+mod new_blockheader_template;
 
-/// Crates for proof of work lwma_diff
-pub mod lwma_diff;
+pub use new_blockheader_template::NewBlockHeaderTemplate;
 
-/// Crates for proof of work randomx_factory
-pub mod randomx_factory;
-
-pub mod siphash;
-
-pub mod cuckaroo_pow;
+hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);

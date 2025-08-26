@@ -22,9 +22,10 @@
 
 use std::collections::HashMap;
 
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
-use crate::{blocks::BlockHeader, consensus::BaseConsensusManager, proof_of_work::TargetDifficultyWindow};
+use crate::{consensus::BaseConsensusManager, proof_of_work::TargetDifficultyWindow};
 
 #[derive(Debug, Clone)]
 pub struct TargetDifficulties {

@@ -24,12 +24,13 @@ use std::cmp::Ordering;
 use log::*;
 use primitive_types::U512;
 use tari_common_types::types::{FixedHash, HashOutput};
+use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError};
 use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     base_node::sync::{header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS, BlockHeaderSyncError},
-    blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader},
+    blocks::{BlockHeaderAccumulatedData, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
     consensus::BaseConsensusManager,

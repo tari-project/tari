@@ -28,6 +28,14 @@ use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_node_components::blocks::{
+    Block,
+    BlockBuilder,
+    BlockHeader,
+    BlockHeaderValidationError,
+    NewBlock,
+    NewBlockTemplate,
+};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
@@ -48,7 +56,7 @@ use crate::{
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
+    blocks::ChainBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
     consensus::BaseConsensusManager,
     mempool::Mempool,
@@ -61,7 +69,6 @@ use crate::{
     },
     validation::{helpers, tari_rx_vm_key_height, ValidationError},
 };
-
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;

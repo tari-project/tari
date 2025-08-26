@@ -23,6 +23,7 @@ tari_comms_dht = { workspace = true }
 tari_comms_rpc_macros = { workspace = true }
 tari_crypto = { workspace = true, features = ["borsh"] }
 tari_hashing = { workspace = true }
+tari_node_components = { workspace = true }
 tari_max_size = { workspace = true }
 tari_metrics = { workspace = true, optional = true }
 tari_mmr = { workspace = true}

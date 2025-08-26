@@ -28,6 +28,7 @@ use tari_common_types::{
     types::{CompressedPublicKey, FixedHash},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
+use tari_node_components::blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError};
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
@@ -36,19 +37,18 @@ use tari_transaction_components::{
 };
 
 use crate::{
-    blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::BaseConsensusManager,
     proof_of_work::{
         cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
         randomx_factory::RandomXFactory,
+        sha3x_difficulty,
         tari_randomx_difficulty,
         AchievedTargetDifficulty,
     },
     validation::ValidationError,
 };
-use crate::proof_of_work::sha3x_difficulty;
 
 pub const LOG_TARGET: &str = "c::val::helpers";
 

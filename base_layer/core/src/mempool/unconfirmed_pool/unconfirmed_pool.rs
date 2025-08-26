@@ -28,6 +28,7 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
     tari_amount::MicroMinotari,
@@ -36,14 +37,11 @@ use tari_transaction_components::{
 };
 use tokio::time::Instant;
 
-use crate::{
-    blocks::Block,
-    mempool::{
-        priority::{FeePriority, PrioritizedTransaction},
-        shrink_hashmap::shrink_hashmap,
-        unconfirmed_pool::UnconfirmedPoolError,
-        MempoolError,
-    },
+use crate::mempool::{
+    priority::{FeePriority, PrioritizedTransaction},
+    shrink_hashmap::shrink_hashmap,
+    unconfirmed_pool::UnconfirmedPoolError,
+    MempoolError,
 };
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 

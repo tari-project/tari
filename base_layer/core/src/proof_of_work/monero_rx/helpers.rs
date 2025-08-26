@@ -32,6 +32,7 @@ use monero::{
 use primitive_types::U256;
 use sha2::{Digest, Sha256};
 use tari_common_types::types::FixedHash;
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::tari_proof_of_work::Difficulty;
 use tari_utilities::hex::HexError;
 use tiny_keccak::{Hasher, Keccak};
@@ -43,7 +44,6 @@ use super::{
     pow_data::MoneroPowData,
 };
 use crate::{
-    blocks::BlockHeader,
     common::AuxChainHashes,
     consensus::BaseConsensusManager,
     proof_of_work::{

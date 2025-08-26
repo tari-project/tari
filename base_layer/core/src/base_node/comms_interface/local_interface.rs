@@ -27,6 +27,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
+use tari_node_components::blocks::{Block, NewBlockTemplate};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tari_transaction_components::{
     tari_proof_of_work::{Difficulty, PowAlgorithm},
@@ -43,7 +44,7 @@ use crate::{
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    blocks::{ChainHeader, HistoricalBlock},
     chain_storage::{
         InputMinedInfo,
         MinedInfo,
