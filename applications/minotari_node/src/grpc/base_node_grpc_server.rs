@@ -434,12 +434,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_difficulty = handler
                     .get_target_difficulty_for_next_block(PowAlgorithm::Sha3x)
                     .await
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Sha3x: {e}"
                         );
-                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Sha3x);
@@ -460,12 +459,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_difficulty = handler
                     .get_target_difficulty_for_next_block(PowAlgorithm::RandomXM)
                     .await
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Monero RandomX: {e}"
                         );
-                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXM);
@@ -487,12 +485,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_difficulty = handler
                     .get_target_difficulty_for_next_block(PowAlgorithm::RandomXT)
                     .await
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Tari RandomX: {e}"
                         );
-                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::RandomXT);
@@ -514,12 +511,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let target_difficulty = handler
                     .get_target_difficulty_for_next_block(PowAlgorithm::Cuckaroo)
                     .await
-                    .map_err(|e| {
+                    .inspect_err(|e| {
                         warn!(
                             target: LOG_TARGET,
                             "Could not get target difficulty for Cuckaroo: {e}"
                         );
-                        obscure_error_if_true(report_error_flag, Status::internal(e.to_string()))
                     })
                     .unwrap_or(Difficulty::min());
                 let target_time = constants.pow_target_block_interval(PowAlgorithm::Cuckaroo);
