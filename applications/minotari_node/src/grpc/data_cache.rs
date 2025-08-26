@@ -55,6 +55,15 @@ impl DataCache {
         }
     }
 
+    pub async fn get_cuckaroo_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<u64> {
+        let res = &self.inner_data_cache.read().await.cuckaroo_estimated_hash_rate;
+        if res.tip == *current_tip {
+            Some(res.data)
+        } else {
+            None
+        }
+    }
+
     pub async fn get_sha3x_estimated_hash_rate(&self, current_tip: &FixedHash) -> Option<u64> {
         let res = &self.inner_data_cache.read().await.sha3x_estimated_hash_rate;
         if res.tip == *current_tip {
@@ -72,6 +81,10 @@ impl DataCache {
     pub async fn set_tari_randomx_estimated_hash_rate(&self, hash_rate: u64, current_tip: FixedHash) {
         self.inner_data_cache.write().await.tari_randomx_estimated_hash_rate =
             DataCacheData::new(hash_rate, current_tip);
+    }
+
+    pub async fn set_cuckaroo_estimated_hash_rate(&self, hash_rate: u64, current_tip: FixedHash) {
+        self.inner_data_cache.write().await.cuckaroo_estimated_hash_rate = DataCacheData::new(hash_rate, current_tip);
     }
 
     pub async fn set_sha3x_estimated_hash_rate(&self, hash_rate: u64, current_tip: FixedHash) {
@@ -147,6 +160,7 @@ struct InnerDataCache {
     pub monero_randomx_estimated_hash_rate: DataCacheData<u64>,
     pub tari_randomx_estimated_hash_rate: DataCacheData<u64>,
     pub sha3x_estimated_hash_rate: DataCacheData<u64>,
+    pub cuckaroo_estimated_hash_rate: DataCacheData<u64>,
     pub sha3x_new_block_template: DataCacheData<NewBlockTemplate>,
     pub cuckaroo_new_block_template: DataCacheData<NewBlockTemplate>,
     pub monero_randomx_new_block_template: DataCacheData<NewBlockTemplate>,
@@ -158,6 +172,7 @@ impl Default for InnerDataCache {
             monero_randomx_estimated_hash_rate: DataCacheData::new_empty(0),
             tari_randomx_estimated_hash_rate: DataCacheData::new_empty(0),
             sha3x_estimated_hash_rate: DataCacheData::new_empty(0),
+            cuckaroo_estimated_hash_rate: DataCacheData::new_empty(0),
             sha3x_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
             monero_randomx_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
             cuckaroo_new_block_template: DataCacheData::new_empty(NewBlockTemplate::empty()),
