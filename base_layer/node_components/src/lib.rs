@@ -23,5 +23,5 @@
 // This is the string used to derive the comms/spend key of the wallet
 pub mod blocks;
 
-// #[cfg(feature = "wasm")]
-// mod wasm;
+#[cfg(feature = "wasm")]
+mod wasm;

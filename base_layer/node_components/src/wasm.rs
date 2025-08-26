@@ -19,18 +19,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//test with `wasm-pack build base_layer/common_types --target web`
+//test with `wasm-pack build base_layer/node_components --target web`
 
 use wasm_bindgen::prelude::*;
 
-use crate::tari_address::TariAddress;
 
-/// Derive a public key from a master key, returning it as a hex string.
 #[wasm_bindgen]
-pub fn make_tari_address() -> Result<String, JsValue> {
-    let emoji_string = "🐢🐋🏦💤🐣👣📱🚜🍍🍉🎺🥊📖🔦😷👾🐺🐬👗🔱🌻💍🎢🎪🛵🐋🐊👞🥝🐍🌸📷🔧🎭🐮⏰🍇💯🐛🌴💨🔌🍪📟🎲🐝🤢🎉🔑🌵🚒🐙😍🐝🍑🐜👂🧩⏰🎀🚀🍵👑💐🎮🎮🎣🎒🍬🍳🍸🍷🍶🍯🍵🥄🍭🥐💣";
-
-    let tari_address = TariAddress::from_emoji_string(emoji_string).unwrap();
-    let emoji_id = tari_address.to_string();
-    Ok(emoji_id)
+pub fn make_empty_template() -> Result<String, JsValue> {
+    let _unused = NewBlockTemplate::empty();
+    Ok("".to_string())
 }

@@ -19,10 +19,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//test with `wasm-pack build base_layer/transaction_components --target web`
+
 use wasm_bindgen::prelude::*;
 
 use crate::{fee::Fee, weight::TransactionWeight};
-// wasm-pack build examples/js-hello-world --target web
 
 #[wasm_bindgen]
 pub fn make_tari_address() -> Result<String, JsValue> {

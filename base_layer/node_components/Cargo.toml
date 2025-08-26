@@ -19,16 +19,16 @@ tari_utilities = { workspace = true, features = ["borsh"] }
 
 blake2 = "0.10"
 borsh = { version = "1.5.7", features = ["derive"] }
-chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 digest = "0.10"
 log = "0.4"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.26"
 wasm-bindgen = { version = "0.2.100", optional = true }
 
-
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+
 js-sys = { version = "0.3.55" }
 
 [dev-dependencies]

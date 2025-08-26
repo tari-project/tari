@@ -29,7 +29,7 @@ borsh = { version = "1.5.7", features = ["derive"] }
 
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
-chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 
 derivative = "2.2.0"
 decimal-rs = "0.1.42"
@@ -59,8 +59,11 @@ zeroize = "1"
 utoipa = "5.3.1"
 wasm-bindgen = { version = "0.2.100", optional = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+chrono = { version = "0.4", features = ["serde", "wasmbind"] }
+
 [dev-dependencies]
-chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 tari_test_utils = { workspace = true }
 hex = "0.4"
 toml = "0.5.8"

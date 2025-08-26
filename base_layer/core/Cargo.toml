@@ -44,7 +44,7 @@ bincode = "1.1.4"
 blake2 = "0.10"
 borsh = { version = "1.5.7", features = ["derive"] }
 chacha20poly1305 = "0.10.1"
-chrono = { version = "0.4.39", default-features = false, features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 digest = "0.10"
 dirs-next = "1.0.2"
 fs2 = "0.4.0"
