@@ -28,11 +28,11 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{
-    blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::BaseNodeConsensusManager,
     test_helpers::blockchain::TempDatabase,
 };
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::WalletOutput};
 use tari_transaction_key_manager::MemoryDbKeyManager;
 

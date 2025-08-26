@@ -19,7 +19,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//test with `wasm-pack build base_layer/transaction_components --target web`
+// test with `wasm-pack build base_layer/transaction_components --target web`
 
 use wasm_bindgen::prelude::*;
 

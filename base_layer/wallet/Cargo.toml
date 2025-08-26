@@ -81,6 +81,7 @@ tari_common = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
+tari_node_components = { workspace = true }
 tari_p2p = { workspace = true, features = ["test-mocks"] }
 tari_comms_dht = { workspace = true, features = ["test-mocks"] }
 tari_test_utils = { workspace = true }

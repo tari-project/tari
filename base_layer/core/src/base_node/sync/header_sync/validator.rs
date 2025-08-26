@@ -297,10 +297,7 @@ mod test {
     use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 
     use super::*;
-    use crate::{
-        blocks::BlockHeader,
-        test_helpers::blockchain::{create_new_blockchain, TempDatabase},
-    };
+    use crate::test_helpers::blockchain::{create_new_blockchain, TempDatabase};
 
     fn setup() -> (
         BlockHeaderSyncValidator<TempDatabase>,

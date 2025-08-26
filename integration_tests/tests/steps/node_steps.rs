@@ -43,7 +43,6 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 use tari_common_types::tari_address::TariAddress;
-use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
@@ -51,6 +50,7 @@ use tari_integration_tests::{
     world::NodeClient,
     TariWorld,
 };
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     helpers::borsh::SerializedSize,

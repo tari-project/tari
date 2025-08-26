@@ -26,6 +26,7 @@ use std::{cmp, sync::Arc};
 use jmt::{mock::MockTreeStore, JellyfishMerkleTree, KeyHash};
 use tari_common::configuration::Network;
 use tari_common_types::types::{CompressedCommitment, UncompressedCommitment};
+use tari_node_components::blocks::BlockHeader;
 use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
@@ -48,7 +49,7 @@ use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::ByteArray;
 
 use crate::{
-    blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    blocks::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError, DbTransaction, SmtHasher},
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},

@@ -380,11 +380,30 @@ impl Display for BlockHeader {
 
 #[cfg(test)]
 mod test {
+    use chrono::NaiveDate;
+
     use super::*;
+
+    fn get_header() -> BlockHeader {
+        let mut header = BlockHeader::new(2);
+
+        #[allow(clippy::cast_sign_loss)]
+        let epoch_secs = DateTime::<Utc>::from_naive_utc_and_offset(
+            NaiveDate::from_ymd_opt(2000, 1, 1)
+                .unwrap()
+                .and_hms_opt(1, 1, 1)
+                .unwrap(),
+            Utc,
+        )
+        .timestamp() as u64;
+        header.timestamp = EpochTime::from_secs_since_epoch(epoch_secs);
+        header.pow.pow_algo = PowAlgorithm::Sha3x;
+        header
+    }
 
     #[test]
     fn from_previous() {
-        let mut h1 = crate::proof_of_work::sha3x_test::get_header();
+        let mut h1 = get_header();
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();

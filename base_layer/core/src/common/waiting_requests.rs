@@ -27,7 +27,6 @@ use tokio::sync::{oneshot::Sender as OneshotSender, RwLock};
 
 use crate::common::RequestKey;
 /// Generate a new random request key to uniquely identify a request and its corresponding responses.
-
 pub fn generate_request_key<R>(rng: &mut R) -> RequestKey
 where R: RngCore {
     rng.next_u64()

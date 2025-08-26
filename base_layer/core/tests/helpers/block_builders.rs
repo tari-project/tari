@@ -28,7 +28,7 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash},
 };
 use tari_core::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
+    blocks::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, SmtHasher},
     consensus::BaseNodeConsensusManager,
     kernel_mr_hash_from_mmr,
@@ -37,6 +37,7 @@ use tari_core::{
     PrunedOutputMmr,
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_script::script;
 use tari_transaction_components::{
     consensus::{emission::Emission, ConsensusConstants},

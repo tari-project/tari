@@ -29,5 +29,3 @@ pub use base_node_consensus_manager::{
     BaseNodeConsensusManager,
     BaseNodeConsensusManagerBuilder,
 };
-
-mod consensus_encoding;

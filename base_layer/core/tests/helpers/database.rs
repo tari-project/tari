@@ -22,10 +22,8 @@
 
 use std::convert::TryInto;
 
-use tari_core::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::BaseNodeConsensusManager,
-};
+use tari_core::consensus::BaseNodeConsensusManager;
+use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_transaction_components::{
     consensus::emission::Emission,
     tari_amount::MicroMinotari,

@@ -25,6 +25,7 @@ use std::sync::Arc;
 
 use tari_common::configuration::Network;
 use tari_common_types::{key_branches::TransactionKeyManagerBranch, tari_address::TariAddress};
+use tari_node_components::blocks::BlockValidationError;
 use tari_script::{push_pubkey_script, script};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
@@ -51,7 +52,6 @@ use tokio::time::Instant;
 use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
-    blocks::BlockValidationError,
     consensus::BaseNodeConsensusManager,
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     validation::{BlockBodyValidator, ValidationError},

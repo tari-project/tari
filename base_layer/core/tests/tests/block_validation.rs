@@ -30,7 +30,7 @@ use serial_test::serial;
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{
-    blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
+    blocks::{BlockHeaderAccumulatedData, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::BaseNodeConsensusManager,
     proof_of_work::{
@@ -51,6 +51,7 @@ use tari_core::{
         ValidationError,
     },
 };
+use tari_node_components::blocks::{Block, BlockHeaderValidationError, BlockValidationError};
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{

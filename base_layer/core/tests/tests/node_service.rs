@@ -31,7 +31,7 @@ use tari_core::{
         comms_interface::BlockEvent,
         state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
     },
-    blocks::{ChainBlock, NewBlock},
+    blocks::ChainBlock,
     chain_storage::BlockchainDatabaseConfig,
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::TxStorageResponse,
@@ -43,6 +43,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
+use tari_node_components::blocks::NewBlock;
 use tari_test_utils::unpack_enum;
 use tari_transaction_components::{
     consensus::NetworkConsensus,
