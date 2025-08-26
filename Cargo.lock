@@ -4155,6 +4155,7 @@ dependencies = [
  "argon2 0.4.1",
  "base64 0.13.1",
  "borsh",
+ "chrono",
  "log",
  "prost 0.13.4",
  "prost-types 0.13.4",
@@ -4176,7 +4177,6 @@ dependencies = [
  "tokio",
  "tonic 0.13.1",
  "tonic-build",
- "wasm-bindgen",
  "zeroize",
 ]
 
