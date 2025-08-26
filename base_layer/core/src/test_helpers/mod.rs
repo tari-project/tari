@@ -69,15 +69,15 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     blocks::{BlockHeaderAccumulatedData, ChainHeader},
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty},
 };
 #[macro_use]
 mod block_spec;
 pub mod blockchain;
 
-pub fn create_consensus_rules() -> BaseConsensusManager {
-    BaseConsensusManager::builder(Network::LocalNet).build().unwrap()
+pub fn create_consensus_rules() -> BaseNodeConsensusManager {
+    BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap()
 }
 
 pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
@@ -89,7 +89,7 @@ pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
 pub fn create_orphan_block(
     block_height: u64,
     transactions: Vec<Transaction>,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
 ) -> Block {
     let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version().into());
     header.height = block_height;
@@ -112,7 +112,7 @@ pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (Tar
 
 pub async fn create_block<TDB: BlockchainBackend>(
     db: &BlockchainDatabase<TDB>,
-    rules: &BaseConsensusManager,
+    rules: &BaseNodeConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
     km: &MemoryDbKeyManager,

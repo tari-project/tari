@@ -43,7 +43,7 @@ use tari_core::{
         StateMachineHandle,
     },
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
-    consensus::{BaseConsensusManager, BaseConsensusManagerBuilder},
+    consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{
         service::{LocalMempoolService, MempoolHandle},
         Mempool,
@@ -114,7 +114,7 @@ pub struct BaseNodeBuilder {
     liveness_service_config: Option<LivenessConfig>,
     p2p_config: Option<P2pConfig>,
     validators: Option<Validators<TempDatabase>>,
-    consensus_manager: Option<BaseConsensusManager>,
+    consensus_manager: Option<BaseNodeConsensusManager>,
     network: NetworkConsensus,
 }
 
@@ -183,7 +183,7 @@ impl BaseNodeBuilder {
     }
 
     /// Set the configuration of the Consensus Manager
-    pub fn with_consensus_manager(mut self, consensus_manager: BaseConsensusManager) -> Self {
+    pub fn with_consensus_manager(mut self, consensus_manager: BaseNodeConsensusManager) -> Self {
         self.consensus_manager = Some(consensus_manager);
         self
     }
@@ -194,7 +194,7 @@ impl BaseNodeBuilder {
         self,
         data_path: &str,
         blockchain_db_config: BlockchainDatabaseConfig,
-    ) -> (NodeInterfaces, BaseConsensusManager) {
+    ) -> (NodeInterfaces, BaseNodeConsensusManager) {
         let validators = self.validators.unwrap_or_else(|| {
             Validators::new(
                 MockValidator::new(true),
@@ -205,7 +205,7 @@ impl BaseNodeBuilder {
         let network = self.network.as_network();
         let consensus_manager = self
             .consensus_manager
-            .unwrap_or_else(|| BaseConsensusManagerBuilder::new(network).build().unwrap());
+            .unwrap_or_else(|| BaseNodeConsensusManagerBuilder::new(network).build().unwrap());
         let blockchain_db = create_store_with_consensus_and_validators_and_config(
             consensus_manager.clone(),
             validators,
@@ -252,10 +252,10 @@ pub async fn create_network_with_multiple_base_nodes_with_config<P: AsRef<Path>>
     liveness_service_configs: Vec<LivenessConfig>,
     blockchain_db_configs: Vec<BlockchainDatabaseConfig>,
     p2p_configs: Vec<P2pConfig>,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     data_path: P,
     network: Network,
-) -> (Vec<NodeInterfaces>, BaseConsensusManager) {
+) -> (Vec<NodeInterfaces>, BaseNodeConsensusManager) {
     let num_of_nodes = mempool_service_configs.len();
     if num_of_nodes != liveness_service_configs.len() ||
         num_of_nodes != blockchain_db_configs.len() ||
@@ -337,7 +337,7 @@ async fn setup_base_node_services(
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<TempDatabase>,
     mempool: Mempool,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     liveness_service_config: LivenessConfig,
     p2p_config: P2pConfig,
     data_path: &str,

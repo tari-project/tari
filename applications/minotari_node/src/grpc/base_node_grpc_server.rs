@@ -66,7 +66,7 @@ use tari_core::{
         StateMachineHandle,
     },
     chain_storage::{ChainStorageError, ValidatorNodeRegistrationInfo},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     validation::tari_rx_vm_key_height,
@@ -127,7 +127,7 @@ pub struct BaseNodeGrpcServer {
     mempool_service: LocalMempoolService,
     network: NetworkConsensus,
     state_machine_handle: StateMachineHandle,
-    consensus_rules: BaseConsensusManager,
+    consensus_rules: BaseNodeConsensusManager,
     software_updater: SoftwareUpdaterHandle,
     comms: CommsNode,
     liveness: LivenessHandle,
@@ -2297,7 +2297,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let block_height = request.into_inner().block_height;
 
-        let consensus_manager = BaseConsensusManager::builder(self.network.as_network())
+        let consensus_manager = BaseNodeConsensusManager::builder(self.network.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -2390,7 +2390,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let consensus_manager = BaseConsensusManager::builder(self.network.as_network())
+        let consensus_manager = BaseNodeConsensusManager::builder(self.network.as_network())
             .build()
             .map_err(|e| {
                 obscure_error_if_true(

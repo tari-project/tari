@@ -216,7 +216,7 @@ use crate::{
         ValidatorNodeEntry,
         ValidatorNodeRegistrationInfo,
     },
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{monero_rx::MoneroPowData, AccumulatedDifficulty},
     PrunedKernelMmr,
 };
@@ -423,7 +423,7 @@ pub fn create_readonly_lmdb_environment<P: AsRef<Path>>(path: P) -> Result<Arc<E
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
     LMDBDatabase::new(&lmdb_store, file_lock, consensus_manager, None)
@@ -432,7 +432,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
 pub fn create_lmdb_database_with_stats_channel<P: AsRef<Path>>(
     path: P,
     config: LMDBConfig,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     stats_sender: Option<watch::Sender<DatabaseStats>>,
 ) -> Result<LMDBDatabase, ChainStorageError> {
     let (lmdb_store, file_lock) = build_lmdb_store(path, config)?;
@@ -510,7 +510,7 @@ pub struct LMDBDatabase {
     jmt_node_data: DatabaseRef,
     jmt_unique_key_data: DatabaseRef,
     _file_lock: Arc<File>,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
 }
 
@@ -518,7 +518,7 @@ impl LMDBDatabase {
     pub fn new(
         store: &LMDBStore,
         file_lock: File,
-        consensus_manager: BaseConsensusManager,
+        consensus_manager: BaseNodeConsensusManager,
         stats_sender: Option<watch::Sender<DatabaseStats>>,
     ) -> Result<Self, ChainStorageError> {
         let env = store.env();

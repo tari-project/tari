@@ -35,7 +35,7 @@ mod benches {
     use criterion::{criterion_group, Criterion};
     use tari_common::configuration::Network;
     use tari_core::{
-        consensus::BaseConsensusManager,
+        consensus::BaseNodeConsensusManager,
         mempool::{Mempool, MempoolConfig},
         test_helpers::blockchain::create_new_blockchain,
         validation::transaction::TransactionFullValidator,
@@ -68,7 +68,7 @@ mod benches {
     pub fn mempool_perf_test(c: &mut Criterion) {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
-        let rules = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let db = create_new_blockchain();
 
         let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db, rules.clone());

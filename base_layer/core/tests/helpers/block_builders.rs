@@ -30,7 +30,7 @@ use tari_common_types::{
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError, SmtHasher},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     kernel_mr_hash_from_mmr,
     proof_of_work::{sha3x_difficulty, AccumulatedDifficulty, AchievedTargetDifficulty},
     KernelMmr,
@@ -266,7 +266,7 @@ pub async fn create_genesis_block_with_utxos(
 pub async fn chain_block(
     prev_block: &Block,
     transactions: Vec<Transaction>,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
 ) -> NewBlockTemplate {
     let mut header = BlockHeader::from_previous(&prev_block.header);
@@ -299,7 +299,7 @@ pub fn chain_block_with_coinbase(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     achieved_difficulty: Option<Difficulty>,
 ) -> NewBlockTemplate {
     let mut header = BlockHeader::from_previous(prev_block.header());
@@ -322,7 +322,7 @@ pub fn chain_block_with_coinbase(
 pub async fn chain_block_with_new_coinbase(
     prev_block: &ChainBlock,
     transactions: Vec<Transaction>,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
     extra: Option<CoinBaseExtra>,
     key_manager: &MemoryDbKeyManager,
 ) -> (NewBlockTemplate, WalletOutput) {
@@ -365,7 +365,7 @@ pub async fn append_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     prev_block: &ChainBlock,
     txns: Vec<Transaction>,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     achieved_difficulty: Difficulty,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
@@ -378,7 +378,7 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     prev_block: &ChainBlock,
     txns: Vec<Transaction>,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
     achieved_difficulty: Difficulty,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
@@ -423,7 +423,7 @@ pub async fn generate_new_block<B: BlockchainBackend>(
     blocks: &mut Vec<ChainBlock>,
     outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let coinbase_value = consensus.emission_schedule().block_reward(db.get_height().unwrap() + 1);
@@ -437,7 +437,7 @@ pub async fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
     outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     achieved_difficulty: Difficulty,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let mut txns = Vec::new();
@@ -459,7 +459,7 @@ pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     coinbase_value: MicroMinotari,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let mut txns = Vec::new();
@@ -502,7 +502,7 @@ pub async fn generate_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
     transactions: Vec<Transaction>,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let prev_block = blocks.last().unwrap();
@@ -523,7 +523,7 @@ pub async fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     blocks: &mut Vec<ChainBlock>,
     transactions: Vec<Transaction>,
     achieved_difficulty: Difficulty,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let template = chain_block_with_new_coinbase(blocks.last().unwrap(), transactions, consensus, None, key_manager)
@@ -547,7 +547,7 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     achieved_difficulty: Option<Difficulty>,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let template = chain_block_with_coinbase(
@@ -570,7 +570,7 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
 pub async fn construct_chained_blocks<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     block0: ChainBlock,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     n: usize,
     key_manager: &MemoryDbKeyManager,
 ) -> Vec<ChainBlock> {

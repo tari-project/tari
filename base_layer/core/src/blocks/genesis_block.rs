@@ -428,7 +428,7 @@ mod test {
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{BlockchainBackend, SmtHasher},
-        consensus::BaseConsensusManager,
+        consensus::BaseNodeConsensusManager,
         input_mr_hash_from_pruned_mmr,
         kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
@@ -703,7 +703,7 @@ mod test {
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(
-            BaseConsensusManager::builder(network).build().unwrap(),
+            BaseNodeConsensusManager::builder(network).build().unwrap(),
             Default::default(),
         )
         .validate(

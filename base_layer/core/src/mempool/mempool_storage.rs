@@ -33,7 +33,7 @@ use tari_transaction_components::{
 use tari_utilities::hex::Hex;
 
 use crate::{
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
@@ -55,14 +55,18 @@ pub struct MempoolStorage {
     pub(crate) unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
-    rules: BaseConsensusManager,
+    rules: BaseNodeConsensusManager,
     last_seen_height: u64,
     pub(crate) last_seen_hash: FixedHash,
 }
 
 impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, rules: BaseConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
+    pub fn new(
+        config: MempoolConfig,
+        rules: BaseNodeConsensusManager,
+        validator: Box<dyn TransactionValidator>,
+    ) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),

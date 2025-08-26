@@ -42,7 +42,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::BlockchainBackend,
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     validation::{
         helpers::{
             check_eviction_proof,
@@ -60,11 +60,11 @@ pub const LOG_TARGET: &str = "c::val::aggregate_body_chain_linked_validator";
 /// This validator assumes that the body was already validated for internal consistency and it will skip that step.
 #[derive(Clone)]
 pub struct AggregateBodyChainLinkedValidator {
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
 }
 
 impl AggregateBodyChainLinkedValidator {
-    pub fn new(consensus_manager: BaseConsensusManager) -> Self {
+    pub fn new(consensus_manager: BaseNodeConsensusManager) -> Self {
         Self { consensus_manager }
     }
 

@@ -52,12 +52,12 @@ use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
     blocks::BlockValidationError,
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     validation::{BlockBodyValidator, ValidationError},
 };
 async fn setup_with_rules(
-    rules: BaseConsensusManager,
+    rules: BaseNodeConsensusManager,
     check_rangeproof: bool,
 ) -> (TestBlockchain, BlockBodyFullValidator) {
     let blockchain = TestBlockchain::create(rules.clone()).await;
@@ -66,7 +66,7 @@ async fn setup_with_rules(
 }
 
 async fn setup(check_rangeproof: bool) -> (TestBlockchain, BlockBodyFullValidator) {
-    let rules = BaseConsensusManager::builder(Network::LocalNet)
+    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -397,7 +397,7 @@ async fn it_checks_txo_sort_order() {
 
 #[tokio::test]
 async fn it_limits_the_script_byte_size() {
-    let rules = BaseConsensusManager::builder(Network::LocalNet)
+    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -426,7 +426,7 @@ async fn it_limits_the_script_byte_size() {
 
 #[tokio::test]
 async fn it_limits_the_encrypted_data_byte_size() {
-    let rules = BaseConsensusManager::builder(Network::LocalNet)
+    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -459,7 +459,7 @@ async fn it_limits_the_encrypted_data_byte_size() {
 
 #[tokio::test]
 async fn it_rejects_invalid_input_metadata() {
-    let rules = BaseConsensusManager::builder(Network::LocalNet)
+    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
             ConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
@@ -519,7 +519,7 @@ mod body_only {
 
     #[tokio::test]
     async fn it_rejects_invalid_input_metadata() {
-        let rules = BaseConsensusManager::builder(Network::LocalNet)
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
@@ -556,7 +556,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_zero_conf_double_spends() {
-        let rules = BaseConsensusManager::builder(Network::LocalNet)
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
@@ -596,7 +596,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_unpermitted_output_types() {
-        let rules = BaseConsensusManager::builder(Network::LocalNet)
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_output_types(&[OutputType::Coinbase])
@@ -625,7 +625,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_unpermitted_range_proof_types() {
-        let rules = BaseConsensusManager::builder(Network::LocalNet)
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[
@@ -660,7 +660,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_accepts_permitted_range_proof_types() {
-        let rules = BaseConsensusManager::builder(Network::LocalNet)
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[
@@ -694,7 +694,7 @@ mod orphan_validator {
 
     #[tokio::test]
     async fn it_rejects_when_output_types_are_not_matched() {
-        let rules = BaseConsensusManager::builder(Network::LocalNet)
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[(OutputType::CodeTemplateRegistration, &[

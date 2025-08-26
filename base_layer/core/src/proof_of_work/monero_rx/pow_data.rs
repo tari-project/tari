@@ -42,7 +42,7 @@ use tari_utilities::{
 use tiny_keccak::{Hasher, Keccak};
 
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
-use crate::{consensus::BaseConsensusManager, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
+use crate::{consensus::BaseNodeConsensusManager, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
 
 /// This is a struct to deserialize the data from the pow field into data required for the randomX Monero merged mine
 /// pow.
@@ -111,7 +111,7 @@ impl MoneroPowData {
     /// Create a new MoneroPowData struct from the given header
     pub fn from_header(
         tari_header: &BlockHeader,
-        consensus: &BaseConsensusManager,
+        consensus: &BaseNodeConsensusManager,
     ) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_bytes();
         let pow_data: MoneroPowData =

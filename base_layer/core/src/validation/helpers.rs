@@ -38,7 +38,7 @@ use tari_transaction_components::{
 
 use crate::{
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{
         cuckaroo_pow::cuckaroo_difficulty,
         monero_randomx_difficulty,
@@ -129,7 +129,7 @@ pub fn check_target_difficulty(
     target: Difficulty,
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
-    consensus: &BaseConsensusManager,
+    consensus: &BaseNodeConsensusManager,
     tari_vm_key: FixedHash,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {

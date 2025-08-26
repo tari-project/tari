@@ -55,7 +55,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{FixedHash, UncompressedPublicKey},
 };
-use tari_core::{consensus::BaseConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
+use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     generate_coinbase,
@@ -110,7 +110,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             )
         })?;
     debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {wallet_payment_address}");
-    let consensus_manager = BaseConsensusManager::builder(config.network)
+    let consensus_manager = BaseNodeConsensusManager::builder(config.network)
         .build()
         .map_err(|err| ExitError::new(ExitCode::ConsensusManagerBuilderError, err.to_string()))?;
 
@@ -375,7 +375,7 @@ async fn get_new_block(
     cli: &Cli,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
     if config.sha_p2pool_enabled {
         if let Some(client) = sha_p2pool_client.lock().await.as_mut() {
@@ -400,7 +400,7 @@ async fn get_new_block_base_node(
     cli: &Cli,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<GetNewBlockResponse, MinerError> {
     debug!(target: LOG_TARGET, "Getting new block template");
     let template_response = base_node_client
@@ -532,7 +532,7 @@ async fn mining_cycle(
     cli: &Cli,
     key_manager: &MemoryDbKeyManager,
     wallet_payment_address: &TariAddress,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Result<bool, MinerError> {
     let sha_p2pool_client = Arc::new(Mutex::new(sha_p2pool_client));
     let block_result = get_new_block(

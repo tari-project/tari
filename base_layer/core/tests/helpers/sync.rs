@@ -44,7 +44,7 @@ use tari_core::{
     },
     blocks::ChainBlock,
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
-    consensus::{BaseConsensusManager, BaseConsensusManagerBuilder},
+    consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::TempDatabase,
@@ -142,7 +142,7 @@ pub async fn create_network_with_multiple_nodes(
     Vec<BaseNodeStateMachine<TempDatabase>>,
     Vec<NodeInterfaces>,
     ChainBlock,
-    BaseConsensusManager,
+    BaseNodeConsensusManager,
     MemoryDbKeyManager,
     WalletOutput,
 ) {
@@ -155,7 +155,7 @@ pub async fn create_network_with_multiple_nodes(
     let key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = sample_blockchains::consensus_constants(network).build();
     let (initial_block, coinbase_wallet_output) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = BaseConsensusManagerBuilder::new(network)
+    let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(initial_block.clone())
         .build()
@@ -314,7 +314,7 @@ pub async fn create_and_add_some_blocks(
     start_block: &ChainBlock,
     start_coinbase: &WalletOutput,
     number_of_blocks: usize,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
     difficulties: &[u64],
     transactions: &Option<Vec<Vec<Transaction>>>,
@@ -397,7 +397,7 @@ pub async fn create_block_chain_with_transactions(
     node: &NodeInterfaces,
     initial_block: &ChainBlock,
     initial_coinbase: &WalletOutput,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
     key_manager: &MemoryDbKeyManager,
     intermediate_height: u64,
     number_of_blocks: usize,

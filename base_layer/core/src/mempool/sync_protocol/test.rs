@@ -48,7 +48,7 @@ use tokio::{
 };
 
 use crate::{
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
@@ -72,7 +72,7 @@ pub async fn create_transactions(n: usize) -> Vec<Transaction> {
 async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
     let mempool = Mempool::new(
         Default::default(),
-        BaseConsensusManager::builder(Network::LocalNet).build().unwrap(),
+        BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
         Box::new(MockValidator::new(true)),
     );
 

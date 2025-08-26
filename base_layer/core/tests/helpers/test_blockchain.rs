@@ -30,7 +30,7 @@ use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     test_helpers::blockchain::TempDatabase,
 };
 use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::WalletOutput};
@@ -49,7 +49,7 @@ pub struct TestBlockchain {
     store: BlockchainDatabase<TempDatabase>,
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<FixedHash, String>,
-    consensus_manager: BaseConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     outputs: Vec<Vec<WalletOutput>>,
     pub key_manager: MemoryDbKeyManager,
 }
@@ -81,7 +81,7 @@ impl TestBlockchain {
         &self.store
     }
 
-    pub fn consensus_manager(&self) -> &BaseConsensusManager {
+    pub fn consensus_manager(&self) -> &BaseNodeConsensusManager {
         &self.consensus_manager
     }
 

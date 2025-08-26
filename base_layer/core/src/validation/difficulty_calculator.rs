@@ -24,7 +24,7 @@ use tari_node_components::blocks::BlockHeader;
 
 use crate::{
     chain_storage::{fetch_target_difficulty_for_next_block, BlockchainBackend},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
     validation::{helpers::check_target_difficulty, ValidationError},
 };
@@ -34,12 +34,12 @@ const TARI_RX_VM_KEY_REORG_SAFETY_NUMBER: u64 = 64;
 
 #[derive(Clone)]
 pub struct DifficultyCalculator {
-    pub rules: BaseConsensusManager,
+    pub rules: BaseNodeConsensusManager,
     pub randomx_factory: RandomXFactory,
 }
 
 impl DifficultyCalculator {
-    pub fn new(rules: BaseConsensusManager, randomx_factory: RandomXFactory) -> Self {
+    pub fn new(rules: BaseNodeConsensusManager, randomx_factory: RandomXFactory) -> Self {
         Self { rules, randomx_factory }
     }
 

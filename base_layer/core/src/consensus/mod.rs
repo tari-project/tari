@@ -22,8 +22,12 @@
 
 pub(crate) mod chain_strength_comparer;
 
-mod consensus_manager;
+mod base_node_consensus_manager;
 
-pub use consensus_manager::{BaseConsensusBuilderError, BaseConsensusManager, BaseConsensusManagerBuilder};
+pub use base_node_consensus_manager::{
+    BaseConsensusBuilderError,
+    BaseNodeConsensusManager,
+    BaseNodeConsensusManagerBuilder,
+};
 
 mod consensus_encoding;

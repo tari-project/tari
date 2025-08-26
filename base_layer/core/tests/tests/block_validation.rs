@@ -32,7 +32,7 @@ use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{
         monero_rx,
         monero_rx::{verify_header, FixedByteArray, MoneroPowData},
@@ -122,7 +122,7 @@ async fn test_monero_blocks() {
         .with_blockchain_version(BlockVersion::V0)
         .with_valid_blockchain_version_range(0..=0)
         .build();
-    let cm = BaseConsensusManager::builder(network)
+    let cm = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(cc)
         .build()
         .unwrap();
@@ -349,7 +349,7 @@ async fn test_orphan_validator() {
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build()
@@ -493,7 +493,7 @@ async fn test_orphan_body_validation() {
     let key_manager = create_memory_db_key_manager().await.unwrap();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build()
@@ -714,7 +714,7 @@ async fn test_header_validation() {
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build()
@@ -832,7 +832,7 @@ async fn test_block_sync_body_validator() {
     let key_manager = create_memory_db_key_manager().await.unwrap();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build()
@@ -1110,7 +1110,7 @@ async fn add_block_with_large_block() {
     )
     .await;
     let network = Network::LocalNet;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build()
@@ -1169,7 +1169,7 @@ async fn add_block_with_large_many_output_block() {
     let key_manager = create_memory_db_key_manager().await.unwrap();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[501 * T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
-    let rules = BaseConsensusManager::builder(network)
+    let rules = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
         .build()

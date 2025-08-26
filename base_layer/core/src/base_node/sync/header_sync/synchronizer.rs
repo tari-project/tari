@@ -51,7 +51,7 @@ use crate::{
     blocks::{ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     common::rolling_avg::RollingAverageTime,
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
@@ -78,7 +78,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
-        consensus_rules: BaseConsensusManager,
+        consensus_rules: BaseNodeConsensusManager,
         connectivity: ConnectivityRequester,
         sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,
