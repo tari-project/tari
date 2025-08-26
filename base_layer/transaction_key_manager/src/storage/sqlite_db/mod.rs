@@ -93,11 +93,38 @@ impl<TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorag
     }
 }
 
+enum TempError {
+    KeyManagerError(KeyManagerStorageError),
+    DieselError(diesel::result::Error),
+}
+
+impl TempError {
+    fn into_key_manager_error(self) -> KeyManagerStorageError {
+        match self {
+            TempError::KeyManagerError(e) => e,
+            TempError::DieselError(e) => KeyManagerStorageError::StorageError(e.to_string()),
+        }
+    }
+}
+
+impl From<diesel::result::Error> for TempError {
+    fn from(e: diesel::result::Error) -> Self {
+        TempError::DieselError(e)
+    }
+}
+
+impl From<KeyManagerStorageError> for TempError {
+    fn from(e: KeyManagerStorageError) -> Self {
+        TempError::KeyManagerError(e)
+    }
+}
+
+#[async_trait::async_trait]
 impl<TTransactionKeyManagerDbConnection> TransactionKeyManagerBackend
     for TransactionKeyManagerSqliteDatabase<TTransactionKeyManagerDbConnection>
 where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Send + Sync + Clone
 {
-    fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+    async fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection
@@ -128,7 +155,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         Ok(result)
     }
 
-    fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
+    async fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection
@@ -155,70 +182,77 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         Ok(())
     }
 
-    fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
+    async fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self
+            .database_connection
+            .get_pooled_connection()
+            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
+
+        let acquire_lock = start.elapsed();
+        conn.immediate_transaction::<_, TempError, _>(|conn| {
+            let cipher = acquire_read_lock!(self.cipher);
+            let km = KeyManagerStateSql::get_state(branch, conn)?;
+            let mut km = km
+                .decrypt(&cipher)
+                .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
+            let mut bytes: [u8; 8] = [0u8; 8];
+            bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Already checked"));
+            let index = u64::from_le_bytes(bytes) + 1;
+            km.primary_key_index = index.to_le_bytes().to_vec();
+            let km = km
+                .encrypt(&cipher)
+                .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {e}")))?;
+            KeyManagerStateSql::set_index(km.id, km.primary_key_index, conn)?;
+            if start.elapsed().as_millis() > 0 {
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - increment_key_index: lock {} + db_op {} = {} ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
+            }
+
+            Ok(())
+        })
+        .map_err(|e| e.into_key_manager_error())
+    }
+
+    async fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection
             .get_pooled_connection()
             .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         let acquire_lock = start.elapsed();
-        let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
-        let mut km = km
-            .decrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
-        let mut bytes: [u8; 8] = [0u8; 8];
-        bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Already checked"));
-        let index = u64::from_le_bytes(bytes) + 1;
-        km.primary_key_index = index.to_le_bytes().to_vec();
-        let km = km
-            .encrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {e}")))?;
-        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - increment_key_index: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
+        conn.immediate_transaction::<_, TempError, _>(|conn| {
+            let cipher = acquire_read_lock!(self.cipher);
+            let km = KeyManagerStateSql::get_state(branch, conn)?;
+            let mut km = km
+                .decrypt(&cipher)
+                .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
+            km.primary_key_index = index.to_le_bytes().to_vec();
+            let km = km
+                .encrypt(&cipher)
+                .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {e}")))?;
+            KeyManagerStateSql::set_index(km.id, km.primary_key_index, conn)?;
+            if start.elapsed().as_millis() > 0 {
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - set_key_index: lock {} + db_op {} = {} ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
+            }
 
-        Ok(())
+            Ok(())
+        })
+        .map_err(|e| e.into_key_manager_error())
     }
 
-    fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self
-            .database_connection
-            .get_pooled_connection()
-            .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
-        let acquire_lock = start.elapsed();
-        let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
-        let mut km = km
-            .decrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
-        km.primary_key_index = index.to_le_bytes().to_vec();
-        let km = km
-            .encrypt(&cipher)
-            .map_err(|e| KeyManagerStorageError::AeadError(format!("Encryption Error: {e}")))?;
-        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &mut conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_key_index: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn insert_imported_key(
+    async fn insert_imported_key(
         &self,
         public_key: CompressedPublicKey,
         private_key: PrivateKey,
@@ -229,32 +263,35 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
             .get_pooled_connection()
             .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         // check if we already have the key:
-        if self.get_imported_key(&public_key).is_ok() {
-            // we already have the key so we dont have to add it in
-            return Ok(());
-        }
-        let acquire_lock = start.elapsed();
-        let cipher = acquire_read_lock!(self.cipher);
-        let key = ImportedKey {
-            public_key,
-            private_key,
-        };
-        let encrypted_key = NewImportedKeySql::new_from_imported_key(key, &cipher)?;
-        encrypted_key.commit(&mut conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - insert_imported_key: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
+        conn.immediate_transaction::<_, TempError, _>(|conn| {
+            if ImportedKeySql::key_exists(&public_key, conn)? {
+                // we already have the key so we dont have to add it in
+                return Ok(());
+            }
+            let acquire_lock = start.elapsed();
+            let cipher = acquire_read_lock!(self.cipher);
+            let key = ImportedKey {
+                public_key,
+                private_key,
+            };
+            let encrypted_key = NewImportedKeySql::new_from_imported_key(key, &cipher)?;
+            encrypted_key.commit(conn)?;
+            if start.elapsed().as_millis() > 0 {
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - insert_imported_key: lock {} + db_op {} = {} ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
+            }
 
-        Ok(())
+            Ok(())
+        })
+        .map_err(|e| e.into_key_manager_error())
     }
 
-    fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
+    async fn get_imported_key(&self, public_key: &CompressedPublicKey) -> Result<PrivateKey, KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self
             .database_connection

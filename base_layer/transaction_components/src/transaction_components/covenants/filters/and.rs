@@ -53,12 +53,12 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        test_helpers::create_memory_key_manager,
+        key_manager::create_memory_key_manager,
         transaction_components::covenants::{filters::test::setup_filter_test, test::create_input},
     };
     #[tokio::test]
     async fn it_filters_outputset_using_intersection() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let script = script!(CheckHeight(101)).unwrap();
         let covenant = covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone())))).unwrap();
         let input = create_input(&key_manager).await;

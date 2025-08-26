@@ -4,18 +4,18 @@ pub mod http;
 
 use anyhow::Error;
 use serde::{Deserialize, Serialize};
-use tari_core::{
-    base_node::rpc::models::{
+use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    rpc::models::{
         self,
         BlockHeader,
+        FeePerGramStat,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
     },
-    mempool::FeePerGramStat,
+    transaction_components::{Transaction, TransactionOutput},
 };
-use tari_shutdown::ShutdownSignal;
-use tari_transaction_components::transaction_components::{Transaction, TransactionOutput};
 use tokio::sync::mpsc;
 
 use crate::client::models::TxSubmissionResponse;

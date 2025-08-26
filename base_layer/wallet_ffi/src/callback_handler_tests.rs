@@ -14,6 +14,7 @@ mod test {
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::{DateTime, Utc};
     use minotari_wallet::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         output_manager_service::{
             handle::{OutputManagerEvent, OutputManagerHandle},
             service::Balance,
@@ -37,10 +38,7 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus},
         types::{CompressedPublicKey, PrivateKey},
     };
-    use tari_core::transactions::legacy_transaction_protocol::{
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    };
+    
     use tari_crypto::keys::SecretKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;

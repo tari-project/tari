@@ -76,7 +76,7 @@ use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessH
 use tari_transaction_components::{
     consensus::NetworkConsensus,
     generate_coinbase_with_wallet_output,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
+    key_manager::{create_memory_key_manager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -88,7 +88,6 @@ use tari_transaction_components::{
         TransactionKernelVersion,
     },
 };
-use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::task;
 use tonic::{Request, Response, Status};
@@ -1187,7 +1186,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             prev_coinbase_value += u128::from(coinbase.value);
         }
 
-        let key_manager = create_memory_db_key_manager().map_err(|e| {
+        let key_manager = create_memory_key_manager().await.map_err(|e| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: '{e}'")))
         })?;
         let height = new_template.header.height;
@@ -1430,7 +1429,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Status::invalid_argument("Malformed coinbase amounts".to_string()),
             ));
         }
-        let key_manager = create_memory_db_key_manager().map_err(|s| {
+        let key_manager = create_memory_key_manager().await.map_err(|s| {
             obscure_error_if_true(report_error_flag, Status::internal(format!("Key manager error: {s}")))
         })?;
         let height = block_template.header.height;

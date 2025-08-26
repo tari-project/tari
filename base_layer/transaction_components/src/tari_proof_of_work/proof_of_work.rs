@@ -30,9 +30,6 @@ use tari_utilities::hex::Hex;
 
 use crate::tari_proof_of_work::proof_of_work_algorithm::PowAlgorithm;
 
-#[allow(dead_code)]
-pub trait AchievedDifficulty {}
-
 /// This is the maximum size of the proof of work data that can be included in a block header. This is used to prev
 pub const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
 pub type PowData = MaxSizeBytes<{ NOT_BEFORE_PROOF_BYTES_SIZE }>;

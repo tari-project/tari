@@ -22,9 +22,11 @@
 
 use std::{fmt, fmt::Formatter};
 
+use tari_transaction_components::rpc::models::FeePerGramStat;
+
 use crate::{
     common::RequestKey,
-    mempool::{FeePerGramStat, StateResponse, StatsResponse, TxStorageResponse},
+    mempool::{StateResponse, StatsResponse, TxStorageResponse},
 };
 
 /// API Response enum for Mempool responses.

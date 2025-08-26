@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-pre.7](https://github.com/tari-project/tari/compare/v5.0.0-pre.6a...v5.0.0-pre.7) (2025-08-25)
+
+
+### Features
+
+* remove ledger from ffi builds ([#7441](https://github.com/tari-project/tari/issues/7441)) ([148072d](https://github.com/tari-project/tari/commit/148072dff4aaf42cdc21e125547986f3feed0f07))
+
+## [5.0.0-pre.6](https://github.com/tari-project/tari/compare/v5.0.0-pre.5...v5.0.0-pre.6) (2025-08-25)
+
+
+### Features
+
+* make key manager backend async ([#7435](https://github.com/tari-project/tari/issues/7435)) ([743939f](https://github.com/tari-project/tari/commit/743939febd0f6cb4142fe01d5562cf26e5c9528b))
+
+
+### Bug Fixes
+
+* bad merge, add missing c29 constants ([6e5f624](https://github.com/tari-project/tari/commit/6e5f62469ee7defc2bd3ede3446c6b5dee770ae0))
+
 ## [5.0.0-pre.5](https://github.com/tari-project/tari/compare/v5.0.0-pre.4...v5.0.0-pre.5) (2025-08-22)
 
 

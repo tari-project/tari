@@ -28,7 +28,7 @@ mod error;
 pub use error::{DifficultyError, PowError};
 
 mod proof_of_work;
-pub use proof_of_work::{AchievedDifficulty, PowData, ProofOfWork};
+pub use proof_of_work::{PowData, ProofOfWork};
 
 mod proof_of_work_algorithm;
 pub use proof_of_work_algorithm::PowAlgorithm;

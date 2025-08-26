@@ -71,6 +71,7 @@ pub enum TariWorldError {
 }
 
 #[derive(cucumber::World)]
+#[world(init = Self::new)]
 pub struct TariWorld {
     pub current_scenario_name: Option<String>,
     pub current_feature_name: Option<String>,
@@ -106,8 +107,37 @@ pub struct TariWorld {
     pub assigned_ports: IndexMap<u64, u64>,
 }
 
-impl Default for TariWorld {
-    fn default() -> Self {
+impl Debug for TariWorld {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Client")
+            .field("base_nodes", &self.base_nodes)
+            .field("blocks", &self.blocks)
+            .field("miners", &self.miners)
+            .field("ffi_wallets", &self.ffi_wallets)
+            .field("wallets", &self.wallets)
+            .field("merge_mining_proxies", &self.merge_mining_proxies)
+            .field("transactions", &self.transactions)
+            .field("wallet_addresses", &self.wallet_addresses)
+            .field("utxos", &self.utxos)
+            .field("output_hash", &self.output_hash)
+            .field("pre_image", &self.pre_image)
+            .field("wallet_connected_to_base_node", &self.wallet_connected_to_base_node)
+            .field("seed_nodes", &self.seed_nodes)
+            .field("wallet_tx_ids", &self.wallet_tx_ids)
+            .field("errors", &self.errors)
+            .field("last_imported_tx_ids", &self.last_imported_tx_ids)
+            .field("last_merge_miner_response", &self.last_merge_miner_response)
+            .finish()
+    }
+}
+
+pub enum NodeClient {
+    BaseNode(minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    Wallet(minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
+}
+
+impl TariWorld {
+    pub async fn new() -> Self {
         println!("\nWorld initialized - remove this line when called!\n");
         let wallet_private_key = PrivateKey::random(&mut OsRng);
         let default_payment_address = TariAddress::new_dual_address_with_default_features(
@@ -139,45 +169,14 @@ impl Default for TariWorld {
             errors: Default::default(),
             last_imported_tx_ids: vec![],
             last_merge_miner_response: Default::default(),
-            key_manager: create_memory_db_key_manager().unwrap(),
+            key_manager: create_memory_db_key_manager().await.unwrap(),
             wallet_private_key,
             default_payment_address,
             consensus_manager: BaseConsensusManager::builder(Network::LocalNet).build().unwrap(),
             assigned_ports: Default::default(),
         }
     }
-}
 
-impl Debug for TariWorld {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Client")
-            .field("base_nodes", &self.base_nodes)
-            .field("blocks", &self.blocks)
-            .field("miners", &self.miners)
-            .field("ffi_wallets", &self.ffi_wallets)
-            .field("wallets", &self.wallets)
-            .field("merge_mining_proxies", &self.merge_mining_proxies)
-            .field("transactions", &self.transactions)
-            .field("wallet_addresses", &self.wallet_addresses)
-            .field("utxos", &self.utxos)
-            .field("output_hash", &self.output_hash)
-            .field("pre_image", &self.pre_image)
-            .field("wallet_connected_to_base_node", &self.wallet_connected_to_base_node)
-            .field("seed_nodes", &self.seed_nodes)
-            .field("wallet_tx_ids", &self.wallet_tx_ids)
-            .field("errors", &self.errors)
-            .field("last_imported_tx_ids", &self.last_imported_tx_ids)
-            .field("last_merge_miner_response", &self.last_merge_miner_response)
-            .finish()
-    }
-}
-
-pub enum NodeClient {
-    BaseNode(minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
-    Wallet(minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
-}
-
-impl TariWorld {
     pub async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,

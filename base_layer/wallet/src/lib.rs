@@ -12,6 +12,7 @@ pub mod base_node_service;
 pub mod client;
 pub mod connectivity_service;
 pub mod error;
+pub mod legacy_transaction_protocol;
 mod operation_id;
 pub mod output_manager_service;
 pub mod storage;

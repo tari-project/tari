@@ -187,7 +187,7 @@ async fn inbound_fetch_utxos() {
     let utxo_1 = block0.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let (utxo_2, _, _) = create_utxo(
         MicroMinotari(10_000),
         &key_manager,
@@ -253,7 +253,7 @@ async fn inbound_fetch_blocks() {
 async fn inbound_fetch_blocks_before_horizon_height() {
     let consensus_manager = BaseConsensusManager::builder(Network::LocalNet).build().unwrap();
     let block0 = consensus_manager.get_genesis_block();
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),

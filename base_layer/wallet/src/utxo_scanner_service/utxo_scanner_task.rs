@@ -36,11 +36,11 @@ use tari_common_types::{
     types::{BlockHash, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
-use tari_core::base_node::rpc::models::MinimalUtxoSyncInfo;
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
+    rpc::models::MinimalUtxoSyncInfo,
     tari_amount::MicroMinotari,
     transaction_components::{
         one_sided::shared_secret_to_output_encryption_key,

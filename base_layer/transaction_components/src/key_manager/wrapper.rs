@@ -81,19 +81,16 @@ where TBackend: TransactionKeyManagerBackend + 'static
     /// Creates a new key manager.
     /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
     /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
-    pub fn new(
+    pub async fn new(
         master_seed: CipherSeed,
         db: TBackend,
         crypto_factories: CryptoFactories,
         wallet_type: Arc<WalletType>,
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
-            transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerInner::new(
-                master_seed,
-                db,
-                crypto_factories,
-                wallet_type,
-            )?)),
+            transaction_key_manager_inner: Arc::new(RwLock::new(
+                TransactionKeyManagerInner::new(master_seed, db, crypto_factories, wallet_type).await?,
+            )),
         })
     }
 
@@ -112,6 +109,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .write()
             .await
             .add_key_manager_branch(&branch.into())
+            .await
     }
 
     async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyAndId, KeyManagerServiceError> {

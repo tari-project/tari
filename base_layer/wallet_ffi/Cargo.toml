@@ -8,10 +8,6 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-tari_core = { workspace = true, default-features = false, features = [
-    "tari_mmr",
-    "transactions",
-] }
 tari_common = { workspace = true }
 tari_common_types = { workspace = true }
 tari_comms = { workspace = true, features = ["c_integration"] }
@@ -54,9 +50,6 @@ tempfile = "3.1.0"
 tari_common_types = { workspace = true }
 tari_test_utils = { workspace = true }
 tari_service_framework = { workspace = true }
-tari_core = { workspace = true, default-features = false, features = [
-    "base_node",
-] }
 borsh = "1.5.7"
 env_logger = "0.7.1"
 

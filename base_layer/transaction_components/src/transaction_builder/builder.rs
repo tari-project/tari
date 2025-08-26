@@ -858,11 +858,11 @@ mod test {
     use super::*;
     use crate::{
         crypto_factories::CryptoFactories,
+        key_manager::create_memory_key_manager,
         tari_amount::{uT, MicroMinotari},
         test_helpers::{
             create_consensus_constants,
             create_consensus_manager,
-            create_memory_key_manager,
             create_test_input,
             create_wallet_output_with_data,
             TestParams,
@@ -878,7 +878,7 @@ mod test {
     #[allow(clippy::identity_op)]
     async fn change_edge_case() {
         // Create some inputs
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let p = TestParams::new(&key_manager).await;
         let constants = create_consensus_constants(0);
         let weighting = constants.transaction_weight_params();
@@ -940,7 +940,7 @@ mod test {
     #[tokio::test]
     async fn too_many_inputs() {
         // Create some inputs
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
@@ -975,7 +975,7 @@ mod test {
     #[tokio::test]
     async fn not_enough_funds() {
         // Create some inputs
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(400), 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
@@ -1013,7 +1013,7 @@ mod test {
 
     #[tokio::test]
     async fn zero_recipient_outputs() {
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let p1 = TestParams::new(&key_manager).await;
         let p2 = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
@@ -1063,7 +1063,7 @@ mod test {
     async fn single_recipient_no_change() {
         let rules = create_consensus_manager();
         let factories = CryptoFactories::default();
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let bob_key = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroMinotari(1200), 0, &key_manager, vec![], None).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
@@ -1126,7 +1126,7 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn single_recipient_with_change() {
         let rules = create_consensus_manager();
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         // Alice's parameters
         let alice_key = TestParams::new(&key_manager).await;
@@ -1193,7 +1193,7 @@ mod test {
     #[tokio::test]
     async fn single_recipient_multiple_inputs_with_change() {
         let rules = create_consensus_manager();
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let factories = CryptoFactories::default();
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
@@ -1255,7 +1255,7 @@ mod test {
     #[tokio::test]
     async fn disallow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();
@@ -1306,7 +1306,7 @@ mod test {
     #[tokio::test]
     async fn allow_fee_larger_than_amount() {
         // Alice's parameters
-        let key_manager = create_memory_key_manager().unwrap();
+        let key_manager = create_memory_key_manager().await.unwrap();
         let (utxo_amount, fee_per_gram, amount) = (MicroMinotari(2500), MicroMinotari(10), MicroMinotari(500));
         let input = create_test_input(utxo_amount, 0, &key_manager, vec![], None).await;
         let script = script!(Nop).unwrap();

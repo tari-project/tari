@@ -6,30 +6,28 @@ use std::cmp;
 use log::trace;
 use serde_valid::{validation, Validate};
 use tari_common_types::{types, types::FixedHashSizeError};
-use tari_transaction_components::transaction_components::TransactionOutput;
+use tari_transaction_components::{
+    rpc::{
+        models,
+        models::{
+            BlockUtxoInfo,
+            GetUtxosByBlockRequest,
+            GetUtxosByBlockResponse,
+            MinimalUtxoSyncInfo,
+            SyncUtxosByBlockRequest,
+            SyncUtxosByBlockResponse,
+            TipInfoResponse,
+            TxLocation,
+            TxQueryResponse,
+        },
+    },
+    transaction_components::TransactionOutput,
+};
 use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
 use thiserror::Error;
 
 use crate::{
-    base_node::{
-        rpc::{
-            models::{
-                self,
-                BlockUtxoInfo,
-                GetUtxosByBlockRequest,
-                GetUtxosByBlockResponse,
-                MinimalUtxoSyncInfo,
-                SyncUtxosByBlockRequest,
-                SyncUtxosByBlockResponse,
-                TipInfoResponse,
-                TxLocation,
-                TxQueryResponse,
-            },
-            BaseNodeWalletQueryService,
-        },
-        state_machine_service::states::StateInfo,
-        StateMachineHandle,
-    },
+    base_node::{rpc::BaseNodeWalletQueryService, state_machine_service::states::StateInfo, StateMachineHandle},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     mempool::{service::MempoolHandle, MempoolServiceError, TxStorageResponse},
 };

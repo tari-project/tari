@@ -25,6 +25,7 @@ use std::{sync::Arc, time::Instant};
 use log::*;
 use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
 use tari_transaction_components::{
+    rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
@@ -37,7 +38,6 @@ use crate::{
         error::MempoolError,
         reorg_pool::ReorgPool,
         unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
-        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
