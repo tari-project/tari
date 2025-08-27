@@ -108,7 +108,7 @@ impl HttpBaseNodeMock {
         Ok(())
     }
 
-    pub async fn set_onlie_status(&self, is_online: bool) -> Result<(), Error> {
+    pub async fn set_online_status(&self, is_online: bool) -> Result<(), Error> {
         let mut state = self.state.write().await;
         state.set_online_status(is_online);
         Ok(())
