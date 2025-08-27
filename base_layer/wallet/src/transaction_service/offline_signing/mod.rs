@@ -395,6 +395,6 @@ mod test {
         assert_eq!(init.info.outputs.len(), 0);
 
         let signer = OfflineSigner::new(alice_view_key_manager.clone());
-        let _signed = signer.sign_locked_transaction(init).await.is_err();
+        assert!(signer.sign_locked_transaction(init).await.is_err());
     }
 }
