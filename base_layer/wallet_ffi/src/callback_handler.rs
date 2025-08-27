@@ -48,7 +48,7 @@ use std::ffi::c_void;
 
 use log::*;
 use minotari_wallet::{
-    connectivity_service::{ExtendedOnlineStatus, DEGRADED_LATENCY_THRESHOLD, UNKNOWN_LATENCY_MS},
+    connectivity_service::{OnlineStatus, DEGRADED_LATENCY_THRESHOLD, UNKNOWN_LATENCY_MS},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -245,7 +245,7 @@ where
             .expect("Callback Handler started without shutdown signal");
 
         info!(target: LOG_TARGET, "Transaction Service Callback Handler starting");
-        self.connectivity_status_changed(ExtendedOnlineStatus::Connecting);
+        self.connectivity_status_changed(OnlineStatus::Connecting);
         let mut base_node_state = TariBaseNodeState::default();
 
         loop {
@@ -353,12 +353,12 @@ where
                                 } => {
                                     self.scanned_height_changed(current_height);
                                     let online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
-                                        ExtendedOnlineStatus::Degraded {
+                                        OnlineStatus::Degraded {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                             url: String::new()
                                         }
                                     } else {
-                                        ExtendedOnlineStatus::Online {
+                                        OnlineStatus::Online {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                             url: String::new()
                                         }
@@ -375,12 +375,12 @@ where
                                 } => {
                                 self.scanned_height_changed(final_height);
                                     let online_status = if latency >= DEGRADED_LATENCY_THRESHOLD {
-                                        ExtendedOnlineStatus::Degraded {
+                                        OnlineStatus::Degraded {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                             url: String::new()
                                         }
                                     } else {
-                                        ExtendedOnlineStatus::Online {
+                                        OnlineStatus::Online {
                                             latency_ms: u64::try_from(latency.as_millis()).unwrap_or(u64::MAX),
                                             url: String::new()
                                         }
@@ -391,7 +391,7 @@ where
                                     self.base_node_state_changed(base_node_state);
                                 },
                                 UtxoScannerEvent::ScanningRoundFailed { .. } => {
-                                    self.connectivity_status_changed(ExtendedOnlineStatus::Offline);
+                                    self.connectivity_status_changed(OnlineStatus::Offline);
                                 }
                             }
                         },
@@ -631,17 +631,15 @@ where
         }
     }
 
-    fn connectivity_status_changed(&mut self, status: ExtendedOnlineStatus) {
+    fn connectivity_status_changed(&mut self, status: OnlineStatus) {
         debug!(
             target: LOG_TARGET,
             "Calling Connectivity Status changed callback function"
         );
         let latency = match status {
-            ExtendedOnlineStatus::Connecting => UNKNOWN_LATENCY_MS,
-            ExtendedOnlineStatus::Offline => u64::MAX,
-            ExtendedOnlineStatus::Online { latency_ms, .. } | ExtendedOnlineStatus::Degraded { latency_ms, .. } => {
-                latency_ms
-            },
+            OnlineStatus::Connecting => UNKNOWN_LATENCY_MS,
+            OnlineStatus::Offline => u64::MAX,
+            OnlineStatus::Online { latency_ms, .. } | OnlineStatus::Degraded { latency_ms, .. } => latency_ms,
         };
         unsafe {
             (self.callback_connectivity_status)(self.context.0, u64::from(status.as_u8()), latency);

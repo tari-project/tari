@@ -31,7 +31,7 @@ use std::{
 use log::{info, trace, warn};
 use minotari_app_grpc::tari_rpc::GetBalanceResponse;
 use minotari_wallet::{
-    connectivity_service::{ExtendedOnlineStatus, WalletConnectivityInterface},
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::Balance,
@@ -72,7 +72,7 @@ pub struct WalletDebouncer<KeyManagerInterface> {
     shutdown_signal: ShutdownSignal,
     event_monitor_started: Arc<AtomicBool>,
     last_scan_activity: Arc<AtomicU64>,
-    connection_status: Arc<Mutex<ExtendedOnlineStatus>>,
+    connection_status: Arc<Mutex<OnlineStatus>>,
 }
 
 impl<KeyManagerInterface> WalletDebouncer<KeyManagerInterface>
@@ -106,7 +106,7 @@ where KeyManagerInterface: TransactionKeyManagerInterface
             event_monitor_started: Arc::new(AtomicBool::new(false)),
             last_scan_activity: Arc::new(AtomicU64::new(scanned_height + 1)), /* Add 1 to pass initial connectivity
                                                                                * check */
-            connection_status: Arc::new(Mutex::new(ExtendedOnlineStatus::Connecting)),
+            connection_status: Arc::new(Mutex::new(OnlineStatus::Connecting)),
         }
     }
 
@@ -295,7 +295,7 @@ where KeyManagerInterface: TransactionKeyManagerInterface
         trace!(target: LOG_TARGET, "Updated scan activity height - wallet is online");
     }
 
-    pub async fn get_connection_status(&self) -> ExtendedOnlineStatus {
+    pub async fn get_connection_status(&self) -> OnlineStatus {
         self.connection_status.lock().await.clone()
     }
 
@@ -320,8 +320,8 @@ where KeyManagerInterface: TransactionKeyManagerInterface
     }
 
     /// Check the online status by querying the wallet connectivity service directly
-    async fn check_connectivity(&self) -> ExtendedOnlineStatus {
-        let connectivity = self.wallet.wallet_connectivity.get_extended_connectivity_status().await;
+    async fn check_connectivity(&self) -> OnlineStatus {
+        let connectivity = self.wallet.wallet_connectivity.get_connectivity_status().await;
         let mut connection_status_guard = self.connection_status.lock().await;
         *connection_status_guard = connectivity.clone();
         connectivity

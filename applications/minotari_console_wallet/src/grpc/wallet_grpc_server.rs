@@ -118,7 +118,7 @@ use minotari_app_grpc::tari_rpc::{
     ValidateResponse,
 };
 use minotari_wallet::{
-    connectivity_service::{ExtendedOnlineStatus, WalletConnectivityInterface, UNKNOWN_LATENCY_MS},
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface, UNKNOWN_LATENCY_MS},
     error::WalletStorageError,
     legacy_transaction_protocol::recipient::RecipientState,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
@@ -1748,15 +1748,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
         // This mapping is to comply to the legacy interface
         let (status, avg_latency, num_node_connections) =
-            match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
-                ExtendedOnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS, 0),
-                ExtendedOnlineStatus::Online { latency_ms, .. } => {
+            match self.wallet.wallet_connectivity.get_connectivity_status().await {
+                OnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS, 0),
+                OnlineStatus::Online { latency_ms, .. } => {
                     let mut avg_latencies = self.avg_latencies_ms.lock().await;
                     let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
                     (ConnectivityStatus::Online(1), latency_ms, 1)
                 },
-                ExtendedOnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX, 0),
-                ExtendedOnlineStatus::Degraded { latency_ms, .. } => {
+                OnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX, 0),
+                OnlineStatus::Degraded { latency_ms, .. } => {
                     let mut avg_latencies = self.avg_latencies_ms.lock().await;
                     let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
                     (ConnectivityStatus::Degraded(1), latency_ms, 1)
@@ -1777,12 +1777,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::GetConnectedHttpPeerResponse>, Status> {
         let url = self.wallet.wallet_connectivity.get_address().await;
-        let (is_online, last_latency) = match self.wallet.wallet_connectivity.get_extended_connectivity_status().await {
-            ExtendedOnlineStatus::Connecting => (false, UNKNOWN_LATENCY_MS),
-            ExtendedOnlineStatus::Offline => (false, u64::MAX),
-            ExtendedOnlineStatus::Online { latency_ms, .. } | ExtendedOnlineStatus::Degraded { latency_ms, .. } => {
-                (true, latency_ms)
-            },
+        let (is_online, last_latency) = match self.wallet.wallet_connectivity.get_connectivity_status().await {
+            OnlineStatus::Connecting => (false, UNKNOWN_LATENCY_MS),
+            OnlineStatus::Offline => (false, u64::MAX),
+            OnlineStatus::Online { latency_ms, .. } | OnlineStatus::Degraded { latency_ms, .. } => (true, latency_ms),
         };
 
         let peer = tari_rpc::HttpPeer {

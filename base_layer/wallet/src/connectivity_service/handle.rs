@@ -33,29 +33,21 @@ pub const UNKNOWN_LATENCY_MS: u64 = 0;
 pub const DEGRADED_LATENCY_THRESHOLD: Duration = Duration::from_secs(10);
 
 /// Connection status of the Base Node
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum OnlineStatus {
-    Connecting = 0,
-    Online = 1,
-    Offline = 2,
-}
-
-/// Extended connection status of the Base Node
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ExtendedOnlineStatus {
+pub enum OnlineStatus {
     Connecting,
     Online { latency_ms: u64, url: String },
     Offline,
     Degraded { latency_ms: u64, url: String },
 }
 
-impl ExtendedOnlineStatus {
+impl OnlineStatus {
     pub fn as_u8(&self) -> u8 {
         match self {
-            ExtendedOnlineStatus::Connecting => 0,
-            ExtendedOnlineStatus::Online { .. } => 1,
-            ExtendedOnlineStatus::Offline => 2,
-            ExtendedOnlineStatus::Degraded { .. } => 3,
+            OnlineStatus::Connecting => 0,
+            OnlineStatus::Online { .. } => 1,
+            OnlineStatus::Offline => 2,
+            OnlineStatus::Degraded { .. } => 3,
         }
     }
 }
@@ -64,17 +56,14 @@ impl ExtendedOnlineStatus {
 pub struct WalletConnectivityHandle<TWalletClientFactory: HttpClientFactory> {
     client_factory: TWalletClientFactory,
     online_status_watch: watch::Sender<OnlineStatus>,
-    extended_online_status_watch: watch::Sender<ExtendedOnlineStatus>,
 }
 
 impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityHandle<TWalletClientFactory> {
     pub fn new(client_factory: TWalletClientFactory) -> Self {
         let (online_status_watch, _) = watch::channel(OnlineStatus::Connecting);
-        let (extended_online_status_watch, _) = watch::channel(ExtendedOnlineStatus::Connecting);
         Self {
             client_factory,
             online_status_watch,
-            extended_online_status_watch,
         }
     }
 }
@@ -94,45 +83,33 @@ impl<TWalletClientFactory: HttpClientFactory> WalletConnectivityInterface
     }
 
     async fn get_connectivity_status(&self) -> OnlineStatus {
-        if self.client_factory.create_http_client().is_online().await {
-            OnlineStatus::Online
-        } else {
-            OnlineStatus::Offline
-        }
-    }
-
-    async fn get_extended_connectivity_status(&self) -> ExtendedOnlineStatus {
         let client = self.obtain_base_node_wallet_rpc_client().await;
         let status = if client.is_online().await {
             let url = client.get_address().await;
             if let Some(latency) = client.get_last_request_latency().await {
                 let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
                 if latency >= DEGRADED_LATENCY_THRESHOLD {
-                    ExtendedOnlineStatus::Degraded { latency_ms, url }
+                    OnlineStatus::Degraded { latency_ms, url }
                 } else {
-                    ExtendedOnlineStatus::Online { latency_ms, url }
+                    OnlineStatus::Online { latency_ms, url }
                 }
             } else {
                 // Latency unavailable; report degraded with unknown latency sentinel.
-                ExtendedOnlineStatus::Degraded {
+                OnlineStatus::Degraded {
                     latency_ms: UNKNOWN_LATENCY_MS,
                     url,
                 }
             }
         } else {
-            ExtendedOnlineStatus::Offline
+            OnlineStatus::Offline
         };
-        let _unused = self.extended_online_status_watch.send(status.clone());
+        let _unused = self.online_status_watch.send(status.clone());
 
         status
     }
 
     fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
         self.online_status_watch.subscribe()
-    }
-
-    fn get_extended_connectivity_status_watch(&self) -> watch::Receiver<ExtendedOnlineStatus> {
-        self.extended_online_status_watch.subscribe()
     }
 
     async fn get_last_request_latency(&self) -> Option<Duration> {

@@ -70,7 +70,7 @@ impl State {
         self.tip_info = Some(tip_info);
     }
 
-    fn set_onlie_status(&mut self, is_online: bool) {
+    fn set_online_status(&mut self, is_online: bool) {
         self.online = is_online;
     }
 
@@ -110,7 +110,7 @@ impl HttpBaseNodeMock {
 
     pub async fn set_onlie_status(&self, is_online: bool) -> Result<(), Error> {
         let mut state = self.state.write().await;
-        state.set_onlie_status(is_online);
+        state.set_online_status(is_online);
         Ok(())
     }
 
