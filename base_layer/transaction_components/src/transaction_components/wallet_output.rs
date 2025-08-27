@@ -35,7 +35,7 @@ use super::TransactionOutputVersion;
 use crate::{
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components,
     transaction_components::{
         covenants::Covenant,

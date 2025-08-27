@@ -34,7 +34,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     crypto_factories::CryptoFactories,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         KernelFeatures,
         OutputType,

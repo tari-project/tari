@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     key_manager::error::KeyManagerServiceError,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::TransactionError,
 };
 

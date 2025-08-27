@@ -12,7 +12,7 @@ use regex::Regex;
 use reqwest::StatusCode;
 use tari_crypto::{hashing::DomainSeparation, ristretto::RistrettoSecretKey};
 use tari_hashing::TariEngineHashDomain;
-use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::TemplateType};
+use tari_transaction_components::{MicroMinotari, transaction_components::TemplateType};
 use tari_utilities::hex::Hex;
 use tokio::{
     runtime::{Handle, Runtime},

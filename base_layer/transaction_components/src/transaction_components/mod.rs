@@ -95,7 +95,7 @@ hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 use tari_hashing::TransactionHashDomain;
 
-use super::tari_amount::MicroMinotari;
+use super::MicroMinotari;
 use crate::{consensus::DomainSeparatedConsensusHasher, transaction_components::covenants::Covenant};
 
 /// Implement the canonical hashing function for TransactionOutput and WalletOutput for use in

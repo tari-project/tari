@@ -59,7 +59,7 @@ use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_fact
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     generate_coinbase,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},

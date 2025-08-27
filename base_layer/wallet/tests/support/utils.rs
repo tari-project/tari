@@ -24,7 +24,7 @@ use rand::{CryptoRng, Rng};
 use tari_script::{script, TariScript};
 use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_components::{OutputFeatures, WalletOutput},
 };

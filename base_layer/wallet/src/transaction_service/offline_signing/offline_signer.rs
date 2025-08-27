@@ -30,7 +30,7 @@ use tari_common_types::{
 use tari_script::push_pubkey_script;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},

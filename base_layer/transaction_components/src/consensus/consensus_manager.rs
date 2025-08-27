@@ -31,7 +31,7 @@ use crate::{
         ConsensusConstants,
         NetworkConsensus,
     },
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::TransactionKernel,
 };
 

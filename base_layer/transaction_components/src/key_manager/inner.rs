@@ -90,7 +90,7 @@ use crate::{
         ConfidentialOutputHasher,
         TariKeyId,
     },
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
         one_sided::diffie_hellman_stealth_domain_hasher,

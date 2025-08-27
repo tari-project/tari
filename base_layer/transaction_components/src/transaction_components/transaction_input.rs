@@ -48,7 +48,7 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components,
     transaction_components::{
         covenants::Covenant,

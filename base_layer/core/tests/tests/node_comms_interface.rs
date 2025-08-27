@@ -43,7 +43,7 @@ use tari_core::{
 use tari_script::script;
 use tari_service_framework::reply_channel;
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     tari_proof_of_work::Difficulty,
     test_helpers::create_utxo,
     transaction_components::covenants::Covenant,

@@ -37,7 +37,7 @@ use crate::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_builder::FinalizedTransaction,
     transaction_components::{
         covenants::Covenant,

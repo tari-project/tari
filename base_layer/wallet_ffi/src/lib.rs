@@ -150,7 +150,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     helpers::borsh::FromBytes,
     key_manager::TransactionKeyManagerInterface,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,

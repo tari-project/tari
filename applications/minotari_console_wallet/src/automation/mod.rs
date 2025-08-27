@@ -35,7 +35,7 @@ use tari_common_types::{
 use tari_script::{CompressedCheckSigSchnorrSignature, ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::TariKeyId,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{EncryptedData, OutputFeatures},
 };
 

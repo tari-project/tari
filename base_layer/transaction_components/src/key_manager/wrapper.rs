@@ -52,7 +52,7 @@ use crate::{
         TransactionKeyManagerInner,
         TransactionKeyManagerInterface,
     },
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
         EncryptedData,

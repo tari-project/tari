@@ -41,7 +41,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
     rpc::models::MinimalUtxoSyncInfo,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         one_sided::shared_secret_to_output_encryption_key,
         EncryptedData,

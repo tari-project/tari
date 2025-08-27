@@ -42,7 +42,7 @@ use tari_script::script;
 use tari_transaction_components::{
     consensus::{emission::Emission, ConsensusConstants},
     key_manager::{TransactionKeyManagerInterface, TxoStage},
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     test_helpers::{create_wallet_output_with_data, spend_utxos, TestParams, TransactionSchema},
     transaction_components::{

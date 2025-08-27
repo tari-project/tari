@@ -26,7 +26,7 @@ use tari_core::consensus::BaseNodeConsensusManager;
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_transaction_components::{
     consensus::emission::Emission,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     tari_proof_of_work::Difficulty,
     transaction_components::Transaction,
 };

@@ -41,7 +41,7 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         transaction_output::batch_verify_range_proofs,
         KernelSum,

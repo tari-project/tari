@@ -37,7 +37,7 @@ use tari_common_types::{
 use tari_utilities::hex::Hex;
 
 use crate::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
 };
 // We pad the bytes to min this size, so that we can use the same size for AddressAndData and TransactionInfo
@@ -1348,7 +1348,7 @@ mod test {
 
     use super::*;
     use crate::{
-        tari_amount::MicroMinotari,
+        MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
             EncryptedData,

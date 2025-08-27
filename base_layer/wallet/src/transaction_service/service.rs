@@ -77,7 +77,7 @@ use tari_transaction_components::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},

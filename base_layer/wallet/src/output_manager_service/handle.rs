@@ -30,7 +30,7 @@ use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::MemoField,

@@ -26,7 +26,7 @@
 use tari_common_types::types::{CompressedCommitment, CompressedSignature};
 
 use crate::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{KernelFeatures, TransactionError, TransactionKernel},
 };
 

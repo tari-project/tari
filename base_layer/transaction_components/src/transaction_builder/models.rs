@@ -8,7 +8,7 @@ use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 
 use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
         Transaction,

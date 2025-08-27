@@ -57,7 +57,7 @@ use super::TransactionOutputVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     helpers::borsh::SerializedSize,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components,
     transaction_components::{
         covenants::Covenant,
@@ -588,7 +588,7 @@ mod test {
     use crate::{
         crypto_factories::CryptoFactories,
         key_manager::{create_memory_key_manager, TransactionKeyManagerInterface},
-        tari_amount::MicroMinotari,
+        MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
     };

@@ -41,7 +41,7 @@ use tari_common_types::{
     types::{FixedHash, HashOutput, PrivateKey},
 };
 use tari_crypto::keys::SecretKey;
-use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::OutputFeatures};
+use tari_transaction_components::{MicroMinotari, transaction_components::OutputFeatures};
 use tari_transaction_key_manager::create_memory_db_key_manager;
 use tari_utilities::{hex::Hex, ByteArray};
 

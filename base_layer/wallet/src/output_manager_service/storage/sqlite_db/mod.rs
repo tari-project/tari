@@ -1512,7 +1512,7 @@ mod test {
     use tari_script::script;
     use tari_test_utils::random;
     use tari_transaction_components::{
-        tari_amount::MicroMinotari,
+        MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
     };

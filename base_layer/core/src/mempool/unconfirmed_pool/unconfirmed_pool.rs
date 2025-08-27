@@ -31,7 +31,7 @@ use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, Priva
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
 };
@@ -862,7 +862,7 @@ mod test {
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
         fee::Fee,
-        tari_amount::MicroMinotari,
+        MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_builder::TransactionBuilder,
         tx,

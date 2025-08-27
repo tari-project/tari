@@ -24,7 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
 use tari_core::base_node::comms_interface::ValidatorNodeChange;
-use tari_transaction_components::tari_amount::MicroMinotari;
+use tari_transaction_components::MicroMinotari;
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;

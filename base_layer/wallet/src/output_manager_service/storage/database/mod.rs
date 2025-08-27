@@ -33,7 +33,7 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash, HashOutput},
 };
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{OutputType, TransactionOutput},
 };
 use tari_utilities::hex::Hex;

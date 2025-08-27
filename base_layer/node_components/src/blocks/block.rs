@@ -36,7 +36,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     tari_proof_of_work::ProofOfWork,
     transaction_components::{
         KernelFeatures,

@@ -23,7 +23,7 @@ use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{covenants::CovenantError, OutputType, RangeProofType, TransactionError},
 };
 

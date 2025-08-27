@@ -81,7 +81,7 @@ use tari_transaction_components::{
         TransactionKeyManagerInitializer,
         TransactionKeyManagerInterface,
     },
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},

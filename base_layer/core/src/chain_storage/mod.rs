@@ -92,7 +92,7 @@ pub use template_registation::TemplateRegistrationEntry;
 mod smt_hasher;
 
 pub use smt_hasher::SmtHasher;
-use tari_transaction_components::{tari_amount::MicroMinotari, transaction_components::ValidatorNodeRegistration};
+use tari_transaction_components::{MicroMinotari, transaction_components::ValidatorNodeRegistration};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {

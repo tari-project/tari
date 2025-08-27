@@ -21,7 +21,7 @@ use tari_transaction_components::{
             TxSubmissionResponse,
         },
     },
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{Transaction, TransactionOutput},
 };
 use tari_utilities::hex::Hex;

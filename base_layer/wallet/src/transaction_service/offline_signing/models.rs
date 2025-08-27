@@ -27,7 +27,7 @@ use tari_common_types::{
     types::{CompressedCommitment, FixedHash},
 };
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{memo_field::MemoField, KernelFeatures, OutputFeatures, Transaction, WalletOutput},
 };
 

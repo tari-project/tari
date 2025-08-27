@@ -24,7 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::CompressedCommitment;
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
 };
 use tari_utilities::ByteArray;

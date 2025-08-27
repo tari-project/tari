@@ -39,7 +39,7 @@ use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use super::TransactionKernelVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{KernelFeatures, TransactionError},
 };
 

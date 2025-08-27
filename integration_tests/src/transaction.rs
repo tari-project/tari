@@ -24,7 +24,7 @@ use tari_script::{inputs, script, TariScript};
 use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     key_manager::TariKeyId,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     test_helpers::{create_transaction_with, TestParams},
     transaction_components::{
         covenants::Covenant,

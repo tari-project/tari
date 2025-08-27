@@ -64,7 +64,7 @@ use tari_integration_tests::{
 };
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},

@@ -42,7 +42,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
-    tari_amount::MicroMinotari,
+    MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
         BuildInfo,
