@@ -41,7 +41,7 @@
 //!   ------------    | -------------------
 //!   Connecting => 0 | 0
 //!   Online => 1     | <measured latency>
-//!   Offline => 2    | 0
+//!   Offline => 2    | u64::MAX
 //!   Degraded => 3   | <measured latency>
 
 use std::ffi::c_void;

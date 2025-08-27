@@ -2824,7 +2824,7 @@ void wallet_db_config_destroy(struct TariWalletDbConfig *wc);
  *   ------------    | -------------------
  *   Connecting => 0 | 0
  *   Online => 1     | <measured latency>
- *   Offline => 2    | 0
+ *   Offline => 2    | u64::MAX
  *   Degraded => 3   | <measured latency>
  * `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
  * that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
