@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-pre.8](https://github.com/tari-project/tari/compare/v5.0.0-pre.7...v5.0.0-pre.8) (2025-08-27)
+
+
+### Features
+
+* cleanup base node and grpc ([#7444](https://github.com/tari-project/tari/issues/7444)) ([6f2a5ec](https://github.com/tari-project/tari/commit/6f2a5ec7f32b9112efd56e6b9fbb231181c1c59b))
+
+
+### Bug Fixes
+
+* offline signing 0 fees ([#7445](https://github.com/tari-project/tari/issues/7445)) ([2644305](https://github.com/tari-project/tari/commit/264430518e393dc2982aa5f672508ffcd870508b))
+
 ## [5.0.0-pre.7](https://github.com/tari-project/tari/compare/v5.0.0-pre.6a...v5.0.0-pre.7) (2025-08-25)
 
 
