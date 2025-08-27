@@ -20,41 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
 pub mod ban;
 
-#[cfg(feature = "base_node")]
 mod config;
-#[cfg(feature = "base_node")]
+
 pub use self::config::BlockchainSyncConfig;
 
-#[cfg(feature = "base_node")]
 mod block_sync;
-#[cfg(feature = "base_node")]
+
 pub use block_sync::{BlockSyncError, BlockSynchronizer};
 
-#[cfg(feature = "base_node")]
 mod header_sync;
-#[cfg(feature = "base_node")]
+
 pub use header_sync::{AttemptSyncResult, BlockHeaderSyncError, HeaderSyncStatus, HeaderSynchronizer};
 
-#[cfg(feature = "base_node")]
 mod horizon_state_sync;
-#[cfg(feature = "base_node")]
+
 pub use horizon_state_sync::{HorizonStateSynchronization, HorizonSyncError, HorizonSyncInfo, HorizonSyncStatus};
 
-#[cfg(feature = "base_node")]
 mod hooks;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod rpc;
 
-#[cfg(feature = "base_node")]
 mod sync_peer;
-#[cfg(feature = "base_node")]
+
 pub use sync_peer::SyncPeer;
 
-#[cfg(feature = "base_node")]
 mod validators;
-#[cfg(feature = "base_node")]
+
 pub use validators::SyncValidators;

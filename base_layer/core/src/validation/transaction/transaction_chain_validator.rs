@@ -24,7 +24,7 @@ use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     validation::{aggregate_body::AggregateBodyChainLinkedValidator, TransactionValidator, ValidationError},
 };
 
@@ -34,7 +34,7 @@ pub struct TransactionChainLinkedValidator<B> {
 }
 
 impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
-    pub fn new(db: BlockchainDatabase<B>, consensus_manager: BaseConsensusManager) -> Self {
+    pub fn new(db: BlockchainDatabase<B>, consensus_manager: BaseNodeConsensusManager) -> Self {
         Self {
             aggregate_body_validator: AggregateBodyChainLinkedValidator::new(consensus_manager),
             db,

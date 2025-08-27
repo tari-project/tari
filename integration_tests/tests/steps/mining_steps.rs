@@ -26,7 +26,6 @@ use cucumber::{given, then, when};
 use minotari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use rand::Rng;
 use tari_common_types::types::BlockHash;
-use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::spawn_base_node,
     miner::{
@@ -39,6 +38,7 @@ use tari_integration_tests::{
     wallet_process::{create_wallet_client, spawn_wallet},
     TariWorld,
 };
+use tari_node_components::blocks::Block;
 
 use crate::steps::{node_steps::submit_transaction_to, wallet_steps::create_tx_spending_coinbase};
 

@@ -41,7 +41,6 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletService,
     },
-    blocks::BlockHeader,
     proto,
     proto::{
         base_node::{
@@ -70,6 +69,7 @@ use tari_core::{
         },
     },
 };
+use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::transaction_components::{Transaction, TransactionOutput};
 use tari_utilities::epoch_time::EpochTime;
 use tokio::{sync::mpsc, time::sleep};

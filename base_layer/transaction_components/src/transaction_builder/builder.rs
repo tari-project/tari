@@ -24,7 +24,6 @@ use crate::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    tari_amount::MicroMinotari,
     transaction_builder::{
         error::TransactionBuilderError,
         models::{FinalizedTransaction, OutputPair, RecipientDetails},
@@ -44,6 +43,7 @@ use crate::{
         MAX_TRANSACTION_INPUTS,
         MAX_TRANSACTION_OUTPUTS,
     },
+    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_builder";
@@ -869,7 +869,7 @@ mod test {
             UtxoTestParams,
         },
         transaction_builder::TransactionBuilder,
-        transaction_components::{memo_field::MemoField, OutputFeatures, WalletOutputBuilder},
+        transaction_components::{MemoField, OutputFeatures, WalletOutputBuilder},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 

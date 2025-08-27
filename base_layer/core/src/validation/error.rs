@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_common_types::{epoch::VnEpoch, types::HashOutput};
+use tari_node_components::blocks::{BlockHeaderValidationError, BlockValidationError};
 use tari_sidechain::SidechainProofValidationError;
 use tari_transaction_components::{
     tari_proof_of_work::{DifficultyError, PowError},
@@ -32,7 +33,6 @@ use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
-    blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
 };

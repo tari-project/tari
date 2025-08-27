@@ -35,20 +35,20 @@ use super::TransactionOutputVersion;
 use crate::{
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
     transaction_components,
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
         transaction_input::{SpentOutput, TransactionInput},
         transaction_output::TransactionOutput,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         OutputType,
         RangeProofType,
         TransactionError,
         TransactionInputVersion,
     },
+    MicroMinotari,
 };
 
 /// A wallet output is one where the value and spending key (blinding factor) are known. This can be used to

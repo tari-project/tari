@@ -220,7 +220,7 @@ impl BlockTemplateDataBuilder {
 mod test {
     use std::convert::{TryFrom, TryInto};
 
-    use tari_core::blocks::{Block, BlockHeader};
+    use tari_node_components::blocks::{Block, BlockHeader};
     use tari_transaction_components::{aggregated_body::AggregateBody, tari_proof_of_work::Difficulty};
     use tari_utilities::ByteArray;
 

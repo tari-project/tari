@@ -61,7 +61,6 @@ use tari_transaction_components::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -81,6 +80,7 @@ use tari_transaction_components::{
         WalletOutput,
         WalletOutputBuilder,
     },
+    MicroMinotari,
     TransactionBuilder,
 };
 use tari_utilities::{hex::Hex, ByteArray};

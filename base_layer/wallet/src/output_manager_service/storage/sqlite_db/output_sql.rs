@@ -39,15 +39,15 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::TariKeyId,
-    tari_amount::MicroMinotari,
     transaction_components::{
-        memo_field::MemoField,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         OutputType,
         TransactionOutputVersion,
         WalletOutput,
     },
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 

@@ -20,8 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
-use tari_core::blocks::Block;
-
+use tari_node_components::blocks::Block;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Job {
     pub job_id: u64,

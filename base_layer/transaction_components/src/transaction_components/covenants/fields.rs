@@ -398,8 +398,8 @@ mod test {
             use super::*;
             use crate::{
                 key_manager::create_memory_key_manager,
-                tari_amount::MicroMinotari,
                 transaction_components::RangeProofType,
+                MicroMinotari,
             };
 
             #[tokio::test]
@@ -574,7 +574,7 @@ mod test {
             use digest::Update;
 
             use super::*;
-            use crate::{tari_amount::MicroMinotari, transaction_components::RangeProofType};
+            use crate::{transaction_components::RangeProofType, MicroMinotari};
 
             #[tokio::test]
             async fn it_constructs_challenge_using_consensus_encoding() {
@@ -622,7 +622,7 @@ mod test {
 
         mod get_field_value_ref {
             use super::*;
-            use crate::{tari_amount::MicroMinotari, transaction_components::RangeProofType};
+            use crate::{transaction_components::RangeProofType, MicroMinotari};
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {

@@ -34,7 +34,6 @@ use tari_common_types::{
 use tari_script::push_pubkey_script;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    tari_amount::MicroMinotari,
     transaction_builder::OutputPair,
     transaction_components::{
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
@@ -47,6 +46,7 @@ use tari_transaction_components::{
         WalletOutput,
         WalletOutputBuilder,
     },
+    MicroMinotari,
     TransactionBuilderError,
 };
 

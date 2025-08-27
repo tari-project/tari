@@ -28,11 +28,12 @@ use std::{
 
 use primitive_types::U512;
 use tari_common_types::types::{BlockHash, CompressedCommitment, HashOutput};
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
+    blocks::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
 };
 #[derive(Debug)]

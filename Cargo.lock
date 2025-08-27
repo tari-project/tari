@@ -844,8 +844,10 @@ checksum = "7e36cc9d416881d2e24f9a963be5fb1cd90966419ac844274161d10488b3e825"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -4153,10 +4155,8 @@ dependencies = [
  "argon2 0.4.1",
  "base64 0.13.1",
  "borsh",
- "chrono",
  "log",
  "prost 0.13.4",
- "prost-types 0.13.4",
  "rand 0.8.5",
  "rcgen",
  "subtle",
@@ -4166,6 +4166,7 @@ dependencies = [
  "tari_crypto",
  "tari_features",
  "tari_max_size",
+ "tari_node_components",
  "tari_script",
  "tari_sidechain",
  "tari_transaction_components",
@@ -4318,6 +4319,7 @@ dependencies = [
  "tari_core",
  "tari_features",
  "tari_max_size",
+ "tari_node_components",
  "tari_transaction_components",
  "tari_utilities",
  "thiserror 1.0.69",
@@ -4356,6 +4358,7 @@ dependencies = [
  "tari_common_types",
  "tari_core",
  "tari_max_size",
+ "tari_node_components",
  "tari_transaction_components",
  "tari_transaction_key_manager",
  "tari_utilities",
@@ -4402,6 +4405,7 @@ dependencies = [
  "tari_features",
  "tari_libtor",
  "tari_metrics",
+ "tari_node_components",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
@@ -4500,6 +4504,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_max_size",
+ "tari_node_components",
  "tari_p2p",
  "tari_script",
  "tari_service_framework",
@@ -7719,6 +7724,7 @@ dependencies = [
  "tari_max_size",
  "tari_metrics",
  "tari_mmr",
+ "tari_node_components",
  "tari_p2p",
  "tari_script",
  "tari_service_framework",
@@ -7806,6 +7812,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_node_components",
  "tari_p2p",
  "tari_script",
  "tari_shutdown",
@@ -7886,6 +7893,25 @@ dependencies = [
  "tari_crypto",
  "tari_utilities",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tari_node_components"
+version = "5.0.0-pre.7"
+dependencies = [
+ "blake2",
+ "borsh",
+ "chrono",
+ "digest",
+ "js-sys",
+ "log",
+ "serde",
+ "tari_common_types",
+ "tari_crypto",
+ "tari_transaction_components",
+ "tari_utilities",
+ "thiserror 1.0.69",
+ "wasm-bindgen",
 ]
 
 [[package]]

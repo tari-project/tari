@@ -42,16 +42,16 @@ use tari_service_framework::reply_channel::SenderService;
 use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
-    tari_amount::MicroMinotari,
     transaction_components::{
-        memo_field::MemoField,
         BuildInfo,
         CodeTemplateRegistration,
+        MemoField,
         OutputFeatures,
         TemplateType,
         Transaction,
         TransactionOutput,
     },
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;

@@ -26,8 +26,8 @@
 use tari_common_types::types::{CompressedCommitment, CompressedSignature};
 
 use crate::{
-    tari_amount::MicroMinotari,
     transaction_components::{KernelFeatures, TransactionError, TransactionKernel},
+    MicroMinotari,
 };
 
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels

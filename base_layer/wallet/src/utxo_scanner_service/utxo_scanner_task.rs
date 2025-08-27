@@ -41,13 +41,13 @@ use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
     rpc::models::MinimalUtxoSyncInfo,
-    tari_amount::MicroMinotari,
     transaction_components::{
         one_sided::shared_secret_to_output_encryption_key,
         EncryptedData,
         TransactionOutput,
         WalletOutput,
     },
+    MicroMinotari,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};

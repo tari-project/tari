@@ -31,15 +31,13 @@ use tari_transaction_components::{
         ConsensusManagerBuilder,
         NetworkConsensus,
     },
-    tari_amount::MicroMinotari,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::TransactionKernel,
+    MicroMinotari,
 };
 
-#[cfg(feature = "base_node")]
 use crate::{
-    blocks::pre_mine::pre_mine_spendable_at_height,
-    blocks::ChainBlock,
+    blocks::{pre_mine::pre_mine_spendable_at_height, ChainBlock},
     consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
     proof_of_work::TargetDifficultyWindow,
 };
@@ -53,14 +51,14 @@ pub struct MaturityTranche {
 
 /// Container struct for consensus rules. This can be cheaply cloned.
 #[derive(Debug, Clone)]
-pub struct BaseConsensusManager {
-    inner: Arc<BaseConsensusManagerInner>,
+pub struct BaseNodeConsensusManager {
+    inner: Arc<BaseNodeConsensusManagerInner>,
 }
 
-impl BaseConsensusManager {
+impl BaseNodeConsensusManager {
     /// Start a builder for specified network
-    pub fn builder(network: Network) -> BaseConsensusManagerBuilder {
-        BaseConsensusManagerBuilder::new(network)
+    pub fn builder(network: Network) -> BaseNodeConsensusManagerBuilder {
+        BaseNodeConsensusManagerBuilder::new(network)
     }
 
     /// Returns the genesis block for the selected network.
@@ -238,7 +236,7 @@ impl BaseConsensusManager {
 
 /// This is the used to control all consensus values.
 #[derive(Debug)]
-struct BaseConsensusManagerInner {
+struct BaseNodeConsensusManagerInner {
     pub consensus_manager: ConsensusManager,
 
     pub gen_block: Option<ChainBlock>,
@@ -247,17 +245,17 @@ struct BaseConsensusManagerInner {
 }
 
 /// Constructor for the consensus manager struct
-pub struct BaseConsensusManagerBuilder {
+pub struct BaseNodeConsensusManagerBuilder {
     consensus_manager_builder: ConsensusManagerBuilder,
     /// This is can only used be used if the network is localnet
     gen_block: Option<ChainBlock>,
     chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
 
-impl BaseConsensusManagerBuilder {
+impl BaseNodeConsensusManagerBuilder {
     /// Creates a new ConsensusManagerBuilder with the specified network
     pub fn new(network: Network) -> Self {
-        BaseConsensusManagerBuilder {
+        BaseNodeConsensusManagerBuilder {
             consensus_manager_builder: ConsensusManagerBuilder::new(network),
             gen_block: None,
             chain_strength_comparer: None,
@@ -284,7 +282,7 @@ impl BaseConsensusManagerBuilder {
     }
 
     /// Builds a consensus manager
-    pub fn build(self) -> Result<BaseConsensusManager, BaseConsensusBuilderError> {
+    pub fn build(self) -> Result<BaseNodeConsensusManager, BaseConsensusBuilderError> {
         // should not be allowed to set the gen block and have the network type anything else than LocalNet
         // If feature != base_node, gen_block is not available
         if self.consensus_manager_builder.network.as_network() != Network::LocalNet && self.gen_block.is_some() {
@@ -293,7 +291,7 @@ impl BaseConsensusManagerBuilder {
 
         let consensus_manager = self.consensus_manager_builder.build();
 
-        let inner = BaseConsensusManagerInner {
+        let inner = BaseNodeConsensusManagerInner {
             consensus_manager,
             gen_block: self.gen_block,
             chain_strength_comparer: self.chain_strength_comparer.unwrap_or_else(|| {
@@ -312,7 +310,7 @@ impl BaseConsensusManagerBuilder {
                     .build()
             }),
         };
-        Ok(BaseConsensusManager { inner: Arc::new(inner) })
+        Ok(BaseNodeConsensusManager { inner: Arc::new(inner) })
     }
 }
 
@@ -335,7 +333,7 @@ mod test {
     #[test]
     fn test_supply_at_block() {
         let network = Network::MainNet;
-        let consensus_manager = BaseConsensusManager::builder(network).build().unwrap();
+        let consensus_manager = BaseNodeConsensusManager::builder(network).build().unwrap();
         for (height, mined, spendable, pre_mine, total) in [
             (
                 0,
