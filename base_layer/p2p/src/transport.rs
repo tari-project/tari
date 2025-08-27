@@ -25,9 +25,9 @@ use serde::{Deserialize, Serialize};
 use tari_comms::{
     multiaddr::Multiaddr,
     socks,
-    tor,
-    tor::TorIdentity,
+    tor::{self, TorIdentity},
     transports::{predicate::FalsePredicate, SocksConfig},
+    types::TransportProtocol,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
 
@@ -99,6 +99,25 @@ pub enum TransportType {
     Tor,
     /// Use a SOCKS5 proxy transport. This transport allows any addresses supported by the proxy.
     Socks5,
+}
+
+impl TransportType {
+    pub fn get_supported_protocols(&self) -> Vec<TransportProtocol> {
+        match self {
+            TransportType::Memory => vec![TransportProtocol::Memory],
+            TransportType::Tcp => vec![TransportProtocol::Ipv4, TransportProtocol::Ipv6],
+            TransportType::Tor => vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+            TransportType::Socks5 => vec![
+                TransportProtocol::Onion,
+                TransportProtocol::Ipv4,
+                TransportProtocol::Ipv6,
+            ],
+        }
+    }
 }
 
 impl Default for TransportType {

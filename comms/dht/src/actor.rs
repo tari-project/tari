@@ -38,7 +38,7 @@ use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     net_address::MultiaddrRange,
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, STALE_PEER_THRESHOLD_DURATION},
-    types::CommsPublicKey,
+    types::{CommsPublicKey, TransportProtocol},
     PeerConnection,
 };
 use tari_shutdown::ShutdownSignal;
@@ -567,6 +567,7 @@ impl DhtActor {
         trace!(target: LOG_TARGET, "Select peers broadcast strategy: {broadcast_strategy}" );
         #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
+        let transport_protocols = &config.transport_protocols;
         let peers = match broadcast_strategy {
             DirectNodeId(node_id) => {
                 // Send to a particular peer matching the given node ID
@@ -609,7 +610,7 @@ impl DhtActor {
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
                 peer_manager
-                    .random_peers(n, &excluded, None)
+                    .random_peers(n, &excluded, None, &transport_protocols)
                     .await?
                     .into_iter()
                     .map(|p| p.node_id)

@@ -117,7 +117,7 @@ impl Dht {
             node_identity,
             peer_manager,
             metrics_collector,
-            config: Arc::new(config),
+            config: Arc::new(config.clone()),
             outbound_tx,
             dht_sender,
             connectivity,

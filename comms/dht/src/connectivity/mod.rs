@@ -995,7 +995,10 @@ impl DhtConnectivity {
     async fn fetch_random_peers(&mut self, n: usize, excluded: &[NodeId]) -> Result<Vec<NodeId>, DhtConnectivityError> {
         let mut excluded = excluded.to_vec();
         excluded.extend(self.peer_allow_list().await?);
-        let peers = self.peer_manager.random_peers(n, &excluded, None).await?;
+        let peers = self
+            .peer_manager
+            .random_peers(n, &excluded, None, &self.config.transport_protocols)
+            .await?;
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 

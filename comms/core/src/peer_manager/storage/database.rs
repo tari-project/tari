@@ -1622,11 +1622,12 @@ impl PeerDatabaseSql {
 
     /// Get a random set of `n` peers from the database that are not banned and not deleted and have at least one
     /// external address
-    pub fn get_n_random_peers(
+    pub fn get_n_random_peers_by_transport_protocols(
         &self,
         n: usize,
         exclude_node_ids: &[NodeId],
         peer_flags: Option<PeerFlags>,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1634,6 +1635,23 @@ impl PeerDatabaseSql {
 
         let mut conn = self.connection.get_pooled_connection()?;
         let exclude_node_ids = exclude_node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+
+        let protocols_prefixes = transport_protocols
+            .iter()
+            .map(|protocol| protocol.get_prefix())
+            .collect::<Vec<_>>();
+        let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
+            None;
+
+        for prefix in protocols_prefixes.iter() {
+            let like_pattern = format!("{}%", prefix);
+            let condition = multi_addresses::address.like(like_pattern);
+
+            addr_filter = match addr_filter {
+                None => Some(Box::new(condition)),
+                Some(existing) => Some(Box::new(existing.or(condition))),
+            };
+        }
 
         conn.transaction::<_, StorageError, _>(|conn| {
             // Step 1: Filtered, random and truncated list of node_ids
@@ -1655,10 +1673,14 @@ impl PeerDatabaseSql {
                 .limit(i64::try_from(n).unwrap_or(i64::MAX))
                 .select(peers::node_id)
                 .distinct()
-                .into_boxed(); // Enables dynamic query building
+                .into_boxed();
 
             if let Some(flags) = peer_flags {
                 query = query.filter(peers::flags.eq(flags.to_i32()));
+            }
+
+            if let Some(filter_expr) = addr_filter {
+                query = query.filter(filter_expr);
             }
 
             let node_ids: Vec<String> = query.load::<String>(conn)?;
@@ -1982,7 +2004,7 @@ mod tests {
             PeerFlags,
         },
         protocol::ProtocolId,
-        types::CommsPublicKey,
+        types::{CommsPublicKey, TransportProtocol},
     };
 
     #[test]
@@ -2253,6 +2275,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_seed_peer_exclusion() {
+        let transport_protocols = TransportProtocol::get_all();
         let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection,
@@ -2354,25 +2377,35 @@ mod tests {
         assert_eq!(closest_nodes[0].flags, PeerFlags::NONE);
 
         // All peers as random
-        let random_peers = peers_db.get_n_random_peers(12, &[], None).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers_by_transport_protocols(12, &[], None, &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers.len(), 12);
 
         // All seed peers only as random
-        let random_peers = peers_db.get_n_random_peers(12, &[], Some(PeerFlags::SEED)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers_by_transport_protocols(12, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers.len(), 4);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::SEED));
 
         // One seed peer as random
-        let random_peers = peers_db.get_n_random_peers(1, &[], Some(PeerFlags::SEED)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers_by_transport_protocols(1, &[], Some(PeerFlags::SEED), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::SEED);
 
         // All normal peers only as random
-        let random_peers = peers_db.get_n_random_peers(12, &[], Some(PeerFlags::NONE)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers_by_transport_protocols(12, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers.len(), 8);
         assert!(random_peers.iter().all(|p| p.flags == PeerFlags::NONE));
 
         // One normal peer as random
-        let random_peers = peers_db.get_n_random_peers(1, &[], Some(PeerFlags::NONE)).unwrap();
+        let random_peers = peers_db
+            .get_n_random_peers_by_transport_protocols(1, &[], Some(PeerFlags::NONE), &transport_protocols)
+            .unwrap();
         assert_eq!(random_peers[0].flags, PeerFlags::NONE);
     }
 
@@ -2385,6 +2418,7 @@ mod tests {
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
         )
         .unwrap();
+        let transport_protocols = TransportProtocol::get_all();
 
         // Create new node peers
         let mut node_peers = Vec::with_capacity(12);
@@ -2628,7 +2662,7 @@ mod tests {
 
         // Test 'random_peers_sqlite'
         let random_peers = peers_db
-            .get_n_random_peers(5, &[node_peers[0].node_id.clone()], None)
+            .get_n_random_peers_by_transport_protocols(5, &[node_peers[0].node_id.clone()], None, &transport_protocols)
             .unwrap();
         assert_eq!(random_peers.len(), 5);
         // Verify deleted & banned

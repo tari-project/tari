@@ -23,6 +23,7 @@
 //! Common Tari comms types
 
 use multiaddr::{Multiaddr, Protocol};
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     compressed_key::CompressedKey,
     dhke::DiffieHellmanSharedSecret,
@@ -56,7 +57,7 @@ pub type CommsDataStore = LMDBStore;
 pub type CommsDatabase = PeerDatabaseSql;
 
 /// Specify the address protocol
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TransportProtocol {
     Ipv4,
     Ipv6,
@@ -72,6 +73,15 @@ impl TransportProtocol {
             TransportProtocol::Onion,
             TransportProtocol::Memory,
         ]
+    }
+
+    pub fn get_prefix(&self) -> &str {
+        match self {
+            TransportProtocol::Ipv4 => "/ip4",
+            TransportProtocol::Ipv6 => "/ip6",
+            TransportProtocol::Onion => "/onion",
+            TransportProtocol::Memory => "/memory",
+        }
     }
 }
 

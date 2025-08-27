@@ -182,13 +182,12 @@ pub(super) struct NetworkDiscoveryContext {
     pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
     pub bootstrap_method: Arc<RwLock<BootstrapMethod>>,
     pub bootstrap_started_at: Arc<RwLock<Option<Instant>>>,
-    pub protocols: Arc<RwLock<Vec<TransportProtocol>>>,
 }
 
 impl NetworkDiscoveryContext {
     /// Get supported address protocols
     pub async fn protocols(&self) -> Vec<TransportProtocol> {
-        self.protocols.read().await.clone()
+        self.config.clone().transport_protocols.clone()
     }
 
     /// Increment the number of rounds by 1
@@ -305,7 +304,6 @@ impl DhtNetworkDiscovery {
                 event_tx,
                 bootstrap_method: Arc::new(RwLock::new(BootstrapMethod::None)),
                 bootstrap_started_at: Arc::new(RwLock::new(None)),
-                protocols: Arc::new(RwLock::new(vec![])),
             },
             shutdown_signal,
         }

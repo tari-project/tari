@@ -65,7 +65,9 @@ use tari_comms::{
         SocksConfig,
         SocksTransport,
         TcpWithTorTransport,
+        Transport,
     },
+    types::TransportProtocol,
     utils::cidr::parse_cidrs,
     CommsBuilder,
     CommsBuilderError,
@@ -186,6 +188,7 @@ where
         .local_test()
         .with_outbound_sender(outbound_tx)
         .with_discovery_timeout(discovery_request_timeout)
+        .with_transport_protocols(TransportProtocol::get_all())
         .build(
             comms.node_identity(),
             comms.peer_manager(),
@@ -349,6 +352,7 @@ async fn configure_comms_and_dht(
     let mut dht = Dht::builder();
     dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
     let dht = dht
+        .with_transport_protocols(config.transport.transport_type.get_supported_protocols())
         .build(node_identity.clone(), peer_manager, connectivity, shutdown_signal)
         .await?;
 

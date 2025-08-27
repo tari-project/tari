@@ -25,7 +25,7 @@ use std::{path::Path, time::Duration};
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
 use tari_common_sqlite::connection::DbConnectionUrl;
-use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig};
+use tari_comms::{net_address::MultiaddrRangeList, peer_validator::PeerValidatorConfig, types::TransportProtocol};
 
 use crate::{actor::OffenceSeverity, network_discovery::NetworkDiscoveryConfig, version::DhtProtocolVersion};
 
@@ -114,6 +114,10 @@ pub struct DhtConfig {
     /// Enables the DHT to forward messages to other nodes in the network - communication nodes only
     /// Default: false
     pub enable_forwarding: bool,
+    /// Transport protocols that should be used by the DHT
+    /// Includes protocols such as IPv4, IPv6, Tor and Memory
+    /// This list could be altered at runtime if detected to be unavailable (eg. IPv6 if host has no IPv6 address)
+    pub transport_protocols: Vec<TransportProtocol>,
 }
 
 impl DhtConfig {
@@ -190,6 +194,7 @@ impl Default for DhtConfig {
             peer_validator_config: Default::default(),
             excluded_dial_addresses: vec![].into(),
             enable_forwarding: false,
+            transport_protocols: TransportProtocol::get_all(),
         }
     }
 }

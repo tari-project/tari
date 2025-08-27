@@ -288,15 +288,18 @@ impl PeerStorageSql {
         Ok(self.peer_db.get_seed_peers()?)
     }
 
-    /// Compile a random list of communication node peers of size _n_ that are not banned or offline  and have at least
-    /// one external address
+    /// Compile a random list of communication node peers of size _n_ that are not banned or offline and
+    /// external addresses support protocols defined in the `transport_protocols` vector.
     pub fn random_peers(
         &self,
         n: usize,
         exclude_peers: &[NodeId],
         flags: Option<PeerFlags>,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.get_n_random_peers(n, exclude_peers, flags)?)
+        Ok(self
+            .peer_db
+            .get_n_random_peers_by_transport_protocols(n, exclude_peers, flags, transport_protocols)?)
     }
 
     /// Get the closest `n` not failed, banned or deleted peers, ordered by their distance to the given node ID.
