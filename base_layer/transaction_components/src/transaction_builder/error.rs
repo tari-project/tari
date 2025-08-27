@@ -18,6 +18,8 @@ pub enum TransactionBuilderError {
     FeeNotSet,
     #[error("No outputs for transaction")]
     NoRecipients,
+    #[error("Invalid address, address does not contain a view key")]
+    InvalidAddressNoViewKey,
     #[error("No inputs provided for transaction")]
     NoInputs,
     #[error("Transaction exceeds maximum inputs limit of {0}")]
