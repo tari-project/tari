@@ -38,10 +38,10 @@ use crate::{
     transaction_components,
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
         transaction_input::{SpentOutput, TransactionInput},
         transaction_output::TransactionOutput,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         OutputType,
         RangeProofType,

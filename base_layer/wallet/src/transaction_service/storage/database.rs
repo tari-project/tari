@@ -34,7 +34,7 @@ use tari_common_types::{
     types::{BlockHash, FixedHash, PrivateKey},
 };
 use tari_transaction_components::{
-    transaction_components::{memo_field::MemoField, Transaction, TransactionOutput},
+    transaction_components::{MemoField, Transaction, TransactionOutput},
     MicroMinotari,
 };
 

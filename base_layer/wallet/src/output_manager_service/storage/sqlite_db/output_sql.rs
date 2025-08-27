@@ -40,8 +40,8 @@ use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::TariKeyId,
     transaction_components::{
-        memo_field::MemoField,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         OutputType,
         TransactionOutputVersion,

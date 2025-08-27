@@ -62,13 +62,7 @@ use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     tari_amount::{uT, MicroMinotari, T},
     test_helpers::{create_wallet_output_with_data, TestParams},
-    transaction_components::{
-        covenants::Covenant,
-        memo_field::MemoField,
-        OutputFeatures,
-        TransactionOutput,
-        WalletOutput,
-    },
+    transaction_components::{covenants::Covenant, MemoField, OutputFeatures, TransactionOutput, WalletOutput},
     weight::TransactionWeight,
 };
 use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};

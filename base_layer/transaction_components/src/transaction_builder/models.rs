@@ -9,7 +9,7 @@ use tari_common_types::{tari_address::TariAddress, types::FixedHash};
 use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{
-        memo_field::MemoField,
+        MemoField,
         Transaction,
         TransactionError,
         TransactionInput,

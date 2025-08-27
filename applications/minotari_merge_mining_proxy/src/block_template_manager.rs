@@ -38,7 +38,7 @@ use tari_transaction_components::{
     generate_coinbase,
     key_manager::{create_memory_key_manager, MemoryKeyManager},
     tari_proof_of_work::Difficulty,
-    transaction_components::{memo_field::MemoField, CoinBaseExtra, TransactionKernel, TransactionOutput},
+    transaction_components::{CoinBaseExtra, MemoField, TransactionKernel, TransactionOutput},
 };
 use tari_utilities::{hex::Hex, ByteArray};
 

@@ -34,7 +34,7 @@ use tari_transaction_components::{
     tari_amount::*,
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
+        MemoField,
         OutputFeatures,
         Transaction,
         TransactionKernelVersion,

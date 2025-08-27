@@ -43,9 +43,9 @@ use tari_sidechain::EvictionProof;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
     transaction_components::{
-        memo_field::MemoField,
         BuildInfo,
         CodeTemplateRegistration,
+        MemoField,
         OutputFeatures,
         TemplateType,
         Transaction,

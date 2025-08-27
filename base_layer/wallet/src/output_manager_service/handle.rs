@@ -32,7 +32,7 @@ use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
+        MemoField,
         OutputFeatures,
         Transaction,
         TransactionOutput,

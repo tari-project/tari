@@ -36,8 +36,8 @@ use crate::{
     key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         TransactionError,
         WalletOutput,

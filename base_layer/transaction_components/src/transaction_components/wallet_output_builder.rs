@@ -30,8 +30,8 @@ use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         TransactionError,
         TransactionOutput,

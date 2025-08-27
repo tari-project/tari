@@ -41,10 +41,10 @@ use tari_transaction_components::{
     key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
-        memo_field::MemoField,
         one_sided::public_key_to_output_encryption_key,
         CoinBaseExtra,
         KernelFeatures,
+        MemoField,
         OutputFeatures,
         OutputFeaturesVersion,
         OutputType,

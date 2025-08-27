@@ -53,7 +53,7 @@ use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::{transaction_components::memo_field::MemoField, MicroMinotari};
+use crate::{transaction_components::MemoField, MicroMinotari};
 
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();

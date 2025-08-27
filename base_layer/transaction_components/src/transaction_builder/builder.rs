@@ -869,7 +869,7 @@ mod test {
             UtxoTestParams,
         },
         transaction_builder::TransactionBuilder,
-        transaction_components::{memo_field::MemoField, OutputFeatures, WalletOutputBuilder},
+        transaction_components::{MemoField, OutputFeatures, WalletOutputBuilder},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 

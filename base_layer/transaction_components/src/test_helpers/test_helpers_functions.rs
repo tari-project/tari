@@ -40,10 +40,10 @@ use crate::{
     transaction_builder::FinalizedTransaction,
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
         CoinBaseExtra,
         KernelBuilder,
         KernelFeatures,
+        MemoField,
         OutputFeatures,
         RangeProofType,
         Transaction,

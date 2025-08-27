@@ -58,6 +58,7 @@ mod kernel_builder;
 mod kernel_features;
 mod kernel_sum;
 pub mod memo_field;
+pub use memo_field::MemoField;
 mod output_features;
 pub use output_features::CoinBaseExtra;
 pub mod covenants;

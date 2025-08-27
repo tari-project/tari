@@ -53,9 +53,9 @@ use crate::{
         TransactionKeyManagerInterface,
     },
     transaction_components::{
-        memo_field::MemoField,
         EncryptedData,
         KernelFeatures,
+        MemoField,
         RangeProofType,
         TransactionError,
         TransactionInputVersion,

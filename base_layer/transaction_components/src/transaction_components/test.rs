@@ -48,8 +48,8 @@ use crate::{
     test_helpers::{TestParams, UtxoTestParams},
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
         transaction_output::batch_verify_range_proofs,
+        MemoField,
         OutputFeatures,
     },
     txn_schema,

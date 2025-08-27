@@ -53,9 +53,9 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 use crate::{
     key_manager::error::{KeyManagerServiceError, KeyManagerStorageError},
     transaction_components::{
-        memo_field::MemoField,
         EncryptedData,
         KernelFeatures,
+        MemoField,
         RangeProofType,
         TransactionError,
         TransactionInputVersion,

@@ -91,10 +91,10 @@ use crate::{
         TariKeyId,
     },
     transaction_components::{
-        memo_field::MemoField,
         one_sided::diffie_hellman_stealth_domain_hasher,
         EncryptedData,
         KernelFeatures,
+        MemoField,
         RangeProofType,
         TransactionError,
         TransactionInput,

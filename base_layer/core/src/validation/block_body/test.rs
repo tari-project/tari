@@ -38,8 +38,8 @@ use tari_transaction_components::{
     test_helpers::schema_to_transaction,
     transaction_components::{
         encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
-        memo_field::MemoField,
         EncryptedData,
+        MemoField,
         RangeProofType,
         TransactionError,
     },

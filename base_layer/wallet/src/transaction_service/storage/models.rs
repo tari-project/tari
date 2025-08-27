@@ -36,7 +36,7 @@ use tari_common_types::{
 use tari_transaction_components::{
     consensus::ConsensusConstants,
     fee::Fee,
-    transaction_components::{memo_field::MemoField, Transaction},
+    transaction_components::{MemoField, Transaction},
     MicroMinotari,
 };
 
@@ -683,8 +683,8 @@ mod test {
         consensus::ConsensusManager,
         transaction_components::{
             covenants::Covenant,
-            memo_field::MemoField,
             EncryptedData,
+            MemoField,
             OutputFeatures,
             Transaction,
             TransactionOutput,
