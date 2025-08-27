@@ -375,6 +375,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let block = block.unwrap();
                     let coinbases = block.block().body.get_coinbase_outputs();
 
+                    trace!(
+                        target: LOG_TARGET,
+                        "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}",
+                        current_height,
+                        sha3x_estimated_hash_rate,
+                        monero_randomx_estimated_hash_rate,
+                        tari_randomx_estimated_hash_rate,
+                        cuckaroo_estimated_hash_rate,
+                    );
+
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
@@ -548,6 +558,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             liveness.push(liveness_check);
         }
 
+        trace!(
+            target: LOG_TARGET,
+            "Difficulties: #{}, sha3: {}, RmXM: {}, RmXT: {}, C29: {}",
+            metadata.best_block_height(),
+            sha3x_estimated_hash_rate,
+            monero_randomx_estimated_hash_rate,
+            tari_randomx_estimated_hash_rate,
+            cuckaroo_estimated_hash_rate,
+        );
         let response = tari_rpc::GetNetworkStateResponse {
             metadata: Some(metadata.into()),
             initial_sync_achieved: status_watch.borrow().bootstrapped,
