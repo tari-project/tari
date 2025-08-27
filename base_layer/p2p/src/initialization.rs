@@ -65,7 +65,6 @@ use tari_comms::{
         SocksConfig,
         SocksTransport,
         TcpWithTorTransport,
-        Transport,
     },
     types::TransportProtocol,
     utils::cidr::parse_cidrs,

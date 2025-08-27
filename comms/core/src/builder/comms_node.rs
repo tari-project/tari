@@ -52,7 +52,6 @@ use crate::{
     },
     tor,
     transports::Transport,
-    types::TransportProtocol,
     CommsBuilder,
     Substream,
 };

@@ -191,12 +191,14 @@ impl PeerStorageSql {
     ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
     ///    peers to sync)
     ///  - Uses 0 as max PEER_MANAGER_SYNC_PEERS
+    ///  - Peers has an address that is reachable - with supported transport protocols
     pub fn discovery_syncing(
         &self,
         mut n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
             n = PEER_MANAGER_SYNC_PEERS;
@@ -211,6 +213,7 @@ impl PeerStorageSql {
             None,
             Some(STALE_PEER_THRESHOLD_DURATION),
             external_addresses_only,
+            transport_protocols,
         )?)
     }
 
@@ -243,6 +246,7 @@ impl PeerStorageSql {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_closest_n_active_peers(
             region_node_id,
@@ -254,33 +258,7 @@ impl PeerStorageSql {
             exclude_if_all_address_failed,
             exclusion_distance,
             external_addresses_only,
-        )?)
-    }
-
-    pub fn closest_n_active_peers_filtered_by_protocols(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        excluded_peers: &[NodeId],
-        features: Option<PeerFeatures>,
-        peer_flags: Option<PeerFlags>,
-        stale_peer_threshold: Option<Duration>,
-        exclude_if_all_address_failed: bool,
-        exclusion_distance: Option<NodeDistance>,
-        external_addresses_only: bool,
-        protocols: &Vec<TransportProtocol>,
-    ) -> Result<Vec<Peer>, PeerManagerError> {
-        Ok(self.peer_db.get_closest_n_active_peers_filtered_by_protocols(
-            region_node_id,
-            n,
-            excluded_peers,
-            features,
-            peer_flags,
-            stale_peer_threshold,
-            exclude_if_all_address_failed,
-            exclusion_distance,
-            external_addresses_only,
-            protocols,
+            transport_protocols,
         )?)
     }
 
@@ -844,14 +822,20 @@ mod test {
         assert_eq!(peer_storage.all(None).unwrap().len(), 5);
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[good_seed.node_id], Some(PeerFeatures::COMMUNICATION_NODE), false)
+                .discovery_syncing(
+                    100,
+                    &[good_seed.node_id],
+                    Some(PeerFeatures::COMMUNICATION_NODE),
+                    false,
+                    &vec![]
+                )
                 .unwrap()
                 .len(),
             1
         );
         assert_eq!(
             peer_storage
-                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false, &vec![])
                 .unwrap()
                 .len(),
             2
@@ -874,7 +858,7 @@ mod test {
 
         // Assert that peers have internal and external addresses
         let nodes_all_addresses = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false)
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), false, &vec![])
             .unwrap();
         assert!(nodes_all_addresses
             .iter()
@@ -885,7 +869,7 @@ mod test {
 
         // Assert that peers have external addresses only
         let nodes_external_addresses_only = peer_storage
-            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true)
+            .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE), true, &vec![])
             .unwrap();
         assert!(nodes_external_addresses_only
             .iter()

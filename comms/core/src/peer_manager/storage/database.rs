@@ -1390,8 +1390,26 @@ impl PeerDatabaseSql {
         at_least_one_external_addresses: bool,
         n: Option<usize>,
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<String>, StorageError> {
         let excluded_node_ids_hex = excluded_peers.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+
+        let protocols_prefixes = transport_protocols
+            .iter()
+            .map(|protocol| protocol.get_prefix())
+            .collect::<Vec<_>>();
+        let mut addr_filter: Option<Box<dyn BoxableExpression<_, _, SqlType = diesel::sql_types::Bool> + 'static>> =
+            None;
+
+        for prefix in protocols_prefixes.iter() {
+            let like_pattern = format!("{}%", prefix);
+            let condition = multi_addresses::address.like(like_pattern);
+
+            addr_filter = match addr_filter {
+                None => Some(Box::new(condition)),
+                Some(existing) => Some(Box::new(existing.or(condition))),
+            };
+        }
 
         // Step 1: Retrieve relevant node_ids
         let mut query = peers::table
@@ -1408,6 +1426,10 @@ impl PeerDatabaseSql {
 
         if let Some(flags) = peer_flags {
             query = query.filter(peers::flags.eq(flags.to_i32()));
+        }
+
+        if let Some(filter_expr) = addr_filter {
+            query = query.filter(filter_expr);
         }
 
         if exclude_if_all_address_failed {
@@ -1475,6 +1497,7 @@ impl PeerDatabaseSql {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1492,6 +1515,7 @@ impl PeerDatabaseSql {
                 external_addresses_only,
                 None,
                 conn,
+                transport_protocols,
             )?;
 
             let mut node_ids = node_ids_hex
@@ -1520,72 +1544,6 @@ impl PeerDatabaseSql {
         })
     }
 
-    pub fn get_closest_n_active_peers_filtered_by_protocols(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        excluded_peers: &[NodeId],
-        features: Option<PeerFeatures>,
-        peer_flags: Option<PeerFlags>,
-        stale_peer_threshold: Option<Duration>,
-        exclude_if_all_address_failed: bool,
-        exclusion_distance: Option<NodeDistance>,
-        external_addresses_only: bool,
-        protocols: &Vec<TransportProtocol>,
-    ) -> Result<Vec<Peer>, StorageError> {
-        if n == 0 {
-            return Ok(Vec::new());
-        }
-
-        let mut conn = self.connection.get_pooled_connection()?;
-
-        conn.transaction::<_, StorageError, _>(|conn| {
-            let node_ids_hex = self.get_active_peer_node_ids(
-                excluded_peers,
-                features,
-                peer_flags,
-                stale_peer_threshold,
-                exclude_if_all_address_failed,
-                external_addresses_only,
-                None,
-                conn,
-            )?;
-
-            let mut node_ids = node_ids_hex
-                .into_iter()
-                .filter_map(|id| NodeId::from_hex(&id).ok())
-                .filter(|id| {
-                    exclusion_distance
-                        .clone()
-                        .map(|d| id.distance(region_node_id) < d)
-                        .unwrap_or(true)
-                })
-                .collect::<Vec<_>>();
-            node_ids.sort_by_key(|a| a.distance(region_node_id));
-
-            let selected_node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
-            let mut peers = self.get_peers_by_node_ids_str(&selected_node_ids_hex, external_addresses_only, conn)?;
-
-            // Filter peers by address protocol so we don't dial those that are assured to be unreachable
-            peers = peers
-                .into_iter()
-                .filter(|peer| {
-                    peer.addresses
-                        .iter()
-                        .any(|addr| protocols.contains(addr.address().into()))
-                })
-                .collect::<Vec<_>>();
-            peers.truncate(n);
-            peers.sort_by(|a, b| {
-                a.node_id
-                    .distance(region_node_id)
-                    .cmp(&b.node_id.distance(region_node_id))
-            });
-
-            Ok(peers)
-        })
-    }
-
     /// Get `n` active random peers, ordered by their distance to the given node ID.
     pub fn get_n_random_active_peers(
         &self,
@@ -1595,6 +1553,7 @@ impl PeerDatabaseSql {
         peer_flags: Option<PeerFlags>,
         stale_peer_threshold: Option<Duration>,
         external_addresses_only: bool,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1612,6 +1571,7 @@ impl PeerDatabaseSql {
                 external_addresses_only,
                 Some(n),
                 conn,
+                transport_protocols,
             )?;
 
             let peers = self.get_peers_by_node_ids_str(&node_ids_hex, external_addresses_only, conn)?;
@@ -2221,6 +2181,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2236,6 +2197,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2251,6 +2213,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2267,6 +2230,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2306,6 +2270,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 12);
@@ -2322,6 +2287,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 4);
@@ -2339,6 +2305,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes[0].flags, PeerFlags::SEED);
@@ -2355,6 +2322,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 8);
@@ -2372,6 +2340,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes[0].flags, PeerFlags::NONE);
@@ -2557,6 +2526,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2592,6 +2562,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2630,6 +2601,7 @@ mod tests {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2905,7 +2877,7 @@ mod tests {
 
         // Assert that retrieved peers have internal and external addresses
         let nodes_with_all_addresses = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, false)
+            .get_n_random_active_peers(100, &[], None, None, None, false, &vec![])
             .unwrap();
         assert_eq!(nodes_with_all_addresses.len(), 40);
         // - Has external address
@@ -2928,7 +2900,7 @@ mod tests {
 
         // Assert that retrieved peers have external addresses only
         let nodes_with_external_addresses_only = peers_db
-            .get_n_random_active_peers(100, &[], None, None, None, true)
+            .get_n_random_active_peers(100, &[], None, None, None, true, &vec![])
             .unwrap();
         assert_eq!(nodes_with_external_addresses_only.len(), 40);
         // - Has external address only

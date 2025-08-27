@@ -169,9 +169,15 @@ impl PeerManager {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         external_addresses_only: bool,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql
-            .discovery_syncing(n, excluded_peers, features, external_addresses_only)
+        self.peer_storage_sql.discovery_syncing(
+            n,
+            excluded_peers,
+            features,
+            external_addresses_only,
+            transport_protocols,
+        )
     }
 
     /// Adds or updates a peer and sets the last connection as successful.
@@ -227,6 +233,7 @@ impl PeerManager {
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
         external_addresses_only: bool,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage_sql.closest_n_active_peers(
             region_node_id,
@@ -238,34 +245,7 @@ impl PeerManager {
             exclude_if_all_address_failed,
             exclusion_distance,
             external_addresses_only,
-        )
-    }
-
-    /// Returns the closest n active peers filtered by transport protocols.
-    pub async fn closest_n_active_peers_filtered_by_protocols(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        excluded_peers: &[NodeId],
-        features: Option<PeerFeatures>,
-        peer_flags: Option<PeerFlags>,
-        stale_peer_threshold: Option<Duration>,
-        exclude_if_all_address_failed: bool,
-        exclusion_distance: Option<NodeDistance>,
-        external_addresses_only: bool,
-        protocols: &Vec<TransportProtocol>,
-    ) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_storage_sql.closest_n_active_peers_filtered_by_protocols(
-            region_node_id,
-            n,
-            excluded_peers,
-            features,
-            peer_flags,
-            stale_peer_threshold,
-            exclude_if_all_address_failed,
-            exclusion_distance,
-            external_addresses_only,
-            protocols,
+            transport_protocols,
         )
     }
 
@@ -634,6 +614,7 @@ mod test {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .await
             .unwrap();
@@ -670,6 +651,7 @@ mod test {
                 true,
                 None,
                 false,
+                &vec![],
             )
             .await
             .unwrap();
@@ -890,6 +872,7 @@ mod test {
                             false,
                             None,
                             false,
+                            &vec![],
                         )
                         .await
                         .unwrap();
@@ -926,6 +909,7 @@ mod test {
                 false,
                 None,
                 false,
+                &vec![],
             )
             .await
             .unwrap();

@@ -33,13 +33,7 @@ use std::{
 
 use futures::{future, future::Either};
 use log::*;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    types::TransportProtocol,
-    NodeIdentity,
-    PeerManager,
-};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, NodeIdentity, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{broadcast, RwLock},
@@ -185,11 +179,6 @@ pub(super) struct NetworkDiscoveryContext {
 }
 
 impl NetworkDiscoveryContext {
-    /// Get supported address protocols
-    pub async fn protocols(&self) -> Vec<TransportProtocol> {
-        self.config.clone().transport_protocols.clone()
-    }
-
     /// Increment the number of rounds by 1
     pub(super) fn increment_num_rounds(&self) -> usize {
         self.num_rounds.fetch_add(1, Ordering::SeqCst)

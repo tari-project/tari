@@ -610,7 +610,7 @@ impl DhtActor {
             Random(n, excluded) => {
                 // Send to a random set of peers of size n that are Communication Nodes
                 peer_manager
-                    .random_peers(n, &excluded, None, &transport_protocols)
+                    .random_peers(n, &excluded, None, transport_protocols)
                     .await?
                     .into_iter()
                     .map(|p| p.node_id)
@@ -778,6 +778,7 @@ impl DhtActor {
         n: usize,
         excluded_peers: &[NodeId],
         features: PeerFeatures,
+        transport_protocols: &Vec<TransportProtocol>,
     ) -> Result<Vec<NodeId>, DhtActorError> {
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.
@@ -785,6 +786,7 @@ impl DhtActor {
         // - The peer isn't banned,
         // - it has the required features
         // - it didn't recently fail to connect, and
+        // - it's address is reachable
         // - it is not in the exclusion list in closest_request
         let peers = peer_manager
             .closest_n_active_peers(
@@ -797,6 +799,7 @@ impl DhtActor {
                 true,
                 None,
                 true,
+                transport_protocols,
             )
             .await?;
         debug!(
@@ -844,6 +847,7 @@ impl DhtActor {
                 n,
                 &excluded,
                 PeerFeatures::MESSAGE_PROPAGATION,
+                &config.transport_protocols,
             )
             .await?;
 
