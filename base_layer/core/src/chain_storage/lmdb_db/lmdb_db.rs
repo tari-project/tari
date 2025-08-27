@@ -133,7 +133,6 @@ use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore, BYTES_PER
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::{consensus_constants::BlockVersion, ConsensusConstants},
-    MicroMinotari,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{
         OutputType,
@@ -145,6 +144,7 @@ use tari_transaction_components::{
         TransactionOutput,
         ValidatorNodeRegistration,
     },
+    MicroMinotari,
 };
 use tari_utilities::{
     hex::{to_hex, Hex},

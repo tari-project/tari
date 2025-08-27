@@ -36,7 +36,6 @@ use tari_core::consensus::BaseNodeConsensusManager;
 use tari_transaction_components::{
     generate_coinbase_with_wallet_output,
     key_manager::TariKeyId,
-    MicroMinotari,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -44,6 +43,7 @@ use tari_transaction_components::{
         RangeProofType,
         WalletOutput,
     },
+    MicroMinotari,
 };
 use tari_transaction_key_manager::MemoryDbKeyManager;
 use tonic::transport::Channel;

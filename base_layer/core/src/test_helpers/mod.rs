@@ -53,7 +53,6 @@ use tari_transaction_components::{
     consensus::consensus_constants::ConsensusConstants,
     generate_coinbase_with_wallet_output,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    MicroMinotari,
     tari_proof_of_work::Difficulty,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -62,6 +61,7 @@ use tari_transaction_components::{
         Transaction,
         WalletOutput,
     },
+    MicroMinotari,
 };
 use tari_transaction_key_manager::MemoryDbKeyManager;
 use tari_utilities::epoch_time::EpochTime;

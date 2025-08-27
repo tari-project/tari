@@ -28,7 +28,6 @@ use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::MemoField,
@@ -39,6 +38,7 @@ use crate::{
         TransactionOutputVersion,
         WalletOutput,
     },
+    MicroMinotari,
 };
 
 #[derive(Derivative, Clone)]

@@ -36,8 +36,8 @@ use tari_common_types::{
 use tari_transaction_components::{
     consensus::ConsensusConstants,
     fee::Fee,
-    MicroMinotari,
     transaction_components::{memo_field::MemoField, Transaction},
+    MicroMinotari,
 };
 
 use crate::{
@@ -681,7 +681,6 @@ mod test {
     use tari_script::TariScript;
     use tari_transaction_components::{
         consensus::ConsensusManager,
-        MicroMinotari,
         transaction_components::{
             covenants::Covenant,
             memo_field::MemoField,
@@ -690,6 +689,7 @@ mod test {
             Transaction,
             TransactionOutput,
         },
+        MicroMinotari,
     };
 
     use super::*;

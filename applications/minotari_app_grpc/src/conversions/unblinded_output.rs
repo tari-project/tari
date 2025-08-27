@@ -26,8 +26,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
-    MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
+    MicroMinotari,
 };
 use tari_utilities::ByteArray;
 use zeroize::Zeroize;

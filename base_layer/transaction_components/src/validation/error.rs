@@ -23,8 +23,8 @@ use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
-    MicroMinotari,
     transaction_components::{covenants::CovenantError, OutputType, RangeProofType, TransactionError},
+    MicroMinotari,
 };
 
 #[derive(Debug, Error)]

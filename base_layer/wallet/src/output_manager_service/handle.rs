@@ -30,7 +30,6 @@ use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
     key_manager::TransactionKeyManagerInterface,
-    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::MemoField,
@@ -40,6 +39,7 @@ use tari_transaction_components::{
         WalletOutput,
         WalletOutputBuilder,
     },
+    MicroMinotari,
     TransactionBuilder,
 };
 use tari_utilities::hex::Hex;

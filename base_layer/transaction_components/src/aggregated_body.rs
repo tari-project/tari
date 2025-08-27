@@ -34,7 +34,6 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     crypto_factories::CryptoFactories,
-    MicroMinotari,
     transaction_components::{
         KernelFeatures,
         OutputType,
@@ -45,6 +44,7 @@ use crate::{
         TransactionOutput,
     },
     weight::TransactionWeight,
+    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";

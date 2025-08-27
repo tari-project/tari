@@ -31,9 +31,9 @@ use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, Priva
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
-    MicroMinotari,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
+    MicroMinotari,
 };
 use tokio::time::Instant;
 
@@ -862,11 +862,11 @@ mod test {
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
         fee::Fee,
-        MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_builder::TransactionBuilder,
         tx,
         weight::TransactionWeight,
+        MicroMinotari,
     };
     use tari_transaction_key_manager::create_memory_db_key_manager;
 

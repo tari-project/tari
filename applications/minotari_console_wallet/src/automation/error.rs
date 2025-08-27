@@ -39,7 +39,7 @@ use tari_crypto::signatures::SchnorrSignatureError;
 use tari_script::ScriptError;
 use tari_transaction_components::{
     key_manager::error::KeyManagerServiceError,
-    MicroMinotariError,
+    tari_amount::MicroMinotariError,
     transaction_components::TransactionError,
 };
 use tari_utilities::{hex::HexError, ByteArrayError};

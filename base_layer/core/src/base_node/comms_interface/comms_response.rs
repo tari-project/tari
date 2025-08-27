@@ -32,9 +32,9 @@ use tari_common_types::{
 };
 use tari_node_components::blocks::{Block, NewBlockTemplate};
 use tari_transaction_components::{
-    MicroMinotari,
     tari_proof_of_work::Difficulty,
     transaction_components::{Transaction, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
+    MicroMinotari,
 };
 
 use crate::{

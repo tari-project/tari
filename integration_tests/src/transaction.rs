@@ -24,7 +24,6 @@ use tari_script::{inputs, script, TariScript};
 use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     key_manager::TariKeyId,
-    MicroMinotari,
     test_helpers::{create_transaction_with, TestParams},
     transaction_components::{
         covenants::Covenant,
@@ -36,6 +35,7 @@ use tari_transaction_components::{
         WalletOutputBuilder,
     },
     weight::TransactionWeight,
+    MicroMinotari,
 };
 use tari_transaction_key_manager::MemoryDbKeyManager;
 

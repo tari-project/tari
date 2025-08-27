@@ -335,7 +335,7 @@ mod test {
 
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
-    use tari_transaction_components::{MicroMinotari, tx};
+    use tari_transaction_components::{tx, MicroMinotari};
     use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;

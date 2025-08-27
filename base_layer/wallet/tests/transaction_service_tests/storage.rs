@@ -54,7 +54,6 @@ use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    MicroMinotari,
     test_helpers::{create_wallet_output_with_data, TestParams},
     transaction_builder::TransactionBuilder,
     transaction_components::{
@@ -65,6 +64,7 @@ use tari_transaction_components::{
         TransactionOutputVersion,
         WalletOutput,
     },
+    MicroMinotari,
 };
 use tari_transaction_key_manager::create_memory_db_key_manager;
 use tempfile::tempdir;

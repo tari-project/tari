@@ -77,7 +77,6 @@ use tari_transaction_components::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -93,6 +92,7 @@ use tari_transaction_components::{
         ValidatorNodeSignature,
         WalletOutputBuilder,
     },
+    MicroMinotari,
 };
 use tokio::{
     sync::{mpsc::Sender, oneshot, Mutex},

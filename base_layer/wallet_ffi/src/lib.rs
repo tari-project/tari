@@ -150,7 +150,6 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     helpers::borsh::FromBytes,
     key_manager::TransactionKeyManagerInterface,
-    MicroMinotari,
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,
@@ -160,6 +159,7 @@ use tari_transaction_components::{
         RangeProofType,
         UnblindedOutput,
     },
+    MicroMinotari,
 };
 use tari_utilities::{
     encoding::MBase58,

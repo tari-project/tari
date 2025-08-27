@@ -56,7 +56,7 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
-use tari_transaction_components::{MicroMinotari, transaction_components::memo_field::MemoField};
+use tari_transaction_components::{transaction_components::memo_field::MemoField, MicroMinotari};
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
@@ -2607,7 +2607,6 @@ mod test {
     use tari_script::script;
     use tari_test_utils::random::string;
     use tari_transaction_components::{
-        MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_builder::TransactionBuilder,
         transaction_components::{
@@ -2615,6 +2614,7 @@ mod test {
             OutputFeatures,
             Transaction,
         },
+        MicroMinotari,
     };
     use tari_transaction_key_manager::create_memory_db_key_manager;
     use tempfile::tempdir;

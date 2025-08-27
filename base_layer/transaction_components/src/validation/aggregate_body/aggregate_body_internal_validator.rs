@@ -41,7 +41,6 @@ use crate::{
     aggregated_body::AggregateBody,
     consensus::{ConsensusConstants, ConsensusManager},
     crypto_factories::CryptoFactories,
-    MicroMinotari,
     transaction_components::{
         transaction_output::batch_verify_range_proofs,
         KernelSum,
@@ -65,6 +64,7 @@ use crate::{
         },
         AggregatedBodyValidationError,
     },
+    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::val::aggregate_body_internal_consistency_validator";

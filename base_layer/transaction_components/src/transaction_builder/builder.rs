@@ -24,7 +24,6 @@ use crate::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    MicroMinotari,
     transaction_builder::{
         error::TransactionBuilderError,
         models::{FinalizedTransaction, OutputPair, RecipientDetails},
@@ -44,6 +43,7 @@ use crate::{
         MAX_TRANSACTION_INPUTS,
         MAX_TRANSACTION_OUTPUTS,
     },
+    MicroMinotari,
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_builder";

@@ -33,7 +33,6 @@ use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
-    MicroMinotari,
     transaction_components::{
         CoinBaseExtra,
         EncryptedData,
@@ -51,6 +50,7 @@ use tari_transaction_components::{
         TransactionOutput,
         TransactionOutputVersion,
     },
+    MicroMinotari,
 };
 use tari_utilities::convert::try_convert_all;
 

@@ -52,7 +52,6 @@ use crate::{
         TransactionKeyManagerInner,
         TransactionKeyManagerInterface,
     },
-    MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
         EncryptedData,
@@ -63,6 +62,7 @@ use crate::{
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
+    MicroMinotari,
 };
 
 /// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from

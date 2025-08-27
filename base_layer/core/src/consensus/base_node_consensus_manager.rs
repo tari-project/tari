@@ -31,9 +31,9 @@ use tari_transaction_components::{
         ConsensusManagerBuilder,
         NetworkConsensus,
     },
-    MicroMinotari,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::TransactionKernel,
+    MicroMinotari,
 };
 
 use crate::{

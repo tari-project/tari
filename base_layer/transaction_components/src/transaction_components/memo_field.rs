@@ -37,8 +37,8 @@ use tari_common_types::{
 use tari_utilities::hex::Hex;
 
 use crate::{
-    MicroMinotari,
     transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
+    MicroMinotari,
 };
 // We pad the bytes to min this size, so that we can use the same size for AddressAndData and TransactionInfo
 const PADDING_SIZE: usize = 130;
@@ -1348,11 +1348,11 @@ mod test {
 
     use super::*;
     use crate::{
-        MicroMinotari,
         transaction_components::{
             memo_field::{MemoField, TxType},
             EncryptedData,
         },
+        MicroMinotari,
     };
 
     fn create_random_fixed_hash() -> FixedHash {

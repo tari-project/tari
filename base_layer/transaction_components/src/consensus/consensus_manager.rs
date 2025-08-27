@@ -31,8 +31,8 @@ use crate::{
         ConsensusConstants,
         NetworkConsensus,
     },
-    MicroMinotari,
     transaction_components::TransactionKernel,
+    MicroMinotari,
 };
 
 /// A simple struct to hold the maturity and effective height

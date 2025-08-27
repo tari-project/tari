@@ -39,7 +39,6 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     key_manager::TariKeyId,
-    MicroMinotari,
     transaction_components::{
         memo_field::MemoField,
         EncryptedData,
@@ -48,6 +47,7 @@ use tari_transaction_components::{
         TransactionOutputVersion,
         WalletOutput,
     },
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 

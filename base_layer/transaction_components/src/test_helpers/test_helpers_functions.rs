@@ -37,7 +37,6 @@ use crate::{
     fee::Fee,
     helpers::borsh::SerializedSize,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, TxoStage},
-    MicroMinotari,
     transaction_builder::FinalizedTransaction,
     transaction_components::{
         covenants::Covenant,
@@ -57,6 +56,7 @@ use crate::{
         WalletOutputBuilder,
     },
     weight::TransactionWeight,
+    MicroMinotari,
     TransactionBuilder,
 };
 

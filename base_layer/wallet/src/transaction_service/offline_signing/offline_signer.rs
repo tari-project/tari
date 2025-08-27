@@ -30,12 +30,12 @@ use tari_common_types::{
 use tari_script::push_pubkey_script;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    MicroMinotari,
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
         OutputFeatures,
     },
+    MicroMinotari,
 };
 
 use crate::{

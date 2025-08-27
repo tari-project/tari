@@ -59,12 +59,12 @@ use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_fact
 use tari_node_components::blocks::BlockHeader;
 use tari_transaction_components::{
     generate_coinbase,
-    MicroMinotari,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},
         CoinBaseExtra,
     },
+    MicroMinotari,
 };
 use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tari_utilities::hex::Hex;
