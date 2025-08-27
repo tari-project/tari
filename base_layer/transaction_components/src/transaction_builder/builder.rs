@@ -17,7 +17,7 @@ use tari_common_types::{
         UncompressedSignature,
     },
 };
-use tari_script::{script, ExecutionStack};
+use tari_script::{push_pubkey_script, script, ExecutionStack};
 
 use crate::{
     consensus::ConsensusConstants,
@@ -31,6 +31,7 @@ use crate::{
     transaction_components::{
         covenants::Covenant,
         memo_field::{MemoField, TxType},
+        one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         CoreTransactionBuilder,
         KernelBuilder,
         KernelFeatures,
@@ -40,6 +41,7 @@ use crate::{
         TransactionOutput,
         TransactionOutputVersion,
         WalletOutput,
+        WalletOutputBuilder,
         MAX_TRANSACTION_INPUTS,
         MAX_TRANSACTION_OUTPUTS,
     },
@@ -159,6 +161,128 @@ where KM: TransactionKeyManagerInterface
         Ok(self)
     }
 
+    pub async fn add_stealth_recipient(
+        &mut self,
+        destination: TariAddress,
+        amount: MicroMinotari,
+        output_features: OutputFeatures,
+        memo_field: MemoField,
+    ) -> Result<WalletOutput, TransactionBuilderError> {
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used. We have to wait until the sender transaction protocol creates a
+        // sender_offset_private_key for us, so we can use it to create the shared secret
+        let sender_offset_private_key = self
+            .key_manager
+            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+            .await?;
+
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
+        // KDFs to produce the spending, rewind, and encryption keys
+        let shared_secret = self
+            .key_manager
+            .get_diffie_hellman_shared_secret(
+                &sender_offset_private_key.key_id,
+                destination
+                    .public_view_key()
+                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?,
+            )
+            .await?;
+        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
+        let commitment_mask_key_id = self.key_manager.import_key(commitment_mask_private_key.clone()).await?;
+
+        let script_spending_key = self
+            .key_manager
+            .stealth_address_script_spending_key(&commitment_mask_key_id, destination.public_spend_key())
+            .await?;
+        let script = push_pubkey_script(&script_spending_key);
+
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_key = self.key_manager.import_key(encryption_private_key).await?;
+
+        let sender_offset_public_key = self
+            .key_manager
+            .get_public_key_at_key_id(&sender_offset_private_key.key_id)
+            .await?;
+
+        let minimum_value_promise = MicroMinotari::zero();
+        let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
+            .with_features(output_features)
+            .with_script(script)
+            .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key), memo_field)
+            .await?
+            .with_input_data(Default::default())
+            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_script_key(TariKeyId::Zero)
+            .with_minimum_value_promise(minimum_value_promise)
+            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_private_key.key_id, &destination)
+            .await?
+            .try_build(&self.key_manager)
+            .await?;
+
+        self.add_recipient(destination, output.clone(), Some(sender_offset_private_key.key_id))
+            .await?;
+        Ok(output)
+    }
+
+    pub async fn add_depricated_one_sided_recipient(
+        &mut self,
+        destination: TariAddress,
+        amount: MicroMinotari,
+        output_features: OutputFeatures,
+        memo_field: MemoField,
+    ) -> Result<WalletOutput, TransactionBuilderError> {
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used. We have to wait until the sender transaction protocol creates a
+        // sender_offset_private_key for us, so we can use it to create the shared secret
+        let sender_offset_private_key = self
+            .key_manager
+            .get_next_key(TransactionKeyManagerBranch::OneSidedSenderOffset.get_branch_key())
+            .await?;
+
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
+        // KDFs to produce the spending, rewind, and encryption keys
+        let shared_secret = self
+            .key_manager
+            .get_diffie_hellman_shared_secret(
+                &sender_offset_private_key.key_id,
+                destination
+                    .public_view_key()
+                    .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?,
+            )
+            .await?;
+        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret)?;
+        let commitment_mask_key_id = self.key_manager.import_key(commitment_mask_private_key.clone()).await?;
+
+        let script = push_pubkey_script(destination.public_spend_key());
+
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_key = self.key_manager.import_key(encryption_private_key).await?;
+
+        let sender_offset_public_key = self
+            .key_manager
+            .get_public_key_at_key_id(&sender_offset_private_key.key_id)
+            .await?;
+
+        let minimum_value_promise = MicroMinotari::zero();
+        let output = WalletOutputBuilder::new(amount, commitment_mask_key_id)
+            .with_features(output_features)
+            .with_script(script)
+            .encrypt_data_for_recovery(&self.key_manager, Some(&encryption_key), memo_field)
+            .await?
+            .with_input_data(Default::default())
+            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_script_key(TariKeyId::Zero)
+            .with_minimum_value_promise(minimum_value_promise)
+            .sign_as_sender_and_receiver_verified(&self.key_manager, &sender_offset_private_key.key_id, &destination)
+            .await?
+            .try_build(&self.key_manager)
+            .await?;
+
+        self.add_recipient(destination, output.clone(), Some(sender_offset_private_key.key_id))
+            .await?;
+        Ok(output)
+    }
+
     pub async fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, TransactionBuilderError> {
         let nonce = self
             .key_manager
@@ -217,8 +341,10 @@ where KM: TransactionKeyManagerInterface
         Ok(size)
     }
 
-    pub async fn get_pre_build_change_output(&self) -> Result<Option<OutputPair>, TransactionBuilderError> {
-        Ok(self.add_change_if_required().await?.1)
+    pub async fn get_pre_build_change_output(
+        &self,
+    ) -> Result<(MicroMinotari, Option<OutputPair>), TransactionBuilderError> {
+        self.add_change_if_required().await
     }
 
     pub fn get_total_input_value(&self) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -852,13 +978,15 @@ impl<KM> Debug for TransactionBuilder<KM> {
 
 #[cfg(test)]
 mod test {
+    use chacha20poly1305::aead::OsRng;
     use tari_common_types::key_branches::TransactionKeyManagerBranch;
+    use tari_crypto::keys::SecretKey;
     use tari_script::{script, TariScript};
 
     use super::*;
     use crate::{
         crypto_factories::CryptoFactories,
-        key_manager::create_memory_key_manager,
+        key_manager::{create_memory_key_manager, SecretTransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari},
         test_helpers::{
             create_consensus_constants,
@@ -1243,6 +1371,184 @@ mod test {
             .add_recipient(Default::default(), bob_output, Some(bob_sender_offset.key_id))
             .await
             .unwrap();
+        let finalized = builder.build().await.unwrap();
+
+        let tx = finalized.transaction;
+        assert_eq!(tx.body.inputs().len(), 3);
+        assert_eq!(tx.body.outputs().len(), 2);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    async fn add_stealth_recipient() {
+        let rules = create_consensus_manager();
+        let key_manager = create_memory_key_manager().await.unwrap();
+        let factories = CryptoFactories::default();
+        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None).await;
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_input(input2)
+            .await
+            .unwrap()
+            .with_input(input3)
+            .await
+            .unwrap();
+        let bob_address = TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        )
+        .unwrap();
+
+        let bob_output = builder
+            .add_stealth_recipient(
+                bob_address.clone(),
+                MicroMinotari(5000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .await
+            .unwrap();
+        let bob_sender_offset = builder
+            .recipient_outputs
+            .last()
+            .unwrap()
+            .output
+            .sender_offset_key_id
+            .clone()
+            .unwrap();
+        let shared_secret = key_manager
+            .get_diffie_hellman_shared_secret(&bob_sender_offset, bob_address.public_view_key().unwrap())
+            .await
+            .unwrap();
+        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret).unwrap();
+        let commitment_mask_pvt = key_manager
+            .get_private_key(&bob_output.commitment_mask_key_id)
+            .await
+            .unwrap();
+        assert_eq!(commitment_mask_private_key, commitment_mask_pvt);
+
+        let script_spending_key = key_manager
+            .stealth_address_script_spending_key(&bob_output.commitment_mask_key_id, bob_address.public_spend_key())
+            .await
+            .unwrap();
+        let script = push_pubkey_script(&script_spending_key);
+
+        assert_eq!(bob_output.script, script);
+
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+        let encryption_public_key = CompressedPublicKey::from_secret_key(&encryption_private_key);
+        let encryption_key_id = TariKeyId::Imported {
+            key: encryption_public_key,
+        };
+        let bob_tx_output = bob_output.to_transaction_output(&key_manager).await.unwrap();
+        assert!(key_manager
+            .is_this_output_ours(
+                &bob_tx_output.commitment,
+                &bob_output.encrypted_data,
+                Some(&encryption_key_id)
+            )
+            .await
+            .unwrap());
+
+        let finalized = builder.build().await.unwrap();
+
+        let tx = finalized.transaction;
+        assert_eq!(tx.body.inputs().len(), 3);
+        assert_eq!(tx.body.outputs().len(), 2);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    async fn add_depricated_one_sided_recipient() {
+        let rules = create_consensus_manager();
+        let key_manager = create_memory_key_manager().await.unwrap();
+        let factories = CryptoFactories::default();
+        let input = create_test_input(MicroMinotari(10000), 0, &key_manager, vec![], None).await;
+        let input2 = create_test_input(MicroMinotari(2000), 0, &key_manager, vec![], None).await;
+        let input3 = create_test_input(MicroMinotari(15000), 0, &key_manager, vec![], None).await;
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet)
+            .await
+            .unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_input(input2)
+            .await
+            .unwrap()
+            .with_input(input3)
+            .await
+            .unwrap();
+        let bob_address = TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            Network::LocalNet,
+        )
+        .unwrap();
+
+        let bob_output = builder
+            .add_depricated_one_sided_recipient(
+                bob_address.clone(),
+                MicroMinotari(5000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .await
+            .unwrap();
+        let bob_sender_offset = builder
+            .recipient_outputs
+            .last()
+            .unwrap()
+            .output
+            .sender_offset_key_id
+            .clone()
+            .unwrap();
+        let shared_secret = key_manager
+            .get_diffie_hellman_shared_secret(&bob_sender_offset, bob_address.public_view_key().unwrap())
+            .await
+            .unwrap();
+        let commitment_mask_private_key = shared_secret_to_output_spending_key(&shared_secret).unwrap();
+        let commitment_mask_pvt = key_manager
+            .get_private_key(&bob_output.commitment_mask_key_id)
+            .await
+            .unwrap();
+        assert_eq!(commitment_mask_private_key, commitment_mask_pvt);
+
+        let script = push_pubkey_script(bob_address.public_spend_key());
+
+        assert_eq!(bob_output.script, script);
+
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+        let encryption_public_key = CompressedPublicKey::from_secret_key(&encryption_private_key);
+        let encryption_key_id = TariKeyId::Imported {
+            key: encryption_public_key,
+        };
+        let bob_tx_output = bob_output.to_transaction_output(&key_manager).await.unwrap();
+        assert!(key_manager
+            .is_this_output_ours(
+                &bob_tx_output.commitment,
+                &bob_output.encrypted_data,
+                Some(&encryption_key_id)
+            )
+            .await
+            .unwrap());
+
         let finalized = builder.build().await.unwrap();
 
         let tx = finalized.transaction;

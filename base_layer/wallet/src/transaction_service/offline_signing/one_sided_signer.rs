@@ -54,7 +54,6 @@ use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
     offline_signing::models::{OneSidedTransactionInfo, SignedTransaction, TransactionMetadata},
 };
-
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecipientSignedMessage {
@@ -347,7 +346,6 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             &info.metadata.kernel_features,
             &burn_commitment.clone(),
         );
-
         for input in &info.inputs {
             tx_builder.add_input(input.output_pair.output.to_transaction_input(self.key_manager).await?);
             signature = &signature +
@@ -451,7 +449,6 @@ impl<'a, KM: TransactionKeyManagerInterface> OneSidedSigner<'a, KM> {
             },
             None => None,
         };
-
         tx_builder.add_output(signed_message.output.clone());
         let script_offset = self
             .key_manager
