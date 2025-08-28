@@ -58,6 +58,7 @@ mod kernel_builder;
 mod kernel_features;
 mod kernel_sum;
 pub mod memo_field;
+pub use memo_field::MemoField;
 mod output_features;
 pub use output_features::CoinBaseExtra;
 pub mod covenants;
@@ -95,7 +96,7 @@ hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 use tari_hashing::TransactionHashDomain;
 
-use super::tari_amount::MicroMinotari;
+use super::MicroMinotari;
 use crate::{consensus::DomainSeparatedConsensusHasher, transaction_components::covenants::Covenant};
 
 /// Implement the canonical hashing function for TransactionOutput and WalletOutput for use in

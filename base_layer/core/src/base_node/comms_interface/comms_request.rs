@@ -38,10 +38,11 @@ use tari_common_types::{
         PrivateKey,
     },
 };
+use tari_node_components::blocks::NewBlockTemplate;
 use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree};
+use crate::chain_storage::MmrTree;
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MmrStateRequest {

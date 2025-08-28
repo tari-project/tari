@@ -20,6 +20,7 @@ tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
 tari_comms_dht = { path = "../comms/dht" }
 tari_transaction_components = { path = "../base_layer/transaction_components" }
+tari_node_components = { path = "../base_layer/node_components" }
 tari_transaction_key_manager = { path = "../base_layer/transaction_key_manager" }
 minotari_console_wallet = { path = "../applications/minotari_console_wallet", features = [
     "grpc",
@@ -37,7 +38,7 @@ minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
-chrono = { version = "0.4.39", default-features = false }
+chrono = { version = "0.4", default-features = false }
 csv = "1.1"
 cucumber = { version = "0.21.1", features = [
     "default",

@@ -36,8 +36,9 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, PrivateKey},
 };
-use tari_core::{blocks::Block, consensus::BaseConsensusManager};
+use tari_core::consensus::BaseNodeConsensusManager;
 use tari_crypto::keys::SecretKey;
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{Transaction, WalletOutput},
@@ -103,7 +104,7 @@ pub struct TariWorld {
     pub wallet_private_key: PrivateKey,
     // This receiver wallet address will be used for default one-sided coinbase payments
     pub default_payment_address: TariAddress,
-    pub consensus_manager: BaseConsensusManager,
+    pub consensus_manager: BaseNodeConsensusManager,
     pub assigned_ports: IndexMap<u64, u64>,
 }
 
@@ -172,7 +173,7 @@ impl TariWorld {
             key_manager: create_memory_db_key_manager().await.unwrap(),
             wallet_private_key,
             default_payment_address,
-            consensus_manager: BaseConsensusManager::builder(Network::LocalNet).build().unwrap(),
+            consensus_manager: BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap(),
             assigned_ports: Default::default(),
         }
     }

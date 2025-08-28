@@ -41,7 +41,7 @@ use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
 };
-use tari_transaction_components::tari_amount::MicroMinotari;
+use tari_transaction_components::MicroMinotari;
 use tari_utilities::hex::Hex;
 
 use crate::steps::get_saved_seed_words;

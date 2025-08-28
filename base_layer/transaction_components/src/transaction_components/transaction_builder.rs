@@ -27,8 +27,8 @@ use tari_common_types::types::PrivateKey;
 
 use crate::{
     aggregated_body::AggregateBody,
-    tari_amount::MicroMinotari,
     transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    MicroMinotari,
 };
 
 //----------------------------------------  Core Transaction Builder

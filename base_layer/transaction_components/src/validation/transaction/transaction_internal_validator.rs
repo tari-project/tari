@@ -25,9 +25,9 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use crate::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
-    tari_amount::MicroMinotari,
     transaction_components::{OutputType::Coinbase, Transaction},
     validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, AggregatedBodyValidationError},
+    MicroMinotari,
 };
 
 pub struct TransactionInternalConsistencyValidator {

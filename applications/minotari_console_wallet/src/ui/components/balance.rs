@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 #![allow(clippy::indexing_slicing)]
-use tari_transaction_components::tari_amount::MicroMinotari;
+use tari_transaction_components::MicroMinotari;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},

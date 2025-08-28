@@ -24,10 +24,8 @@
 use std::ops::Deref;
 
 use tari_common::configuration::Network;
-use tari_core::{
-    blocks::Block,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
-};
+use tari_core::chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult};
+use tari_node_components::blocks::Block;
 use tari_test_utils::runtime::test_async;
 use tari_transaction_components::{tari_amount::T, test_helpers::schema_to_transaction, txn_schema};
 

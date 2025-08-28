@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use tari_common_types::types::FixedHash;
-use tari_core::blocks::NewBlockTemplate;
+use tari_node_components::blocks::NewBlockTemplate;
 use tokio::sync::RwLock;
 
 pub struct DataCache {

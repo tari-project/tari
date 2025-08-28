@@ -20,59 +20,49 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(all(test, feature = "base_node"))]
 pub mod test_utils;
 
-#[cfg(feature = "base_node")]
 mod config;
-#[cfg(feature = "base_node")]
+
 mod error;
-#[cfg(feature = "base_node")]
+
 #[allow(clippy::module_inception)]
 mod mempool;
-#[cfg(feature = "base_node")]
+
 mod mempool_storage;
-#[cfg(feature = "base_node")]
+
 mod priority;
-#[cfg(feature = "base_node")]
+
 mod reorg_pool;
-#[cfg(feature = "base_node")]
+
 mod rpc;
-#[cfg(feature = "base_node")]
-pub use rpc::create_mempool_rpc_service;
-#[cfg(feature = "base_node")]
-pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
+
+pub use rpc::{create_mempool_rpc_service, MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
 #[cfg(feature = "metrics")]
 mod metrics;
-#[cfg(feature = "base_node")]
+
 mod shrink_hashmap;
-#[cfg(feature = "base_node")]
+
 mod unconfirmed_pool;
 
 // Public re-exports
-#[cfg(feature = "base_node")]
+
 pub use error::MempoolError;
-#[cfg(feature = "base_node")]
 pub use mempool::Mempool;
 use tari_transaction_components::rpc::models::FeePerGramStat;
 
-#[cfg(feature = "base_node")]
 pub use self::config::{MempoolConfig, MempoolServiceConfig};
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod proto;
 
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod service;
-#[cfg(feature = "base_node")]
+
 pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
 
-#[cfg(feature = "base_node")]
 mod sync_protocol;
 use core::fmt::{Display, Error, Formatter};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::CompressedSignature;
 use tari_transaction_components::transaction_components::Transaction;

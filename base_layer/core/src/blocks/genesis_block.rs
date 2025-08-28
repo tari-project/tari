@@ -26,13 +26,14 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
+use tari_node_components::blocks::{Block, BlockHeader};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     tari_proof_of_work::{PowAlgorithm, PowData, ProofOfWork},
     transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
 };
 
-use crate::blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
+use crate::blocks::{BlockHeaderAccumulatedData, ChainBlock};
 /// Placeholder root hash for an empty validator node Merkle tree.
 /// This hash was embedded previously in genesis blocks from the balanced merkle tree implementation, so now if the
 /// validator set is empty, we define this hash as the resulting Merkle root.
@@ -427,7 +428,7 @@ mod test {
     use crate::{
         block_output_mr_hash_from_pruned_mmr,
         chain_storage::{BlockchainBackend, SmtHasher},
-        consensus::BaseConsensusManager,
+        consensus::BaseNodeConsensusManager,
         input_mr_hash_from_pruned_mmr,
         kernel_mr_hash_from_mmr,
         test_helpers::blockchain::{create_new_blockchain_with_network, TempDatabase},
@@ -702,7 +703,7 @@ mod test {
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(
-            BaseConsensusManager::builder(network).build().unwrap(),
+            BaseNodeConsensusManager::builder(network).build().unwrap(),
             Default::default(),
         )
         .validate(

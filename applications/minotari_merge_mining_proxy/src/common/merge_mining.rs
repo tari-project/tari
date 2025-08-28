@@ -25,7 +25,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use minotari_node_grpc_client::grpc;
-use tari_core::blocks::NewBlockTemplate;
+use tari_node_components::blocks::NewBlockTemplate;
 use tari_transaction_components::transaction_components::{TransactionKernel, TransactionOutput};
 
 use crate::error::MmProxyError;

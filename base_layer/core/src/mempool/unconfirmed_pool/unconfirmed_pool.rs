@@ -28,22 +28,20 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::{
     rpc::models::FeePerGramStat,
-    tari_amount::MicroMinotari,
     transaction_components::{Transaction, TransactionError},
     weight::TransactionWeight,
+    MicroMinotari,
 };
 use tokio::time::Instant;
 
-use crate::{
-    blocks::Block,
-    mempool::{
-        priority::{FeePriority, PrioritizedTransaction},
-        shrink_hashmap::shrink_hashmap,
-        unconfirmed_pool::UnconfirmedPoolError,
-        MempoolError,
-    },
+use crate::mempool::{
+    priority::{FeePriority, PrioritizedTransaction},
+    shrink_hashmap::shrink_hashmap,
+    unconfirmed_pool::UnconfirmedPoolError,
+    MempoolError,
 };
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -864,17 +862,17 @@ mod test {
     use tari_transaction_components::{
         aggregated_body::AggregateBody,
         fee::Fee,
-        tari_amount::MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_builder::TransactionBuilder,
         tx,
         weight::TransactionWeight,
+        MicroMinotari,
     };
     use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
     use crate::{
-        consensus::BaseConsensusManagerBuilder,
+        consensus::BaseNodeConsensusManagerBuilder,
         test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
     };
     #[tokio::test]
@@ -1052,7 +1050,7 @@ mod test {
     async fn test_remove_reorg_txs() {
         let key_manager = create_memory_db_key_manager().await.unwrap();
         let network = Network::LocalNet;
-        let consensus = BaseConsensusManagerBuilder::new(network).build().unwrap();
+        let consensus = BaseNodeConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(10_000), fee: MicroMinotari(5), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")

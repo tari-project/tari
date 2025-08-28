@@ -12,7 +12,7 @@ name = "minotari_utils"
 path = "src/main.rs"
 
 [dependencies]
-tari_core = { workspace = true, features = ["base_node"] }
+tari_core = { workspace = true }
 
 lmdb-zero = "0.4.4"
 rusqlite = "0.28"

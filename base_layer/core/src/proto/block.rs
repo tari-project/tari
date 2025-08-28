@@ -23,10 +23,11 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::PrivateKey;
+use tari_node_components::blocks::{Block, NewBlock};
 use tari_utilities::ByteArray;
 
 use super::core as proto;
-use crate::blocks::{Block, HistoricalBlock, NewBlock};
+use crate::blocks::HistoricalBlock;
 //---------------------------------- Block --------------------------------------------//
 
 impl TryFrom<proto::Block> for Block {

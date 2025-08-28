@@ -25,6 +25,7 @@
 use std::sync::Arc;
 
 use tari_common_types::tari_address::TariAddress;
+use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_transaction_components::{
     key_manager::TariKeyId,
     tari_amount::T,
@@ -36,7 +37,7 @@ use tari_transaction_components::{
 use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
+    blocks::{BlockHeaderAccumulatedData, ChainHeader},
     chain_storage::{BlockchainDatabase, ChainStorageError},
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{

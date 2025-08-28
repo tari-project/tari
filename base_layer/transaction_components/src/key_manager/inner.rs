@@ -90,12 +90,11 @@ use crate::{
         ConfidentialOutputHasher,
         TariKeyId,
     },
-    tari_amount::MicroMinotari,
     transaction_components::{
-        memo_field::MemoField,
         one_sided::diffie_hellman_stealth_domain_hasher,
         EncryptedData,
         KernelFeatures,
+        MemoField,
         RangeProofType,
         TransactionError,
         TransactionInput,
@@ -105,6 +104,7 @@ use crate::{
         TransactionOutput,
         TransactionOutputVersion,
     },
+    MicroMinotari,
 };
 
 pub struct TransactionKeyManagerInner<TBackend> {

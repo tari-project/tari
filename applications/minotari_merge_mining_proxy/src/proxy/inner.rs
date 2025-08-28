@@ -43,7 +43,7 @@ use serde_json as json;
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{monero_randomx_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
 };
 use tari_utilities::hex::Hex;
@@ -79,7 +79,7 @@ pub struct InnerService {
     pub(crate) current_monerod_server: Arc<RwLock<Option<String>>>,
     pub(crate) last_assigned_monerod_url: Arc<RwLock<Option<String>>>,
     pub(crate) randomx_factory: RandomXFactory,
-    pub(crate) consensus_manager: BaseConsensusManager,
+    pub(crate) consensus_manager: BaseNodeConsensusManager,
     pub(crate) wallet_payment_address: TariAddress,
 }
 

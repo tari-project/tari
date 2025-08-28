@@ -52,17 +52,17 @@ pub const ZERO_KEY_BRANCH: &str = "zero";
 
 use crate::{
     key_manager::error::{KeyManagerServiceError, KeyManagerStorageError},
-    tari_amount::MicroMinotari,
     transaction_components::{
-        memo_field::MemoField,
         EncryptedData,
         KernelFeatures,
+        MemoField,
         RangeProofType,
         TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
         TransactionOutputVersion,
     },
+    MicroMinotari,
 };
 
 #[repr(u8)]

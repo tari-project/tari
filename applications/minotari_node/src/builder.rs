@@ -44,7 +44,7 @@ use tari_core::{
         LMDBDatabase,
         Validators,
     },
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{service::LocalMempoolService, Mempool},
     proof_of_work::randomx_factory::RandomXFactory,
     validation::{
@@ -74,7 +74,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// on the comms stack.
 pub struct BaseNodeContext {
     config: Arc<ApplicationConfig>,
-    consensus_rules: BaseConsensusManager,
+    consensus_rules: BaseNodeConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
@@ -161,7 +161,7 @@ impl BaseNodeContext {
     }
 
     /// Returns the consensus rules
-    pub fn consensus_rules(&self) -> &BaseConsensusManager {
+    pub fn consensus_rules(&self) -> &BaseNodeConsensusManager {
         &self.consensus_rules
     }
 
@@ -195,7 +195,7 @@ pub async fn configure_and_initialize_node(
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
             readiness_status_handler.send_readiness_status(ReadinessState::BuildingContextBlockchain);
-            let rules = BaseConsensusManager::builder(app_config.base_node.network)
+            let rules = BaseNodeConsensusManager::builder(app_config.base_node.network)
                 .build()
                 .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
             let backend = create_lmdb_database_with_stats_channel(
@@ -234,7 +234,7 @@ async fn build_node_context(
         target: LOG_TARGET,
         "Building base node context for {}  network", app_config.base_node.network
     );
-    let rules = BaseConsensusManager::builder(app_config.base_node.network)
+    let rules = BaseNodeConsensusManager::builder(app_config.base_node.network)
         .build()
         .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
     let factories = CryptoFactories::default();
