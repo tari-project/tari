@@ -36,7 +36,7 @@ use tari_core::{
         SyncValidators,
     },
     chain_storage::BlockchainDatabaseConfig,
-    consensus::BaseConsensusManagerBuilder,
+    consensus::BaseNodeConsensusManagerBuilder,
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::create_test_blockchain_db,
@@ -74,7 +74,7 @@ async fn test_listening_lagging() {
     let key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = BaseConsensusManagerBuilder::new(network)
+    let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
         .build()
@@ -160,7 +160,7 @@ async fn test_listening_initial_fallen_behind() {
     let key_manager = create_memory_db_key_manager().await.unwrap();
     let consensus_constants = crate::helpers::sample_blockchains::consensus_constants(network).build();
     let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = BaseConsensusManagerBuilder::new(network)
+    let consensus_manager = BaseNodeConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(gen_block.clone())
         .build()

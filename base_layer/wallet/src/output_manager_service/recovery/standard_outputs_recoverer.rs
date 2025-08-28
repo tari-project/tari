@@ -31,8 +31,8 @@ use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_transaction_components::{
     key_manager::{TariKeyId, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, OutputType, TransactionError, TransactionOutput, WalletOutput},
+    transaction_components::{MemoField, OutputType, TransactionError, TransactionOutput, WalletOutput},
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 

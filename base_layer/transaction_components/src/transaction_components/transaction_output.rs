@@ -57,7 +57,6 @@ use super::TransactionOutputVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     helpers::borsh::SerializedSize,
-    tari_amount::MicroMinotari,
     transaction_components,
     transaction_components::{
         covenants::Covenant,
@@ -69,6 +68,7 @@ use crate::{
         TransactionInput,
         WalletOutput,
     },
+    MicroMinotari,
 };
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -588,9 +588,9 @@ mod test {
     use crate::{
         crypto_factories::CryptoFactories,
         key_manager::{create_memory_key_manager, TransactionKeyManagerInterface},
-        tari_amount::MicroMinotari,
         test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
+        MicroMinotari,
     };
 
     #[tokio::test]

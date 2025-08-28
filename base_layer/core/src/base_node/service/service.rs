@@ -35,6 +35,7 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
+use tari_node_components::blocks::{Block, NewBlock};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::RequestContext;
 use tari_transaction_components::BanPeriod;
@@ -56,7 +57,6 @@ use crate::{
         BaseNodeStateMachineConfig,
         StateMachineHandle,
     },
-    blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
     common::{
         waiting_requests::{generate_request_key, WaitingRequests},

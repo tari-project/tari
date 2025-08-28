@@ -1512,9 +1512,9 @@ mod test {
     use tari_script::script;
     use tari_test_utils::random;
     use tari_transaction_components::{
-        tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
+        MicroMinotari,
     };
     use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
     use tempfile::tempdir;

@@ -29,7 +29,7 @@ use tari_transaction_components::{
 use super::TransactionChainLinkedValidator;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     validation::{traits::TransactionValidator, ValidationError},
 };
 
@@ -44,7 +44,7 @@ impl<B: BlockchainBackend> TransactionFullValidator<B> {
         factories: CryptoFactories,
         bypass_range_proof_verification: bool,
         db: BlockchainDatabase<B>,
-        consensus_manager: BaseConsensusManager,
+        consensus_manager: BaseNodeConsensusManager,
     ) -> Self {
         let internal_validator = TransactionInternalConsistencyValidator::new(
             bypass_range_proof_verification,

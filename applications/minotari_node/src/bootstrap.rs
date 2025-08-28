@@ -48,7 +48,7 @@ use tari_core::{
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{self, service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     proof_of_work::randomx_factory::RandomXFactory,
 };
@@ -80,7 +80,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
     pub node_identity: Arc<NodeIdentity>,
     pub db: BlockchainDatabase<B>,
     pub mempool: Mempool,
-    pub rules: BaseConsensusManager,
+    pub rules: BaseNodeConsensusManager,
     pub factories: CryptoFactories,
     pub randomx_factory: RandomXFactory,
     pub interrupt_signal: ShutdownSignal,

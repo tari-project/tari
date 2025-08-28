@@ -28,13 +28,11 @@ use std::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{CompressedSignature, PrivateKey};
+use tari_node_components::blocks::Block;
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
 
-use crate::{
-    blocks::Block,
-    mempool::{shrink_hashmap::shrink_hashmap, MempoolError},
-};
+use crate::mempool::{shrink_hashmap::shrink_hashmap, MempoolError};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
@@ -337,11 +335,11 @@ mod test {
 
     #![allow(clippy::indexing_slicing)]
     use tari_common::configuration::Network;
-    use tari_transaction_components::{tari_amount::MicroMinotari, tx};
+    use tari_transaction_components::{tx, MicroMinotari};
     use tari_transaction_key_manager::create_memory_db_key_manager;
 
     use super::*;
-    use crate::{consensus::BaseConsensusManagerBuilder, test_helpers::create_orphan_block};
+    use crate::{consensus::BaseNodeConsensusManagerBuilder, test_helpers::create_orphan_block};
     #[tokio::test]
     async fn test_insert_expire_by_height() {
         let key_manager = create_memory_db_key_manager().await.unwrap();
@@ -443,7 +441,7 @@ mod test {
     async fn remove_scan_for_and_remove_reorged_txs() {
         let key_manager = create_memory_db_key_manager().await.unwrap();
         let network = Network::LocalNet;
-        let consensus = BaseConsensusManagerBuilder::new(network).build().unwrap();
+        let consensus = BaseNodeConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
             tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")

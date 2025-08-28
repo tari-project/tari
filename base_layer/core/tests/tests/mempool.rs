@@ -40,7 +40,7 @@ use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{events_and_states::ListeningInfo, StateInfo, StatusInfo},
     chain_storage::BlockchainDatabaseConfig,
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proto,
     validation::transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
@@ -1051,7 +1051,7 @@ async fn receive_and_propagate_transaction() {
         .build();
     let key_manager = create_memory_db_key_manager().await.unwrap();
     let (block0, utxo) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = BaseConsensusManager::builder(network)
+    let consensus_manager = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build()
@@ -1729,7 +1729,7 @@ async fn block_event_and_reorg_event_handling() {
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
-    let consensus_manager = BaseConsensusManager::builder(network)
+    let consensus_manager = BaseNodeConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
         .build()

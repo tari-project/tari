@@ -35,8 +35,8 @@ use tari_common_types::{
 };
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
 use tari_transaction_components::{
-    tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, BuildInfo, OutputFeatures, TemplateType},
+    transaction_components::{BuildInfo, MemoField, OutputFeatures, TemplateType},
+    MicroMinotari,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};

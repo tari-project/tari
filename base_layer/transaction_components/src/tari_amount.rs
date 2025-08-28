@@ -41,7 +41,7 @@ use super::format_currency;
 /// conversion errors etc.
 ///
 /// ```edition2018
-/// use tari_core::transactions::tari_amount::MicroMinotari;
+/// use tari_core::transactions::MicroMinotari;
 ///
 /// let a = MicroMinotari::from(500);
 /// let b = MicroMinotari::from(50);

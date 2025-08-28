@@ -1,7 +1,7 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use crate::tari_amount::MicroMinotari;
+use crate::MicroMinotari;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeePerGramStat {

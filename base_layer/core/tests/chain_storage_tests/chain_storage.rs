@@ -2138,7 +2138,7 @@ mod malleability {
 
     mod kernel {
         use tari_common_types::types::Signature;
-        use tari_core::transactions::tari_amount::MicroMinotari;
+        use tari_core::transactions::MicroMinotari;
 
         use super::*;
 

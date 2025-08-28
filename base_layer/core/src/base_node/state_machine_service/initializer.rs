@@ -41,7 +41,7 @@ use crate::{
         LocalNodeCommsInterface,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    consensus::BaseConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };
 
@@ -50,7 +50,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
 pub struct BaseNodeStateMachineInitializer<B> {
     db: AsyncBlockchainDb<B>,
     config: BaseNodeStateMachineConfig,
-    rules: BaseConsensusManager,
+    rules: BaseNodeConsensusManager,
     factories: CryptoFactories,
     randomx_factory: RandomXFactory,
     bypass_range_proof_verification: bool,
@@ -62,7 +62,7 @@ where B: BlockchainBackend + 'static
     pub fn new(
         db: AsyncBlockchainDb<B>,
         config: BaseNodeStateMachineConfig,
-        rules: BaseConsensusManager,
+        rules: BaseNodeConsensusManager,
         factories: CryptoFactories,
         randomx_factory: RandomXFactory,
         bypass_range_proof_verification: bool,

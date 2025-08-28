@@ -32,11 +32,10 @@ use minotari_node_grpc_client::BaseNodeGrpcClient;
 use minotari_wallet_grpc_client::{grpc, WalletGrpcClient};
 use tari_common::{configuration::Network, network_check::set_network_if_choice_valid};
 use tari_common_types::tari_address::TariAddress;
-use tari_core::consensus::BaseConsensusManager;
+use tari_core::consensus::BaseNodeConsensusManager;
 use tari_transaction_components::{
     generate_coinbase_with_wallet_output,
     key_manager::TariKeyId,
-    tari_amount::MicroMinotari,
     tari_proof_of_work::PowAlgorithm,
     transaction_components::{
         memo_field::{MemoField, TxType},
@@ -44,6 +43,7 @@ use tari_transaction_components::{
         RangeProofType,
         WalletOutput,
     },
+    MicroMinotari,
 };
 use tari_transaction_key_manager::MemoryDbKeyManager;
 use tonic::transport::Channel;
@@ -178,7 +178,7 @@ pub async fn mine_blocks_without_wallet(
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) {
     for _ in 0..num_blocks {
         mine_block_without_wallet(
@@ -204,7 +204,7 @@ pub async fn mine_block(
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) {
     let (block_template, _wallet_output) = create_block_template_with_coinbase(
         base_client,
@@ -240,7 +240,7 @@ async fn mine_block_without_wallet(
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) {
     let (block_template, _wallet_output) = create_block_template_with_coinbase(
         base_client,
@@ -279,7 +279,7 @@ async fn create_block_template_with_coinbase(
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> (NewBlockTemplate, WalletOutput) {
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
@@ -357,7 +357,7 @@ pub async fn mine_block_before_submit(
     script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
-    consensus_manager: &BaseConsensusManager,
+    consensus_manager: &BaseNodeConsensusManager,
 ) -> Block {
     let (template, _wallet_output) = create_block_template_with_coinbase(
         client,

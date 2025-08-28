@@ -21,33 +21,23 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod blocks;
-#[cfg(feature = "base_node")]
 pub mod chain_storage;
 pub mod consensus;
-#[cfg(feature = "base_node")]
 pub mod iterators;
 pub mod proof_of_work;
-#[cfg(feature = "base_node")]
 pub mod validation;
 
-#[cfg(any(test, feature = "base_node"))]
 #[macro_use]
 pub mod test_helpers;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod base_node;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
-
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
+pub mod proto;
 
 mod common;
 
-#[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;
 
-#[cfg(feature = "base_node")]
 mod domain_hashing {
     use std::convert::TryFrom;
 
@@ -111,5 +101,4 @@ mod domain_hashing {
     }
 }
 
-#[cfg(feature = "base_node")]
 pub use domain_hashing::*;

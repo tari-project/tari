@@ -21,8 +21,8 @@ use tari_transaction_components::{
             TxSubmissionResponse,
         },
     },
-    tari_amount::MicroMinotari,
     transaction_components::{Transaction, TransactionOutput},
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::{mpsc, RwLock};

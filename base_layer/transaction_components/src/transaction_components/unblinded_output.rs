@@ -34,15 +34,15 @@ use tari_script::{ExecutionStack, TariScript};
 use super::{RangeProofType, TransactionOutputVersion};
 use crate::{
     key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
     transaction_components::{
         covenants::Covenant,
-        memo_field::MemoField,
         EncryptedData,
+        MemoField,
         OutputFeatures,
         TransactionError,
         WalletOutput,
     },
+    MicroMinotari,
 };
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to

@@ -25,7 +25,7 @@
 
 use tari_common_types::types::CompressedCommitment;
 
-use crate::tari_amount::MicroMinotari;
+use crate::MicroMinotari;
 
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees

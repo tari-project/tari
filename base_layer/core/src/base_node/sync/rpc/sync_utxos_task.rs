@@ -32,13 +32,13 @@ use tari_comms::{
     protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
     utils,
 };
+use tari_node_components::blocks::BlockHeader;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::mpsc, task};
 
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
-    blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{sync_utxos_response::Txo, SyncUtxosRequest, SyncUtxosResponse},

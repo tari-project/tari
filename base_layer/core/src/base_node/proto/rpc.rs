@@ -22,10 +22,11 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use tari_node_components::blocks::Block;
 use tari_transaction_components::rpc::models::FeePerGramStat;
 use tari_utilities::ByteArray;
 
-use crate::{blocks::Block, proto::base_node as proto};
+use crate::proto::base_node as proto;
 
 impl TryFrom<Block> for proto::BlockBodyResponse {
     type Error = String;

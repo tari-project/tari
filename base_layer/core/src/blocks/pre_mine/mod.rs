@@ -41,10 +41,10 @@ use tari_transaction_components::{
     key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
     tari_amount::{MicroMinotari, Minotari},
     transaction_components::{
-        memo_field::MemoField,
         one_sided::public_key_to_output_encryption_key,
         CoinBaseExtra,
         KernelFeatures,
+        MemoField,
         OutputFeatures,
         OutputFeaturesVersion,
         OutputType,
@@ -943,7 +943,7 @@ mod test {
             ReleaseStrategy,
             BLOCKS_PER_DAY,
         },
-        consensus::BaseConsensusManager,
+        consensus::BaseNodeConsensusManager,
     };
 
     async fn genesis_block_test_info(
@@ -1469,7 +1469,7 @@ mod test {
         //                                                          | 15000 -> | (180) |
 
         let network = Network::MainNet;
-        let consensus_manager = BaseConsensusManager::builder(network)
+        let consensus_manager = BaseNodeConsensusManager::builder(network)
             .build()
             .map_err(|e| e.to_string())
             .unwrap();

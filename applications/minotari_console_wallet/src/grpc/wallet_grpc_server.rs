@@ -143,12 +143,12 @@ use tari_crypto::hash_domain;
 use tari_transaction_components::{
     consensus::{ConsensusConstants, ConsensusManager},
     key_manager::TransactionKeyManagerInterface,
-    tari_amount::MicroMinotari,
     transaction_components::{
         memo_field::{MemoField, TxType},
         OutputFeatures,
         UnblindedOutput,
     },
+    MicroMinotari,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{

@@ -20,12 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
 mod service;
-#[cfg(feature = "base_node")]
+
 mod sync_utxos_task;
 
-#[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
 
 #[cfg(test)]
@@ -34,12 +32,9 @@ mod tests;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 
-#[cfg(feature = "base_node")]
 use crate::{
     base_node::LocalNodeCommsInterface,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-};
-use crate::{
     proto,
     proto::base_node::{
         FindChainSplitRequest,
@@ -94,7 +89,6 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
 }
 
-#[cfg(feature = "base_node")]
 pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     base_node_service: LocalNodeCommsInterface,
