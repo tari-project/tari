@@ -5744,9 +5744,6 @@ pub(crate) fn get_wallet_database_path(config: &TariWalletDbConfig) -> PathBuf {
 ///         ValidationAlreadyBusy            // 1
 ///         ValidationInternalFailure        // 2
 ///         ValidationCommunicationFailure   // 3
-/// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
-/// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
-/// for it.
 /// `callback_connectivity_status` - This callback is called when the status of connection to the base node changes.
 /// It will return an enum encoded as an integer as the first parameter and latency in ms as the second as follows:
 ///   status (u64)    | latency in ms (u64)
