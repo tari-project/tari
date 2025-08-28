@@ -21,13 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms_dht::outbound::DhtOutboundError;
+use tari_transaction_components::{BanPeriod, BanReason};
 use thiserror::Error;
 
-use crate::{
-    base_node::{comms_interface::CommsInterfaceError, service::initializer::ExtractBlockError},
-    common::{BanPeriod, BanReason},
-};
-
+use crate::base_node::{comms_interface::CommsInterfaceError, service::initializer::ExtractBlockError};
 #[derive(Debug, Error)]
 pub enum BaseNodeServiceError {
     #[error("Comms interface error: `{0}`")]

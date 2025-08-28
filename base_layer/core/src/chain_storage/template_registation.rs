@@ -22,8 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::FixedHash;
-
-use crate::transactions::transaction_components::CodeTemplateRegistration;
+use tari_transaction_components::transaction_components::CodeTemplateRegistration;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TemplateRegistrationEntry {

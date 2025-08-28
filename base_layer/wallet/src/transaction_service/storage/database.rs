@@ -33,9 +33,9 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, Transaction, TransactionOutput},
+use tari_transaction_components::{
+    transaction_components::{MemoField, Transaction, TransactionOutput},
+    MicroMinotari,
 };
 
 use crate::transaction_service::{

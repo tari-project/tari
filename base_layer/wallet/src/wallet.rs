@@ -28,6 +28,11 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
+    seeds::{
+        cipher_seed::CipherSeed,
+        mnemonic::{Mnemonic, MnemonicLanguage},
+        seed_words::SeedWords,
+    },
     tari_address::{TariAddress, TariAddressFeatures},
     transaction::{ImportStatus, TxId},
     types::{
@@ -49,36 +54,7 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::Dht;
-use tari_core::{
-    consensus::{ConsensusManager, NetworkConsensus},
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            EncryptedData,
-            OutputFeatures,
-            UnblindedOutput,
-        },
-        transaction_key_manager::{
-            error::KeyManagerServiceError,
-            key_manager::TariKeyManager,
-            storage::database::TransactionKeyManagerBackend,
-            SecretTransactionKeyManagerInterface,
-            TariKeyId,
-            TransactionKeyManagerInitializer,
-            TransactionKeyManagerInterface,
-        },
-        CryptoFactories,
-    },
-};
 use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{KeyDigest, KeyManagerBranch},
-    mnemonic::{Mnemonic, MnemonicLanguage},
-    SeedWords,
-};
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
@@ -91,6 +67,29 @@ use tari_p2p::{
 use tari_script::{push_pubkey_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    consensus::{ConsensusManager, NetworkConsensus},
+    crypto_factories::CryptoFactories,
+    key_manager::{
+        error::KeyManagerServiceError,
+        tari_key_manager::TariKeyManager,
+        KeyDigest,
+        KeyManagerBranch,
+        SecretTransactionKeyManagerInterface,
+        TariKeyId,
+        TransactionKeyManagerBackend,
+        TransactionKeyManagerInitializer,
+        TransactionKeyManagerInterface,
+    },
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        EncryptedData,
+        OutputFeatures,
+        UnblindedOutput,
+    },
+    MicroMinotari,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 use url::Url;
 
@@ -225,7 +224,6 @@ where
                 THttpClientFactory,
             >::new(
                 config.transaction_service_config.clone(),
-                peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 config.network,

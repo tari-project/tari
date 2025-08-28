@@ -5,11 +5,11 @@ use std::{convert::TryInto, time::Instant};
 
 use log::*;
 use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
+use tari_node_components::blocks::BlockHeader;
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
-    blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},

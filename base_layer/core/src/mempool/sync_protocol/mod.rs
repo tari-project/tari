@@ -88,6 +88,7 @@ use tari_comms::{
     Bytes,
     PeerConnection,
 };
+use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -103,7 +104,6 @@ use crate::{
     chain_storage::BlockAddResult,
     mempool::{proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
-    transactions::transaction_components::Transaction,
 };
 
 #[cfg(test)]

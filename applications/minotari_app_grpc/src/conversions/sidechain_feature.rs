@@ -23,28 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use prost::Message;
-use tari_common_types::{
-    epoch::VnEpoch,
-    types::{CompressedPublicKey, Signature},
-};
-use tari_core::{
-    base_node::comms_interface::ValidatorNodeChange,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{
-            BuildInfo,
-            CodeTemplateRegistration,
-            ConfidentialOutputData,
-            SideChainFeature,
-            SideChainFeatureData,
-            SideChainId,
-            TemplateType,
-            ValidatorNodeExit,
-            ValidatorNodeRegistration,
-            ValidatorNodeSignature,
-        },
-    },
-};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature};
 use tari_max_size::MaxSizeString;
 use tari_sidechain::{
     ChainLink,
@@ -59,6 +38,18 @@ use tari_sidechain::{
     SidechainBlockCommitProof,
     SidechainBlockHeader,
     ValidatorQcSignature,
+};
+use tari_transaction_components::transaction_components::{
+    BuildInfo,
+    CodeTemplateRegistration,
+    ConfidentialOutputData,
+    SideChainFeature,
+    SideChainFeatureData,
+    SideChainId,
+    TemplateType,
+    ValidatorNodeExit,
+    ValidatorNodeRegistration,
+    ValidatorNodeSignature,
 };
 use tari_utilities::ByteArray;
 
@@ -143,7 +134,7 @@ impl TryFrom<grpc::SideChainId> for SideChainId {
             .knowledge_proof
             .ok_or("sidechain_id knowledge_proof not provided")?;
         let knowledge_proof =
-            Signature::try_from(knowledge_proof).map_err(|e| format!("sidechain_id_knowledge_proof: {e}"))?;
+            CompressedSignature::try_from(knowledge_proof).map_err(|e| format!("sidechain_id_knowledge_proof: {e}"))?;
 
         Ok(Self::new(public_key, knowledge_proof))
     }
@@ -249,7 +240,7 @@ impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
                 .map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
-                .map(Signature::try_from)
+                .map(CompressedSignature::try_from)
                 .ok_or("author_signature not provided")??,
             template_name: MaxSizeString::try_from(value.template_name).map_err(|e| e.to_string())?,
             template_version: value
@@ -655,67 +646,6 @@ impl From<&EvictNodeAtom> for grpc::EvictAtom {
     fn from(value: &EvictNodeAtom) -> Self {
         Self {
             public_key: value.node_to_evict().to_vec(),
-        }
-    }
-}
-
-// -------------------------------- ValidatorNodeChange -------------------------------- //
-
-impl TryFrom<grpc::ValidatorNodeChange> for ValidatorNodeChange {
-    type Error = String;
-
-    fn try_from(value: grpc::ValidatorNodeChange) -> Result<Self, Self::Error> {
-        let change = value.change.ok_or("change not provided")?;
-        match change {
-            grpc::validator_node_change::Change::Add(add) => {
-                let activation_epoch = VnEpoch(add.activation_epoch);
-                let registration = add.registration.ok_or("registration not provided")?.try_into()?;
-                let minimum_value_promise = MicroMinotari(add.minimum_value_promise);
-                if add.shard_key.len() != 32 {
-                    return Err(format!("shard_key length is not 32 (len:{})", add.shard_key.len()));
-                }
-                let mut shard_key = [0u8; 32];
-                shard_key.copy_from_slice(&add.shard_key);
-
-                Ok(ValidatorNodeChange::Add {
-                    registration: Box::new(registration),
-                    activation_epoch,
-                    minimum_value_promise,
-                    shard_key,
-                })
-            },
-            grpc::validator_node_change::Change::Remove(remove) => {
-                let public_key =
-                    CompressedPublicKey::from_canonical_bytes(&remove.public_key).map_err(|e| e.to_string())?;
-                Ok(ValidatorNodeChange::Remove { public_key })
-            },
-        }
-    }
-}
-
-impl From<&ValidatorNodeChange> for grpc::ValidatorNodeChange {
-    fn from(node_change: &ValidatorNodeChange) -> Self {
-        match node_change {
-            ValidatorNodeChange::Add {
-                registration,
-                activation_epoch,
-                minimum_value_promise,
-                shard_key,
-            } => Self {
-                change: Some(grpc::validator_node_change::Change::Add(grpc::ValidatorNodeChangeAdd {
-                    activation_epoch: activation_epoch.as_u64(),
-                    registration: Some((&**registration).into()),
-                    minimum_value_promise: (*minimum_value_promise).into(),
-                    shard_key: shard_key.to_vec(),
-                })),
-            },
-            ValidatorNodeChange::Remove { public_key } => Self {
-                change: Some(grpc::validator_node_change::Change::Remove(
-                    grpc::ValidatorNodeChangeRemove {
-                        public_key: public_key.to_vec(),
-                    },
-                )),
-            },
         }
     }
 }

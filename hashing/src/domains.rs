@@ -51,3 +51,17 @@ hash_domain!(
     "com.tari.base_layer.core.transactions.side_chain.validator_node",
     0
 );
+
+hash_domain!(KeyManagerDomain, "com.tari.base_layer.key_manager", 1);
+
+hash_domain!(
+    WalletOutputRewindKeysDomain,
+    "com.tari.base_layer.wallet.output_rewind_keys",
+    1
+);
+
+hash_domain!(
+    WalletOutputSpendingKeysDomain,
+    "com.tari.base_layer.wallet.output_spending_keys",
+    1
+);

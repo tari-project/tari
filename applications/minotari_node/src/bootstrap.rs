@@ -48,10 +48,9 @@ use tari_core::{
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{self, service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     proof_of_work::randomx_factory::RandomXFactory,
-    transactions::CryptoFactories,
 };
 use tari_p2p::{
     auto_update::SoftwareUpdaterService,
@@ -68,6 +67,7 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::crypto_factories::CryptoFactories;
 
 use crate::{config::WalletHttpServiceConfig, http::create_base_node_wallet_http_server, ApplicationConfig};
 
@@ -80,7 +80,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
     pub node_identity: Arc<NodeIdentity>,
     pub db: BlockchainDatabase<B>,
     pub mempool: Mempool,
-    pub rules: ConsensusManager,
+    pub rules: BaseNodeConsensusManager,
     pub factories: CryptoFactories,
     pub randomx_factory: RandomXFactory,
     pub interrupt_signal: ShutdownSignal,

@@ -19,22 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use tari_common_types::{epoch::VnEpoch, types::HashOutput};
+use tari_node_components::blocks::{BlockHeaderValidationError, BlockValidationError};
 use tari_sidechain::SidechainProofValidationError;
+use tari_transaction_components::{
+    tari_proof_of_work::{DifficultyError, PowError},
+    transaction_components::{covenants::CovenantError, OutputType, TransactionError},
+    validation::AggregatedBodyValidationError,
+    BanPeriod,
+    BanReason,
+};
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
-    blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
-    common::{BanPeriod, BanReason},
-    covenants::CovenantError,
-    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError, DifficultyError, PowError},
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{OutputType, RangeProofType, TransactionError},
-    },
+    proof_of_work::{cuckaroo_pow::CuckarooVerificationError, monero_rx::MergeMineError},
 };
 
 #[derive(Debug, Error)]
@@ -64,8 +64,6 @@ pub enum ValidationError {
     InvalidAccountingBalance,
     #[error("Transaction contains already spent inputs")]
     ContainsSTxO,
-    #[error("Transaction contains outputs that already exist")]
-    ContainsTxO,
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
@@ -80,8 +78,6 @@ pub enum ValidationError {
     UnsortedOrDuplicateInput,
     #[error("Duplicate or unsorted output found in block body")]
     UnsortedOrDuplicateOutput,
-    #[error("Duplicate or unsorted kernel found in block body")]
-    UnsortedOrDuplicateKernel,
     #[error("Error in merge mine data:{0}")]
     MergeMineError(#[from] MergeMineError),
     #[error("Maximum transaction weight exceeded")]
@@ -92,19 +88,6 @@ pub enum ValidationError {
     IncorrectPreviousHash { expected: String, block_hash: String },
     #[error("Bad block with hash '{hash}' and reason '{reason}' found")]
     BadBlockFound { hash: String, reason: String },
-    #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
-    TariScriptExceedsMaxSize {
-        max_script_size: usize,
-        actual_script_size: usize,
-    },
-    #[error(
-        "Encrypted data exceeded maximum encrytped data size, expected less than {max_encrypted_data_size} but was \
-         {actual_encrypted_data_size}"
-    )]
-    EncryptedDataExceedsMaxSize {
-        max_encrypted_data_size: usize,
-        actual_encrypted_data_size: usize,
-    },
     #[error("Consensus Error: {0}")]
     ConsensusError(String),
     #[error("Duplicate kernel Error: {0}")]
@@ -115,35 +98,10 @@ pub enum ValidationError {
     InvalidBlockchainVersion { version: u16 },
     #[error("Contains Invalid Burn: {0}")]
     InvalidBurnError(String),
-    #[error("Output type '{output_type}' is not permitted")]
-    OutputTypeNotPermitted { output_type: OutputType },
-    #[error("Range proof type '{range_proof_type}' is not permitted")]
-    RangeProofTypeNotPermitted { range_proof_type: RangeProofType },
-    #[error("Output type '{output_type}' is not matched to any range proof type")]
-    OutputTypeNotMatchedToRangeProofType { output_type: OutputType },
-    #[error("Validator registration has invalid minimum amount {actual}, must be at least {min}")]
-    ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
-    #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
-    ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
-    #[error("Sidechain ID knowledge proof not valid for template registration")]
-    TemplateInvalidSidechainIdKnowledgeProof,
-    #[error("Author signature not valid for template registration")]
-    TemplateAuthorSignatureNotValid,
-    #[error("Sidechain ID knowledge proof not valid for confidential output")]
-    ConfidentialOutputSidechainIdKnowledgeProofNotValid,
     #[error("Validator node registration signature failed verification")]
-    InvalidValidatorNodeSignature,
-    #[error("Sidechain ID knowledge proof not valid for validator node registration")]
-    ValidatorNodeInvalidSidechainIdKnowledgeProof,
-    #[error(
-        "An unexpected number of timestamps were provided to the header validator. THIS IS A BUG. Expected \
-         {expected}, got {actual}"
-    )]
     IncorrectNumberOfTimestampsProvided { expected: u64, actual: u64 },
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
-    #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
-    CovenantTooLarge { max_size: usize, actual_size: usize },
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
     #[error("Sidechain proof invalid: `{0}`")]
@@ -168,6 +126,8 @@ pub enum ValidationError {
     OutputSpendRuleDisallow { output_type: OutputType, details: String },
     #[error("Output type '{output_type}' does not match sidechain data")]
     OutputTypeNotMatchSidechainData { output_type: OutputType, details: String },
+    #[error("Validation error: {0}")]
+    AggregatedBodyValidationError(#[from] AggregatedBodyValidationError),
     #[error("Cuckaroo POW error: {0}")]
     CuckarooPowError(#[from] CuckarooVerificationError),
 }
@@ -200,37 +160,22 @@ impl ValidationError {
             err @ ValidationError::TransactionError(_) |
             err @ ValidationError::InvalidAccountingBalance |
             err @ ValidationError::ContainsSTxO |
-            err @ ValidationError::ContainsTxO |
             err @ ValidationError::ContainsDuplicateUtxoCommitment |
             err @ ValidationError::ChainBalanceValidationFailed(_) |
             err @ ValidationError::ValidatingGenesis |
             err @ ValidationError::UnsortedOrDuplicateInput |
             err @ ValidationError::UnsortedOrDuplicateOutput |
-            err @ ValidationError::UnsortedOrDuplicateKernel |
             err @ ValidationError::MaxTransactionWeightExceeded |
             err @ ValidationError::IncorrectHeight { .. } |
             err @ ValidationError::IncorrectPreviousHash { .. } |
             err @ ValidationError::BadBlockFound { .. } |
-            err @ ValidationError::TariScriptExceedsMaxSize { .. } |
-            err @ ValidationError::EncryptedDataExceedsMaxSize { .. } |
             err @ ValidationError::ConsensusError(_) |
             err @ ValidationError::DuplicateKernelError(_) |
             err @ ValidationError::CovenantError(_) |
             err @ ValidationError::InvalidBlockchainVersion { .. } |
             err @ ValidationError::InvalidBurnError(_) |
-            err @ ValidationError::OutputTypeNotPermitted { .. } |
-            err @ ValidationError::RangeProofTypeNotPermitted { .. } |
-            err @ ValidationError::OutputTypeNotMatchedToRangeProofType { .. } |
-            err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
-            err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
-            err @ ValidationError::InvalidValidatorNodeSignature |
-            err @ ValidationError::ValidatorNodeInvalidSidechainIdKnowledgeProof |
-            err @ ValidationError::TemplateInvalidSidechainIdKnowledgeProof |
-            err @ ValidationError::TemplateAuthorSignatureNotValid |
-            err @ ValidationError::ConfidentialOutputSidechainIdKnowledgeProofNotValid |
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
-            err @ ValidationError::CovenantTooLarge { .. } |
             err @ ValidationError::InvalidSerializedPublicKey(_) |
             err @ ValidationError::SidechainEvictionProofValidatorNotFound { .. } |
             err @ ValidationError::SidechainProofInvalid(_) |
@@ -239,6 +184,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeNotRegistered { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMaxEpoch { .. } |
             err @ ValidationError::OutputTypeNotMatchSidechainData { .. } |
+            err @ ValidationError::AggregatedBodyValidationError(_) |
             err @ ValidationError::CuckarooPowError(_) |
             err @ ValidationError::OutputSpendRuleDisallow { .. } => Some(BanReason {
                 reason: err.to_string(),

@@ -23,25 +23,25 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{
+    rpc::models::FeePerGramStat,
+    transaction_components::{Transaction, TransactionError},
+    weight::TransactionWeight,
+};
 use tari_utilities::hex::Hex;
 
 use crate::{
-    blocks::Block,
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
         unconfirmed_pool::{RetrieveResults, TransactionKey, UnconfirmedPool, UnconfirmedPoolError},
-        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
         TxStorageResponse,
-    },
-    transactions::{
-        transaction_components::{Transaction, TransactionError},
-        weight::TransactionWeight,
     },
     validation::{TransactionValidator, ValidationError},
 };
@@ -55,14 +55,18 @@ pub struct MempoolStorage {
     pub(crate) unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
-    rules: ConsensusManager,
+    rules: BaseNodeConsensusManager,
     last_seen_height: u64,
     pub(crate) last_seen_hash: FixedHash,
 }
 
 impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, rules: ConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
+    pub fn new(
+        config: MempoolConfig,
+        rules: BaseNodeConsensusManager,
+        validator: Box<dyn TransactionValidator>,
+    ) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),
@@ -325,7 +329,7 @@ impl MempoolStorage {
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> TxStorageResponse {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> TxStorageResponse {
         if self.unconfirmed_pool.has_tx_with_excess_sig(excess_sig) {
             TxStorageResponse::UnconfirmedPool
         } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig) {

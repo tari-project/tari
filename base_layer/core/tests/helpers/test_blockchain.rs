@@ -28,13 +28,13 @@ use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::types::FixedHash;
 use tari_core::{
-    blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
-    consensus::ConsensusManager,
-    proof_of_work::Difficulty,
+    consensus::BaseNodeConsensusManager,
     test_helpers::blockchain::TempDatabase,
-    transactions::{transaction_components::WalletOutput, transaction_key_manager::MemoryDbKeyManager},
 };
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::WalletOutput};
+use tari_transaction_key_manager::MemoryDbKeyManager;
 
 use crate::helpers::{
     block_builders::{chain_block_with_new_coinbase, find_header_with_achieved_difficulty},
@@ -49,7 +49,7 @@ pub struct TestBlockchain {
     store: BlockchainDatabase<TempDatabase>,
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<FixedHash, String>,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     outputs: Vec<Vec<WalletOutput>>,
     pub key_manager: MemoryDbKeyManager,
 }
@@ -81,7 +81,7 @@ impl TestBlockchain {
         &self.store
     }
 
-    pub fn consensus_manager(&self) -> &ConsensusManager {
+    pub fn consensus_manager(&self) -> &BaseNodeConsensusManager {
         &self.consensus_manager
     }
 

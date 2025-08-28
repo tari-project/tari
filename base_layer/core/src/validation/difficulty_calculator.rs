@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_node_components::blocks::BlockHeader;
+
 use crate::{
-    blocks::BlockHeader,
     chain_storage::{fetch_target_difficulty_for_next_block, BlockchainBackend},
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
     validation::{helpers::check_target_difficulty, ValidationError},
 };
@@ -33,12 +34,12 @@ const TARI_RX_VM_KEY_REORG_SAFETY_NUMBER: u64 = 64;
 
 #[derive(Clone)]
 pub struct DifficultyCalculator {
-    pub rules: ConsensusManager,
+    pub rules: BaseNodeConsensusManager,
     pub randomx_factory: RandomXFactory,
 }
 
 impl DifficultyCalculator {
-    pub fn new(rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
+    pub fn new(rules: BaseNodeConsensusManager, randomx_factory: RandomXFactory) -> Self {
         Self { rules, randomx_factory }
     }
 

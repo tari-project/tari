@@ -24,17 +24,12 @@ use std::{mem::size_of, sync::Arc};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use minotari_wallet::storage::sqlite_utilities::WalletDbConnection;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::wallet_types::WalletType;
-use tari_core::transactions::{
-    transaction_key_manager::{
-        storage::{database::TransactionKeyManagerDatabase, sqlite_db::TransactionKeyManagerSqliteDatabase},
-        TariKeyId,
-        TransactionKeyManagerInterface,
-        TransactionKeyManagerWrapper,
-    },
-    CryptoFactories,
+use tari_common_types::{seeds::cipher_seed::CipherSeed, wallet_types::WalletType};
+use tari_transaction_components::{
+    crypto_factories::CryptoFactories,
+    key_manager::{AddResult, TariKeyId, TransactionKeyManagerInterface, TransactionKeyManagerWrapper},
 };
-use tari_key_manager::{cipher_seed::CipherSeed, key_manager_service::AddResult};
+use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 
 use crate::support::data::get_temp_sqlite_database_connection;
 
@@ -49,10 +44,11 @@ async fn get_key_at_test_with_encryption() {
     let factory = CryptoFactories::new(64);
     let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new(
         cipher,
-        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),
     )
+    .await
     .unwrap();
     key_manager.add_new_branch("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
@@ -86,10 +82,11 @@ async fn key_manager_multiple_branches() {
     let factory = CryptoFactories::new(64);
     let key_manager = TransactionKeyManagerWrapper::<TransactionKeyManagerSqliteDatabase<WalletDbConnection>>::new(
         cipher,
-        TransactionKeyManagerDatabase::new(TransactionKeyManagerSqliteDatabase::init(connection, db_cipher)),
+        TransactionKeyManagerSqliteDatabase::init(connection, db_cipher),
         factory,
         Arc::new(WalletType::default()),
     )
+    .await
     .unwrap();
 
     assert_eq!(

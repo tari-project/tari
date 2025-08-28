@@ -25,9 +25,14 @@ use std::{ops::RangeInclusive, sync::Arc};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
+use tari_node_components::blocks::{Block, NewBlockTemplate};
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tari_transaction_components::{
+    tari_proof_of_work::{Difficulty, PowAlgorithm},
+    transaction_components::{TransactionKernel, TransactionOutput},
+};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -39,7 +44,7 @@ use crate::{
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    blocks::{ChainHeader, HistoricalBlock},
     chain_storage::{
         InputMinedInfo,
         MinedInfo,
@@ -47,10 +52,7 @@ use crate::{
         TemplateRegistrationEntry,
         ValidatorNodeRegistrationInfo,
     },
-    proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
-
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 
@@ -249,7 +251,7 @@ impl LocalNodeCommsInterface {
     /// Fetches the blocks with the specified kernel signatures commitments
     pub async fn get_blocks_with_kernels(
         &mut self,
-        kernels: Vec<Signature>,
+        kernels: Vec<CompressedSignature>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
@@ -291,7 +293,7 @@ impl LocalNodeCommsInterface {
     /// Searches for a kernel via the excess sig
     pub async fn get_kernel_by_excess_sig(
         &mut self,
-        kernel: Signature,
+        kernel: CompressedSignature,
     ) -> Result<Vec<TransactionKernel>, CommsInterfaceError> {
         match self
             .request_sender

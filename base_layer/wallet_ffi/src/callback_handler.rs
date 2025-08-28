@@ -55,8 +55,8 @@ use minotari_wallet::{
 };
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
-use tari_core::transactions::transaction_key_manager::TransactionKeyManagerInterface;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::key_manager::TransactionKeyManagerInterface;
 use tokio::sync::broadcast;
 
 use crate::ffi_basenode_state::TariBaseNodeState;

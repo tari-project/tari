@@ -22,15 +22,16 @@
 
 use log::error;
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderValidationError};
+use tari_transaction_components::{crypto_factories::CryptoFactories, tari_proof_of_work::PowAlgorithm};
 use tari_utilities::hex::Hex;
 
 use super::BlockBodyInternalConsistencyValidator;
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderValidationError, ChainBlock},
+    blocks::ChainBlock,
     chain_storage::{self, BlockchainBackend},
-    consensus::ConsensusManager,
-    proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm},
-    transactions::CryptoFactories,
+    consensus::BaseNodeConsensusManager,
+    proof_of_work::monero_rx::MoneroPowData,
     validation::{
         aggregate_body::AggregateBodyChainLinkedValidator,
         helpers::check_mmr_roots,
@@ -43,13 +44,13 @@ use crate::{
 const LOG_TARGET: &str = "c::val::block_body_full_validator";
 
 pub struct BlockBodyFullValidator {
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     block_internal_validator: BlockBodyInternalConsistencyValidator,
     aggregate_body_chain_validator: AggregateBodyChainLinkedValidator,
 }
 
 impl BlockBodyFullValidator {
-    pub fn new(rules: ConsensusManager, bypass_range_proof_verification: bool) -> Self {
+    pub fn new(rules: BaseNodeConsensusManager, bypass_range_proof_verification: bool) -> Self {
         let factories = CryptoFactories::default();
         let block_internal_validator =
             BlockBodyInternalConsistencyValidator::new(rules.clone(), bypass_range_proof_verification, factories);
@@ -101,7 +102,7 @@ impl BlockBodyFullValidator {
 
     fn check_monero_seed_height<B: BlockchainBackend>(
         header: &BlockHeader,
-        rules: &ConsensusManager,
+        rules: &BaseNodeConsensusManager,
         backend: &B,
     ) -> Result<(), ValidationError> {
         if header.pow.pow_algo == PowAlgorithm::RandomXM {

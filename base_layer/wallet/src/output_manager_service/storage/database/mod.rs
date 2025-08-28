@@ -32,9 +32,9 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash, HashOutput},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
+use tari_transaction_components::{
     transaction_components::{OutputType, TransactionOutput},
+    MicroMinotari,
 };
 use tari_utilities::hex::Hex;
 

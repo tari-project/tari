@@ -52,27 +52,20 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, CompressedPublicKey, FixedHash, HashOutput},
 };
-use tari_core::{
-    borsh::SerializedSize,
-    covenants::Covenant,
-    transactions::{
-        fee::Fee,
-        tari_amount::{uT, MicroMinotari, T},
-        test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{memo_field::MemoField, OutputFeatures, TransactionOutput, WalletOutput},
-        transaction_key_manager::{
-            create_memory_db_key_manager,
-            MemoryDbKeyManager,
-            TariKeyId,
-            TransactionKeyManagerInterface,
-        },
-        weight::TransactionWeight,
-        CryptoFactories,
-    },
-};
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
+use tari_transaction_components::{
+    crypto_factories::CryptoFactories,
+    fee::Fee,
+    helpers::borsh::SerializedSize,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    tari_amount::{uT, MicroMinotari, T},
+    test_helpers::{create_wallet_output_with_data, TestParams},
+    transaction_components::{covenants::Covenant, MemoField, OutputFeatures, TransactionOutput, WalletOutput},
+    weight::TransactionWeight,
+};
+use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
@@ -123,7 +116,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let wallet_connectivity_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
 
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
 
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
@@ -189,7 +182,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
 
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let connectivity = WalletConnectivityHandle::new(MockHttpClientFactory::default());
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let (event_sender, _) = broadcast::channel(200);
     let recovery_message_watch = Watch::new("unset".to_string());
     let one_sided_message_watch = Watch::new("unset".to_string());
@@ -648,11 +641,20 @@ async fn test_utxo_selection_with_tx_priority() {
     assert_eq!(utxos.len(), 3);
 
     assert_eq!(utxos[0].spending_priority, SpendingPriority::Normal);
-    assert_eq!(utxos[0].wallet_output.spending_key_id, uo_low_1.spending_key_id);
+    assert_eq!(
+        utxos[0].wallet_output.commitment_mask_key_id,
+        uo_low_1.commitment_mask_key_id
+    );
     assert_eq!(utxos[1].spending_priority, SpendingPriority::HtlcSpendAsap);
-    assert_eq!(utxos[1].wallet_output.spending_key_id, uo_high.spending_key_id);
+    assert_eq!(
+        utxos[1].wallet_output.commitment_mask_key_id,
+        uo_high.commitment_mask_key_id
+    );
     assert_eq!(utxos[2].spending_priority, SpendingPriority::Normal);
-    assert_eq!(utxos[2].wallet_output.spending_key_id, uo_low_2.spending_key_id);
+    assert_eq!(
+        utxos[2].wallet_output.commitment_mask_key_id,
+        uo_low_2.commitment_mask_key_id
+    );
 
     // test transactions
     let _tx_builder = oms
@@ -671,8 +673,14 @@ async fn test_utxo_selection_with_tx_priority() {
     // Test that the UTXOs with the lowest priority was left
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 2);
-    assert_ne!(utxos[0].wallet_output.spending_key_id, uo_high.spending_key_id);
-    assert_ne!(utxos[1].wallet_output.spending_key_id, uo_high.spending_key_id);
+    assert_ne!(
+        utxos[0].wallet_output.commitment_mask_key_id,
+        uo_high.commitment_mask_key_id
+    );
+    assert_ne!(
+        utxos[1].wallet_output.commitment_mask_key_id,
+        uo_high.commitment_mask_key_id
+    );
 }
 
 #[tokio::test]
@@ -1991,7 +1999,7 @@ async fn scan_for_recovery_test() {
 
     let mut non_recoverable_wallet_outputs = Vec::new();
     // we need to create a new key_manager to make the outputs non recoverable
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     for i in 1..=NUM_NON_RECOVERABLE {
         let uo = make_input(
             &mut OsRng,
@@ -2038,7 +2046,7 @@ async fn scan_for_recovery_test() {
     for o in &recovered_outputs {
         let commitment_branch_public_key = oms
             .key_manager_handle
-            .get_public_key_at_key_id(&o.output.spending_key_id)
+            .get_public_key_at_key_id(&o.output.commitment_mask_key_id)
             .await
             .unwrap();
         recovered_outputs_keys.push(commitment_branch_public_key);
@@ -2051,7 +2059,7 @@ async fn scan_for_recovery_test() {
     for o in recoverable_wallet_outputs.iter().skip(1) {
         let commitment_branch_public_key = oms
             .key_manager_handle
-            .get_public_key_at_key_id(&o.spending_key_id)
+            .get_public_key_at_key_id(&o.commitment_mask_key_id)
             .await
             .unwrap();
         assert!(recovered_outputs_keys.contains(&commitment_branch_public_key));
@@ -2064,7 +2072,7 @@ async fn recovered_output_key_not_in_keychain() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
     // we need to create a new key manager here as we dont want the input be recoverable from oms key chain
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let uo = make_input(
         &mut OsRng,
         MicroMinotari::from(1000u64),

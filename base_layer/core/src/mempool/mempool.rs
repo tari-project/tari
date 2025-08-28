@@ -23,22 +23,21 @@
 use std::sync::{Arc, RwLock};
 
 use log::debug;
-use tari_common_types::types::{FixedHash, PrivateKey, Signature};
+use tari_common_types::types::{CompressedSignature, FixedHash, PrivateKey};
+use tari_node_components::blocks::Block;
+use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
 use tokio::task;
 
 use crate::{
-    blocks::Block,
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::{
         error::MempoolError,
         mempool_storage::MempoolStorage,
-        FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction_components::Transaction,
     validation::TransactionValidator,
 };
 
@@ -54,7 +53,11 @@ pub struct Mempool {
 
 impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, rules: ConsensusManager, validator: Box<dyn TransactionValidator>) -> Self {
+    pub fn new(
+        config: MempoolConfig,
+        rules: BaseNodeConsensusManager,
+        validator: Box<dyn TransactionValidator>,
+    ) -> Self {
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
         }
@@ -158,7 +161,10 @@ impl Mempool {
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub async fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+    pub async fn has_tx_with_excess_sig(
+        &self,
+        excess_sig: CompressedSignature,
+    ) -> Result<TxStorageResponse, MempoolError> {
         self.with_read_access(move |storage| Ok(storage.has_tx_with_excess_sig(&excess_sig)))
             .await
     }

@@ -26,6 +26,7 @@ use std::mem::size_of;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{DateTime, Utc};
 use minotari_wallet::{
+    legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
     transaction_service::storage::{
@@ -46,33 +47,31 @@ use tari_common_types::{
     key_branches::TransactionKeyManagerBranch,
     tari_address::TariAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{CompressedPublicKey, FixedHash, PrivateKey, Signature},
-};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
-        tari_amount::MicroMinotari,
-        test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_builder::TransactionBuilder,
-        transaction_components::{
-            memo_field::{MemoField, TxType},
-            OutputFeatures,
-            Transaction,
-            TransactionOutputVersion,
-            WalletOutput,
-        },
-        transaction_key_manager::{create_memory_db_key_manager, TariKeyId, TransactionKeyManagerInterface},
-    },
+    types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
 use tari_script::{inputs, script};
 use tari_test_utils::random;
+use tari_transaction_components::{
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    test_helpers::{create_wallet_output_with_data, TestParams},
+    transaction_builder::TransactionBuilder,
+    transaction_components::{
+        covenants::Covenant,
+        memo_field::{MemoField, TxType},
+        OutputFeatures,
+        Transaction,
+        TransactionOutputVersion,
+        WalletOutput,
+    },
+    MicroMinotari,
+};
+use tari_transaction_key_manager::create_memory_db_key_manager;
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let input = create_wallet_output_with_data(
         script!(Nop).unwrap(),
         OutputFeatures::default(),
@@ -83,7 +82,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let key_manager = create_memory_db_key_manager().unwrap();
+    let key_manager = create_memory_db_key_manager().await.unwrap();
     let mut builder = TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet)
         .await
         .unwrap();
@@ -312,7 +311,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             send_count: 0,
             last_send_timestamp: None,
 
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             mined_height: None,
             mined_in_block: None,
             mined_timestamp: None,

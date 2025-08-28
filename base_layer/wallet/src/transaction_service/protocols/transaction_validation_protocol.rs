@@ -26,13 +26,9 @@ use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::{BlockHash, Signature},
+    types::{BlockHash, CompressedSignature},
 };
-use tari_core::{
-    self,
-    base_node::rpc::models::TxLocation,
-    transactions::transaction_key_manager::TransactionKeyManagerInterface,
-};
+use tari_transaction_components::{key_manager::TransactionKeyManagerInterface, rpc::models::TxLocation};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -283,7 +279,7 @@ where
         let mut batch_signatures = HashMap::new();
         for tx_info in batch {
             // Imported transactions do not have a signature; this is represented by the default signature in info
-            if tx_info.signature != Signature::default() {
+            if tx_info.signature != CompressedSignature::default() {
                 batch_signatures.insert(tx_info.signature.clone(), tx_info);
             }
         }

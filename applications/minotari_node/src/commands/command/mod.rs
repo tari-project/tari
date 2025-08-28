@@ -80,7 +80,7 @@ use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
     blocks::ChainHeader,
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     mempool::service::LocalMempoolService,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
@@ -165,7 +165,7 @@ pub trait HandleCommand<T> {
 
 pub struct CommandContext {
     pub config: Arc<ApplicationConfig>,
-    consensus_rules: ConsensusManager,
+    consensus_rules: BaseNodeConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
     dht_metrics_collector: MetricsCollectorHandle,

@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::BlockHash;
-use tari_core::transactions::aggregated_body::AggregateBody;
+use tari_transaction_components::aggregated_body::AggregateBody;
 use tari_utilities::convert::try_convert_all;
 
 use crate::{conversions::transaction_output::grpc_output_with_payref, tari_rpc as grpc};

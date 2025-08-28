@@ -33,11 +33,11 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{CompressedPublicKey, FixedHash, PrivateKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, BuildInfo, OutputFeatures, TemplateType},
-};
 use tari_max_size::{MaxSizeBytes, MaxSizeString};
+use tari_transaction_components::{
+    transaction_components::{BuildInfo, MemoField, OutputFeatures, TemplateType},
+    MicroMinotari,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
 

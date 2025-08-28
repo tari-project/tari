@@ -22,10 +22,11 @@
 
 use std::{fmt, sync::Arc};
 
+use tari_transaction_components::crypto_factories::CryptoFactories;
+
 use crate::{
     chain_storage::BlockchainBackend,
-    consensus::ConsensusManager,
-    transactions::CryptoFactories,
+    consensus::BaseNodeConsensusManager,
     validation::{
         block_body::BlockBodyFullValidator,
         BlockBodyValidator,
@@ -53,7 +54,7 @@ impl<B: BlockchainBackend + 'static> SyncValidators<B> {
     }
 
     pub fn full_consensus(
-        rules: ConsensusManager,
+        rules: BaseNodeConsensusManager,
         factories: CryptoFactories,
         bypass_range_proof_verification: bool,
     ) -> Self {

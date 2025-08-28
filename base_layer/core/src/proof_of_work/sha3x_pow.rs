@@ -21,12 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use sha3::{Digest, Sha3_256};
-
-use crate::{
-    blocks::BlockHeader,
-    proof_of_work::{error::DifficultyError, Difficulty},
-};
-
+use tari_node_components::blocks::BlockHeader;
+use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyError};
 /// The Tari Sha3X proof-of-work algorithm. This is the reference implementation of Tari's standalone mining
 /// algorithm as described in [RFC-0131](https://rfc.tari.com/RFC-0131_Mining.html).
 ///
@@ -59,12 +55,11 @@ fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u
 #[cfg(test)]
 pub mod test {
     use chrono::{DateTime, NaiveDate, Utc};
+    use tari_node_components::blocks::BlockHeader;
+    use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
     use tari_utilities::epoch_time::EpochTime;
 
-    use crate::{
-        blocks::BlockHeader,
-        proof_of_work::{sha3x_pow::sha3x_difficulty, Difficulty, PowAlgorithm},
-    };
+    use crate::proof_of_work::sha3x_pow::sha3x_difficulty;
 
     /// A simple example miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired
     /// target block
@@ -78,7 +73,7 @@ pub mod test {
         header.nonce
     }
 
-    pub fn get_header() -> BlockHeader {
+    fn get_header() -> BlockHeader {
         let mut header = BlockHeader::new(2);
 
         #[allow(clippy::cast_sign_loss)]

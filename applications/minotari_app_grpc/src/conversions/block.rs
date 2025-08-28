@@ -22,11 +22,11 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_core::blocks::Block;
+use tari_node_components::blocks::Block;
 
 use crate::{conversions::aggregate_body::grpc_aggregate_body_with_payrefs, tari_rpc as grpc};
 
-impl TryFrom<tari_core::blocks::Block> for grpc::Block {
+impl TryFrom<tari_node_components::blocks::Block> for grpc::Block {
     type Error = String;
 
     fn try_from(block: Block) -> Result<Self, Self::Error> {

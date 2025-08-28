@@ -25,11 +25,11 @@ use std::marker::PhantomData;
 use log::*;
 use tari_common_types::types::{CompressedCommitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_transaction_components::{crypto_factories::CryptoFactories, MicroMinotari};
 
 use crate::{
     chain_storage::BlockchainBackend,
-    consensus::ConsensusManager,
-    transactions::{tari_amount::MicroMinotari, CryptoFactories},
+    consensus::BaseNodeConsensusManager,
     validation::{FinalHorizonStateValidation, ValidationError},
 };
 
@@ -37,13 +37,13 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sy
 
 /// Validate that the chain balances at a given height.
 pub struct ChainBalanceValidator<B> {
-    rules: ConsensusManager,
+    rules: BaseNodeConsensusManager,
     factories: CryptoFactories,
     _phantom: PhantomData<B>,
 }
 
 impl<B: BlockchainBackend> ChainBalanceValidator<B> {
-    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
+    pub fn new(rules: BaseNodeConsensusManager, factories: CryptoFactories) -> Self {
         Self {
             rules,
             factories,

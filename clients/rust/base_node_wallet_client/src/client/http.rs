@@ -6,21 +6,24 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
-use tari_core::{
-    base_node::rpc::models::{
-        self,
-        BlockHeader,
-        GetUtxosDeletedInfoResponse,
-        GetUtxosMinedInfoResponse,
-        SyncUtxosByBlockResponse,
-        TipInfoResponse,
-        TxQueryResponse,
-        TxSubmissionResponse,
-    },
-    mempool::FeePerGramStat,
-    transactions::{tari_amount::MicroMinotari, transaction_components::TransactionOutput},
-};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    rpc::{
+        models,
+        models::{
+            BlockHeader,
+            FeePerGramStat,
+            GetUtxosDeletedInfoResponse,
+            GetUtxosMinedInfoResponse,
+            SyncUtxosByBlockResponse,
+            TipInfoResponse,
+            TxQueryResponse,
+            TxSubmissionResponse,
+        },
+    },
+    transaction_components::{Transaction, TransactionOutput},
+    MicroMinotari,
+};
 use tari_utilities::hex::Hex;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
@@ -208,7 +211,10 @@ impl BaseNodeWalletClient for Client {
         }
     }
 
-    async fn get_utxos_by_block(&self, header_hash: Vec<u8>) -> Result<models::GetUtxosByBlockResponse, anyhow::Error> {
+    async fn get_utxos_by_block(
+        &self,
+        header_hash: Vec<u8>,
+    ) -> Result<tari_transaction_components::rpc::models::GetUtxosByBlockResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(
             target: LOG_TARGET,
@@ -399,10 +405,7 @@ impl BaseNodeWalletClient for Client {
         Ok(res.json::<Option<TransactionOutput>>().await?)
     }
 
-    async fn submit_transaction(
-        &self,
-        transaction: tari_core::transactions::transaction_components::Transaction,
-    ) -> Result<TxSubmissionResponse, anyhow::Error> {
+    async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {server_address}");
         let target_url = server_address.join("/json_rpc")?;

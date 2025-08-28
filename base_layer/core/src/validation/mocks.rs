@@ -29,6 +29,8 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{CompressedCommitment, FixedHash},
 };
+use tari_node_components::blocks::{Block, BlockHeader};
+use tari_transaction_components::{tari_proof_of_work::Difficulty, transaction_components::Transaction};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{
@@ -39,11 +41,10 @@ use super::{
     TransactionValidator,
 };
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
+    blocks::ChainBlock,
     chain_storage::BlockchainBackend,
-    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty},
     test_helpers::create_consensus_rules,
-    transactions::transaction_components::Transaction,
     validation::{error::ValidationError, DifficultyCalculator, FinalHorizonStateValidation},
 };
 

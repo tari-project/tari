@@ -27,20 +27,20 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
-use tari_core::{
-    base_node::rpc::models::{
+use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    rpc::models::{
         self,
         BlockHeader,
         BlockUtxoInfo,
+        FeePerGramStat,
         GetUtxosDeletedInfoResponse,
         GetUtxosMinedInfoResponse,
         SyncUtxosByBlockResponse,
         TxSubmissionResponse,
     },
-    mempool::FeePerGramStat,
-    transactions::transaction_components::{Transaction, TransactionOutput},
+    transaction_components::{Transaction, TransactionOutput},
 };
-use tari_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
 use tokio::sync::{mpsc, RwLock};
 use url::Url;
@@ -50,7 +50,7 @@ use crate::support::comms_rpc::UtxosByBlock;
 #[derive(Default)]
 struct State {
     utxos_by_block: HashMap<u64, UtxosByBlock>,
-    blocks: HashMap<u64, tari_core::blocks::BlockHeader>,
+    blocks: HashMap<u64, tari_node_components::blocks::BlockHeader>,
     tip_info: Option<models::TipInfoResponse>,
 }
 
@@ -59,7 +59,7 @@ impl State {
         self.utxos_by_block = utxos_by_block.into_iter().map(|ub| (ub.height, ub)).collect();
     }
 
-    fn set_blocks(&mut self, blocks: HashMap<u64, tari_core::blocks::BlockHeader>) {
+    fn set_blocks(&mut self, blocks: HashMap<u64, tari_node_components::blocks::BlockHeader>) {
         self.blocks = blocks;
     }
 
@@ -80,7 +80,10 @@ impl HttpBaseNodeMock {
         Ok(())
     }
 
-    pub async fn set_blocks(&self, blocks: HashMap<u64, tari_core::blocks::BlockHeader>) -> Result<(), Error> {
+    pub async fn set_blocks(
+        &self,
+        blocks: HashMap<u64, tari_node_components::blocks::BlockHeader>,
+    ) -> Result<(), Error> {
         let mut state = self.state.write().await;
         state.set_blocks(blocks);
 

@@ -38,12 +38,12 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash},
 };
-use tari_core::transactions::{
-    transaction_components::{OutputType, TransactionOutput},
-    transaction_key_manager::TariKeyId,
-};
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_script::{ExecutionStack, TariScript};
+use tari_transaction_components::{
+    key_manager::TariKeyId,
+    transaction_components::{OutputType, TransactionOutput},
+};
 use tokio::time::Instant;
 
 use crate::{
@@ -1509,14 +1509,14 @@ mod test {
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
-    use tari_core::transactions::{
-        tari_amount::MicroMinotari,
-        test_helpers::{create_wallet_output_with_data, TestParams},
-        transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
-        transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
-    };
     use tari_script::script;
     use tari_test_utils::random;
+    use tari_transaction_components::{
+        test_helpers::{create_wallet_output_with_data, TestParams},
+        transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
+        MicroMinotari,
+    };
+    use tari_transaction_key_manager::{create_memory_db_key_manager, MemoryDbKeyManager};
     use tempfile::tempdir;
 
     use crate::output_manager_service::storage::{
@@ -1572,7 +1572,7 @@ mod test {
         let mut outputs_spent = Vec::new();
         let mut outputs_unspent = Vec::new();
 
-        let key_manager = create_memory_db_key_manager().unwrap();
+        let key_manager = create_memory_db_key_manager().await.unwrap();
         for _i in 0..2 {
             let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)

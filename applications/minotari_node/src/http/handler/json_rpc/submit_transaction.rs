@@ -24,14 +24,13 @@ use std::sync::Arc;
 
 use log::{debug, error};
 use tari_core::{
-    base_node::rpc::{
-        models::{TxSubmissionRejectionReason, TxSubmissionResponse},
-        query_service,
-        BaseNodeWalletQueryService,
-    },
+    base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
     mempool::{service::MempoolHandle, TxStorageResponse},
-    transactions::transaction_components::Transaction,
+};
+use tari_transaction_components::{
+    rpc::models::{TxSubmissionRejectionReason, TxSubmissionResponse},
+    transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc::submit_transaction";

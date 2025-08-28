@@ -35,8 +35,10 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
+use tari_node_components::blocks::{Block, NewBlock};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::RequestContext;
+use tari_transaction_components::BanPeriod;
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{
@@ -55,16 +57,14 @@ use crate::{
         BaseNodeStateMachineConfig,
         StateMachineHandle,
     },
-    blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
     common::{
-        waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
-        BanPeriod,
+        waiting_requests::{generate_request_key, WaitingRequests},
+        RequestKey,
     },
     proto as shared_protos,
     proto::base_node as proto,
 };
-
 const LOG_TARGET: &str = "c::bn::base_node_service::service";
 
 /// A convenience struct to hold all the BaseNode streams

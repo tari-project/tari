@@ -28,6 +28,19 @@ use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_node_components::blocks::{
+    Block,
+    BlockBuilder,
+    BlockHeader,
+    BlockHeaderValidationError,
+    NewBlock,
+    NewBlockTemplate,
+};
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    consensus::ConsensusConstants,
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
+};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
 
@@ -43,9 +56,9 @@ use crate::{
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
+    blocks::ChainBlock,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::BaseNodeConsensusManager,
     mempool::Mempool,
     proof_of_work::{
         cuckaroo_pow::cuckaroo_difficulty,
@@ -53,14 +66,9 @@ use crate::{
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         tari_randomx_difficulty,
-        Difficulty,
-        PowAlgorithm,
-        PowError,
     },
-    transactions::aggregated_body::AggregateBody,
     validation::{helpers, tari_rx_vm_key_height, ValidationError},
 };
-
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
 const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
@@ -88,7 +96,7 @@ pub struct InboundNodeCommsHandlers<B> {
     block_event_sender: BlockEventSender,
     blockchain_db: AsyncBlockchainDb<B>,
     mempool: Mempool,
-    consensus_manager: ConsensusManager,
+    consensus_manager: BaseNodeConsensusManager,
     list_of_reconciling_blocks: Arc<RwLock<HashSet<HashOutput>>>,
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
@@ -103,7 +111,7 @@ where B: BlockchainBackend + 'static
         block_event_sender: BlockEventSender,
         blockchain_db: AsyncBlockchainDb<B>,
         mempool: Mempool,
-        consensus_manager: ConsensusManager,
+        consensus_manager: BaseNodeConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
         randomx_factory: RandomXFactory,

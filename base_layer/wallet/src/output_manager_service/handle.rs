@@ -26,24 +26,22 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput},
 };
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_builder::TransactionBuilder,
-        transaction_components::{
-            memo_field::MemoField,
-            OutputFeatures,
-            Transaction,
-            TransactionOutput,
-            WalletOutput,
-            WalletOutputBuilder,
-        },
-        transaction_key_manager::TransactionKeyManagerInterface,
-    },
-};
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_service_framework::reply_channel::SenderService;
+use tari_transaction_components::{
+    key_manager::TransactionKeyManagerInterface,
+    transaction_components::{
+        covenants::Covenant,
+        MemoField,
+        OutputFeatures,
+        Transaction,
+        TransactionOutput,
+        WalletOutput,
+        WalletOutputBuilder,
+    },
+    MicroMinotari,
+    TransactionBuilder,
+};
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;

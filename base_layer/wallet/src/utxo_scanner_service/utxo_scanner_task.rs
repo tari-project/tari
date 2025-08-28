@@ -30,23 +30,25 @@ use chrono::{DateTime, Utc};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
+    seeds::seed_words::get_birthday_from_unix_epoch_in_seconds,
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{BlockHash, FixedHash, HashOutput},
     wallet_types::WalletType,
 };
-use tari_core::{
-    base_node::rpc::models::MinimalUtxoSyncInfo,
-    one_sided::shared_secret_to_output_encryption_key,
-    transactions::{
-        tari_amount::MicroMinotari,
-        transaction_components::{EncryptedData, TransactionOutput, WalletOutput},
-        transaction_key_manager::TransactionKeyManagerInterface,
-    },
-};
 use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::CompressedKey};
-use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::{
+    key_manager::TransactionKeyManagerInterface,
+    rpc::models::MinimalUtxoSyncInfo,
+    transaction_components::{
+        one_sided::shared_secret_to_output_encryption_key,
+        EncryptedData,
+        TransactionOutput,
+        WalletOutput,
+    },
+    MicroMinotari,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{sync::broadcast, time::sleep};
 

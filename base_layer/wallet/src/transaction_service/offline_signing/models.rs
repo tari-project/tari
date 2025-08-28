@@ -26,9 +26,9 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedCommitment, FixedHash},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
-    transaction_components::{memo_field::MemoField, KernelFeatures, OutputFeatures, Transaction, WalletOutput},
+use tari_transaction_components::{
+    transaction_components::{KernelFeatures, MemoField, OutputFeatures, Transaction, WalletOutput},
+    MicroMinotari,
 };
 
 use crate::transaction_service::{

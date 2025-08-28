@@ -33,7 +33,7 @@ use minotari_app_utilities::parse_miner_input::{BaseNodeGrpcClient, ShaP2PoolGrp
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::protocol::rpc::__macro_reexports::Service;
-use tari_core::{consensus::ConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
+use tari_core::{consensus::BaseNodeConsensusManager, proof_of_work::randomx_factory::RandomXFactory};
 use tracing::{error, trace, warn};
 
 use crate::{
@@ -62,7 +62,7 @@ impl MergeMiningProxyService {
         wallet_payment_address: TariAddress,
     ) -> Result<Self, MmProxyError> {
         trace!(target: LOG_TARGET, "Config: {:?}", config);
-        let consensus_manager = ConsensusManager::builder(config.network).build()?;
+        let consensus_manager = BaseNodeConsensusManager::builder(config.network).build()?;
         // Assign the slowest response monerod server as the last assigned monerod server
         let last_assigned_monerod_url = config.monerod_url.last().cloned();
         Ok(Self {

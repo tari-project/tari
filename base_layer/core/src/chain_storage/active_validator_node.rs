@@ -27,8 +27,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedCommitment, CompressedPublicKey},
 };
-
-use crate::transactions::tari_amount::MicroMinotari;
+use tari_transaction_components::MicroMinotari;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ValidatorNodeEntry {

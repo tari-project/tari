@@ -43,7 +43,7 @@ use serde_json as json;
 use serde_json::json;
 use tari_common_types::tari_address::TariAddress;
 use tari_core::{
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::{monero_randomx_difficulty, monero_rx, monero_rx::FixedByteArray, randomx_factory::RandomXFactory},
 };
 use tari_utilities::hex::Hex;
@@ -79,7 +79,7 @@ pub struct InnerService {
     pub(crate) current_monerod_server: Arc<RwLock<Option<String>>>,
     pub(crate) last_assigned_monerod_url: Arc<RwLock<Option<String>>>,
     pub(crate) randomx_factory: RandomXFactory,
-    pub(crate) consensus_manager: ConsensusManager,
+    pub(crate) consensus_manager: BaseNodeConsensusManager,
     pub(crate) wallet_payment_address: TariAddress,
 }
 
@@ -400,7 +400,8 @@ impl InnerService {
             self.config.clone(),
             self.consensus_manager.clone(),
             self.wallet_payment_address.clone(),
-        )?;
+        )
+        .await?;
 
         let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {err}")))?;

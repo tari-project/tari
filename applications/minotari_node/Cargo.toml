@@ -13,11 +13,10 @@ minotari_app_utilities = { workspace = true }
 tari_common = { workspace = true }
 tari_comms = { workspace = true, features = ["rpc"] }
 tari_common_types = { workspace = true }
+tari_transaction_components = { workspace = true }
+tari_node_components = { workspace = true }
 tari_comms_dht = { workspace = true }
-tari_core = { workspace = true, default-features = false, features = [
-    "transactions",
-    "base_node",
-] }
+tari_core = { workspace = true }
 tari_libtor = { workspace = true, optional = true }
 tari_p2p = { workspace = true, features = ["auto-update"] }
 tari_storage = { workspace = true }
@@ -28,7 +27,7 @@ anyhow = "1.0.53"
 async-trait = "0.1.52"
 bincode = "1.3.1"
 borsh = "1.5.7"
-chrono = { version = "0.4.39", default-features = false }
+chrono = { version = "0.4", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 console-subscriber = "0.4"
 config = { version = "0.14.0" }

@@ -22,7 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{base_node::comms_interface::NodeCommsRequest, common::waiting_requests::RequestKey};
+use crate::{base_node::comms_interface::NodeCommsRequest, common::RequestKey};
 
 /// Request type for a received BaseNodeService request.
 #[derive(Debug, Serialize, Deserialize)]

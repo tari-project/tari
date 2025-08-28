@@ -42,9 +42,10 @@ use crate::{
         sync::{BlockchainSyncConfig, SyncValidators},
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    consensus::ConsensusManager,
+    consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };
+
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
@@ -96,7 +97,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
     pub(super) sync_validators: SyncValidators<B>,
-    pub(super) consensus_rules: ConsensusManager,
+    pub(super) consensus_rules: BaseNodeConsensusManager,
     pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
     pub(super) randomx_factory: RandomXFactory,
     is_bootstrapped: bool,
@@ -120,7 +121,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         status_event_sender: watch::Sender<StatusInfo>,
         event_publisher: broadcast::Sender<Arc<StateEvent>>,
         randomx_factory: RandomXFactory,
-        consensus_rules: ConsensusManager,
+        consensus_rules: BaseNodeConsensusManager,
         interrupt_signal: ShutdownSignal,
     ) -> Self {
         Self {

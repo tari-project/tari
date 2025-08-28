@@ -12,13 +12,10 @@ use axum::{
 use log::debug;
 use serde::Deserialize;
 use tari_core::{
-    base_node::rpc::{
-        models::{GetUtxosDeletedInfoRequest, GetUtxosDeletedInfoResponse},
-        query_service,
-        BaseNodeWalletQueryService,
-    },
+    base_node::rpc::{query_service, BaseNodeWalletQueryService},
     chain_storage::BlockchainBackend,
 };
+use tari_transaction_components::rpc::models::{GetUtxosDeletedInfoRequest, GetUtxosDeletedInfoResponse};
 use tonic::service::AxumBody;
 
 use crate::http::handler::{

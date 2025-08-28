@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_transaction_components::transaction_components::Transaction;
+
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::ConsensusManager,
-    transactions::transaction_components::Transaction,
+    consensus::BaseNodeConsensusManager,
     validation::{aggregate_body::AggregateBodyChainLinkedValidator, TransactionValidator, ValidationError},
 };
 
@@ -33,7 +34,7 @@ pub struct TransactionChainLinkedValidator<B> {
 }
 
 impl<B: BlockchainBackend> TransactionChainLinkedValidator<B> {
-    pub fn new(db: BlockchainDatabase<B>, consensus_manager: ConsensusManager) -> Self {
+    pub fn new(db: BlockchainDatabase<B>, consensus_manager: BaseNodeConsensusManager) -> Self {
         Self {
             aggregate_body_validator: AggregateBodyChainLinkedValidator::new(consensus_manager),
             db,

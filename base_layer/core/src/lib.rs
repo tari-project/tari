@@ -20,43 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate bitflags;
-
 pub mod blocks;
-#[cfg(feature = "base_node")]
 pub mod chain_storage;
 pub mod consensus;
-#[macro_use]
-pub mod covenants;
-#[cfg(feature = "base_node")]
 pub mod iterators;
 pub mod proof_of_work;
-#[cfg(feature = "base_node")]
 pub mod validation;
 
-#[cfg(any(test, feature = "base_node"))]
 #[macro_use]
 pub mod test_helpers;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod base_node;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
-
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
-
-#[cfg(feature = "transactions")]
-pub mod transactions;
+pub mod proto;
 
 mod common;
 
-#[cfg(feature = "base_node")]
 pub use common::AuxChainHashes;
-pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 
-#[cfg(feature = "base_node")]
 mod domain_hashing {
     use std::convert::TryFrom;
 
@@ -101,11 +82,6 @@ mod domain_hashing {
         Ok(FixedHash::try_from(kernel_mmr.get_merkle_root()?)?)
     }
 
-    // #[inline]
-    // pub fn output_mr_hash_from_smt(output_smt: &mut OutputSmt) -> Result<FixedHash, MrHashError> {
-    //     Ok(FixedHash::try_from(output_smt.hash().as_slice())?)
-    // }
-
     #[inline]
     pub fn input_mr_hash_from_pruned_mmr(input_mmr: &PrunedInputMmr) -> Result<FixedHash, MrHashError> {
         Ok(FixedHash::try_from(input_mmr.get_merkle_root()?)?)
@@ -125,5 +101,4 @@ mod domain_hashing {
     }
 }
 
-#[cfg(feature = "base_node")]
 pub use domain_hashing::*;

@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [5.0.0-pre.8](https://github.com/tari-project/tari/compare/v5.0.0-pre.7...v5.0.0-pre.8) (2025-08-27)
+
+
+### Features
+
+* cleanup base node and grpc ([#7444](https://github.com/tari-project/tari/issues/7444)) ([6f2a5ec](https://github.com/tari-project/tari/commit/6f2a5ec7f32b9112efd56e6b9fbb231181c1c59b))
+
+
+### Bug Fixes
+
+* offline signing 0 fees ([#7445](https://github.com/tari-project/tari/issues/7445)) ([2644305](https://github.com/tari-project/tari/commit/264430518e393dc2982aa5f672508ffcd870508b))
+
+## [5.0.0-pre.7](https://github.com/tari-project/tari/compare/v5.0.0-pre.6a...v5.0.0-pre.7) (2025-08-25)
+
+
+### Features
+
+* remove ledger from ffi builds ([#7441](https://github.com/tari-project/tari/issues/7441)) ([148072d](https://github.com/tari-project/tari/commit/148072dff4aaf42cdc21e125547986f3feed0f07))
+
+## [5.0.0-pre.6](https://github.com/tari-project/tari/compare/v5.0.0-pre.5...v5.0.0-pre.6) (2025-08-25)
+
+
+### Features
+
+* make key manager backend async ([#7435](https://github.com/tari-project/tari/issues/7435)) ([743939f](https://github.com/tari-project/tari/commit/743939febd0f6cb4142fe01d5562cf26e5c9528b))
+
+
+### Bug Fixes
+
+* bad merge, add missing c29 constants ([6e5f624](https://github.com/tari-project/tari/commit/6e5f62469ee7defc2bd3ede3446c6b5dee770ae0))
+
+## [5.0.0-pre.5](https://github.com/tari-project/tari/compare/v5.0.0-pre.4...v5.0.0-pre.5) (2025-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* update c29 fork block (#7434)
+
+### Features
+
+* update c29 fork block ([#7434](https://github.com/tari-project/tari/issues/7434)) ([344dde7](https://github.com/tari-project/tari/commit/344dde703fbb06314a39566c425a8f6715810783))
+
+
+### Bug Fixes
+
+* siphash calcs for c29 ([#7433](https://github.com/tari-project/tari/issues/7433)) ([80e0528](https://github.com/tari-project/tari/commit/80e0528bfecc602132d531af3e0e755a632bd63e))
+* tari address serialization ([#7424](https://github.com/tari-project/tari/issues/7424)) ([e5e40ab](https://github.com/tari-project/tari/commit/e5e40abea087053bd1f36b98f512f9cb1050168f))
+
 ## [5.0.0-pre.4](https://github.com/tari-project/tari/compare/v5.0.0-pre.3...v5.0.0-pre.4) (2025-08-20)
 
 

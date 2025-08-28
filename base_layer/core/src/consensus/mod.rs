@@ -20,18 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
 pub(crate) mod chain_strength_comparer;
 
-pub mod consensus_constants;
-pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
+mod base_node_consensus_manager;
 
-mod consensus_manager;
-pub use consensus_manager::{ConsensusBuilderError, ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
-
-mod consensus_encoding;
-pub use consensus_encoding::DomainSeparatedConsensusHasher;
-mod network;
-pub use network::NetworkConsensus;
-
-pub mod emission;
+pub use base_node_consensus_manager::{
+    BaseConsensusBuilderError,
+    BaseNodeConsensusManager,
+    BaseNodeConsensusManagerBuilder,
+};

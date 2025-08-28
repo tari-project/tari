@@ -22,11 +22,10 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    blocks::BlockHeader,
-    consensus::ConsensusManager,
-    proof_of_work::{Difficulty, PowAlgorithm, TargetDifficultyWindow},
-};
+use tari_node_components::blocks::BlockHeader;
+use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
+
+use crate::{consensus::BaseNodeConsensusManager, proof_of_work::TargetDifficultyWindow};
 
 #[derive(Debug, Clone)]
 pub struct TargetDifficulties {
@@ -34,7 +33,7 @@ pub struct TargetDifficulties {
 }
 
 impl TargetDifficulties {
-    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Result<Self, String> {
+    pub fn new(consensus_rules: &BaseNodeConsensusManager, height: u64) -> Result<Self, String> {
         let permitted_algos = consensus_rules
             .consensus_constants(height)
             .current_permitted_pow_algos();
@@ -46,7 +45,7 @@ impl TargetDifficulties {
         Ok(Self { algos })
     }
 
-    pub fn update_algos(&mut self, consensus_rules: &ConsensusManager, height: u64) -> Result<(), String> {
+    pub fn update_algos(&mut self, consensus_rules: &BaseNodeConsensusManager, height: u64) -> Result<(), String> {
         let consensus_constants = consensus_rules.consensus_constants(height);
         let permitted_algos = consensus_constants.current_permitted_pow_algos();
         let current_keys: Vec<PowAlgorithm> = self.algos.keys().copied().collect();

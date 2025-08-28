@@ -14,14 +14,8 @@
 use std::{cmp::min, collections::VecDeque, convert::TryFrom};
 
 use log::*;
+use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyAdjustment, DifficultyError};
 use tari_utilities::epoch_time::EpochTime;
-
-use crate::proof_of_work::{
-    difficulty::{Difficulty, DifficultyAdjustment},
-    error::DifficultyAdjustmentError,
-    DifficultyError,
-};
-
 /// This is the recommended maximum block time ratio for LWMA-1
 pub const LWMA_MAX_BLOCK_TIME_RATIO: u64 = 6;
 
@@ -197,7 +191,7 @@ impl LinearWeightedMovingAverage {
 }
 
 impl DifficultyAdjustment for LinearWeightedMovingAverage {
-    fn add(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError> {
+    fn add(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) -> Result<(), String> {
         self.add_back(timestamp, target_difficulty);
         Ok(())
     }
@@ -209,10 +203,10 @@ impl DifficultyAdjustment for LinearWeightedMovingAverage {
 
 #[cfg(test)]
 mod test {
+    use tari_transaction_components::tari_proof_of_work::{Difficulty, DifficultyAdjustment};
     use tari_utilities::epoch_time::EpochTime;
 
-    use crate::proof_of_work::{lwma_diff::LinearWeightedMovingAverage, Difficulty, DifficultyAdjustment};
-
+    use crate::proof_of_work::lwma_diff::LinearWeightedMovingAverage;
     #[test]
     fn lwma_zero_len() {
         let dif = LinearWeightedMovingAverage::new(90, 120).unwrap();
@@ -244,20 +238,20 @@ mod test {
         let mut dif = LinearWeightedMovingAverage::new(90, 120).unwrap();
         let mut timestamp = 60.into();
         let cum_diff = Difficulty::from_u64(100).unwrap();
-        let _ = dif.add(timestamp, cum_diff);
+        dif.add(timestamp, cum_diff).unwrap();
         timestamp = timestamp.checked_add(EpochTime::from(60)).unwrap();
-        let _ = dif.add(timestamp, cum_diff);
+        dif.add(timestamp, cum_diff).unwrap();
         // Lets create a history and populate the vecs
         for _i in 0..150 {
             timestamp = timestamp.checked_add(EpochTime::from(60)).unwrap();
-            let _ = dif.add(timestamp, cum_diff);
+            dif.add(timestamp, cum_diff).unwrap();
         }
         // lets create chaos by having 60 blocks as negative solve times. This should never be allowed in practice by
         // having checks on the block times.
         for _i in 0..60 {
             timestamp = (timestamp.as_u64() - 1).into(); // Only choosing -1 here since we are testing negative solve times and we cannot have 0 time
             let diff_before = dif.get_difficulty().unwrap();
-            let _ = dif.add(timestamp, cum_diff);
+            dif.add(timestamp, cum_diff).unwrap();
             let diff_after = dif.get_difficulty().unwrap();
             // Algo should handle this as 1sec solve time thus increase the difficulty constantly
             assert!(diff_after > diff_before);
@@ -267,10 +261,10 @@ mod test {
     #[test]
     fn lwma_limit_difficulty_change() {
         let mut dif = LinearWeightedMovingAverage::new(5, 60).unwrap();
-        let _ = dif.add(60.into(), Difficulty::from_u64(100).unwrap());
-        let _ = dif.add(10_000_000.into(), Difficulty::from_u64(100).unwrap());
+        dif.add(60.into(), Difficulty::from_u64(100).unwrap()).unwrap();
+        dif.add(10_000_000.into(), Difficulty::from_u64(100).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(16).unwrap());
-        let _ = dif.add(20_000_000.into(), Difficulty::from_u64(16).unwrap());
+        dif.add(20_000_000.into(), Difficulty::from_u64(16).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(9).unwrap());
     }
 
@@ -284,35 +278,35 @@ mod test {
     #[test]
     fn lwma_calculate() {
         let mut dif = LinearWeightedMovingAverage::new(5, 60).unwrap();
-        let _ = dif.add(60.into(), Difficulty::from_u64(100).unwrap());
+        dif.add(60.into(), Difficulty::from_u64(100).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty(), None);
-        let _ = dif.add(120.into(), Difficulty::from_u64(100).unwrap());
+        dif.add(120.into(), Difficulty::from_u64(100).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(100).unwrap());
-        let _ = dif.add(180.into(), Difficulty::from_u64(100).unwrap());
+        dif.add(180.into(), Difficulty::from_u64(100).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(100).unwrap());
-        let _ = dif.add(240.into(), Difficulty::from_u64(100).unwrap());
+        dif.add(240.into(), Difficulty::from_u64(100).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(100).unwrap());
-        let _ = dif.add(300.into(), Difficulty::from_u64(100).unwrap());
+        dif.add(300.into(), Difficulty::from_u64(100).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(100).unwrap());
-        let _ = dif.add(350.into(), Difficulty::from_u64(105).unwrap());
+        dif.add(350.into(), Difficulty::from_u64(105).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(106).unwrap());
-        let _ = dif.add(380.into(), Difficulty::from_u64(128).unwrap());
+        dif.add(380.into(), Difficulty::from_u64(128).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(134).unwrap());
-        let _ = dif.add(445.into(), Difficulty::from_u64(123).unwrap());
+        dif.add(445.into(), Difficulty::from_u64(123).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(128).unwrap());
-        let _ = dif.add(515.into(), Difficulty::from_u64(116).unwrap());
+        dif.add(515.into(), Difficulty::from_u64(116).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(119).unwrap());
-        let _ = dif.add(615.into(), Difficulty::from_u64(94).unwrap());
+        dif.add(615.into(), Difficulty::from_u64(94).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(93).unwrap());
-        let _ = dif.add(975.into(), Difficulty::from_u64(39).unwrap());
+        dif.add(975.into(), Difficulty::from_u64(39).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(35).unwrap());
-        let _ = dif.add(976.into(), Difficulty::from_u64(46).unwrap());
+        dif.add(976.into(), Difficulty::from_u64(46).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(38).unwrap());
-        let _ = dif.add(977.into(), Difficulty::from_u64(55).unwrap());
+        dif.add(977.into(), Difficulty::from_u64(55).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(46).unwrap());
-        let _ = dif.add(978.into(), Difficulty::from_u64(75).unwrap());
+        dif.add(978.into(), Difficulty::from_u64(75).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(65).unwrap());
-        let _ = dif.add(979.into(), Difficulty::from_u64(148).unwrap());
+        dif.add(979.into(), Difficulty::from_u64(148).unwrap()).unwrap();
         assert_eq!(dif.get_difficulty().unwrap(), Difficulty::from_u64(173).unwrap());
     }
 
@@ -320,7 +314,7 @@ mod test {
     fn ensure_calculate_does_not_overflow_with_large_block_window() {
         let mut dif = LinearWeightedMovingAverage::new(6000, 60).unwrap();
         for _i in 0..6000 {
-            let _ = dif.add(60.into(), Difficulty::max());
+            dif.add(60.into(), Difficulty::max()).unwrap();
         }
         // We don't care about the value, we just want to test that get_difficulty does not panic with an overflow.
         dif.get_difficulty().unwrap();
