@@ -237,9 +237,17 @@ message NetworkDifficultyResponse {
     uint64 sha3x_estimated_hash_rate = 6;
     uint64 monero_randomx_estimated_hash_rate = 7;
     uint64 tari_randomx_estimated_hash_rate = 10;
-    uint64 cuckaroo_estimated_hash_rate = 11;
+    DecimalValue cuckaroo_estimated_hash_rate = 11;
     uint64 num_coinbases = 8;
     repeated  bytes coinbase_extras = 9;
+}
+
+// Example: 12345.6789 -> { units = 12345, nanos = 678900000 }
+message DecimalValue {
+  // Whole units part of the amount
+  int64 units = 1;
+  // Nano units of the amount (10^-9) - Must be same sign as units
+  sfixed32 nanos = 2;
 }
 ```
 

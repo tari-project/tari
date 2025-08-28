@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::VecDeque;
+use std::{cmp::max, collections::VecDeque};
 
+use minotari_app_grpc::tari_rpc;
 use tari_core::consensus::BaseConsensusManager;
 use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 
@@ -34,10 +35,11 @@ pub struct HashRateMovingAverage {
     window_size: usize,
     hash_rates: VecDeque<u64>,
     average: u64,
+    scaling: u64,
 }
 
 impl HashRateMovingAverage {
-    pub fn new(pow_algo: PowAlgorithm, consensus_manager: BaseConsensusManager) -> Self {
+    pub fn new(pow_algo: PowAlgorithm, consensus_manager: BaseConsensusManager, scaling: Option<u64>) -> Self {
         let window_size = HASH_RATE_MOVING_AVERAGE_WINDOW;
         let hash_rates = VecDeque::with_capacity(window_size);
 
@@ -47,6 +49,7 @@ impl HashRateMovingAverage {
             window_size,
             hash_rates,
             average: 0,
+            scaling: max(scaling.unwrap_or(1), 1),
         }
     }
 
@@ -64,7 +67,7 @@ impl HashRateMovingAverage {
         }
 
         // add the new hash rate to the list
-        let current_hash_rate = difficulty.as_u64() / target_time;
+        let current_hash_rate = difficulty.as_u64().saturating_mul(self.scaling) / target_time;
         self.hash_rates.push_front(current_hash_rate);
 
         // after adding the hash rate we need to recalculate the average
@@ -88,7 +91,14 @@ impl HashRateMovingAverage {
     }
 
     pub fn average(&self) -> u64 {
-        self.average
+        self.average / self.scaling
+    }
+
+    pub fn average_as_decimal(&self) -> tari_rpc::DecimalValue {
+        tari_rpc::DecimalValue {
+            units: i64::try_from(self.average / self.scaling).unwrap_or(i64::MAX),
+            nanos: i32::try_from(self.average % self.scaling).unwrap_or(i32::MAX),
+        }
     }
 }
 
@@ -180,7 +190,7 @@ mod test {
             .add_consensus_constants(constants)
             .build()
             .unwrap();
-        HashRateMovingAverage::new(pow_algo, consensus_manager)
+        HashRateMovingAverage::new(pow_algo, consensus_manager, None)
     }
 
     fn assert_hash_rate(
@@ -191,5 +201,55 @@ mod test {
     ) {
         moving_average.add(height, Difficulty::from_u64(difficulty).unwrap());
         assert_eq!(moving_average.average(), expected_hash_rate);
+    }
+
+    #[test]
+    fn scaling_is_applied_correctly() {
+        // Set up consensus manager
+        let mut constants = ConsensusConstants::esmeralda()[ConsensusConstants::esmeralda().len() - 1].clone();
+        constants.set_pow_target_block_interval(PowAlgorithm::Sha3x, 100);
+        constants.set_pow_target_block_interval(PowAlgorithm::RandomXM, 100);
+        constants.set_pow_target_block_interval(PowAlgorithm::RandomXT, 100);
+        constants.set_pow_target_block_interval(PowAlgorithm::Cuckaroo, 100);
+        let consensus_manager = BaseConsensusManagerBuilder::new(Network::Esmeralda)
+            .add_consensus_constants(constants)
+            .build()
+            .unwrap();
+
+        let mut sha_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::Sha3x, consensus_manager.clone(), None);
+        let mut rxm_hash_rate_ma = HashRateMovingAverage::new(PowAlgorithm::RandomXM, consensus_manager.clone(), None);
+        let mut rxt_hash_rate_ma =
+            HashRateMovingAverage::new(PowAlgorithm::RandomXT, consensus_manager.clone(), Some(100));
+        let mut c29_hash_rate_ma =
+            HashRateMovingAverage::new(PowAlgorithm::Cuckaroo, consensus_manager.clone(), Some(10_000));
+
+        let start_height = 100_000;
+        assert_eq!(consensus_manager.consensus_constants(start_height).pow_algo_count(), 4);
+        for i in 0..20 {
+            sha_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + (i % 10) * 10_000).unwrap());
+            rxm_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + (i % 10) * 1_000).unwrap());
+            rxt_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + (i % 10) * 100).unwrap());
+            c29_hash_rate_ma.add(start_height + i, Difficulty::from_u64(1 + i % 10).unwrap());
+        }
+
+        // Check integer output
+        assert_eq!(sha_hash_rate_ma.average(), 516);
+        assert_eq!(rxm_hash_rate_ma.average(), 51);
+        assert_eq!(rxt_hash_rate_ma.average(), 5);
+        assert_eq!(c29_hash_rate_ma.average(), 0);
+
+        // Check decimal output
+        let decimal = sha_hash_rate_ma.average_as_decimal();
+        assert_eq!(decimal.units, 516);
+        assert_eq!(decimal.nanos, 0);
+        let decimal = rxm_hash_rate_ma.average_as_decimal();
+        assert_eq!(decimal.units, 51);
+        assert_eq!(decimal.nanos, 0);
+        let decimal = rxt_hash_rate_ma.average_as_decimal();
+        assert_eq!(decimal.units, 5);
+        assert_eq!(decimal.nanos, 17);
+        let decimal = c29_hash_rate_ma.average_as_decimal();
+        assert_eq!(decimal.units, 0);
+        assert_eq!(decimal.nanos, 616);
     }
 }
